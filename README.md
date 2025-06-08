@@ -16,13 +16,13 @@ I did come across some cool audio editors for macOS, but they were not free, not
 
 So what's the problem with Cool Edit? Actually, if you only work on a Windows machine, I suppose there's no problem at all! I haven't tried it in a while, but as far as I know you can still run Cool Edit there. In fact, you can run it quite well through Wine on macOS (and probably by extension Linux too, but I haven't tried that). But ultimately, for regular use and somewhat nice integration, running things through Wine doesn't really cut it.
 
-Everything added together, it's clear that what this world needs right now is **cupuacu**!
+Everything added together, it's clear that what this world needs right now is **Cupuacu**!
 
 ## Name
 
 I love fruit, especially uncommon, wild, tropical ones. Cupuacu, typically spelled "cupuaçu", is such a fruit, and I can recommend everyone to try it. And when I say "try fruit x", I mean "try fruit x" and I don't mean "try frozen old fruit x" or "try fruit x juice" or anything like that. Hunt for a real cupuaçu, knowing that it has to be very fresh, give off a rich scent, and be suspicious of those that have a pedicel (the stick that links the fruit to the tree), because this fruit is typically only delicious, sweet and rich in pulp around the seeds. The seeds are edible too, but that's not really what I'm usually after when it comes to cupuaçu.
 
-"But what happened to the 'ç' in the name of the project?!" you might ask. And you are completely right. But special characters are still surprisingly hellish in 2025, so I went for `cupuacu` for simplicity.
+"But what happened to the 'ç' in the name of the project?!" you might ask. And you are completely right. But special characters are still surprisingly hellish in 2025, so I went for `Cupuacu` for simplicity.
 
 ## Development setup
 
@@ -35,8 +35,8 @@ That's it, really. Then you do something like this:
 git clone https://github.com/izzyreal/cupuacu
 cd cupuacu
 cmake -B build
-cmake --build build --target cupuacu
-./build/cupuacu
+cmake --build build --target Cupuacu
+./build/Cupuacu
 ```
 
 That will default to the `make` build system on macOS and Linux, which is fine. But in reality I tend to use Ninja, because it gives you an easy way to switch between Debug and Release builds. So we get something like this (after installing Ninja on your system):
@@ -45,8 +45,8 @@ That will default to the `make` build system on macOS and Linux, which is fine. 
 git clone https://github.com/izzyreal/cupuacu
 cd cupuacu
 cmake -G "Ninja Multi-Config" -B build
-cmake --build build --config Debug --target cupuacu
-./build/cupuacu
+cmake --build build --config Debug --target Cupuacu
+./build/Cupuacu
 ```
 
 The `CMakeLists.txt` creates a nice little `compile_commands.json` in the root of the repo, making it play nice with `vim` and `YouCompleteMe`.

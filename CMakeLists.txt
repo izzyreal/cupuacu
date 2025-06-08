@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 
 include(cmake/ResourceBundling.cmake)
 
-project(cupuacu)
+project(Cupuacu)
 
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "Prevent FetchContent from re-downloading sources" FORCE)
 
@@ -31,7 +31,7 @@ AddDependency(SDL3 "https://github.com/libsdl-org/SDL.git" "release-3.2.14")
 AddDependency(Catch2 "https://github.com/catchorg/Catch2.git" "v3.8.1")
 AddDependency(libsndfile "https://github.com/libsndfile/libsndfile.git" "1.2.2")
 
-add_executable(cupuacu
+add_executable(Cupuacu
     src/main/main.cpp
 )
 
@@ -39,7 +39,7 @@ add_executable(cupuacu-tests
     src/test/test.cpp
 )
 
-target_link_libraries(cupuacu PRIVATE SDL3::SDL3)
+target_link_libraries(Cupuacu PRIVATE SDL3::SDL3)
 target_link_libraries(cupuacu-tests PRIVATE Catch2::Catch2 libsndfile)
 
 if (PROJECT_IS_TOP_LEVEL)
@@ -59,9 +59,9 @@ if (APPLE)
 
     set(CODESIGN_IDENTITY "Apple Development")
 
-    add_custom_command(TARGET cupuacu
+    add_custom_command(TARGET Cupuacu
         POST_BUILD
-        COMMAND codesign --force --deep --sign ${CODESIGN_IDENTITY} --timestamp $<TARGET_FILE:cupuacu>
+        COMMAND codesign --force --deep --sign ${CODESIGN_IDENTITY} --timestamp $<TARGET_FILE:Cupuacu>
         VERBATIM
     )
 endif()
