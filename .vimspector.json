@@ -16,7 +16,7 @@
       },
       "configuration": {
         "request": "launch",
-        "program": "${workspaceRoot}/build/bin/plantdb-backend",
+        "program": "${workspaceRoot}/build/Debug/Cupuacu",
         "args": [],
         "cwd": "${workspaceRoot}",
         "stopOnEntry": false,
@@ -31,7 +31,7 @@
       },
       "configuration": {
         "request": "attach",
-        "program": "${workspaceRoot}/build/bin/plantdb-backend"
+        "program": "${workspaceRoot}/build/Debug/Cupuacu"
       }
     },
     "Launch GDB": {
@@ -39,7 +39,7 @@
       "filetypes": ["cpp", "c", "objc", "rust"],
       "configuration": {
         "request": "launch",
-        "program": "${workspaceRoot}/build/bin/plantdb-backend",
+        "program": "${workspaceRoot}/build/Debug/Cupuacu",
         "args": [],
         "cwd": "${workspaceRoot}",
         "environment": [],
@@ -52,7 +52,7 @@
       "filetypes": ["cpp", "c", "objc", "rust"],
       "configuration": {
         "request": "attach",
-        "program": "${workspaceRoot}/build/bin/plantdb-backend",
+        "program": "${workspaceRoot}/build/Debug/Cupuacu",
         "MIMode": "gdb"
       }
     }

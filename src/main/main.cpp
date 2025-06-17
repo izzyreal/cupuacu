@@ -6,6 +6,73 @@
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
 
+#include <cstdint>
+uint8_t hardwarePixelsPerAppPixel = 4;
+
+#define MINIAUDIO_IMPLEMENTATION
+#include "miniaudio.h"
+
+#include <string>
+std::string currentFile = "/Users/izmar/samples/Declassified Breaks/britney spears - one more time.wav";
+
+#include <vector>
+std::vector<int16_t> sampleDataL;
+std::vector<int16_t> sampleDataR;
+
+void loadSampleData()
+{
+    ma_result result;
+    ma_decoder decoder;
+
+    result = ma_decoder_init_file(currentFile.c_str(), nullptr, &decoder);
+    if (result != MA_SUCCESS) {
+        throw std::runtime_error("Failed to load file: " + currentFile);
+    }
+
+    if (decoder.outputFormat != ma_format_s16) {
+        ma_decoder_uninit(&decoder);
+        throw std::runtime_error("Unsupported format: not s16 PCM");
+    }
+
+    if (decoder.outputChannels != 1 && decoder.outputChannels != 2) {
+        ma_decoder_uninit(&decoder);
+        throw std::runtime_error("Unsupported channel count");
+    }
+
+    ma_uint64 frameCount = 0;
+    result = ma_decoder_get_length_in_pcm_frames(&decoder, &frameCount);
+    if (result != MA_SUCCESS) {
+        ma_decoder_uninit(&decoder);
+        throw std::runtime_error("Failed to get frame count");
+    }
+
+    std::vector<int16_t> interleaved(frameCount * decoder.outputChannels);
+
+    ma_uint64 framesRead = 0;
+    result = ma_decoder_read_pcm_frames(&decoder, interleaved.data(), frameCount, &framesRead);
+    if (result != MA_SUCCESS) {
+        ma_decoder_uninit(&decoder);
+        throw std::runtime_error("Failed to read PCM frames");
+    }
+
+    sampleDataL.clear();
+    sampleDataR.clear();
+
+    if (decoder.outputChannels == 1) {
+        sampleDataL.assign(interleaved.begin(), interleaved.begin() + framesRead);
+    } else {
+        sampleDataL.reserve(framesRead);
+        sampleDataR.reserve(framesRead);
+        for (ma_uint64 i = 0; i < framesRead; ++i) {
+            sampleDataL.push_back(interleaved[i * 2]);
+            sampleDataR.push_back(interleaved[i * 2 + 1]);
+        }
+    }
+
+    ma_decoder_uninit(&decoder);
+}
+
+
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
@@ -49,9 +116,18 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
         return SDL_APP_FAILURE;
     }
 
-    SDL_SetWindowTitle(window, "AMEN.WAV");
+    SDL_SetWindowTitle(window, currentFile.c_str()); 
 
     SDL_MaximizeWindow(window);
+
+    loadSampleData();
+
+    if (sampleDataL.size() > 10)
+    {
+        for (int i = 0; i < 10; i ++) printf("%i, ", sampleDataL[i]);
+    }
+
+    printf("\n");
 
     return SDL_APP_CONTINUE;
 }

@@ -29,7 +29,6 @@ set(SDL_INSTALL_TESTS OFF CACHE BOOL "" FORCE)
 # Dependencies
 AddDependency(SDL3 "https://github.com/libsdl-org/SDL.git" "release-3.2.14")
 AddDependency(Catch2 "https://github.com/catchorg/Catch2.git" "v3.8.1")
-AddDependency(libsndfile "https://github.com/libsndfile/libsndfile.git" "1.2.2")
 
 add_executable(Cupuacu
     src/main/main.cpp
@@ -40,7 +39,7 @@ add_executable(cupuacu-tests
 )
 
 target_link_libraries(Cupuacu PRIVATE SDL3::SDL3)
-target_link_libraries(cupuacu-tests PRIVATE Catch2::Catch2 libsndfile)
+target_link_libraries(cupuacu-tests PRIVATE Catch2::Catch2)
 
 if (PROJECT_IS_TOP_LEVEL)
     execute_process(
