@@ -19,6 +19,8 @@ std::string currentFile = "/Users/izmar/samples/Declassified Breaks/britney spea
 std::vector<int16_t> sampleDataL;
 std::vector<int16_t> sampleDataR;
 
+bool sampleDataHasChanged = false;
+
 void loadSampleData()
 {
     ma_result result;
@@ -70,14 +72,74 @@ void loadSampleData()
     }
 
     ma_decoder_uninit(&decoder);
-}
 
+    sampleDataHasChanged = true;
+}
 
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-    SDL_RenderClear(renderer);
-    SDL_RenderPresent(renderer);
+    if (sampleDataHasChanged)
+    {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+
+        SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
+
+        int width, height;
+        SDL_GetCurrentRenderOutputSize(renderer, &width, &height);
+
+        int logicalWidth = width / hardwarePixelsPerAppPixel;
+        int logicalHeight = height / hardwarePixelsPerAppPixel;
+
+        size_t totalSamples = sampleDataL.size();
+        if (totalSamples == 0)
+        {
+            SDL_RenderPresent(renderer);
+            sampleDataHasChanged = false;
+            return SDL_APP_CONTINUE;
+        }
+
+        double samplesPerPixel = static_cast<double>(totalSamples) / logicalWidth;
+
+        for (int x = 0; x < logicalWidth; ++x)
+        {
+            size_t startSample = static_cast<size_t>(x * samplesPerPixel);
+            size_t endSample = static_cast<size_t>((x + 1) * samplesPerPixel);
+            if (endSample > totalSamples) endSample = totalSamples;
+
+            int16_t minSample = INT16_MAX;
+            int16_t maxSample = INT16_MIN;
+
+            for (size_t i = startSample; i < endSample; ++i)
+            {
+                int16_t s = sampleDataL[i];
+                if (s < minSample) minSample = s;
+                if (s > maxSample) maxSample = s;
+            }
+
+            int y1 = logicalHeight / 2 - (maxSample * logicalHeight / 2) / 32768;
+            int y2 = logicalHeight / 2 - (minSample * logicalHeight / 2) / 32768;
+
+            // Draw scaled up line (pixel block)
+            for (int dx = 0; dx < hardwarePixelsPerAppPixel; ++dx)
+            {
+                for (int dy = 0; dy < hardwarePixelsPerAppPixel; ++dy)
+                {
+                    SDL_RenderLine(
+                        renderer,
+                        x * hardwarePixelsPerAppPixel + dx,
+                        y1 * hardwarePixelsPerAppPixel + dy,
+                        x * hardwarePixelsPerAppPixel + dx,
+                        y2 * hardwarePixelsPerAppPixel + dy
+                    );
+                }
+            }
+        }
+
+        SDL_RenderPresent(renderer);
+        sampleDataHasChanged = false;
+    }
+
     return SDL_APP_CONTINUE;
 }
 
@@ -119,6 +181,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     SDL_SetWindowTitle(window, currentFile.c_str()); 
 
     SDL_MaximizeWindow(window);
+    SDL_RenderPresent(renderer);
 
     loadSampleData();
 
