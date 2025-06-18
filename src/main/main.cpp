@@ -5,6 +5,7 @@
 
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
+static SDL_Texture *canvas = NULL;
 
 #include <cstdint>
 uint8_t hardwarePixelsPerAppPixel = 4;
@@ -78,6 +79,9 @@ void loadSampleData()
 
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
+    SDL_Event e;
+    SDL_WaitEventTimeout(&e, 100);
+
     if (sampleDataHasChanged)
     {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
@@ -92,6 +96,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         int logicalHeight = height / hardwarePixelsPerAppPixel;
 
         size_t totalSamples = sampleDataL.size();
+
         if (totalSamples == 0)
         {
             SDL_RenderPresent(renderer);
@@ -137,7 +142,10 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         }
 
         SDL_RenderPresent(renderer);
+
         sampleDataHasChanged = false;
+
+        printf("Sampledata updated\n");
     }
 
     return SDL_APP_CONTINUE;
