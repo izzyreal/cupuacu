@@ -34,16 +34,13 @@ void paintWaveformToCanvas()
     int width, height;
     SDL_GetCurrentRenderOutputSize(renderer, &width, &height);
 
-    int logicalWidth = width;
-    int logicalHeight = height;
+    const size_t totalSamples = sampleDataL.size();
 
-    size_t totalSamples = sampleDataL.size();
+    const double samplesPerPixel = static_cast<double>(totalSamples) / width;
 
-    double samplesPerPixel = static_cast<double>(totalSamples) / logicalWidth;
-
-    for (int x = 0; x < logicalWidth; ++x)
+    for (int x = 0; x < width; ++x)
     {
-        size_t startSample = static_cast<size_t>(x * samplesPerPixel);
+        const size_t startSample = static_cast<size_t>(x * samplesPerPixel);
         size_t endSample = static_cast<size_t>((x + 1) * samplesPerPixel);
         if (endSample > totalSamples) endSample = totalSamples;
 
@@ -52,30 +49,34 @@ void paintWaveformToCanvas()
 
         for (size_t i = startSample; i < endSample; ++i)
         {
-            int16_t s = sampleDataL[i];
+            const int16_t s = sampleDataL[i];
             if (s < minSample) minSample = s;
             if (s > maxSample) maxSample = s;
         }
 
-        int y1 = logicalHeight / 2 - (maxSample * logicalHeight / 2) / 32768;
-        int y2 = logicalHeight / 2 - (minSample * logicalHeight / 2) / 32768;
+        const int y1 = height / 2 - (maxSample * height / 2) / 32768;
+        const int y2 = height / 2 - (minSample * height / 2) / 32768;
 
-        for (int dx = 0; dx < 1; ++dx)
-        {
-            for (int dy = 0; dy < 1; ++dy)
-            {
-                SDL_RenderLine(
-                    renderer,
-                    x + dx,
-                    y1 + dy,
-                    x + dx,
-                    y2 + dy
-                );
-            }
-        }
+        SDL_RenderLine(renderer, x, y1, x, y2);
     }
 
     SDL_SetRenderTarget(renderer, NULL);
+}
+
+void renderCanvasToWindow()
+{
+    SDL_FPoint currentCanvasDimensions;
+    SDL_GetTextureSize(canvas, &currentCanvasDimensions.x, &currentCanvasDimensions.y);
+    SDL_FRect dstRect;
+    dstRect.x = 0;
+    dstRect.y = 0;
+    dstRect.w = currentCanvasDimensions.x * hardwarePixelsPerAppPixel;
+    dstRect.h = currentCanvasDimensions.y * hardwarePixelsPerAppPixel;
+
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+    SDL_RenderClear(renderer);
+    SDL_RenderTexture(renderer, canvas, NULL, &dstRect);
+    SDL_RenderPresent(renderer);
 }
 
 void loadSampleData()
@@ -200,20 +201,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     const SDL_Point newCanvasDimensions = computeDesiredCanvasDimensions();
 
     createCanvas(newCanvasDimensions);
-
     paintWaveformToCanvas();
-
-    SDL_FRect dstRect;
-    dstRect.x = 0;
-    dstRect.y = 0;
-    dstRect.w = newCanvasDimensions.x * hardwarePixelsPerAppPixel;
-    dstRect.h = newCanvasDimensions.y * hardwarePixelsPerAppPixel;
-
-    SDL_RenderClear(renderer);
-
-    SDL_RenderTexture(renderer, canvas, NULL, &dstRect);
-
-    SDL_RenderPresent(renderer);
+    renderCanvasToWindow();
 
     return SDL_APP_CONTINUE;
 }
@@ -242,27 +231,24 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
         case SDL_EVENT_QUIT:
             return SDL_APP_SUCCESS;
         case SDL_EVENT_WINDOW_RESIZED:
-            printf("SDL_EVENT_WINDOW_RESIZED\n");
+            //printf("SDL_EVENT_WINDOW_RESIZED\n");
             SDL_FPoint currentCanvasDimensions;
             SDL_GetTextureSize(canvas, &currentCanvasDimensions.x, &currentCanvasDimensions.y);
             const SDL_Point newCanvasDimensions = computeDesiredCanvasDimensions();
-            printf("New dimensions: %i, %i\n", newCanvasDimensions.x, newCanvasDimensions.y);
-            createCanvas(newCanvasDimensions);
+            const auto currentCanvasWidth = static_cast<uint16_t>(currentCanvasDimensions.x);
+            const auto currentCanvasHeight = static_cast<uint16_t>(currentCanvasDimensions.y);
 
-            paintWaveformToCanvas();
+            if (currentCanvasWidth != newCanvasDimensions.x ||
+                    currentCanvasHeight != newCanvasDimensions.y)
+            {
+                createCanvas(newCanvasDimensions);
+                paintWaveformToCanvas();
+            }
 
-            SDL_FRect dstRect;
-            dstRect.x = 0;
-            dstRect.y = 0;
-            dstRect.w = newCanvasDimensions.x * hardwarePixelsPerAppPixel;
-            dstRect.h = newCanvasDimensions.y * hardwarePixelsPerAppPixel;
-
-            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
-            SDL_RenderClear(renderer);
-            SDL_RenderTexture(renderer, canvas, NULL, &dstRect);
-            SDL_RenderPresent(renderer);
+            renderCanvasToWindow();
             break;
     }
+
     return SDL_APP_CONTINUE;
 }
 
