@@ -156,14 +156,29 @@ void loadSampleData()
     }
 }
 
-void createCanvas(uint16_t w, uint16_t h)
+SDL_Point computeDesiredCanvasDimensions()
+{
+    SDL_Point result;
+
+    if (!SDL_GetWindowSize(window, &result.x, &result.y))
+    {
+        return {0,0};
+    }
+
+    result.x = std::floor(result.x / hardwarePixelsPerAppPixel);
+    result.y = std::floor(result.y / hardwarePixelsPerAppPixel);
+
+    return result;
+}
+
+void createCanvas(const SDL_Point &dimensions)
 {
     if (canvas) SDL_DestroyTexture(canvas);
 
     canvas = SDL_CreateTexture(renderer,
                                SDL_PIXELFORMAT_RGBA8888,
                                SDL_TEXTUREACCESS_TARGET,
-                               w, h);
+                               dimensions.x, dimensions.y);
 
     SDL_SetTextureScaleMode(canvas, SDL_SCALEMODE_NEAREST);
 }
@@ -187,10 +202,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     SDL_SetWindowTitle(window, currentFile.c_str()); 
     SDL_RenderPresent(renderer);
 
-    const uint16_t canvasWidth = std::floor(initialDimensions[0] / hardwarePixelsPerAppPixel);
-    const uint16_t canvasHeight = std::floor(initialDimensions[1] / hardwarePixelsPerAppPixel);
+    const SDL_Point newCanvasDimensions = computeDesiredCanvasDimensions();
 
-    createCanvas(canvasWidth, canvasHeight);
+    createCanvas(newCanvasDimensions);
 
     loadSampleData();
 
@@ -203,8 +217,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     SDL_FRect dstRect;
     dstRect.x = 0;
     dstRect.y = 0;
-    dstRect.w = canvasWidth * hardwarePixelsPerAppPixel;
-    dstRect.h = canvasHeight * hardwarePixelsPerAppPixel;
+    dstRect.w = newCanvasDimensions.x * hardwarePixelsPerAppPixel;
+    dstRect.h = newCanvasDimensions.y * hardwarePixelsPerAppPixel;
 
     SDL_RenderTexture(renderer, canvas, NULL, &dstRect);
 
