@@ -41,8 +41,8 @@ void paintWaveformToCanvasIfSampleDataHasChanged()
     int width, height;
     SDL_GetCurrentRenderOutputSize(renderer, &width, &height);
 
-    int logicalWidth = width / hardwarePixelsPerAppPixel;
-    int logicalHeight = height / hardwarePixelsPerAppPixel;
+    int logicalWidth = width;
+    int logicalHeight = height;
 
     size_t totalSamples = sampleDataL.size();
 
@@ -67,16 +67,16 @@ void paintWaveformToCanvasIfSampleDataHasChanged()
         int y1 = logicalHeight / 2 - (maxSample * logicalHeight / 2) / 32768;
         int y2 = logicalHeight / 2 - (minSample * logicalHeight / 2) / 32768;
 
-        for (int dx = 0; dx < hardwarePixelsPerAppPixel; ++dx)
+        for (int dx = 0; dx < 1; ++dx)
         {
-            for (int dy = 0; dy < hardwarePixelsPerAppPixel; ++dy)
+            for (int dy = 0; dy < 1; ++dy)
             {
                 SDL_RenderLine(
                     renderer,
-                    x * hardwarePixelsPerAppPixel + dx,
-                    y1 * hardwarePixelsPerAppPixel + dy,
-                    x * hardwarePixelsPerAppPixel + dx,
-                    y2 * hardwarePixelsPerAppPixel + dy
+                    x + dx,
+                    y1 + dy,
+                    x + dx,
+                    y2 + dy
                 );
             }
         }
@@ -188,7 +188,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     SDL_MaximizeWindow(window);
     SDL_RenderPresent(renderer);
 
-    createCanvas(initialDimensions[0], initialDimensions[1]); 
+    createCanvas(initialDimensions[0] / hardwarePixelsPerAppPixel, initialDimensions[1] / hardwarePixelsPerAppPixel);
 
     loadSampleData();
 
