@@ -10,7 +10,7 @@ static SDL_Texture *canvas = NULL;
 const uint16_t initialDimensions[] = { 1280, 720 };
 
 #include <cstdint>
-uint8_t hardwarePixelsPerAppPixel = 4*2;
+uint8_t hardwarePixelsPerAppPixel = 4;
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
@@ -154,7 +154,7 @@ SDL_Point computeDesiredCanvasDimensions()
 {
     SDL_Point result;
 
-    if (!SDL_GetWindowSize(window, &result.x, &result.y))
+    if (!SDL_GetWindowSizeInPixels(window, &result.x, &result.y))
     {
         return {0,0};
     }
@@ -187,7 +187,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
         return SDL_APP_FAILURE;
     }
 
-    if (!SDL_CreateWindowAndRenderer("", initialDimensions[0], initialDimensions[1], SDL_WINDOW_RESIZABLE, &window, &renderer))
+    if (!SDL_CreateWindowAndRenderer("", initialDimensions[0], initialDimensions[1], SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY, &window, &renderer))
     {
         SDL_Log("SDL_CreateWindowAndRenderer() failed: %s", SDL_GetError());
         return SDL_APP_FAILURE;
