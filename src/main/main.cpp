@@ -185,10 +185,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     }
 
     SDL_SetWindowTitle(window, currentFile.c_str()); 
-    SDL_MaximizeWindow(window);
     SDL_RenderPresent(renderer);
 
-    createCanvas(initialDimensions[0] / hardwarePixelsPerAppPixel, initialDimensions[1] / hardwarePixelsPerAppPixel);
+    const uint16_t canvasWidth = std::floor(initialDimensions[0] / hardwarePixelsPerAppPixel);
+    const uint16_t canvasHeight = std::floor(initialDimensions[1] / hardwarePixelsPerAppPixel);
+
+    createCanvas(canvasWidth, canvasHeight);
 
     loadSampleData();
 
@@ -198,7 +200,13 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     sampleDataHasChanged = false;
 
-    SDL_RenderTexture(renderer, canvas, NULL, NULL);
+    SDL_FRect dstRect;
+    dstRect.x = 0;
+    dstRect.y = 0;
+    dstRect.w = canvasWidth * hardwarePixelsPerAppPixel;
+    dstRect.h = canvasHeight * hardwarePixelsPerAppPixel;
+
+    SDL_RenderTexture(renderer, canvas, NULL, &dstRect);
 
     SDL_RenderPresent(renderer);
 
