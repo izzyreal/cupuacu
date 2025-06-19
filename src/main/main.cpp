@@ -10,7 +10,7 @@ static SDL_Texture *canvas = NULL;
 const uint16_t initialDimensions[] = { 1280, 720 };
 
 #include <cstdint>
-uint8_t hardwarePixelsPerAppPixel = 4;
+uint8_t hardwarePixelsPerAppPixel = 4*2;
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
@@ -22,15 +22,8 @@ std::string currentFile = "/Users/izmar/samples/Declassified Breaks/britney spea
 std::vector<int16_t> sampleDataL;
 std::vector<int16_t> sampleDataR;
 
-bool sampleDataHasChanged = false;
-
-void paintWaveformToCanvasIfSampleDataHasChanged()
+void paintWaveformToCanvas()
 {
-    if (!sampleDataHasChanged)
-    {
-        return;
-    }
-
     SDL_SetRenderTarget(renderer, canvas);
 
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
@@ -199,6 +192,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
         return SDL_APP_FAILURE;
     }
 
+    loadSampleData();
+
     SDL_SetWindowTitle(window, currentFile.c_str()); 
     SDL_RenderPresent(renderer);
 
@@ -206,19 +201,15 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     createCanvas(newCanvasDimensions);
 
-    loadSampleData();
-
-    sampleDataHasChanged = true;
-
-    paintWaveformToCanvasIfSampleDataHasChanged();
-
-    sampleDataHasChanged = false;
+    paintWaveformToCanvas();
 
     SDL_FRect dstRect;
     dstRect.x = 0;
     dstRect.y = 0;
     dstRect.w = newCanvasDimensions.x * hardwarePixelsPerAppPixel;
     dstRect.h = newCanvasDimensions.y * hardwarePixelsPerAppPixel;
+
+    SDL_RenderClear(renderer);
 
     SDL_RenderTexture(renderer, canvas, NULL, &dstRect);
 
@@ -240,8 +231,6 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         //printf("AppIterate event %i\n", appIterateEventCounter++);
     }
 
-    //paintWaveformToCanvasIfSampleDataHasChanged();
-
     return SDL_APP_CONTINUE;
 }
 
@@ -254,6 +243,24 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
             return SDL_APP_SUCCESS;
         case SDL_EVENT_WINDOW_RESIZED:
             printf("SDL_EVENT_WINDOW_RESIZED\n");
+            SDL_FPoint currentCanvasDimensions;
+            SDL_GetTextureSize(canvas, &currentCanvasDimensions.x, &currentCanvasDimensions.y);
+            const SDL_Point newCanvasDimensions = computeDesiredCanvasDimensions();
+            printf("New dimensions: %i, %i\n", newCanvasDimensions.x, newCanvasDimensions.y);
+            createCanvas(newCanvasDimensions);
+
+            paintWaveformToCanvas();
+
+            SDL_FRect dstRect;
+            dstRect.x = 0;
+            dstRect.y = 0;
+            dstRect.w = newCanvasDimensions.x * hardwarePixelsPerAppPixel;
+            dstRect.h = newCanvasDimensions.y * hardwarePixelsPerAppPixel;
+
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+            SDL_RenderClear(renderer);
+            SDL_RenderTexture(renderer, canvas, NULL, &dstRect);
+            SDL_RenderPresent(renderer);
             break;
     }
     return SDL_APP_CONTINUE;
