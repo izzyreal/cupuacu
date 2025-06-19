@@ -60,7 +60,7 @@ if (APPLE)
 
     add_custom_command(TARGET Cupuacu
         POST_BUILD
-        COMMAND codesign --force --deep --sign ${CODESIGN_IDENTITY} --timestamp $<TARGET_FILE:Cupuacu>
+        COMMAND codesign --force --deep --sign ${CODESIGN_IDENTITY} $<TARGET_FILE:Cupuacu>
         VERBATIM
     )
 endif()
