@@ -10,7 +10,7 @@ static SDL_Texture *canvas = NULL;
 const uint16_t initialDimensions[] = { 1280, 720 };
 
 #include <cstdint>
-uint8_t hardwarePixelsPerAppPixel = 4;
+uint8_t hardwarePixelsPerAppPixel = 4*4;
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
@@ -21,6 +21,9 @@ std::string currentFile = "/Users/izmar/samples/Declassified Breaks/britney spea
 #include <vector>
 std::vector<int16_t> sampleDataL;
 std::vector<int16_t> sampleDataR;
+
+double samplesPerPixel = 1;
+int64_t sampleOffset = 0;
 
 void paintWaveformToCanvas()
 {
@@ -34,21 +37,34 @@ void paintWaveformToCanvas()
     int width, height;
     SDL_GetCurrentRenderOutputSize(renderer, &width, &height);
 
-    const size_t totalSamples = sampleDataL.size();
-
-    const double samplesPerPixel = static_cast<double>(totalSamples) / width;
+    bool noMoreStuffToDraw = false;
 
     for (int x = 0; x < width; ++x)
     {
-        const size_t startSample = static_cast<size_t>(x * samplesPerPixel);
-        size_t endSample = static_cast<size_t>((x + 1) * samplesPerPixel);
-        if (endSample > totalSamples) endSample = totalSamples;
+        if (noMoreStuffToDraw)
+        {
+            // Should probably be replaced with implementation of incapacity
+            // of zooming to this kind of level. In other words, the waveform
+            // always covers the width of the window, or overflows it. It
+            // never underflows. But for now, this is easier.
+            break;
+        }
+
+        const size_t startSample = static_cast<size_t>(x * samplesPerPixel) + sampleOffset;
+        size_t endSample = static_cast<size_t>((x + 1) * samplesPerPixel) + sampleOffset;
+        //if (endSample > totalSamples) endSample = totalSamples;
 
         int16_t minSample = INT16_MAX;
         int16_t maxSample = INT16_MIN;
 
         for (size_t i = startSample; i < endSample; ++i)
         {
+            if (i >= sampleDataL.size())
+            {
+                noMoreStuffToDraw = true;
+                break;
+            }
+
             const int16_t s = sampleDataL[i];
             if (s < minSample) minSample = s;
             if (s > maxSample) maxSample = s;
@@ -231,24 +247,71 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
         case SDL_EVENT_QUIT:
             return SDL_APP_SUCCESS;
         case SDL_EVENT_WINDOW_RESIZED:
-            //printf("SDL_EVENT_WINDOW_RESIZED\n");
-            SDL_FPoint currentCanvasDimensions;
-            SDL_GetTextureSize(canvas, &currentCanvasDimensions.x, &currentCanvasDimensions.y);
-            const SDL_Point newCanvasDimensions = computeDesiredCanvasDimensions();
-            const auto currentCanvasWidth = static_cast<uint16_t>(currentCanvasDimensions.x);
-            const auto currentCanvasHeight = static_cast<uint16_t>(currentCanvasDimensions.y);
-
-            if (currentCanvasWidth != newCanvasDimensions.x ||
-                    currentCanvasHeight != newCanvasDimensions.y)
             {
-                createCanvas(newCanvasDimensions);
-                paintWaveformToCanvas();
-            }
+                //printf("SDL_EVENT_WINDOW_RESIZED\n");
+                SDL_FPoint currentCanvasDimensions;
+                SDL_GetTextureSize(canvas, &currentCanvasDimensions.x, &currentCanvasDimensions.y);
+                const SDL_Point newCanvasDimensions = computeDesiredCanvasDimensions();
+                const auto currentCanvasWidth = static_cast<uint16_t>(currentCanvasDimensions.x);
+                const auto currentCanvasHeight = static_cast<uint16_t>(currentCanvasDimensions.y);
 
-            renderCanvasToWindow();
+                if (currentCanvasWidth != newCanvasDimensions.x ||
+                        currentCanvasHeight != newCanvasDimensions.y)
+                {
+                    createCanvas(newCanvasDimensions);
+                    paintWaveformToCanvas();
+                }
+
+                renderCanvasToWindow();
+                break;
+            }
+        case SDL_EVENT_KEY_DOWN:
+            uint8_t multiplier = 1;
+            
+            if (event->key.mod & SDL_KMOD_SHIFT) multiplier *= 2;
+            if (event->key.mod & SDL_KMOD_ALT) multiplier *= 2;
+            if (event->key.mod & SDL_KMOD_CTRL) multiplier *= 2;
+
+            if (event->key.scancode == SDL_SCANCODE_Q)
+            {
+                if (samplesPerPixel > 1)
+                {
+                    samplesPerPixel /= 2;
+                    paintWaveformToCanvas();
+                    renderCanvasToWindow();
+                }
+            }
+            else if (event->key.scancode == SDL_SCANCODE_W)
+            {
+                // Should be replaced with implemention of incapacity to underflow horizontally.
+                if (samplesPerPixel < sampleDataL.size() / 2)
+                {
+                    samplesPerPixel *= 2;
+                    paintWaveformToCanvas();
+                    renderCanvasToWindow();
+                }
+            }
+            else if (event->key.scancode == SDL_SCANCODE_LEFT)
+            {
+                if (sampleOffset > 0)
+                {
+                    sampleOffset -= samplesPerPixel * multiplier;
+                    if (sampleOffset < 0) sampleOffset = 0;
+                    paintWaveformToCanvas();
+                    renderCanvasToWindow();
+                }
+            }
+            else if (event->key.scancode == SDL_SCANCODE_RIGHT)
+            {
+                if (sampleOffset < sampleDataL.size())
+                {
+                    sampleOffset += samplesPerPixel * multiplier;
+                    paintWaveformToCanvas();
+                    renderCanvasToWindow();
+                }
+            }
             break;
     }
-
     return SDL_APP_CONTINUE;
 }
 
