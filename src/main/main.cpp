@@ -40,6 +40,8 @@ void paintWaveformToCanvas()
 
     bool noMoreStuffToDraw = false;
 
+//    printf("=============\n"); 
+
     for (int x = 0; x < width; ++x)
     {
         if (noMoreStuffToDraw)
@@ -53,10 +55,15 @@ void paintWaveformToCanvas()
 
         const size_t startSample = static_cast<size_t>(x * samplesPerPixel) + sampleOffset;
         size_t endSample = static_cast<size_t>((x + 1) * samplesPerPixel) + sampleOffset;
+
+        if (endSample == startSample) endSample++;
+
         //if (endSample > totalSamples) endSample = totalSamples;
 
         int16_t minSample = INT16_MAX;
         int16_t maxSample = INT16_MIN;
+
+        //printf("startSample: %i, endSample: %i\n", startSample, endSample);
 
         for (size_t i = startSample; i < endSample; ++i)
         {
@@ -76,6 +83,8 @@ void paintWaveformToCanvas()
 
         y1 = std::clamp<int>(y1, -1, height);
         y2 = std::clamp<int>(y2, -1, height);
+
+ //       printf("y1: %i, y2: %i\n", y1, y2);
 
         SDL_RenderLine(renderer, x, y1, x, y2);
     }
@@ -289,7 +298,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
             }
             else if (event->key.scancode == SDL_SCANCODE_W)
             {
-                if (samplesPerPixel > 1)
+                if (samplesPerPixel > 0.1)
                 {
                     samplesPerPixel /= 2;
                     paintWaveformToCanvas();
@@ -299,6 +308,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
             else if (event->key.scancode == SDL_SCANCODE_E)
             {
                 verticalZoom -= 0.1 * multiplier; paintWaveformToCanvas(); renderCanvasToWindow();
+                if (verticalZoom < 1) verticalZoom = 1;
             }
             else if (event->key.scancode == SDL_SCANCODE_R)
             {
