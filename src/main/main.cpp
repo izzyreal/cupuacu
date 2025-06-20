@@ -22,6 +22,10 @@ std::string currentFile = "/Users/izmar/samples/Declassified Breaks/britney spea
 std::vector<int16_t> sampleDataL;
 std::vector<int16_t> sampleDataR;
 
+static const double INITIAL_SAMPLES_PER_PIXEL = 1;
+static const double INITIAL_VERTICAL_ZOOM = 1;
+static const int64_t INITIAL_SAMPLE_OFFSET = 0;
+
 double samplesPerPixel = 1;
 double verticalZoom = 1;
 int64_t sampleOffset = 0;
@@ -229,8 +233,18 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     const SDL_Point newCanvasDimensions = computeDesiredCanvasDimensions();
 
+    printf("desired canvas width: %i\n", newCanvasDimensions.x);
+
     createCanvas(newCanvasDimensions);
-    samplesPerPixel = sampleDataL.size() / newCanvasDimensions.x;
+
+    SDL_FPoint actualCanvasDimensions;
+
+    SDL_GetTextureSize(canvas, &actualCanvasDimensions.x, &actualCanvasDimensions.y);
+
+    printf("actual canvas width: %f\n", actualCanvasDimensions.x);
+
+    samplesPerPixel = sampleDataL.size() / double(newCanvasDimensions.x);
+    printf("samplesPerPixel during init: %f\n", samplesPerPixel);
     paintWaveformToCanvas();
     renderCanvasToWindow();
 
@@ -281,6 +295,19 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
             }
         case SDL_EVENT_KEY_DOWN:
             uint8_t multiplier = 1;
+
+            if (event->key.scancode == SDL_SCANCODE_ESCAPE)
+            {
+                    SDL_FPoint canvasDimensions;
+                    SDL_GetTextureSize(canvas, &canvasDimensions.x, &canvasDimensions.y);
+                    samplesPerPixel = sampleDataL.size() / canvasDimensions.x;
+                    printf("new samplesPerPixel: %f\n", samplesPerPixel);
+                    verticalZoom = INITIAL_VERTICAL_ZOOM;
+                    sampleOffset = INITIAL_SAMPLE_OFFSET;
+                    paintWaveformToCanvas();
+                    renderCanvasToWindow();
+                    break;
+            }
             
             if (event->key.mod & SDL_KMOD_SHIFT) multiplier *= 2;
             if (event->key.mod & SDL_KMOD_ALT) multiplier *= 2;
@@ -309,11 +336,14 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
             {
                 verticalZoom -= 0.1 * multiplier;
                 if (verticalZoom < 1) verticalZoom = 1;
-                paintWaveformToCanvas(); renderCanvasToWindow();
+                paintWaveformToCanvas();
+                renderCanvasToWindow();
             }
             else if (event->key.scancode == SDL_SCANCODE_R)
             {
-                verticalZoom += 0.1 * multiplier; paintWaveformToCanvas(); renderCanvasToWindow();
+                    verticalZoom += 0.1 * multiplier;
+                    paintWaveformToCanvas();
+                    renderCanvasToWindow();
             }
             else if (event->key.scancode == SDL_SCANCODE_LEFT)
             {
