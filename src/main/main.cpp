@@ -334,14 +334,14 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
             }
             else if (event->key.scancode == SDL_SCANCODE_E)
             {
-                verticalZoom -= 0.1 * multiplier;
+                verticalZoom -= 0.3 * multiplier;
                 if (verticalZoom < 1) verticalZoom = 1;
                 paintWaveformToCanvas();
                 renderCanvasToWindow();
             }
             else if (event->key.scancode == SDL_SCANCODE_R)
             {
-                    verticalZoom += 0.1 * multiplier;
+                    verticalZoom += 0.3 * multiplier;
                     paintWaveformToCanvas();
                     renderCanvasToWindow();
             }
