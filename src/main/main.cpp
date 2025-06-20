@@ -349,7 +349,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
             {
                 if (sampleOffset > 0)
                 {
-                    sampleOffset -= samplesPerPixel * multiplier;
+                    sampleOffset -= std::max(samplesPerPixel, 1.0) * multiplier;
                     if (sampleOffset < 0) sampleOffset = 0;
                     paintWaveformToCanvas();
                     renderCanvasToWindow();
@@ -359,7 +359,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
             {
                 if (sampleOffset < sampleDataL.size())
                 {
-                    sampleOffset += samplesPerPixel * multiplier;
+                    sampleOffset += std::max(samplesPerPixel, 1.0) * multiplier;
                     paintWaveformToCanvas();
                     renderCanvasToWindow();
                 }
