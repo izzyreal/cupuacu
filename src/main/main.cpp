@@ -10,7 +10,7 @@ static SDL_Texture *canvas = NULL;
 const uint16_t initialDimensions[] = { 1280, 720 };
 
 #include <cstdint>
-uint8_t hardwarePixelsPerAppPixel = 4*4;
+uint8_t hardwarePixelsPerAppPixel = 4;
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
@@ -23,6 +23,7 @@ std::vector<int16_t> sampleDataL;
 std::vector<int16_t> sampleDataR;
 
 double samplesPerPixel = 1;
+double verticalZoom = 1;
 int64_t sampleOffset = 0;
 
 void paintWaveformToCanvas()
@@ -70,8 +71,11 @@ void paintWaveformToCanvas()
             if (s > maxSample) maxSample = s;
         }
 
-        const int y1 = height / 2 - (maxSample * height / 2) / 32768;
-        const int y2 = height / 2 - (minSample * height / 2) / 32768;
+        int y1 = height / 2 - (maxSample * verticalZoom * height / 2) / 32768;
+        int y2 = height / 2 - (minSample * verticalZoom * height / 2) / 32768;
+
+        y1 = std::clamp<int>(y1, -1, height);
+        y2 = std::clamp<int>(y2, -1, height);
 
         SDL_RenderLine(renderer, x, y1, x, y2);
     }
@@ -217,6 +221,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     const SDL_Point newCanvasDimensions = computeDesiredCanvasDimensions();
 
     createCanvas(newCanvasDimensions);
+    samplesPerPixel = sampleDataL.size() / newCanvasDimensions.x;
     paintWaveformToCanvas();
     renderCanvasToWindow();
 
@@ -274,15 +279,6 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 
             if (event->key.scancode == SDL_SCANCODE_Q)
             {
-                if (samplesPerPixel > 1)
-                {
-                    samplesPerPixel /= 2;
-                    paintWaveformToCanvas();
-                    renderCanvasToWindow();
-                }
-            }
-            else if (event->key.scancode == SDL_SCANCODE_W)
-            {
                 // Should be replaced with implemention of incapacity to underflow horizontally.
                 if (samplesPerPixel < sampleDataL.size() / 2)
                 {
@@ -290,6 +286,23 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                     paintWaveformToCanvas();
                     renderCanvasToWindow();
                 }
+            }
+            else if (event->key.scancode == SDL_SCANCODE_W)
+            {
+                if (samplesPerPixel > 1)
+                {
+                    samplesPerPixel /= 2;
+                    paintWaveformToCanvas();
+                    renderCanvasToWindow();
+                }
+            }
+            else if (event->key.scancode == SDL_SCANCODE_E)
+            {
+                verticalZoom -= 0.1 * multiplier; paintWaveformToCanvas(); renderCanvasToWindow();
+            }
+            else if (event->key.scancode == SDL_SCANCODE_R)
+            {
+                verticalZoom += 0.1 * multiplier; paintWaveformToCanvas(); renderCanvasToWindow();
             }
             else if (event->key.scancode == SDL_SCANCODE_LEFT)
             {
