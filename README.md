@@ -1,3 +1,6 @@
+**WIP, currently doesn't do anything useful. Keep an eye out on the releases.**
+
+
 # Cupuacu -- A minimalist cross-platform audio editor inspired by Syntrillium Cool Edit
 
 I got tired of existing audio editors and how convoluted it is to do things like:
