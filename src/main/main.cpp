@@ -10,7 +10,7 @@ static SDL_Texture *canvas = NULL;
 const uint16_t initialDimensions[] = { 1280, 720 };
 
 #include <cstdint>
-uint8_t hardwarePixelsPerAppPixel = 4;
+uint8_t hardwarePixelsPerAppPixel = 2;
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
@@ -43,8 +43,6 @@ void paintWaveformToCanvas()
 
     int width, height;
     SDL_GetCurrentRenderOutputSize(renderer, &width, &height);
-
-    bool noMoreStuffToDraw = false;
 
     if (samplesPerPixel < 1)
     {
@@ -107,30 +105,24 @@ void paintWaveformToCanvas()
         return;
     }
 
-//    printf("=============\n"); 
+    bool noMoreStuffToDraw = false;
+    float scale = (verticalZoom * height * 0.5f) / 32768.0f;
+
+    int prevY = 0;
+    bool hasPrev = false;
 
     for (int x = 0; x < width; ++x)
     {
         if (noMoreStuffToDraw)
-        {
-            // Should probably be replaced with implementation of incapacity
-            // of zooming to this kind of level. In other words, the waveform
-            // always covers the width of the window, or overflows it. It
-            // never underflows. But for now, this is easier.
             break;
-        }
 
-        const size_t startSample = static_cast<size_t>(x * samplesPerPixel) + sampleOffset;
-        size_t endSample = static_cast<size_t>((x + 1) * samplesPerPixel) + sampleOffset;
+        size_t startSample = static_cast<size_t>(x * samplesPerPixel) + sampleOffset;
+        size_t endSample   = static_cast<size_t>((x + 1) * samplesPerPixel) + sampleOffset;
 
         if (endSample == startSample) endSample++;
 
-        //if (endSample > totalSamples) endSample = totalSamples;
-
         int16_t minSample = INT16_MAX;
         int16_t maxSample = INT16_MIN;
-
-        //printf("startSample: %i, endSample: %i\n", startSample, endSample);
 
         for (size_t i = startSample; i < endSample; ++i)
         {
@@ -145,15 +137,28 @@ void paintWaveformToCanvas()
             if (s > maxSample) maxSample = s;
         }
 
-        int y1 = height / 2 - (maxSample * verticalZoom * height / 2) / 32768;
-        int y2 = height / 2 - (minSample * verticalZoom * height / 2) / 32768;
+        // Compute the center of this sample slice (like an "average")
+        float midSample = (minSample + maxSample) * 0.5f;
+        int y = static_cast<int>(height / 2 - midSample * scale);
+        y = std::clamp(y, 0, height - 1);
 
-        y1 = std::clamp<int>(y1, -1, height);
-        y2 = std::clamp<int>(y2, -1, height);
+        if (hasPrev)
+        {
+            SDL_RenderLine(renderer, x - 1, prevY, x, y);
+        }
 
- //       printf("y1: %i, y2: %i\n", y1, y2);
+        prevY = y;
+        hasPrev = true;
 
-        SDL_RenderLine(renderer, x, y1, x, y2);
+        // Optionally still draw the vertical min-max bar (for blocky style)
+        int y1 = static_cast<int>(height / 2 - maxSample * scale);
+        int y2 = static_cast<int>(height / 2 - minSample * scale);
+        y1 = std::clamp(y1, 0, height - 1);
+        y2 = std::clamp(y2, 0, height - 1);
+        if (y1 != y2)
+            SDL_RenderLine(renderer, x, y1, x, y2);
+        else
+            SDL_RenderPoint(renderer, x, y1);
     }
 
     SDL_SetRenderTarget(renderer, NULL);
@@ -307,10 +312,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     printf("actual canvas width: %f\n", actualCanvasDimensions.x);
 
     samplesPerPixel = sampleDataL.size() / double(newCanvasDimensions.x);
-
-    samplesPerPixel = 0.1;
-    verticalZoom = 3;
-    sampleOffset = 300;
 
     printf("samplesPerPixel during init: %f\n", samplesPerPixel);
     paintWaveformToCanvas();
