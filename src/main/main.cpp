@@ -16,11 +16,13 @@ uint8_t hardwarePixelsPerAppPixel = 4;
 #include "miniaudio.h"
 
 #include <string>
-std::string currentFile = "/Users/izmar/samples/Declassified Breaks/britney spears - one more time.wav";
+std::string currentFile = "/Users/izmar/Downloads/ams_chill.wav";
 
 #include <vector>
 std::vector<int16_t> sampleDataL;
 std::vector<int16_t> sampleDataR;
+
+#include "smooth_line.h"
 
 static const double INITIAL_SAMPLES_PER_PIXEL = 1;
 static const double INITIAL_VERTICAL_ZOOM = 1;
@@ -34,7 +36,7 @@ void paintWaveformToCanvas()
 {
     SDL_SetRenderTarget(renderer, canvas);
 
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_SetRenderDrawColor(renderer, 0, samplesPerPixel < 1 ? 50 : 0, 0, 255);
     SDL_RenderClear(renderer);
 
     SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
@@ -43,6 +45,67 @@ void paintWaveformToCanvas()
     SDL_GetCurrentRenderOutputSize(renderer, &width, &height);
 
     bool noMoreStuffToDraw = false;
+
+    if (samplesPerPixel < 1)
+    {
+        const float factor = 1.f / samplesPerPixel;
+
+        const int neededInputSamples = std::ceil((width + 1) * samplesPerPixel);
+
+        const int availableSamples = static_cast<int>(sampleDataL.size()) - sampleOffset;
+        const int actualInputSamples = std::min(neededInputSamples, availableSamples);
+
+        if (actualInputSamples < 3)
+        {
+            SDL_SetRenderTarget(renderer, NULL);
+            return;
+        }
+
+        std::vector<int16_t> data(actualInputSamples);
+        std::copy(sampleDataL.begin() + sampleOffset, sampleDataL.begin() + sampleOffset + actualInputSamples, data.begin());
+
+        const int numDisplayPoints = std::min(width + 1, static_cast<int>(factor * actualInputSamples));
+        const auto smoothened = smoothenCubic(data, numDisplayPoints);
+        const float xSpacing = static_cast<float>(width) / (numDisplayPoints - 1);
+
+        for (int i = 0; i < numDisplayPoints - 1; ++i)
+        {
+            float x1 = i * xSpacing;
+            float x2 = (i + 1) * xSpacing;
+            float y1f = height / 2.0f - (smoothened[i] * verticalZoom * height / 2.0f) / 32768.0f;
+            float y2f = height / 2.0f - (smoothened[i + 1] * verticalZoom * height / 2.0f) / 32768.0f;
+            float thickness = 1.0f; // or slightly more if desired
+
+            float dx = x2 - x1;
+            float dy = y2f - y1f;
+            float len = std::sqrt(dx*dx + dy*dy);
+            if (len == 0.0f) continue;
+
+            dx /= len;
+            dy /= len;
+
+            // perpendicular direction
+            float px = -dy * thickness * 0.5f;
+            float py = dx * thickness * 0.5f;
+
+            SDL_Vertex verts[4];
+            verts[0].position = { x1 - px, y1f - py };
+            verts[1].position = { x1 + px, y1f + py };
+            verts[2].position = { x2 + px, y2f + py };
+            verts[3].position = { x2 - px, y2f - py };
+
+            for (int j = 0; j < 4; ++j) {
+                verts[j].color = { 0, 255, 0, 255 };
+                verts[j].tex_coord = { 0, 0 };
+            }
+
+            int indices[6] = { 0, 1, 2, 0, 2, 3 };
+            SDL_RenderGeometry(renderer, nullptr, verts, 4, indices, 6);
+        }
+
+        SDL_SetRenderTarget(renderer, NULL);
+        return;
+    }
 
 //    printf("=============\n"); 
 
@@ -244,6 +307,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     printf("actual canvas width: %f\n", actualCanvasDimensions.x);
 
     samplesPerPixel = sampleDataL.size() / double(newCanvasDimensions.x);
+
+    samplesPerPixel = 0.1;
+    verticalZoom = 3;
+    sampleOffset = 300;
+
     printf("samplesPerPixel during init: %f\n", samplesPerPixel);
     paintWaveformToCanvas();
     renderCanvasToWindow();
@@ -325,7 +393,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
             }
             else if (event->key.scancode == SDL_SCANCODE_W)
             {
-                if (samplesPerPixel > 0.1)
+                if (samplesPerPixel > 0.01)
                 {
                     samplesPerPixel /= 2;
                     paintWaveformToCanvas();
