@@ -11,8 +11,6 @@ I got tired of existing audio editors and how convoluted it is to do things like
 
 I'm sure Audacity is wonderful for certain things, but it is not for the above. Step 2 is fine, I have no issues with that. But I don't want a project or a project file. I don't want to be confronted with bit-depths and sample rates that are not related to the file that I want to work on. I don't want to be confronted with file browsers when I want to overwrite-save the file I want to work on. I just want to edit an audio file, nothing more, nothing less.
 
-So much software these days sprinkles so much nonsense all over your harddrive.
-
 I have no clue where Audition is these days, but I'm quite sure I don't want to know.
 
 I did come across some cool audio editors for macOS, but they were not free, not open source, obsolete, still had weird UI stuff going on, and... well... just for macOS. I find myself working on all 3 popular platforms: Linux, Windows and macOS. Probably quite a few audio developers, audio engineers, audio enthousiasts and others who want to edit some audio have a similar tendency. And even if you don't need the cross-platformness, who doesn't want a free audio editor that lets you pixelate the complete UI in realtime? This is better than a time machine.
