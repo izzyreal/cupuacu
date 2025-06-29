@@ -2,6 +2,7 @@
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+#include <SDL3_ttf/SDL_ttf.h>
 
 #include "waveform_drawing.h"
 #include "keyboard_handling.h"
@@ -18,7 +19,7 @@ const uint16_t initialDimensions[] = { 1280, 720 };
 #include <vector>
 #include <functional>
 
-uint8_t hardwarePixelsPerAppPixel = 8;
+uint8_t hardwarePixelsPerAppPixel = 16;
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
@@ -37,6 +38,27 @@ double samplesPerPixel = 1;
 double verticalZoom = 1;
 uint64_t sampleOffset = 0;
 
+const std::function<void()> renderText = []()
+{
+    SDL_Color textColor = {255, 255, 255, 255};
+    TTF_Font* font = TTF_OpenFont("/System/Library/Fonts/Supplemental/Arial.ttf", 24);
+    if (!font)
+    {
+        printf("Problem opening TTF font\n");
+        return;
+    }
+
+    SDL_Surface* textSurface = TTF_RenderText_Blended(font, "Cupuacu!", 8, textColor);
+    SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+    SDL_FRect textDestRect = {0, 0, static_cast<float>(textSurface->w), static_cast<float>(textSurface->h)};
+    SDL_SetRenderTarget(renderer, canvas);
+    SDL_RenderTexture(renderer, textTexture, nullptr, &textDestRect);
+    SDL_DestroySurface(textSurface);
+    SDL_DestroyTexture(textTexture);
+    TTF_CloseFont(font);
+    SDL_SetRenderTarget(renderer, nullptr);
+};
+
 const std::function<void()> renderCanvasToWindow = []()
 {
     SDL_FPoint currentCanvasDimensions;
@@ -49,6 +71,7 @@ const std::function<void()> renderCanvasToWindow = []()
 
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
     SDL_RenderClear(renderer);
+    renderText();
     SDL_RenderTexture(renderer, canvas, NULL, &dstRect);
     SDL_RenderPresent(renderer);
 };
@@ -175,6 +198,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
         return SDL_APP_FAILURE;
     }
 
+    if (!TTF_Init())
+    {
+        SDL_Log("TTF_Init failed: %s", SDL_GetError());
+        return SDL_APP_FAILURE;
+    }
+
     if (!SDL_CreateWindowAndRenderer(
                 "",
                 initialDimensions[0],
@@ -266,6 +295,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 
 void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
+    TTF_Quit();
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
