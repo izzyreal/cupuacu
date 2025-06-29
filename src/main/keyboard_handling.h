@@ -11,7 +11,7 @@ static void handleKeyDown(
         const std::vector<int16_t> &sampleDataL,
         const double INITIAL_VERTICAL_ZOOM,
         const uint64_t INITIAL_SAMPLE_OFFSET,
-        std::function<void()> &paintAndRenderWaveform
+        const std::function<void()> &paintAndRenderWaveform
         )
 {
     uint8_t multiplier = 1;

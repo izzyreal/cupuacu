@@ -5,6 +5,7 @@
 
 #include "waveform_drawing.h"
 #include "keyboard_handling.h"
+#include "mouse_handling.h"
 
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
@@ -17,7 +18,7 @@ const uint16_t initialDimensions[] = { 1280, 720 };
 #include <vector>
 #include <functional>
 
-uint8_t hardwarePixelsPerAppPixel = 6;
+uint8_t hardwarePixelsPerAppPixel = 8;
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
@@ -36,7 +37,7 @@ double samplesPerPixel = 1;
 double verticalZoom = 1;
 uint64_t sampleOffset = 0;
 
-void renderCanvasToWindow()
+const std::function<void()> renderCanvasToWindow = []()
 {
     SDL_FPoint currentCanvasDimensions;
     SDL_GetTextureSize(canvas, &currentCanvasDimensions.x, &currentCanvasDimensions.y);
@@ -50,9 +51,9 @@ void renderCanvasToWindow()
     SDL_RenderClear(renderer);
     SDL_RenderTexture(renderer, canvas, NULL, &dstRect);
     SDL_RenderPresent(renderer);
-}
+};
 
-std::function<void()> paintAndRenderWaveform = []()
+const std::function<void()> paintWaveform = []()
 {
     paintWaveformToCanvas(
             renderer,
@@ -61,6 +62,11 @@ std::function<void()> paintAndRenderWaveform = []()
             samplesPerPixel,
             verticalZoom,
             sampleOffset);
+};
+
+const std::function<void()> paintAndRenderWaveform = []()
+{
+    paintWaveform();
     renderCanvasToWindow();
 };
 
@@ -156,7 +162,6 @@ void createCanvas(const SDL_Point &dimensions)
                                SDL_PIXELFORMAT_RGBA8888,
                                SDL_TEXTUREACCESS_TARGET,
                                dimensions.x, dimensions.y);
-
     SDL_SetTextureScaleMode(canvas, SDL_SCALEMODE_NEAREST);
 }
 
@@ -247,6 +252,12 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                     INITIAL_SAMPLE_OFFSET,
                     paintAndRenderWaveform
                     );
+            break;
+        case SDL_EVENT_MOUSE_MOTION:
+        case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        case SDL_EVENT_MOUSE_BUTTON_UP:
+        case SDL_EVENT_MOUSE_WHEEL:
+            handleMouseEvent(event, renderer, canvas, window, paintWaveform, renderCanvasToWindow, hardwarePixelsPerAppPixel);
             break;
     }
 
