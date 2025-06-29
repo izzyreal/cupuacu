@@ -1,5 +1,7 @@
 #include <SDL3/SDL.h>
 
+#include "CupuacuState.h"
+
 #include <functional>
 
 static void handleMouseEvent(
@@ -7,16 +9,15 @@ static void handleMouseEvent(
         SDL_Renderer *renderer,
         SDL_Texture *canvas,
         SDL_Window *window,
-        const std::function<void()> &paintWaveform,
-        const std::function<void()> &renderCanvasToWindow,
-        const uint8_t hardwarePixelsPerAppPixel 
-        )
+        const std::function<void(CupuacuState*)> &paintWaveform,
+        const std::function<void(CupuacuState*)> &renderCanvasToWindow,
+        CupuacuState *state)
 {
     switch (event->type)
     {
         case SDL_EVENT_MOUSE_MOTION:
         {
-            paintWaveform();
+            paintWaveform(state);
 
             int winW, winH;
             float texW, texH;
@@ -32,7 +33,7 @@ static void handleMouseEvent(
             SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
             SDL_RenderLine(renderer, (int)scaledX, 0, (int)scaledX, texH);
             SDL_SetRenderTarget(renderer, NULL);
-            renderCanvasToWindow();
+            renderCanvasToWindow(state);
             break;
         }
         case SDL_EVENT_MOUSE_WHEEL:

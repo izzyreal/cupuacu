@@ -4,6 +4,8 @@
 #include <SDL3/SDL_main.h>
 #include <SDL3_ttf/SDL_ttf.h>
 
+#include "CupuacuState.h"
+
 #include "waveform_drawing.h"
 #include "keyboard_handling.h"
 #include "mouse_handling.h"
@@ -19,24 +21,12 @@ const uint16_t initialDimensions[] = { 1280, 720 };
 #include <vector>
 #include <functional>
 
-uint8_t hardwarePixelsPerAppPixel = 16;
-
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
-
-std::string currentFile = "/Users/izmar/Downloads/ams_chill.wav";
-
-
-std::vector<int16_t> sampleDataL;
-std::vector<int16_t> sampleDataR;
 
 static const double INITIAL_SAMPLES_PER_PIXEL = 1;
 static const double INITIAL_VERTICAL_ZOOM = 1;
 static const int64_t INITIAL_SAMPLE_OFFSET = 0;
-
-double samplesPerPixel = 1;
-double verticalZoom = 1;
-uint64_t sampleOffset = 0;
 
 const std::function<void()> renderText = []()
 {
@@ -59,15 +49,15 @@ const std::function<void()> renderText = []()
     SDL_SetRenderTarget(renderer, nullptr);
 };
 
-const std::function<void()> renderCanvasToWindow = []()
+const std::function<void(CupuacuState*)> renderCanvasToWindow = [](CupuacuState *state)
 {
     SDL_FPoint currentCanvasDimensions;
     SDL_GetTextureSize(canvas, &currentCanvasDimensions.x, &currentCanvasDimensions.y);
     SDL_FRect dstRect;
     dstRect.x = 0;
     dstRect.y = 0;
-    dstRect.w = currentCanvasDimensions.x * hardwarePixelsPerAppPixel;
-    dstRect.h = currentCanvasDimensions.y * hardwarePixelsPerAppPixel;
+    dstRect.w = currentCanvasDimensions.x * state->hardwarePixelsPerAppPixel;
+    dstRect.h = currentCanvasDimensions.y * state->hardwarePixelsPerAppPixel;
 
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
     SDL_RenderClear(renderer);
@@ -76,33 +66,30 @@ const std::function<void()> renderCanvasToWindow = []()
     SDL_RenderPresent(renderer);
 };
 
-const std::function<void()> paintWaveform = []()
+const std::function<void(CupuacuState*)> paintWaveform = [](CupuacuState *state)
 {
     paintWaveformToCanvas(
             renderer,
             canvas,
-            sampleDataL,
-            samplesPerPixel,
-            verticalZoom,
-            sampleOffset);
+            state);
 };
 
-const std::function<void()> paintAndRenderWaveform = []()
+const std::function<void(CupuacuState*)> paintAndRenderWaveform = [](CupuacuState *state)
 {
-    paintWaveform();
-    renderCanvasToWindow();
+    paintWaveform(state);
+    renderCanvasToWindow(state);
 };
 
-void loadSampleData()
+void loadSampleData(CupuacuState *state)
 {
     ma_result result;
     ma_decoder decoder;
 
-    result = ma_decoder_init_file(currentFile.c_str(), nullptr, &decoder);
+    result = ma_decoder_init_file(state->currentFile.c_str(), nullptr, &decoder);
 
     if (result != MA_SUCCESS)
     {
-        throw std::runtime_error("Failed to load file: " + currentFile);
+        throw std::runtime_error("Failed to load file: " + state->currentFile);
     }
 
     if (decoder.outputFormat != ma_format_s16)
@@ -137,29 +124,29 @@ void loadSampleData()
         throw std::runtime_error("Failed to read PCM frames");
     }
 
-    sampleDataL.clear();
-    sampleDataR.clear();
+    state->sampleDataL.clear();
+    state->sampleDataR.clear();
 
     if (decoder.outputChannels == 1)
     {
-        sampleDataL.assign(interleaved.begin(), interleaved.begin() + framesRead);
+        state->sampleDataL.assign(interleaved.begin(), interleaved.begin() + framesRead);
     }
     else
     {
-        sampleDataL.reserve(framesRead);
-        sampleDataR.reserve(framesRead);
+        state->sampleDataL.reserve(framesRead);
+        state->sampleDataR.reserve(framesRead);
     
         for (ma_uint64 i = 0; i < framesRead; ++i)
         {
-            sampleDataL.push_back(interleaved[i * 2]);
-            sampleDataR.push_back(interleaved[i * 2 + 1]);
+            state->sampleDataL.push_back(interleaved[i * 2]);
+            state->sampleDataR.push_back(interleaved[i * 2 + 1]);
         }
     }
 
     ma_decoder_uninit(&decoder);
 }
 
-SDL_Point computeDesiredCanvasDimensions()
+SDL_Point computeDesiredCanvasDimensions(const uint8_t hardwarePixelsPerAppPixel)
 {
     SDL_Point result;
 
@@ -190,6 +177,10 @@ void createCanvas(const SDL_Point &dimensions)
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 {
+    CupuacuState *state = new CupuacuState();
+
+    *appstate = state;
+
     SDL_SetAppMetadata("Cupuacu -- A minimalist audio editor by Izmar", "0.1", "nl.izmar.cupuacu");
 
     if (!SDL_Init(SDL_INIT_VIDEO))
@@ -217,12 +208,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
         return SDL_APP_FAILURE;
     }
 
-    loadSampleData();
+    loadSampleData(state);
 
-    SDL_SetWindowTitle(window, currentFile.c_str()); 
+    SDL_SetWindowTitle(window, state->currentFile.c_str()); 
     SDL_RenderPresent(renderer);
 
-    const SDL_Point newCanvasDimensions = computeDesiredCanvasDimensions();
+    const SDL_Point newCanvasDimensions = computeDesiredCanvasDimensions(state->hardwarePixelsPerAppPixel);
 
     createCanvas(newCanvasDimensions);
 
@@ -230,9 +221,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     SDL_GetTextureSize(canvas, &actualCanvasDimensions.x, &actualCanvasDimensions.y);
 
-    samplesPerPixel = sampleDataL.size() / double(newCanvasDimensions.x);
+    state->samplesPerPixel = state->sampleDataL.size() / double(newCanvasDimensions.x);
 
-    paintAndRenderWaveform();
+    paintAndRenderWaveform(state);
 
     return SDL_APP_CONTINUE;
 }
@@ -245,6 +236,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
+    CupuacuState *state = (CupuacuState*)appstate;
     switch (event->type)
     {
         case SDL_EVENT_QUIT:
@@ -253,7 +245,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
             {
                 SDL_FPoint currentCanvasDimensions;
                 SDL_GetTextureSize(canvas, &currentCanvasDimensions.x, &currentCanvasDimensions.y);
-                const SDL_Point newCanvasDimensions = computeDesiredCanvasDimensions();
+                const SDL_Point newCanvasDimensions = computeDesiredCanvasDimensions(state->hardwarePixelsPerAppPixel);
                 const auto currentCanvasWidth = static_cast<uint16_t>(currentCanvasDimensions.x);
                 const auto currentCanvasHeight = static_cast<uint16_t>(currentCanvasDimensions.y);
 
@@ -261,11 +253,11 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                         currentCanvasHeight != newCanvasDimensions.y)
                 {
                     createCanvas(newCanvasDimensions);
-                    paintAndRenderWaveform();
+                    paintAndRenderWaveform(state);
                 }
                 else
                 {
-                    renderCanvasToWindow();
+                    renderCanvasToWindow(state);
                 }
                 break;
             }
@@ -273,10 +265,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
             handleKeyDown(
                     event,
                     canvas,
-                    samplesPerPixel,
-                    verticalZoom,
-                    sampleOffset,
-                    sampleDataL,
+                    state,
                     INITIAL_VERTICAL_ZOOM,
                     INITIAL_SAMPLE_OFFSET,
                     paintAndRenderWaveform
@@ -286,7 +275,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
         case SDL_EVENT_MOUSE_BUTTON_UP:
         case SDL_EVENT_MOUSE_WHEEL:
-            handleMouseEvent(event, renderer, canvas, window, paintWaveform, renderCanvasToWindow, hardwarePixelsPerAppPixel);
+            handleMouseEvent(event, renderer, canvas, window, paintWaveform, renderCanvasToWindow, state);
             break;
     }
 

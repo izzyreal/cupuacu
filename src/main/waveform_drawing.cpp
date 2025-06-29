@@ -1,18 +1,17 @@
 #include "waveform_drawing.h"
 
+#include "CupuacuState.h"
+
 #include "smooth_line.h"
 
 void paintWaveformToCanvas(
         SDL_Renderer *renderer,
         SDL_Texture *canvas,
-        const std::vector<int16_t> &sampleDataL,
-        const double samplesPerPixel,
-        const double verticalZoom,
-        const int64_t sampleOffset)
+        CupuacuState *state)
 {
     SDL_SetRenderTarget(renderer, canvas);
 
-    SDL_SetRenderDrawColor(renderer, 0, samplesPerPixel < 1 ? 50 : 0, 0, 255);
+    SDL_SetRenderDrawColor(renderer, 0, state->samplesPerPixel < 1 ? 50 : 0, 0, 255);
     SDL_RenderClear(renderer);
 
     SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
@@ -20,13 +19,13 @@ void paintWaveformToCanvas(
     int width, height;
     SDL_GetCurrentRenderOutputSize(renderer, &width, &height);
 
-    if (samplesPerPixel < 1)
+    if (state->samplesPerPixel < 1)
     {
-        const float factor = 1.f / samplesPerPixel;
+        const float factor = 1.f / state->samplesPerPixel;
 
-        const int neededInputSamples = std::ceil((width + 1) * samplesPerPixel);
+        const int neededInputSamples = std::ceil((width + 1) * state->samplesPerPixel);
 
-        const int availableSamples = static_cast<int>(sampleDataL.size()) - sampleOffset;
+        const int availableSamples = static_cast<int>(state->sampleDataL.size()) - state->sampleOffset;
         const int actualInputSamples = std::min(neededInputSamples, availableSamples);
 
         if (actualInputSamples < 3)
@@ -36,7 +35,7 @@ void paintWaveformToCanvas(
         }
 
         std::vector<int16_t> data(actualInputSamples);
-        std::copy(sampleDataL.begin() + sampleOffset, sampleDataL.begin() + sampleOffset + actualInputSamples, data.begin());
+        std::copy(state->sampleDataL.begin() + state->sampleOffset, state->sampleDataL.begin() + state->sampleOffset + actualInputSamples, data.begin());
 
         const int numDisplayPoints = std::min(width + 1, static_cast<int>(factor * actualInputSamples));
         const auto smoothened = smoothenCubic(data, numDisplayPoints);
@@ -46,8 +45,8 @@ void paintWaveformToCanvas(
         {
             float x1 = i * xSpacing;
             float x2 = (i + 1) * xSpacing;
-            float y1f = height / 2.0f - (smoothened[i] * verticalZoom * height / 2.0f) / 32768.0f;
-            float y2f = height / 2.0f - (smoothened[i + 1] * verticalZoom * height / 2.0f) / 32768.0f;
+            float y1f = height / 2.0f - (smoothened[i] * state->verticalZoom * height / 2.0f) / 32768.0f;
+            float y2f = height / 2.0f - (smoothened[i + 1] * state->verticalZoom * height / 2.0f) / 32768.0f;
             float thickness = 1.0f;
 
             float dx = x2 - x1;
@@ -86,7 +85,7 @@ void paintWaveformToCanvas(
     }
 
     bool noMoreStuffToDraw = false;
-    float scale = (verticalZoom * height * 0.5f) / 32768.0f;
+    float scale = (state->verticalZoom * height * 0.5f) / 32768.0f;
 
     int prevY = 0;
     bool hasPrev = false;
@@ -98,8 +97,8 @@ void paintWaveformToCanvas(
             break;
         }
 
-        const size_t startSample = static_cast<size_t>(x * samplesPerPixel) + sampleOffset;
-        size_t endSample   = static_cast<size_t>((x + 1) * samplesPerPixel) + sampleOffset;
+        const size_t startSample = static_cast<size_t>(x * state->samplesPerPixel) + state->sampleOffset;
+        size_t endSample   = static_cast<size_t>((x + 1) * state->samplesPerPixel) + state->sampleOffset;
 
         if (endSample == startSample)
         {
@@ -111,13 +110,13 @@ void paintWaveformToCanvas(
 
         for (size_t i = startSample; i < endSample; ++i)
         {
-            if (i >= sampleDataL.size())
+            if (i >= state->sampleDataL.size())
             {
                 noMoreStuffToDraw = true;
                 break;
             }
 
-            const int16_t s = sampleDataL[i];
+            const int16_t s = state->sampleDataL[i];
 
             if (s < minSample)
             {
@@ -142,7 +141,7 @@ void paintWaveformToCanvas(
             }
         }
 
-        if (startSample >= sampleDataL.size())
+        if (startSample >= state->sampleDataL.size())
         {
             break;
         }
