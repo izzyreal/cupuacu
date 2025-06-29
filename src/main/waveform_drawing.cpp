@@ -133,11 +133,13 @@ void paintWaveformToCanvas(
         const float midSample = (minSample + maxSample) * 0.5f;
 
         int y = static_cast<int>(float(height) / 2 - midSample * scale);
-        y = std::clamp(y, 0, height - 1);
 
         if (hasPrev)
         {
-            SDL_RenderLine(renderer, x - 1, prevY, x, y);
+            if ((y >= 0 || prevY >= 0) && (y < height || prevY < height))
+            {
+                SDL_RenderLine(renderer, x - 1, prevY, x, y);
+            }
         }
 
         if (startSample >= sampleDataL.size())
@@ -150,9 +152,11 @@ void paintWaveformToCanvas(
 
         int y1 = static_cast<int>(float(height) / 2 - maxSample * scale);
         int y2 = static_cast<int>(float(height) / 2 - minSample * scale);
-        y1 = std::clamp(y1, 0, height - 1);
-        y2 = std::clamp(y2, 0, height - 1);
-        
+
+        if ((y1 < 0 && y2 < 0) || (y1 >= height && y2 >= height)) {
+            continue;
+        }        
+
         if (y1 != y2)
         {
             SDL_RenderLine(renderer, x, y1, x, y2);
