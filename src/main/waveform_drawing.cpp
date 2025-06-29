@@ -24,21 +24,21 @@ void paintWaveformToCanvas(
         const float factor = 1.f / state->samplesPerPixel;
 
         const int neededInputSamples = std::ceil((width + 1) * state->samplesPerPixel);
-
         const int availableSamples = static_cast<int>(state->sampleDataL.size()) - state->sampleOffset;
         const int actualInputSamples = std::min(neededInputSamples, availableSamples);
 
-        if (actualInputSamples < 3)
+        if (actualInputSamples < 4)
         {
             SDL_SetRenderTarget(renderer, NULL);
             return;
         }
 
-        std::vector<int16_t> data(actualInputSamples);
-        std::copy(state->sampleDataL.begin() + state->sampleOffset, state->sampleDataL.begin() + state->sampleOffset + actualInputSamples, data.begin());
+        const auto begin = state->sampleDataL.begin() + state->sampleOffset;
+        const auto end = begin + actualInputSamples;
 
         const int numDisplayPoints = std::min(width + 1, static_cast<int>(factor * actualInputSamples));
-        const auto smoothened = smoothenCubic(data, numDisplayPoints);
+        const auto smoothened = smoothenCubic(begin, end, numDisplayPoints);
+
         const float xSpacing = static_cast<float>(width) / (numDisplayPoints - 1);
 
         for (int i = 0; i < numDisplayPoints - 1; ++i)

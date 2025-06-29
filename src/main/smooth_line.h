@@ -63,13 +63,19 @@ std::vector<float> smoothen(const std::vector<int16_t>& source, const int newNum
 }
 
 
-std::vector<float> smoothenCubic(const std::vector<int16_t>& source, const int newNumberOfDataPoints)
+static std::vector<float> smoothenCubic(std::vector<int16_t>::const_iterator begin,
+                                 std::vector<int16_t>::const_iterator end,
+                                 int newNumberOfDataPoints)
 {
-    if (source.size() < 4 || newNumberOfDataPoints < 1)
+    const int sourceSize = static_cast<int>(std::distance(begin, end));
+
+    if (sourceSize < 4 || newNumberOfDataPoints < 1)
+    {
         return {};
+    }
 
     std::vector<float> smoothed(newNumberOfDataPoints);
-    const float scale = static_cast<float>(source.size() - 1) / (newNumberOfDataPoints - 1);
+    const float scale = static_cast<float>(sourceSize - 1) / (newNumberOfDataPoints - 1);
 
     for (int i = 0; i < newNumberOfDataPoints; ++i)
     {
@@ -77,16 +83,16 @@ std::vector<float> smoothenCubic(const std::vector<int16_t>& source, const int n
         int idx = static_cast<int>(std::floor(pos));
         float t = pos - idx;
 
-        int idx0 = std::clamp(idx - 1, 0, static_cast<int>(source.size()) - 1);
-        int idx1 = std::clamp(idx    , 0, static_cast<int>(source.size()) - 1);
-        int idx2 = std::clamp(idx + 1, 0, static_cast<int>(source.size()) - 1);
-        int idx3 = std::clamp(idx + 2, 0, static_cast<int>(source.size()) - 1);
+        int idx0 = std::clamp(idx - 1, 0, sourceSize - 1);
+        int idx1 = std::clamp(idx    , 0, sourceSize - 1);
+        int idx2 = std::clamp(idx + 1, 0, sourceSize - 1);
+        int idx3 = std::clamp(idx + 2, 0, sourceSize - 1);
 
         float y = cubicInterpolate(
-            static_cast<float>(source[idx0]),
-            static_cast<float>(source[idx1]),
-            static_cast<float>(source[idx2]),
-            static_cast<float>(source[idx3]),
+            static_cast<float>(*(begin + idx0)),
+            static_cast<float>(*(begin + idx1)),
+            static_cast<float>(*(begin + idx2)),
+            static_cast<float>(*(begin + idx3)),
             t
         );
 
