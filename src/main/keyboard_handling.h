@@ -40,9 +40,15 @@ static void handleKeyDown(
     }
     else if (event->key.scancode == SDL_SCANCODE_W)
     {
-        if (state->samplesPerPixel > 0.01)
+        if (state->samplesPerPixel > 0.02)
         {
             state->samplesPerPixel /= 2.f;
+
+            if (state->samplesPerPixel <= 0.02)
+            {
+                state->samplesPerPixel = 0.02;
+            }
+
             paintAndRenderWaveform(state);
         }
     }
