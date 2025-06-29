@@ -4,6 +4,7 @@
 #include <SDL3/SDL_main.h>
 
 #include "waveform_drawing.h"
+#include "keyboard_handling.h"
 
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
@@ -12,15 +13,17 @@ static SDL_Texture *canvas = NULL;
 const uint16_t initialDimensions[] = { 1280, 720 };
 
 #include <cstdint>
+#include <string>
+#include <vector>
+#include <functional>
+
 uint8_t hardwarePixelsPerAppPixel = 6;
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
 
-#include <string>
 std::string currentFile = "/Users/izmar/Downloads/ams_chill.wav";
 
-#include <vector>
 
 std::vector<int16_t> sampleDataL;
 std::vector<int16_t> sampleDataR;
@@ -31,7 +34,7 @@ static const int64_t INITIAL_SAMPLE_OFFSET = 0;
 
 double samplesPerPixel = 1;
 double verticalZoom = 1;
-int64_t sampleOffset = 0;
+uint64_t sampleOffset = 0;
 
 void renderCanvasToWindow()
 {
@@ -49,7 +52,7 @@ void renderCanvasToWindow()
     SDL_RenderPresent(renderer);
 }
 
-void paintAndRenderWaveform()
+std::function<void()> paintAndRenderWaveform = []()
 {
     paintWaveformToCanvas(
             renderer,
@@ -59,7 +62,7 @@ void paintAndRenderWaveform()
             verticalZoom,
             sampleOffset);
     renderCanvasToWindow();
-}
+};
 
 void loadSampleData()
 {
@@ -233,83 +236,17 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                 break;
             }
         case SDL_EVENT_KEY_DOWN:
-            uint8_t multiplier = 1;
-
-            if (event->key.scancode == SDL_SCANCODE_ESCAPE)
-            {
-                    SDL_FPoint canvasDimensions;
-                    SDL_GetTextureSize(canvas, &canvasDimensions.x, &canvasDimensions.y);
-                    samplesPerPixel = sampleDataL.size() / canvasDimensions.x;
-                    verticalZoom = INITIAL_VERTICAL_ZOOM;
-                    sampleOffset = INITIAL_SAMPLE_OFFSET;
-                    paintAndRenderWaveform();
-                    break;
-            }
-            
-            if (event->key.mod & SDL_KMOD_SHIFT) multiplier *= 2;
-            if (event->key.mod & SDL_KMOD_ALT) multiplier *= 2;
-            if (event->key.mod & SDL_KMOD_CTRL) multiplier *= 2;
-
-            if (event->key.scancode == SDL_SCANCODE_Q)
-            {
-                if (samplesPerPixel < static_cast<float>(sampleDataL.size()) / 2.f)
-                {
-                    samplesPerPixel *= 2.f;
-                    paintAndRenderWaveform();
-                }
-            }
-            else if (event->key.scancode == SDL_SCANCODE_W)
-            {
-                if (samplesPerPixel > 0.01)
-                {
-                    samplesPerPixel /= 2.f;
-                    paintAndRenderWaveform();
-                }
-            }
-            else if (event->key.scancode == SDL_SCANCODE_E)
-            {
-                verticalZoom -= 0.3 * multiplier;
-
-                if (verticalZoom < 1)
-                {
-                    verticalZoom = 1;
-                }
-                
-                paintAndRenderWaveform();
-            }
-            else if (event->key.scancode == SDL_SCANCODE_R)
-            {
-                    verticalZoom += 0.3 * multiplier;
-
-                    paintAndRenderWaveform();
-            }
-            else if (event->key.scancode == SDL_SCANCODE_LEFT)
-            {
-                if (sampleOffset == 0)
-                {
-                    break;
-                }
-
-                sampleOffset -= std::max(samplesPerPixel, 1.0) * multiplier;
-                
-                if (sampleOffset < 0)
-                {
-                    sampleOffset = 0;
-                }
-
-                paintAndRenderWaveform();
-            }
-            else if (event->key.scancode == SDL_SCANCODE_RIGHT)
-            {
-                if (sampleOffset >= sampleDataL.size())
-                {
-                    break;
-                }
-
-                sampleOffset += std::max(samplesPerPixel, 1.0) * multiplier;
-                paintAndRenderWaveform();
-            }
-
+            handleKeyDown(
+                    event,
+                    canvas,
+                    samplesPerPixel,
+                    verticalZoom,
+                    sampleOffset,
+                    sampleDataL,
+                    INITIAL_VERTICAL_ZOOM,
+                    INITIAL_SAMPLE_OFFSET,
+                    paintAndRenderWaveform
+                    );
             break;
     }
 
