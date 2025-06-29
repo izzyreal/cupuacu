@@ -3,6 +3,8 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
+#include "waveform_drawing.h"
+
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
 static SDL_Texture *canvas = NULL;
@@ -19,10 +21,9 @@ uint8_t hardwarePixelsPerAppPixel = 6;
 std::string currentFile = "/Users/izmar/Downloads/ams_chill.wav";
 
 #include <vector>
+
 std::vector<int16_t> sampleDataL;
 std::vector<int16_t> sampleDataR;
-
-#include "smooth_line.h"
 
 static const double INITIAL_SAMPLES_PER_PIXEL = 1;
 static const double INITIAL_VERTICAL_ZOOM = 1;
@@ -31,164 +32,6 @@ static const int64_t INITIAL_SAMPLE_OFFSET = 0;
 double samplesPerPixel = 1;
 double verticalZoom = 1;
 int64_t sampleOffset = 0;
-
-void paintWaveformToCanvas()
-{
-    SDL_SetRenderTarget(renderer, canvas);
-
-    SDL_SetRenderDrawColor(renderer, 0, samplesPerPixel < 1 ? 50 : 0, 0, 255);
-    SDL_RenderClear(renderer);
-
-    SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
-
-    int width, height;
-    SDL_GetCurrentRenderOutputSize(renderer, &width, &height);
-
-    if (samplesPerPixel < 1)
-    {
-        const float factor = 1.f / samplesPerPixel;
-
-        const int neededInputSamples = std::ceil((width + 1) * samplesPerPixel);
-
-        const int availableSamples = static_cast<int>(sampleDataL.size()) - sampleOffset;
-        const int actualInputSamples = std::min(neededInputSamples, availableSamples);
-
-        if (actualInputSamples < 3)
-        {
-            SDL_SetRenderTarget(renderer, NULL);
-            return;
-        }
-
-        std::vector<int16_t> data(actualInputSamples);
-        std::copy(sampleDataL.begin() + sampleOffset, sampleDataL.begin() + sampleOffset + actualInputSamples, data.begin());
-
-        const int numDisplayPoints = std::min(width + 1, static_cast<int>(factor * actualInputSamples));
-        const auto smoothened = smoothenCubic(data, numDisplayPoints);
-        const float xSpacing = static_cast<float>(width) / (numDisplayPoints - 1);
-
-        for (int i = 0; i < numDisplayPoints - 1; ++i)
-        {
-            float x1 = i * xSpacing;
-            float x2 = (i + 1) * xSpacing;
-            float y1f = height / 2.0f - (smoothened[i] * verticalZoom * height / 2.0f) / 32768.0f;
-            float y2f = height / 2.0f - (smoothened[i + 1] * verticalZoom * height / 2.0f) / 32768.0f;
-            float thickness = 1.0f;
-
-            float dx = x2 - x1;
-            float dy = y2f - y1f;
-            float len = std::sqrt(dx*dx + dy*dy);
-
-            if (len == 0.0f)
-            {
-                continue;
-            }
-
-            dx /= len;
-            dy /= len;
-
-            float px = -dy * thickness * 0.5f;
-            float py = dx * thickness * 0.5f;
-
-            SDL_Vertex verts[4];
-            verts[0].position = { x1 - px, y1f - py };
-            verts[1].position = { x1 + px, y1f + py };
-            verts[2].position = { x2 + px, y2f + py };
-            verts[3].position = { x2 - px, y2f - py };
-
-            for (int j = 0; j < 4; ++j)
-            {
-                verts[j].color = { 0, 255, 0, 255 };
-                verts[j].tex_coord = { 0, 0 };
-            }
-
-            int indices[6] = { 0, 1, 2, 0, 2, 3 };
-            SDL_RenderGeometry(renderer, nullptr, verts, 4, indices, 6);
-        }
-
-        SDL_SetRenderTarget(renderer, NULL);
-        return;
-    }
-
-    bool noMoreStuffToDraw = false;
-    float scale = (verticalZoom * height * 0.5f) / 32768.0f;
-
-    int prevY = 0;
-    bool hasPrev = false;
-
-    for (int x = 0; x < width; ++x)
-    {
-        if (noMoreStuffToDraw)
-        {
-            break;
-        }
-
-        const size_t startSample = static_cast<size_t>(x * samplesPerPixel) + sampleOffset;
-        size_t endSample   = static_cast<size_t>((x + 1) * samplesPerPixel) + sampleOffset;
-
-        if (endSample == startSample)
-        {
-            endSample++;
-        }
-
-        int16_t minSample = INT16_MAX;
-        int16_t maxSample = INT16_MIN;
-
-        for (size_t i = startSample; i < endSample; ++i)
-        {
-            if (i >= sampleDataL.size())
-            {
-                noMoreStuffToDraw = true;
-                break;
-            }
-
-            const int16_t s = sampleDataL[i];
-
-            if (s < minSample)
-            {
-                minSample = s;
-            }
-
-            if (s > maxSample)
-            {
-                maxSample = s;
-            }
-        }
-
-        const float midSample = (minSample + maxSample) * 0.5f;
-
-        int y = static_cast<int>(float(height) / 2 - midSample * scale);
-        y = std::clamp(y, 0, height - 1);
-
-        if (hasPrev)
-        {
-            SDL_RenderLine(renderer, x - 1, prevY, x, y);
-        }
-
-        if (startSample >= sampleDataL.size())
-        {
-            break;
-        }
-
-        prevY = y;
-        hasPrev = true;
-
-        int y1 = static_cast<int>(float(height) / 2 - maxSample * scale);
-        int y2 = static_cast<int>(float(height) / 2 - minSample * scale);
-        y1 = std::clamp(y1, 0, height - 1);
-        y2 = std::clamp(y2, 0, height - 1);
-        
-        if (y1 != y2)
-        {
-            SDL_RenderLine(renderer, x, y1, x, y2);
-        }
-        else
-        {
-            SDL_RenderPoint(renderer, x, y1);
-        }
-    }
-
-    SDL_SetRenderTarget(renderer, NULL);
-}
 
 void renderCanvasToWindow()
 {
@@ -204,6 +47,18 @@ void renderCanvasToWindow()
     SDL_RenderClear(renderer);
     SDL_RenderTexture(renderer, canvas, NULL, &dstRect);
     SDL_RenderPresent(renderer);
+}
+
+void paintAndRenderWaveform()
+{
+    paintWaveformToCanvas(
+            renderer,
+            canvas,
+            sampleDataL,
+            samplesPerPixel,
+            verticalZoom,
+            sampleOffset);
+    renderCanvasToWindow();
 }
 
 void loadSampleData()
@@ -340,8 +195,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     samplesPerPixel = sampleDataL.size() / double(newCanvasDimensions.x);
 
-    paintWaveformToCanvas();
-    renderCanvasToWindow();
+    paintAndRenderWaveform();
 
     return SDL_APP_CONTINUE;
 }
@@ -370,10 +224,12 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                         currentCanvasHeight != newCanvasDimensions.y)
                 {
                     createCanvas(newCanvasDimensions);
-                    paintWaveformToCanvas();
+                    paintAndRenderWaveform();
                 }
-
-                renderCanvasToWindow();
+                else
+                {
+                    renderCanvasToWindow();
+                }
                 break;
             }
         case SDL_EVENT_KEY_DOWN:
@@ -386,8 +242,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                     samplesPerPixel = sampleDataL.size() / canvasDimensions.x;
                     verticalZoom = INITIAL_VERTICAL_ZOOM;
                     sampleOffset = INITIAL_SAMPLE_OFFSET;
-                    paintWaveformToCanvas();
-                    renderCanvasToWindow();
+                    paintAndRenderWaveform();
                     break;
             }
             
@@ -400,8 +255,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                 if (samplesPerPixel < static_cast<float>(sampleDataL.size()) / 2.f)
                 {
                     samplesPerPixel *= 2.f;
-                    paintWaveformToCanvas();
-                    renderCanvasToWindow();
+                    paintAndRenderWaveform();
                 }
             }
             else if (event->key.scancode == SDL_SCANCODE_W)
@@ -409,8 +263,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                 if (samplesPerPixel > 0.01)
                 {
                     samplesPerPixel /= 2.f;
-                    paintWaveformToCanvas();
-                    renderCanvasToWindow();
+                    paintAndRenderWaveform();
                 }
             }
             else if (event->key.scancode == SDL_SCANCODE_E)
@@ -422,14 +275,13 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                     verticalZoom = 1;
                 }
                 
-                paintWaveformToCanvas();
-                renderCanvasToWindow();
+                paintAndRenderWaveform();
             }
             else if (event->key.scancode == SDL_SCANCODE_R)
             {
                     verticalZoom += 0.3 * multiplier;
-                    paintWaveformToCanvas();
-                    renderCanvasToWindow();
+
+                    paintAndRenderWaveform();
             }
             else if (event->key.scancode == SDL_SCANCODE_LEFT)
             {
@@ -445,8 +297,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                     sampleOffset = 0;
                 }
 
-                paintWaveformToCanvas();
-                renderCanvasToWindow();
+                paintAndRenderWaveform();
             }
             else if (event->key.scancode == SDL_SCANCODE_RIGHT)
             {
@@ -456,8 +307,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                 }
 
                 sampleOffset += std::max(samplesPerPixel, 1.0) * multiplier;
-                paintWaveformToCanvas();
-                renderCanvasToWindow();
+                paintAndRenderWaveform();
             }
 
             break;
