@@ -16,7 +16,7 @@ static void handleMouseEvent(
     int winW, winH;
     float texW, texH;
     const auto samplesPerPixel = state->samplesPerPixel;
-    const auto sampleOffset = state->sampleOffset;
+    auto sampleOffset = state->sampleOffset;
     SDL_GetWindowSize(window, &winW, &winH);
     SDL_GetTextureSize(canvas, &texW, &texH);
     float scaleX = (float)texW / winW;
@@ -27,6 +27,14 @@ static void handleMouseEvent(
         {
             if (event->motion.state & SDL_BUTTON_LMASK)
             {
+                if (event->motion.x > winW || event->motion.x < 0)
+                {
+                    const auto diff = event->motion.x < 0 ? event->motion.x : event->motion.x - winW;
+                    const auto samplesToScroll = diff * scaleX * samplesPerPixel;
+                    state->sampleOffset += samplesToScroll;
+                    sampleOffset = state->sampleOffset;
+                }
+
                 float scaledX = event->motion.x <= 0 ? 0 : event->motion.x * scaleX;
                 state->selectionEndSample = sampleOffset + (uint64_t)(scaledX * samplesPerPixel);
                 paintWaveform(state);
