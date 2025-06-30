@@ -13,38 +13,58 @@ static void handleMouseEvent(
         const std::function<void(CupuacuState*)> &renderCanvasToWindow,
         CupuacuState *state)
 {
+    int winW, winH;
+    float texW, texH;
+    const auto samplesPerPixel = state->samplesPerPixel;
+    const auto sampleOffset = state->sampleOffset;
+    SDL_GetWindowSize(window, &winW, &winH);
+    SDL_GetTextureSize(canvas, &texW, &texH);
+    float scaleX = (float)texW / winW;
+    
     switch (event->type)
     {
         case SDL_EVENT_MOUSE_MOTION:
         {
-            paintWaveform(state);
-
-            int winW, winH;
-            float texW, texH;
-
-            SDL_GetWindowSize(window, &winW, &winH);
-            SDL_GetTextureSize(canvas, &texW, &texH);
-
-            float scaleX = (float)texW / winW;
-            float scaledX = event->motion.x * scaleX;
-
-            SDL_SetRenderTarget(renderer, canvas);
-            SDL_SetRenderDrawColor(renderer, 6, 128, 255, 128);
-            SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-            SDL_RenderLine(renderer, (int)scaledX, 0, (int)scaledX, texH);
-            SDL_SetRenderTarget(renderer, NULL);
-            renderCanvasToWindow(state);
+            if (event->motion.state & SDL_BUTTON_LMASK)
+            {
+                float scaledX = event->motion.x <= 0 ? 0 : event->motion.x * scaleX;
+                state->selectionEndSample = sampleOffset + (uint64_t)(scaledX * samplesPerPixel);
+                paintWaveform(state);
+                renderCanvasToWindow(state);
+            }
             break;
         }
         case SDL_EVENT_MOUSE_WHEEL:
             break;
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        {
+            if (event->button.button == SDL_BUTTON_LEFT)
+            {
+                float scaledX = event->button.x * scaleX;
+                state->selectionStartSample = sampleOffset + (uint64_t)(scaledX * samplesPerPixel);
+                state->selectionEndSample = state->selectionStartSample;
+            }
             break;
+        }
         case SDL_EVENT_MOUSE_BUTTON_UP:
+        {
+            if (event->button.button == SDL_BUTTON_LEFT)
+            {
+                float scaledX = event->button.x * scaleX;
+                state->selectionEndSample = state->sampleOffset + (uint64_t)(scaledX * state->samplesPerPixel);
+
+                if (state->selectionEndSample < state->selectionStartSample)
+                {
+                    uint64_t temp = state->selectionStartSample;
+                    state->selectionStartSample = state->selectionEndSample;
+                    state->selectionEndSample = temp;
+                }
+                paintWaveform(state);
+                renderCanvasToWindow(state);
+            }
             break;
+        }
         default:
             break;
     }
-
 }
-

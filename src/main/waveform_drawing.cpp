@@ -144,6 +144,8 @@ void paintWaveformToCanvas(SDL_Renderer *renderer,
     const float verticalZoom = state->verticalZoom;
     const size_t sampleOffset = state->sampleOffset;
     const auto& sampleDataL = state->sampleDataL;
+    const auto selectionStart = state->selectionStartSample;
+    const auto selectionEnd = state->selectionEndSample;
 
     SDL_SetRenderDrawColor(renderer, 0, samplesPerPixel < 1 ? 50 : 0, 0, 255);
     SDL_RenderClear(renderer);
@@ -161,6 +163,22 @@ void paintWaveformToCanvas(SDL_Renderer *renderer,
         renderBlockWaveform(renderer, width, height, sampleDataL, sampleOffset, samplesPerPixel, verticalZoom);
     }
 
+    if (selectionStart != selectionEnd && selectionEnd >= sampleOffset)
+    {
+        float startX = sampleOffset > selectionStart ? 0 : (selectionStart - sampleOffset) / samplesPerPixel;
+        float endX = (selectionEnd - sampleOffset) / samplesPerPixel;
+
+        SDL_SetRenderDrawColor(renderer, 0, 64, 255, 128);
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+        SDL_FRect selectionRect = {
+            startX,
+            0.0f,
+            endX - startX,
+            (float)height
+        };
+
+        SDL_RenderFillRect(renderer, &selectionRect);
+    }
+
     SDL_SetRenderTarget(renderer, NULL);
 }
-
