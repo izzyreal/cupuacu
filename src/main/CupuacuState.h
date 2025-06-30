@@ -16,4 +16,5 @@ struct CupuacuState {
     uint64_t sampleOffset = 0;
     uint64_t selectionStartSample = 0;
     uint64_t selectionEndSample = 0;
+    float samplesToScroll = 0;
 };

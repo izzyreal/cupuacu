@@ -29,14 +29,37 @@ static void handleMouseEvent(
             {
                 if (event->motion.x > winW || event->motion.x < 0)
                 {
-                    const auto diff = event->motion.x < 0 ? event->motion.x : event->motion.x - winW;
-                    const auto samplesToScroll = diff * scaleX * samplesPerPixel;
-                    state->sampleOffset += samplesToScroll;
+                    int32_t diff = (event->motion.x < 0)
+                        ? event->motion.x
+                        : event->motion.x - winW;
+
+                    float samplesToScrollF = diff * scaleX * samplesPerPixel;
+
+                    int64_t samplesToScroll = static_cast<int64_t>(samplesToScrollF);
+
+                    if (samplesToScroll < 0)
+                    {
+                        uint64_t absScroll = static_cast<uint64_t>(-samplesToScroll);
+                        state->sampleOffset = (state->sampleOffset > absScroll)
+                            ? state->sampleOffset - absScroll
+                            : 0;
+                    }
+                    else
+                    {
+                        state->sampleOffset += static_cast<uint64_t>(samplesToScroll);
+                    }
+
                     sampleOffset = state->sampleOffset;
+                    state->samplesToScroll = samplesToScrollF;
+                }
+                else
+                {
+                    state->samplesToScroll = 0;
                 }
 
-                float scaledX = event->motion.x <= 0 ? 0 : event->motion.x * scaleX;
-                state->selectionEndSample = sampleOffset + (uint64_t)(scaledX * samplesPerPixel);
+                float scaledX = event->motion.x <= 0 ? 0.f : event->motion.x * scaleX;
+                state->selectionEndSample = sampleOffset + static_cast<uint64_t>(scaledX * samplesPerPixel);
+
                 paintWaveform(state);
                 renderCanvasToWindow(state);
             }
@@ -67,6 +90,7 @@ static void handleMouseEvent(
                     state->selectionStartSample = state->selectionEndSample;
                     state->selectionEndSample = temp;
                 }
+                state->samplesToScroll = 0;
                 paintWaveform(state);
                 renderCanvasToWindow(state);
             }
