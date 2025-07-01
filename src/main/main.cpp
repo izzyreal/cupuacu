@@ -173,9 +173,11 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 
         if (oldOffset != state->sampleOffset)
         {
-            paintAndRenderWaveform(state);
+            //paintAndRenderWaveform(state);
         }
     }
+
+    paintAndRenderWaveform(state);
 
     SDL_Delay(16);
     return SDL_APP_CONTINUE;
@@ -214,15 +216,13 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                     canvas,
                     state,
                     INITIAL_VERTICAL_ZOOM,
-                    INITIAL_SAMPLE_OFFSET,
-                    paintAndRenderWaveform
-                    );
+                    INITIAL_SAMPLE_OFFSET);
             break;
         case SDL_EVENT_MOUSE_MOTION:
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
         case SDL_EVENT_MOUSE_BUTTON_UP:
         case SDL_EVENT_MOUSE_WHEEL:
-            handleMouseEvent(event, renderer, canvas, window, paintWaveform, renderCanvasToWindow, state);
+            handleMouseEvent(event, canvas, window, state);
             break;
     }
 

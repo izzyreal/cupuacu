@@ -2,15 +2,10 @@
 
 #include "CupuacuState.h"
 
-#include <functional>
-
 static void handleMouseEvent(
         SDL_Event *event,
-        SDL_Renderer *renderer,
         SDL_Texture *canvas,
         SDL_Window *window,
-        const std::function<void(CupuacuState*)> &paintWaveform,
-        const std::function<void(CupuacuState*)> &renderCanvasToWindow,
         CupuacuState *state)
 {
     int winW, winH;
@@ -59,9 +54,6 @@ static void handleMouseEvent(
 
                 float scaledX = event->motion.x <= 0 ? 0.f : event->motion.x * scaleX;
                 state->selectionEndSample = sampleOffset + static_cast<uint64_t>(scaledX * samplesPerPixel);
-
-                paintWaveform(state);
-                renderCanvasToWindow(state);
             }
             break;
         }
@@ -91,8 +83,6 @@ static void handleMouseEvent(
                     state->selectionEndSample = temp;
                 }
                 state->samplesToScroll = 0;
-                paintWaveform(state);
-                renderCanvasToWindow(state);
             }
             break;
         }
