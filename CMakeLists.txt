@@ -43,6 +43,8 @@ add_executable(cupuacu-tests
 target_link_libraries(Cupuacu PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf)
 target_link_libraries(cupuacu-tests PRIVATE Catch2::Catch2)
 
+_bundle_resources(Cupuacu)
+
 if (PROJECT_IS_TOP_LEVEL)
     execute_process(
         COMMAND ${CMAKE_COMMAND} -E create_symlink

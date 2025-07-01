@@ -2,13 +2,13 @@
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
-#include <SDL3_ttf/SDL_ttf.h>
 
 #include "CupuacuState.h"
 
 #include "waveform_drawing.h"
 #include "keyboard_handling.h"
 #include "mouse_handling.h"
+#include "text.h"
 
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
@@ -28,27 +28,6 @@ static const double INITIAL_SAMPLES_PER_PIXEL = 1;
 static const double INITIAL_VERTICAL_ZOOM = 1;
 static const int64_t INITIAL_SAMPLE_OFFSET = 0;
 
-const std::function<void()> renderText = []()
-{
-    SDL_Color textColor = {255, 255, 255, 255};
-    TTF_Font* font = TTF_OpenFont("/System/Library/Fonts/Supplemental/Arial.ttf", 24);
-    if (!font)
-    {
-        printf("Problem opening TTF font\n");
-        return;
-    }
-
-    SDL_Surface* textSurface = TTF_RenderText_Blended(font, "Cupuacu!", 8, textColor);
-    SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
-    SDL_FRect textDestRect = {0, 0, static_cast<float>(textSurface->w), static_cast<float>(textSurface->h)};
-    SDL_SetRenderTarget(renderer, canvas);
-    SDL_RenderTexture(renderer, textTexture, nullptr, &textDestRect);
-    SDL_DestroySurface(textSurface);
-    SDL_DestroyTexture(textTexture);
-    TTF_CloseFont(font);
-    SDL_SetRenderTarget(renderer, nullptr);
-};
-
 const std::function<void(CupuacuState*)> renderCanvasToWindow = [](CupuacuState *state)
 {
     SDL_FPoint currentCanvasDimensions;
@@ -61,7 +40,7 @@ const std::function<void(CupuacuState*)> renderCanvasToWindow = [](CupuacuState 
 
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
     SDL_RenderClear(renderer);
-    //renderText();
+    renderText(renderer, canvas);
     SDL_RenderTexture(renderer, canvas, NULL, &dstRect);
     SDL_RenderPresent(renderer);
 };
