@@ -5,7 +5,6 @@
 
 #include "CupuacuState.h"
 
-#include "waveform_drawing.h"
 #include "keyboard_handling.h"
 #include "mouse_handling.h"
 #include "text.h"
@@ -28,7 +27,9 @@ static const double INITIAL_SAMPLES_PER_PIXEL = 1;
 static const double INITIAL_VERTICAL_ZOOM = 1;
 static const int64_t INITIAL_SAMPLE_OFFSET = 0;
 
-#include "gui/Component.h"
+#include "gui/WaveformComponent.h"
+
+std::unique_ptr<WaveformComponent> waveformComponent;
 
 const std::function<void(CupuacuState*)> renderCanvasToWindow = [](CupuacuState *state)
 {
@@ -49,10 +50,8 @@ const std::function<void(CupuacuState*)> renderCanvasToWindow = [](CupuacuState 
 
 const std::function<void(CupuacuState*)> paintWaveform = [](CupuacuState *state)
 {
-    paintWaveformToCanvas(
-            renderer,
-            canvas,
-            state);
+    SDL_SetRenderTarget(renderer, canvas);
+    waveformComponent->onDraw(renderer);
 };
 
 const std::function<void(CupuacuState*)> paintAndRenderWaveform = [](CupuacuState *state)
@@ -116,7 +115,7 @@ void loadSampleData(CupuacuState *state)
     {
         state->sampleDataL.reserve(framesRead);
         state->sampleDataR.reserve(framesRead);
-    
+
         for (ma_uint64 i = 0; i < framesRead; ++i)
         {
             state->sampleDataL.push_back(interleaved[i * 2]);
@@ -189,6 +188,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
         return SDL_APP_FAILURE;
     }
 
+    SDL_Rect waveformRect = {0, 0, initialDimensions[0], initialDimensions[1]};
+    
+    waveformComponent = std::make_unique<WaveformComponent>(waveformRect, state);
+
     loadSampleData(state);
 
     SDL_SetWindowTitle(window, state->currentFile.c_str()); 
@@ -199,7 +202,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     createCanvas(newCanvasDimensions);
 
     SDL_FPoint actualCanvasDimensions;
-
     SDL_GetTextureSize(canvas, &actualCanvasDimensions.x, &actualCanvasDimensions.y);
 
     state->samplesPerPixel = state->sampleDataL.size() / double(newCanvasDimensions.x);

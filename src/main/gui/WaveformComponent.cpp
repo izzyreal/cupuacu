@@ -1,7 +1,6 @@
-#include "waveform_drawing.h"
-
-#include "CupuacuState.h"
-
+#include "WaveformComponent.h"
+#include <cmath>
+#include <algorithm>
 #include "smooth_line.h"
 
 static void renderSmoothWaveform(SDL_Renderer* renderer, int width, int height,
@@ -134,12 +133,8 @@ static void renderBlockWaveform(SDL_Renderer* renderer, int width, int height,
     }
 }
 
-void paintWaveformToCanvas(SDL_Renderer *renderer,
-                           SDL_Texture *canvas,
-                           CupuacuState *state)
+void WaveformComponent::onDraw(SDL_Renderer *renderer)
 {
-    SDL_SetRenderTarget(renderer, canvas);
-
     const float samplesPerPixel = state->samplesPerPixel;
     const float verticalZoom = state->verticalZoom;
     const size_t sampleOffset = state->sampleOffset;
@@ -182,3 +177,4 @@ void paintWaveformToCanvas(SDL_Renderer *renderer,
 
     SDL_SetRenderTarget(renderer, NULL);
 }
+
