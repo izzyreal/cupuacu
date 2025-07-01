@@ -28,6 +28,8 @@ static const double INITIAL_SAMPLES_PER_PIXEL = 1;
 static const double INITIAL_VERTICAL_ZOOM = 1;
 static const int64_t INITIAL_SAMPLE_OFFSET = 0;
 
+#include "gui/Component.h"
+
 const std::function<void(CupuacuState*)> renderCanvasToWindow = [](CupuacuState *state)
 {
     SDL_FPoint currentCanvasDimensions;
@@ -40,7 +42,7 @@ const std::function<void(CupuacuState*)> renderCanvasToWindow = [](CupuacuState 
 
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
     SDL_RenderClear(renderer);
-    renderText(renderer, canvas);
+    renderText(renderer, canvas, "File  View");
     SDL_RenderTexture(renderer, canvas, NULL, &dstRect);
     SDL_RenderPresent(renderer);
 };
