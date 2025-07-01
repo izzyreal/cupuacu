@@ -32,6 +32,8 @@ std::unique_ptr<WaveformComponent> waveformComponent;
 
 const std::function<void(CupuacuState*)> renderCanvasToWindow = [](CupuacuState *state)
 {
+    SDL_SetRenderTarget(renderer, NULL);
+
     SDL_FPoint currentCanvasDimensions;
     SDL_GetTextureSize(canvas, &currentCanvasDimensions.x, &currentCanvasDimensions.y);
     SDL_FRect dstRect;
@@ -45,18 +47,6 @@ const std::function<void(CupuacuState*)> renderCanvasToWindow = [](CupuacuState 
     renderText(renderer, canvas, "File  View");
     SDL_RenderTexture(renderer, canvas, NULL, &dstRect);
     SDL_RenderPresent(renderer);
-};
-
-const std::function<void(CupuacuState*)> paintWaveform = [](CupuacuState *state)
-{
-    SDL_SetRenderTarget(renderer, canvas);
-    waveformComponent->onDraw(renderer);
-};
-
-const std::function<void(CupuacuState*)> paintAndRenderWaveform = [](CupuacuState *state)
-{
-    paintWaveform(state);
-    renderCanvasToWindow(state);
 };
 
 SDL_Point computeDesiredCanvasDimensions(const uint8_t hardwarePixelsPerAppPixel)
@@ -121,10 +111,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
         return SDL_APP_FAILURE;
     }
 
-    SDL_Rect waveformRect = {0, 0, initialDimensions[0], initialDimensions[1]};
-    
-    waveformComponent = std::make_unique<WaveformComponent>(waveformRect, state);
-
     loadSampleData(state);
 
     SDL_SetWindowTitle(window, state->currentFile.c_str()); 
@@ -139,7 +125,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     state->samplesPerPixel = state->sampleDataL.size() / double(newCanvasDimensions.x);
 
-    paintAndRenderWaveform(state);
+    SDL_Rect waveformRect = {5, 5, (int) actualCanvasDimensions.x - 10, (int) actualCanvasDimensions.y - 10};
+    
+    waveformComponent = std::make_unique<WaveformComponent>(waveformRect, state);
+
 
     return SDL_APP_CONTINUE;
 }
@@ -148,36 +137,12 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 {
     CupuacuState *state = (CupuacuState*) appstate;
 
-    if (state->samplesToScroll != 0.0f)
-    {
-        const int64_t scroll = static_cast<int64_t>(state->samplesToScroll);
-        const uint64_t oldOffset = state->sampleOffset;
+    waveformComponent->timerCallback();
 
-        if (scroll < 0)
-        {
-            uint64_t absScroll = static_cast<uint64_t>(-scroll);
+    SDL_SetRenderTarget(renderer, canvas);
+    waveformComponent->draw(renderer);
 
-            state->sampleOffset = (state->sampleOffset > absScroll)
-                ? state->sampleOffset - absScroll
-                : 0;
-
-            state->selectionEndSample = (state->selectionEndSample > absScroll)
-                ? state->selectionEndSample - absScroll
-                : 0;
-        }
-        else
-        {
-            state->sampleOffset += static_cast<uint64_t>(scroll);
-            state->selectionEndSample += static_cast<uint64_t>(scroll);
-        }
-
-        if (oldOffset != state->sampleOffset)
-        {
-            //paintAndRenderWaveform(state);
-        }
-    }
-
-    paintAndRenderWaveform(state);
+    renderCanvasToWindow(state);
 
     SDL_Delay(16);
     return SDL_APP_CONTINUE;
@@ -202,11 +167,6 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                         currentCanvasHeight != newCanvasDimensions.y)
                 {
                     createCanvas(newCanvasDimensions);
-                    paintAndRenderWaveform(state);
-                }
-                else
-                {
-                    renderCanvasToWindow(state);
                 }
                 break;
             }

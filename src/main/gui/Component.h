@@ -8,21 +8,25 @@ struct Component {
     std::vector<std::unique_ptr<Component>> children;
     int zIndex = 0;
 
-    virtual void draw(SDL_Renderer* renderer) {
-        // Set clip rect to this component's rect
-        SDL_SetRenderClipRect(renderer, &rect);
+    // Will be called every frame
+    virtual void timerCallback() {}
 
-        // Draw self (override in subclasses)
+    virtual void draw(SDL_Renderer* renderer)
+    {
+        SDL_SetRenderViewport(renderer, &rect);
+        SDL_Rect localClip = {0, 0, rect.w, rect.h};
+        SDL_SetRenderClipRect(renderer, &localClip);
+
         onDraw(renderer);
 
-        // Draw children in z-order
         std::sort(children.begin(), children.end(), [](auto& a, auto& b) {
             return a->zIndex < b->zIndex;
         });
         for (auto& c : children)
             c->draw(renderer);
 
-        SDL_SetRenderClipRect(renderer, nullptr); // reset clipping
+        SDL_SetRenderViewport(renderer, nullptr);
+        SDL_SetRenderClipRect(renderer, nullptr);
     }
 
     virtual void onDraw(SDL_Renderer* renderer) {

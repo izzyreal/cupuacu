@@ -174,7 +174,38 @@ void WaveformComponent::onDraw(SDL_Renderer *renderer)
 
         SDL_RenderFillRect(renderer, &selectionRect);
     }
+}
 
-    SDL_SetRenderTarget(renderer, NULL);
+void WaveformComponent::timerCallback()
+{
+    if (state->samplesToScroll != 0.0f)
+    {
+        const int64_t scroll = static_cast<int64_t>(state->samplesToScroll);
+        const uint64_t oldOffset = state->sampleOffset;
+
+        if (scroll < 0)
+        {
+            uint64_t absScroll = static_cast<uint64_t>(-scroll);
+
+            state->sampleOffset = (state->sampleOffset > absScroll)
+                ? state->sampleOffset - absScroll
+                : 0;
+
+            state->selectionEndSample = (state->selectionEndSample > absScroll)
+                ? state->selectionEndSample - absScroll
+                : 0;
+        }
+        else
+        {
+            state->sampleOffset += static_cast<uint64_t>(scroll);
+            state->selectionEndSample += static_cast<uint64_t>(scroll);
+        }
+
+        if (oldOffset != state->sampleOffset)
+        {
+            //paintAndRenderWaveform(state);
+            // setDirty();
+        }
+    }
 }
 
