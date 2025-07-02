@@ -204,8 +204,8 @@ void WaveformComponent::onDraw(SDL_Renderer *renderer)
 
     if (selectionStart != selectionEnd && selectionEnd >= sampleOffset)
     {
-        float startX = sampleOffset > selectionStart ? 0 : (selectionStart - sampleOffset) / samplesPerPixel;
-        float endX = (selectionEnd - sampleOffset) / samplesPerPixel;
+        float startX = sampleOffset > selectionStart ? 0 : (selectionStart - sampleOffset - 0.5f) / samplesPerPixel;
+        float endX = (selectionEnd - sampleOffset - 0.5f) / samplesPerPixel;
 
         SDL_SetRenderDrawColor(renderer, 0, 64, 255, 128);
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
