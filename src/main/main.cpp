@@ -129,10 +129,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     rootComponent = std::make_unique<Component>();
     rootComponent->rect = rootRect;
 
-    state->samplesPerPixel = state->sampleDataL.size() / double(newCanvasDimensions.x);
-
     SDL_Rect waveformRect = {5, 5, (int) actualCanvasDimensions.x - 10, (int) actualCanvasDimensions.y - 10};
 
+    state->samplesPerPixel = state->sampleDataL.size() / (float) waveformRect.w;
     auto waveformComponent = std::make_unique<WaveformComponent>(waveformRect, state);
     rootComponent->children.push_back(std::move(waveformComponent));
 
