@@ -3,6 +3,26 @@
 #include <algorithm>
 #include "smooth_line.h"
 
+static void drawDot(SDL_Renderer* renderer, float x, float y)
+{
+    constexpr float radius = 1.5f; // For a 3x3 area
+    constexpr Uint8 alpha = 180;
+
+    SDL_Vertex verts[4];
+    verts[0].position = { x - radius, y - radius };
+    verts[1].position = { x + radius, y - radius };
+    verts[2].position = { x + radius, y + radius };
+    verts[3].position = { x - radius, y + radius };
+
+    for (int i = 0; i < 4; ++i)
+        verts[i].color = { 0, 255, 0, alpha };
+
+    int indices[6] = { 0, 1, 2, 0, 2, 3 };
+
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_RenderGeometry(renderer, nullptr, verts, 4, indices, 6);
+}
+
 static void renderSmoothWaveform(SDL_Renderer* renderer, int width, int height,
                                  const std::vector<int16_t>& samples, size_t offset,
                                  float samplesPerPixel, float verticalZoom)
@@ -59,6 +79,18 @@ static void renderSmoothWaveform(SDL_Renderer* renderer, int width, int height,
 
         int indices[6] = { 0, 1, 2, 0, 2, 3 };
         SDL_RenderGeometry(renderer, nullptr, verts, 4, indices, 6);
+    }
+
+    for (int i = 0; i < actualInputSamples; ++i)
+    {
+        float sample = samples[offset + i];
+        float x = i / samplesPerPixel;
+        if (x > width)
+            break;
+
+        float y = height / 2.0f - (sample * verticalZoom * height / 2.0f) / 32768.0f;
+
+        drawDot(renderer, x, y);
     }
 }
 

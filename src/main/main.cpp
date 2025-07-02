@@ -129,7 +129,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     
     waveformComponent = std::make_unique<WaveformComponent>(waveformRect, state);
 
-
     return SDL_APP_CONTINUE;
 }
 
