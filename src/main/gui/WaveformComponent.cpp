@@ -3,24 +3,28 @@
 #include <algorithm>
 #include "smooth_line.h"
 
-static void drawDot(SDL_Renderer* renderer, float x, float y)
+static void drawDot(SDL_Renderer* renderer, int x, int y)
 {
-    constexpr float radius = 1.5f; // For a 3x3 area
-    constexpr Uint8 alpha = 180;
+    struct Pixel {
+        int dx, dy;
+        Uint8 alpha;
+    };
 
-    SDL_Vertex verts[4];
-    verts[0].position = { x - radius, y - radius };
-    verts[1].position = { x + radius, y - radius };
-    verts[2].position = { x + radius, y + radius };
-    verts[3].position = { x - radius, y + radius };
-
-    for (int i = 0; i < 4; ++i)
-        verts[i].color = { 0, 255, 0, alpha };
-
-    int indices[6] = { 0, 1, 2, 0, 2, 3 };
+    const Pixel pixels[] = {
+        {-2, -2, 20}, {-1, -2, 40}, {0, -2, 60}, {1, -2, 40}, {2, -2, 20},
+        {-2, -1, 40}, {-1, -1, 80}, {0, -1, 120}, {1, -1, 80}, {2, -1, 40},
+        {-2,  0, 60}, {-1,  0, 120}, {0,  0, 255}, {1,  0, 120}, {2,  0, 60},
+        {-2,  1, 40}, {-1,  1, 80}, {0,  1, 120}, {1,  1, 80}, {2,  1, 40},
+        {-2,  2, 20}, {-1,  2, 40}, {0,  2, 60}, {1,  2, 40}, {2,  2, 20},
+    };
 
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-    SDL_RenderGeometry(renderer, nullptr, verts, 4, indices, 6);
+
+    for (const auto& p : pixels)
+    {
+        SDL_SetRenderDrawColor(renderer, 0, 255, 0, p.alpha);
+        SDL_RenderPoint(renderer, x + p.dx, y + p.dy);
+    }
 }
 
 static void renderSmoothWaveform(SDL_Renderer* renderer, int width, int height,
@@ -85,7 +89,7 @@ static void renderSmoothWaveform(SDL_Renderer* renderer, int width, int height,
 
         for (int j = 0; j < 4; ++j)
         {
-            verts[j].color = { 0, 255, 0, 255 };
+            verts[j].color = { 0, 0.5, 0, 1.f };
             verts[j].tex_coord = { 0, 0 };
         }
 
@@ -182,9 +186,9 @@ void WaveformComponent::onDraw(SDL_Renderer *renderer)
     const auto selectionStart = state->selectionStartSample;
     const auto selectionEnd = state->selectionEndSample;
 
-    SDL_SetRenderDrawColor(renderer, 0, samplesPerPixel < 1 ? 50 : 0, 0, 255);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
-    SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
+    SDL_SetRenderDrawColor(renderer, 0, 185, 0, 255);
 
     int width, height;
     SDL_GetCurrentRenderOutputSize(renderer, &width, &height);

@@ -14,7 +14,7 @@ const std::function<void(SDL_Renderer*, SDL_Texture*, const std::string)> render
 
     auto fontIo = SDL_IOFromMem(&fontData[0], fontData.size());
 
-    TTF_Font* font = TTF_OpenFontIO(fontIo, false, 24);
+    TTF_Font* font = TTF_OpenFontIO(fontIo, false, 12);
     
     if (!font)
     {

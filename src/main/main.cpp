@@ -37,8 +37,8 @@ const std::function<void(CupuacuState*)> renderCanvasToWindow = [](CupuacuState 
     SDL_FPoint currentCanvasDimensions;
     SDL_GetTextureSize(canvas, &currentCanvasDimensions.x, &currentCanvasDimensions.y);
     SDL_FRect dstRect;
-    dstRect.x = 0;
-    dstRect.y = 0;
+    dstRect.x = 10;
+    dstRect.y = 5;
     dstRect.w = currentCanvasDimensions.x * state->hardwarePixelsPerAppPixel;
     dstRect.h = currentCanvasDimensions.y * state->hardwarePixelsPerAppPixel;
 
