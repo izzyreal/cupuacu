@@ -27,29 +27,41 @@ static void renderSmoothWaveform(SDL_Renderer* renderer, int width, int height,
                                  const std::vector<int16_t>& samples, size_t offset,
                                  float samplesPerPixel, float verticalZoom)
 {
-    const float factor = 1.f / samplesPerPixel;
-
-    const int neededInputSamples = std::ceil((width + 1) * samplesPerPixel);
-    const int availableSamples = static_cast<int>(samples.size()) - offset;
+    const int neededInputSamples = static_cast<int>(std::ceil((width + 1) * samplesPerPixel));
+    const int availableSamples = static_cast<int>(samples.size()) - static_cast<int>(offset);
     const int actualInputSamples = std::min(neededInputSamples, availableSamples);
 
     if (actualInputSamples < 4)
         return;
 
-    const auto begin = samples.begin() + offset;
-    const auto end = begin + actualInputSamples;
+    // Prepare x and y sample arrays with x scaled by 1/samplesPerPixel
+    std::vector<double> x(actualInputSamples);
+    std::vector<double> y(actualInputSamples);
 
-    const int numDisplayPoints = std::min(width + 1, static_cast<int>(factor * actualInputSamples));
-    const auto smoothened = smoothenCubic(begin, end, numDisplayPoints);
-
-    const float xSpacing = static_cast<float>(width) / (numDisplayPoints - 1);
-
-    for (int i = 0; i < numDisplayPoints - 1; ++i)
+    for (int i = 0; i < actualInputSamples; ++i)
     {
-        float x1 = i * xSpacing;
-        float x2 = (i + 1) * xSpacing;
+        x[i] = i / samplesPerPixel;                 // x in pixel coordinates
+        y[i] = static_cast<double>(samples[offset + i]); // y sample value
+    }
+
+    // Dense x query points for smooth spline curve, evenly spaced across width
+    int numPoints = width + 1;
+    std::vector<double> xq(numPoints);
+    for (int i = 0; i < numPoints; ++i)
+        xq[i] = static_cast<double>(i);
+
+    // Compute spline values at dense xq points
+    auto smoothened = splineInterpolateNonUniform(x, y, xq);
+
+    // Draw smooth spline curve as thick lines
+    for (int i = 0; i < numPoints - 1; ++i)
+    {
+        float x1 = static_cast<float>(xq[i]);
+        float x2 = static_cast<float>(xq[i + 1]);
+
         float y1f = height / 2.0f - (smoothened[i] * verticalZoom * height / 2.0f) / 32768.0f;
         float y2f = height / 2.0f - (smoothened[i + 1] * verticalZoom * height / 2.0f) / 32768.0f;
+
         float thickness = 1.0f;
 
         float dx = x2 - x1;
@@ -81,16 +93,12 @@ static void renderSmoothWaveform(SDL_Renderer* renderer, int width, int height,
         SDL_RenderGeometry(renderer, nullptr, verts, 4, indices, 6);
     }
 
+    // Draw dots at original sample pixel positions & raw sample values (unchanged)
     for (int i = 0; i < actualInputSamples; ++i)
     {
-        float sample = samples[offset + i];
-        float x = i / samplesPerPixel;
-        if (x > width)
-            break;
-
-        float y = height / 2.0f - (sample * verticalZoom * height / 2.0f) / 32768.0f;
-
-        drawDot(renderer, x, y);
+        float xPos = static_cast<float>(x[i]); // pixel x position matching spline parameterization
+        float yPos = height / 2.0f - (samples[offset + i] * verticalZoom * height / 2.0f) / 32768.0f;
+        drawDot(renderer, xPos, yPos);
     }
 }
 
