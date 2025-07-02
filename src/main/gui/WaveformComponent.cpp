@@ -189,9 +189,9 @@ void WaveformComponent::onDraw(SDL_Renderer *renderer)
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
     SDL_SetRenderDrawColor(renderer, 0, 185, 0, 255);
-
-    int width, height;
-    SDL_GetCurrentRenderOutputSize(renderer, &width, &height);
+    SDL_Texture *target = SDL_GetRenderTarget(renderer);
+    float width, height;
+    SDL_GetTextureSize(target, &width, &height);
 
     if (samplesPerPixel < 1)
     {

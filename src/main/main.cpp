@@ -38,8 +38,8 @@ const std::function<void(CupuacuState*)> renderCanvasToWindow = [](CupuacuState 
     SDL_FPoint currentCanvasDimensions;
     SDL_GetTextureSize(canvas, &currentCanvasDimensions.x, &currentCanvasDimensions.y);
     SDL_FRect dstRect;
-    dstRect.x = 10;
-    dstRect.y = 5;
+    dstRect.x = 0;
+    dstRect.y = 0;
     dstRect.w = currentCanvasDimensions.x * state->hardwarePixelsPerAppPixel;
     dstRect.h = currentCanvasDimensions.y * state->hardwarePixelsPerAppPixel;
 
@@ -131,7 +131,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     SDL_Rect waveformRect = {5, 5, (int) actualCanvasDimensions.x - 10, (int) actualCanvasDimensions.y - 10};
 
-    state->samplesPerPixel = state->sampleDataL.size() / (float) waveformRect.w;
+    state->samplesPerPixel = state->sampleDataL.size() / (double) waveformRect.w;
     auto waveformComponent = std::make_unique<WaveformComponent>(waveformRect, state);
     rootComponent->children.push_back(std::move(waveformComponent));
 
