@@ -253,3 +253,87 @@ void WaveformComponent::timerCallback()
     }
 }
 
+bool WaveformComponent::onHandleEvent(const SDL_Event &event)
+{
+    const auto samplesPerPixel = state->samplesPerPixel;
+    auto sampleOffset = state->sampleOffset;
+    
+    switch (event.type)
+    {
+        case SDL_EVENT_MOUSE_MOTION:
+        {
+            const auto motionx = event.motion.x;
+            const auto motiony = event.motion.y;
+            if (event.motion.state & SDL_BUTTON_LMASK)
+            {
+                if (motionx > rect.w || motionx < 0)
+                {
+                    int32_t diff = (motionx < 0)
+                        ? motionx
+                        : motionx - rect.w;
+
+                    float samplesToScrollF = diff * samplesPerPixel;
+
+                    int64_t samplesToScroll = static_cast<int64_t>(samplesToScrollF);
+
+                    if (samplesToScroll < 0)
+                    {
+                        uint64_t absScroll = static_cast<uint64_t>(-samplesToScroll);
+                        state->sampleOffset = (state->sampleOffset > absScroll)
+                            ? state->sampleOffset - absScroll
+                            : 0;
+                    }
+                    else
+                    {
+                        state->sampleOffset += static_cast<uint64_t>(samplesToScroll);
+                    }
+
+                    sampleOffset = state->sampleOffset;
+                    state->samplesToScroll = samplesToScrollF;
+                }
+                else
+                {
+                    state->samplesToScroll = 0;
+                }
+
+                float x = motionx <= 0 ? 0.f : motionx;
+                state->selectionEndSample = sampleOffset + static_cast<uint64_t>(x * samplesPerPixel);
+            }
+            break;
+        }
+        case SDL_EVENT_MOUSE_WHEEL:
+            break;
+        case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        {
+            if (event.button.button == SDL_BUTTON_LEFT)
+            {
+                float x = event.button.x;
+                state->selectionStartSample = sampleOffset + (uint64_t)(x * samplesPerPixel);
+                state->selectionEndSample = state->selectionStartSample;
+            }
+            break;
+        }
+        case SDL_EVENT_MOUSE_BUTTON_UP:
+        {
+            if (event.button.button == SDL_BUTTON_LEFT)
+            {
+                float x = event.button.x;
+                state->selectionEndSample = state->sampleOffset + (uint64_t)(x * state->samplesPerPixel);
+
+                if (state->selectionEndSample < state->selectionStartSample)
+                {
+                    uint64_t temp = state->selectionStartSample;
+                    state->selectionStartSample = state->selectionEndSample;
+                    state->selectionEndSample = temp;
+                }
+                state->samplesToScroll = 0;
+            }
+            break;
+        }
+        default:
+            break;
+    }
+
+    return true;
+}
+

@@ -6,7 +6,6 @@
 #include "CupuacuState.h"
 
 #include "keyboard_handling.h"
-#include "mouse_handling.h"
 #include "text.h"
 
 static SDL_Window *window = NULL;
@@ -26,9 +25,11 @@ static const double INITIAL_SAMPLES_PER_PIXEL = 1;
 static const double INITIAL_VERTICAL_ZOOM = 1;
 static const int64_t INITIAL_SAMPLE_OFFSET = 0;
 
+#include "gui/Component.h"
+
 #include "gui/WaveformComponent.h"
 
-std::unique_ptr<WaveformComponent> waveformComponent;
+std::unique_ptr<Component> rootComponent;
 
 const std::function<void(CupuacuState*)> renderCanvasToWindow = [](CupuacuState *state)
 {
@@ -123,11 +124,17 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     SDL_FPoint actualCanvasDimensions;
     SDL_GetTextureSize(canvas, &actualCanvasDimensions.x, &actualCanvasDimensions.y);
 
+    SDL_Rect rootRect = {0, 0, (int) actualCanvasDimensions.x, (int) actualCanvasDimensions.y};
+
+    rootComponent = std::make_unique<Component>();
+    rootComponent->rect = rootRect;
+
     state->samplesPerPixel = state->sampleDataL.size() / double(newCanvasDimensions.x);
 
     SDL_Rect waveformRect = {5, 5, (int) actualCanvasDimensions.x - 10, (int) actualCanvasDimensions.y - 10};
-    
-    waveformComponent = std::make_unique<WaveformComponent>(waveformRect, state);
+
+    auto waveformComponent = std::make_unique<WaveformComponent>(waveformRect, state);
+    rootComponent->children.push_back(std::move(waveformComponent));
 
     return SDL_APP_CONTINUE;
 }
@@ -136,10 +143,10 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 {
     CupuacuState *state = (CupuacuState*) appstate;
 
-    waveformComponent->timerCallback();
+    rootComponent->timerCallback();
 
     SDL_SetRenderTarget(renderer, canvas);
-    waveformComponent->draw(renderer);
+    rootComponent->draw(renderer);
 
     renderCanvasToWindow(state);
 
@@ -181,7 +188,28 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
         case SDL_EVENT_MOUSE_BUTTON_UP:
         case SDL_EVENT_MOUSE_WHEEL:
-            handleMouseEvent(event, canvas, window, state);
+            {
+                SDL_FPoint canvasDimensions;
+                SDL_GetTextureSize(canvas, &canvasDimensions.x, &canvasDimensions.y);
+
+                SDL_Point winDimensions;
+                SDL_GetWindowSize(window, &winDimensions.x, &winDimensions.y);
+
+                SDL_Event e = *event;
+                
+                if (e.type == SDL_EVENT_MOUSE_MOTION)
+                {
+                    e.motion.x *= canvasDimensions.x / winDimensions.x;
+                    e.motion.y *= canvasDimensions.y / winDimensions.y;
+                }
+                else
+                {
+                    e.button.x *= canvasDimensions.x / winDimensions.x;
+                    e.button.y *= canvasDimensions.y / winDimensions.y;
+                }
+
+                rootComponent->handleEvent(e);
+            }
             break;
     }
 

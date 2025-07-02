@@ -7,6 +7,6 @@ struct WaveformComponent : Component {
     CupuacuState* state = nullptr;
     WaveformComponent(SDL_Rect r, CupuacuState* s) { rect = r; state = s; }
     void onDraw(SDL_Renderer* renderer) override;
-
+    bool onHandleEvent(const SDL_Event &e) override;
     void timerCallback() override;
 };

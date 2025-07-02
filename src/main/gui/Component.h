@@ -9,9 +9,9 @@ struct Component {
     int zIndex = 0;
 
     // Will be called every frame
-    virtual void timerCallback() {}
+    virtual void timerCallback() { for (auto &c : children) { c->timerCallback(); }}
 
-    virtual void draw(SDL_Renderer* renderer)
+    void draw(SDL_Renderer* renderer)
     {
         SDL_SetRenderViewport(renderer, &rect);
         SDL_Rect localClip = {0, 0, rect.w, rect.h};
@@ -29,29 +29,46 @@ struct Component {
         SDL_SetRenderClipRect(renderer, nullptr);
     }
 
-    virtual void onDraw(SDL_Renderer* renderer) {
+    virtual void onDraw(SDL_Renderer* renderer)
+    {
         // Base: maybe draw background or border
     }
 
-    virtual bool handleEvent(const SDL_Event& e) {
-        if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP) {
-            int x = e.button.x, y = e.button.y;
-            SDL_Point p{x,y};
+    bool handleEvent(const SDL_Event& e)
+    {
+        if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP || e.type == SDL_EVENT_MOUSE_MOTION)
+        {
+            SDL_Event e_rel = e;
 
-            if (!SDL_PointInRect(&p, &rect))
-                return false;
+            if (e.type == SDL_EVENT_MOUSE_MOTION)
+            {
+                e_rel.motion.x -= rect.x;
+                e_rel.motion.y -= rect.y;
+            }
+            else
+            {
+                e_rel.button.x -= rect.x;
+                e_rel.button.y -= rect.y;
+            }
 
-            // Dispatch to children front-to-back (highest z first)
+            const int x = e_rel.type == SDL_EVENT_MOUSE_MOTION ? e_rel.motion.x : e_rel.button.x;
+            const int y = e_rel.type == SDL_EVENT_MOUSE_MOTION ? e_rel.motion.y : e_rel.button.y;
+
             std::sort(children.begin(), children.end(), [](auto& a, auto& b) {
                 return a->zIndex > b->zIndex;
             });
-            for (auto& c : children) {
-                if (c->handleEvent(e))
+
+            for (auto& c : children)
+            {
+                if (c->handleEvent(e_rel))
+                {
                     return true;
+                }
             }
-            // Handle self event here if needed
-            return onHandleEvent(e);
+
+            return onHandleEvent(e_rel);
         }
+
         return false;
     }
 
