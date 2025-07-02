@@ -204,8 +204,8 @@ void WaveformComponent::onDraw(SDL_Renderer *renderer)
 
     if (selectionStart != selectionEnd && selectionEnd >= sampleOffset)
     {
-        float startX = sampleOffset > selectionStart ? 0 : (selectionStart - sampleOffset - 0.5f) / samplesPerPixel;
-        float endX = (selectionEnd - sampleOffset - 0.5f) / samplesPerPixel;
+        float startX = sampleOffset > selectionStart ? 0 : ((int)selectionStart - sampleOffset - 0.5f) / samplesPerPixel;
+        float endX = ((int)selectionEnd - sampleOffset - 0.5f) / samplesPerPixel;
 
         SDL_SetRenderDrawColor(renderer, 0, 64, 255, 128);
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
@@ -224,12 +224,12 @@ void WaveformComponent::timerCallback()
 {
     if (state->samplesToScroll != 0.0f)
     {
-        const int64_t scroll = static_cast<int64_t>(state->samplesToScroll);
+        const auto scroll = state->samplesToScroll;
         const uint64_t oldOffset = state->sampleOffset;
 
         if (scroll < 0)
         {
-            uint64_t absScroll = static_cast<uint64_t>(-scroll);
+            auto absScroll = -scroll;
 
             state->sampleOffset = (state->sampleOffset > absScroll)
                 ? state->sampleOffset - absScroll
@@ -241,8 +241,8 @@ void WaveformComponent::timerCallback()
         }
         else
         {
-            state->sampleOffset += static_cast<uint64_t>(scroll);
-            state->selectionEndSample += static_cast<uint64_t>(scroll);
+            state->sampleOffset += scroll;
+            state->selectionEndSample += scroll;
         }
 
         if (oldOffset != state->sampleOffset)
@@ -262,42 +262,45 @@ bool WaveformComponent::onHandleEvent(const SDL_Event &event)
     {
         case SDL_EVENT_MOUSE_MOTION:
         {
-            const auto motionx = event.motion.x;
-            const auto motiony = event.motion.y;
+            auto motionx = event.motion.x;
+            
             if (event.motion.state & SDL_BUTTON_LMASK)
             {
                 if (motionx > rect.w || motionx < 0)
                 {
-                    int32_t diff = (motionx < 0)
+                    auto diff = (motionx < 0)
                         ? motionx
                         : motionx - rect.w;
 
-                    float samplesToScrollF = diff * samplesPerPixel;
-
-                    int64_t samplesToScroll = static_cast<int64_t>(samplesToScrollF);
+                    auto samplesToScroll = diff * samplesPerPixel;
 
                     if (samplesToScroll < 0)
                     {
-                        uint64_t absScroll = static_cast<uint64_t>(-samplesToScroll);
+                        double absScroll = -samplesToScroll;
                         state->sampleOffset = (state->sampleOffset > absScroll)
                             ? state->sampleOffset - absScroll
                             : 0;
                     }
                     else
                     {
-                        state->sampleOffset += static_cast<uint64_t>(samplesToScroll);
+                        state->sampleOffset += samplesToScroll;
                     }
 
                     sampleOffset = state->sampleOffset;
-                    state->samplesToScroll = samplesToScrollF;
+                    state->samplesToScroll = samplesToScroll;
                 }
                 else
                 {
                     state->samplesToScroll = 0;
                 }
 
-                float x = motionx <= 0 ? 0.f : motionx;
-                state->selectionEndSample = sampleOffset + static_cast<uint64_t>(x * samplesPerPixel);
+                if (samplesPerPixel < 1.f)
+                {
+                    motionx += 0.5f/samplesPerPixel;
+                }
+
+                const float x = motionx <= 0 ? 0.f : motionx;
+                state->selectionEndSample = sampleOffset + (x * samplesPerPixel);
             }
             break;
         }
@@ -307,8 +310,14 @@ bool WaveformComponent::onHandleEvent(const SDL_Event &event)
         {
             if (event.button.button == SDL_BUTTON_LEFT)
             {
-                float x = event.button.x;
-                state->selectionStartSample = sampleOffset + (uint64_t)(x * samplesPerPixel);
+                auto buttonx = event.button.x;
+
+                if (samplesPerPixel < 1)
+                {
+                    buttonx += 0.5f / samplesPerPixel;
+                }
+                
+                state->selectionStartSample = sampleOffset + (buttonx * samplesPerPixel);
                 state->selectionEndSample = state->selectionStartSample;
             }
             break;
@@ -317,12 +326,18 @@ bool WaveformComponent::onHandleEvent(const SDL_Event &event)
         {
             if (event.button.button == SDL_BUTTON_LEFT)
             {
-                float x = event.button.x;
-                state->selectionEndSample = state->sampleOffset + (uint64_t)(x * state->samplesPerPixel);
+                auto buttonx = event.button.x;
+
+                if (samplesPerPixel < 1)
+                {
+                    buttonx += 0.5f / samplesPerPixel;
+                }
+
+                state->selectionEndSample = state->sampleOffset + (buttonx * state->samplesPerPixel);
 
                 if (state->selectionEndSample < state->selectionStartSample)
                 {
-                    uint64_t temp = state->selectionStartSample;
+                    auto temp = state->selectionStartSample;
                     state->selectionStartSample = state->selectionEndSample;
                     state->selectionEndSample = temp;
                 }

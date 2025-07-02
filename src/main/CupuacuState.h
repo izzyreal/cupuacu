@@ -13,8 +13,8 @@ struct CupuacuState {
 
     double samplesPerPixel = 1;
     double verticalZoom = 1;
-    uint64_t sampleOffset = 0;
-    uint64_t selectionStartSample = 0;
-    uint64_t selectionEndSample = 0;
-    float samplesToScroll = 0;
+    double sampleOffset = 0;
+    double selectionStartSample = 0;
+    double selectionEndSample = 0;
+    double samplesToScroll = 0;
 };
