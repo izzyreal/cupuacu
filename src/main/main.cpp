@@ -30,6 +30,7 @@ static const int64_t INITIAL_SAMPLE_OFFSET = 0;
 #include "gui/WaveformComponent.h"
 
 std::unique_ptr<Component> rootComponent;
+Component *waveformComponentHandle;
 
 const std::function<void(CupuacuState*)> renderCanvasToWindow = [](CupuacuState *state)
 {
@@ -133,6 +134,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     state->samplesPerPixel = state->sampleDataL.size() / (double) waveformRect.w;
     auto waveformComponent = std::make_unique<WaveformComponent>(waveformRect, state);
+    waveformComponentHandle = waveformComponent.get(); 
     rootComponent->children.push_back(std::move(waveformComponent));
 
     return SDL_APP_CONTINUE;
@@ -178,7 +180,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
         case SDL_EVENT_KEY_DOWN:
             handleKeyDown(
                     event,
-                    canvas,
+                    waveformComponentHandle->rect.w,
                     state,
                     INITIAL_VERTICAL_ZOOM,
                     INITIAL_SAMPLE_OFFSET);

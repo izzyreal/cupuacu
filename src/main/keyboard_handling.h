@@ -4,7 +4,7 @@
 
 static void handleKeyDown(
         SDL_Event *event,
-        SDL_Texture *canvas,
+        uint32_t waveformWidth,
         CupuacuState *state,
         const double INITIAL_VERTICAL_ZOOM,
         const uint64_t INITIAL_SAMPLE_OFFSET
@@ -14,9 +14,7 @@ static void handleKeyDown(
 
     if (event->key.scancode == SDL_SCANCODE_ESCAPE)
     {
-        SDL_FPoint canvasDimensions;
-        SDL_GetTextureSize(canvas, &canvasDimensions.x, &canvasDimensions.y);
-        state->samplesPerPixel = state->sampleDataL.size() / canvasDimensions.x;
+        state->samplesPerPixel = state->sampleDataL.size() / (float) waveformWidth;
         state->verticalZoom = INITIAL_VERTICAL_ZOOM;
         state->sampleOffset = INITIAL_SAMPLE_OFFSET;
         return;
