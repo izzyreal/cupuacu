@@ -144,7 +144,7 @@ static void renderBlockWaveform(SDL_Renderer* renderer, int width, int height,
         }
 
         const float midSample = (minSample + maxSample) * 0.5f;
-        int y = static_cast<int>(float(height) / 2 - midSample * scale);
+        const int y = static_cast<int>(float(height) / 2 - midSample * scale);
 
         if (hasPrev)
         {
@@ -189,17 +189,14 @@ void WaveformComponent::onDraw(SDL_Renderer *renderer)
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
     SDL_SetRenderDrawColor(renderer, 0, 185, 0, 255);
-    SDL_Texture *target = SDL_GetRenderTarget(renderer);
-    float width, height;
-    SDL_GetTextureSize(target, &width, &height);
 
     if (samplesPerPixel < 1)
     {
-        renderSmoothWaveform(renderer, width, height, sampleDataL, sampleOffset, samplesPerPixel, verticalZoom);
+        renderSmoothWaveform(renderer, rect.w, rect.h, sampleDataL, sampleOffset, samplesPerPixel, verticalZoom);
     }
     else
     {
-        renderBlockWaveform(renderer, width, height, sampleDataL, sampleOffset, samplesPerPixel, verticalZoom);
+        renderBlockWaveform(renderer, rect.w, rect.h, sampleDataL, sampleOffset, samplesPerPixel, verticalZoom);
     }
 
     if (selectionStart != selectionEnd && selectionEnd >= sampleOffset)
@@ -213,7 +210,7 @@ void WaveformComponent::onDraw(SDL_Renderer *renderer)
             startX,
             0.0f,
             endX - startX,
-            (float)height
+            (float)rect.h
         };
 
         SDL_RenderFillRect(renderer, &selectionRect);
