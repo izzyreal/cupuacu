@@ -297,11 +297,55 @@ void WaveformComponent::handleScroll(const SDL_Event &event)
     }
 }
 
-bool WaveformComponent::onHandleEvent(const SDL_Event &event)
+void WaveformComponent::handleDoubleClick()
+{
+    state->selectionStartSample = 0;
+    state->selectionEndSample = state->sampleDataL.size();
+    setDirty();
+}
+
+void WaveformComponent::startSelection(const SDL_Event &e)
 {
     const auto samplesPerPixel = state->samplesPerPixel;
-    auto sampleOffset = state->sampleOffset;
-    
+    const auto sampleOffset = state->sampleOffset;
+
+    auto buttonx = e.button.x;
+
+    if (samplesPerPixel < 1)
+    {
+        buttonx += 0.5f / samplesPerPixel;
+    }
+
+    state->selectionStartSample = sampleOffset + (buttonx * samplesPerPixel);
+    state->selectionEndSample = state->selectionStartSample;
+}
+
+void WaveformComponent::endSelection(const SDL_Event &e)
+{
+    const auto samplesPerPixel = state->samplesPerPixel;
+
+    auto buttonx = e.button.x;
+
+    if (samplesPerPixel < 1)
+    {
+        buttonx += 0.5f / samplesPerPixel;
+    }
+
+    state->selectionEndSample = state->sampleOffset + (buttonx * state->samplesPerPixel);
+
+    if (state->selectionEndSample < state->selectionStartSample)
+    {
+        auto temp = state->selectionStartSample;
+        state->selectionStartSample = state->selectionEndSample;
+        state->selectionEndSample = temp;
+    }
+
+    state->samplesToScroll = 0;
+    setDirty();
+}
+
+bool WaveformComponent::onHandleEvent(const SDL_Event &event)
+{
     switch (event.type)
     {
         case SDL_EVENT_MOUSE_MOTION:
@@ -317,23 +361,11 @@ bool WaveformComponent::onHandleEvent(const SDL_Event &event)
             {
                 if (event.button.clicks >= 2)
                 {
-                    state->selectionStartSample = 0;
-                    state->selectionEndSample = state->sampleDataL.size();
-                    setDirty();
+                    handleDoubleClick();
                     break;
                 }
 
-                auto buttonx = event.button.x;
-
-                if (samplesPerPixel < 1)
-                {
-                    buttonx += 0.5f / samplesPerPixel;
-                }
-                
-                state->selectionStartSample = sampleOffset + (buttonx * samplesPerPixel);
-                state->selectionEndSample = state->selectionStartSample;
-
-                setDirty();
+                startSelection(event);
             }
             break;
         }
@@ -346,22 +378,7 @@ bool WaveformComponent::onHandleEvent(const SDL_Event &event)
                     break;
                 }
 
-                auto buttonx = event.button.x;
-
-                if (samplesPerPixel < 1)
-                {
-                    buttonx += 0.5f / samplesPerPixel;
-                }
-
-                state->selectionEndSample = state->sampleOffset + (buttonx * state->samplesPerPixel);
-
-                if (state->selectionEndSample < state->selectionStartSample)
-                {
-                    auto temp = state->selectionStartSample;
-                    state->selectionStartSample = state->selectionEndSample;
-                    state->selectionEndSample = temp;
-                }
-                state->samplesToScroll = 0;
+                endSelection(event);
             }
             break;
         }
