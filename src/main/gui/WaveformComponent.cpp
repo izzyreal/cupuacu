@@ -244,8 +244,7 @@ void WaveformComponent::timerCallback()
 
         if (oldOffset != state->sampleOffset)
         {
-            //paintAndRenderWaveform(state);
-            // setDirty();
+            setDirty();
         }
     }
 }
