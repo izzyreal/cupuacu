@@ -309,6 +309,14 @@ bool WaveformComponent::onHandleEvent(const SDL_Event &event)
         {
             if (event.button.button == SDL_BUTTON_LEFT)
             {
+                if (event.button.clicks >= 2)
+                {
+                    state->selectionStartSample = 0;
+                    state->selectionEndSample = state->sampleDataL.size();
+                    setDirty();
+                    break;
+                }
+
                 auto buttonx = event.button.x;
 
                 if (samplesPerPixel < 1)
@@ -327,6 +335,11 @@ bool WaveformComponent::onHandleEvent(const SDL_Event &event)
         {
             if (event.button.button == SDL_BUTTON_LEFT)
             {
+                if (event.button.clicks >= 2)
+                {
+                    break;
+                }
+
                 auto buttonx = event.button.x;
 
                 if (samplesPerPixel < 1)
