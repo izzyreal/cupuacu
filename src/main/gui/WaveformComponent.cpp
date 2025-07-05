@@ -249,6 +249,54 @@ void WaveformComponent::timerCallback()
     }
 }
 
+void WaveformComponent::handleScroll(const SDL_Event &event)
+{
+    const auto samplesPerPixel = state->samplesPerPixel;
+    auto sampleOffset = state->sampleOffset;
+    auto motionx = event.motion.x;
+
+    if (event.motion.state & SDL_BUTTON_LMASK)
+    {
+        if (motionx > rect.w || motionx < 0)
+        {
+            auto diff = (motionx < 0)
+                ? motionx
+                : motionx - rect.w;
+
+            auto samplesToScroll = diff * samplesPerPixel;
+
+            if (samplesToScroll < 0)
+            {
+                double absScroll = -samplesToScroll;
+                state->sampleOffset = (state->sampleOffset > absScroll)
+                    ? state->sampleOffset - absScroll
+                    : 0;
+            }
+            else
+            {
+                state->sampleOffset += samplesToScroll;
+            }
+
+            sampleOffset = state->sampleOffset;
+            state->samplesToScroll = samplesToScroll;
+        }
+        else
+        {
+            state->samplesToScroll = 0;
+        }
+
+        if (samplesPerPixel < 1.f)
+        {
+            motionx += 0.5f/samplesPerPixel;
+        }
+
+        const float x = motionx <= 0 ? 0.f : motionx;
+        state->selectionEndSample = sampleOffset + (x * samplesPerPixel);
+
+        setDirty();
+    }
+}
+
 bool WaveformComponent::onHandleEvent(const SDL_Event &event)
 {
     const auto samplesPerPixel = state->samplesPerPixel;
@@ -258,48 +306,7 @@ bool WaveformComponent::onHandleEvent(const SDL_Event &event)
     {
         case SDL_EVENT_MOUSE_MOTION:
         {
-            auto motionx = event.motion.x;
-            
-            if (event.motion.state & SDL_BUTTON_LMASK)
-            {
-                if (motionx > rect.w || motionx < 0)
-                {
-                    auto diff = (motionx < 0)
-                        ? motionx
-                        : motionx - rect.w;
-
-                    auto samplesToScroll = diff * samplesPerPixel;
-
-                    if (samplesToScroll < 0)
-                    {
-                        double absScroll = -samplesToScroll;
-                        state->sampleOffset = (state->sampleOffset > absScroll)
-                            ? state->sampleOffset - absScroll
-                            : 0;
-                    }
-                    else
-                    {
-                        state->sampleOffset += samplesToScroll;
-                    }
-
-                    sampleOffset = state->sampleOffset;
-                    state->samplesToScroll = samplesToScroll;
-                }
-                else
-                {
-                    state->samplesToScroll = 0;
-                }
-
-                if (samplesPerPixel < 1.f)
-                {
-                    motionx += 0.5f/samplesPerPixel;
-                }
-
-                const float x = motionx <= 0 ? 0.f : motionx;
-                state->selectionEndSample = sampleOffset + (x * samplesPerPixel);
-
-                setDirty();
-            }
+            handleScroll(event);
             break;
         }
         case SDL_EVENT_MOUSE_WHEEL:

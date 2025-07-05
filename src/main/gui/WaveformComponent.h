@@ -9,4 +9,7 @@ struct WaveformComponent : Component {
     void onDraw(SDL_Renderer* renderer) override;
     bool onHandleEvent(const SDL_Event &e) override;
     void timerCallback() override;
+
+    private:
+    void handleScroll(const SDL_Event&);
 };
