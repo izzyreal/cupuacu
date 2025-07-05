@@ -2,13 +2,15 @@
 
 #include "CupuacuState.h"
 
+#include "gui/Component.h"
+
 static void handleKeyDown(
         SDL_Event *event,
         uint32_t waveformWidth,
         CupuacuState *state,
         const double INITIAL_VERTICAL_ZOOM,
-        const uint64_t INITIAL_SAMPLE_OFFSET
-        )
+        const uint64_t INITIAL_SAMPLE_OFFSET,
+        Component *waveform)
 {
     uint8_t multiplier = 1;
 
@@ -17,6 +19,7 @@ static void handleKeyDown(
         state->samplesPerPixel = state->sampleDataL.size() / (float) waveformWidth;
         state->verticalZoom = INITIAL_VERTICAL_ZOOM;
         state->sampleOffset = INITIAL_SAMPLE_OFFSET;
+        waveform->setDirty();
         return;
     }
     
@@ -29,6 +32,7 @@ static void handleKeyDown(
         if (state->samplesPerPixel < static_cast<float>(state->sampleDataL.size()) / 2.f)
         {
             state->samplesPerPixel *= 2.f;
+            waveform->setDirty();
         }
     }
     else if (event->key.scancode == SDL_SCANCODE_W)
@@ -41,6 +45,8 @@ static void handleKeyDown(
             {
                 state->samplesPerPixel = 0.02;
             }
+
+            waveform->setDirty();
         }
     }
     else if (event->key.scancode == SDL_SCANCODE_E)
@@ -51,10 +57,13 @@ static void handleKeyDown(
         {
             state->verticalZoom = 1;
         }
+
+        waveform->setDirty();
     }
     else if (event->key.scancode == SDL_SCANCODE_R)
     {
             state->verticalZoom += 0.3 * multiplier;
+            waveform->setDirty();
     }
     else if (event->key.scancode == SDL_SCANCODE_LEFT)
     {
@@ -69,6 +78,8 @@ static void handleKeyDown(
         {
             state->sampleOffset = 0;
         }
+
+        waveform->setDirty();
     }
     else if (event->key.scancode == SDL_SCANCODE_RIGHT)
     {
@@ -78,6 +89,8 @@ static void handleKeyDown(
         }
 
         state->sampleOffset += std::max(state->samplesPerPixel, 1.0) * multiplier;
+
+        waveform->setDirty();
     }
 }
 

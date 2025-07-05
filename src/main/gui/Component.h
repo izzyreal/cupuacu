@@ -4,12 +4,37 @@
 #include <vector>
 
 struct Component {
+    bool dirty = false;
     SDL_Rect rect;  // position and size
+    Component *parent = nullptr;
     std::vector<std::unique_ptr<Component>> children;
     int zIndex = 0;
 
     // Will be called every frame
     virtual void timerCallback() { for (auto &c : children) { c->timerCallback(); }}
+
+    void setDirty()
+    {
+        dirty = true;
+    }
+
+    bool isDirtyRecursive()
+    {
+        if (dirty)
+        {
+            return true;
+        }
+
+        for (auto &c : children)
+        {
+            if (c->isDirtyRecursive())
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     void draw(SDL_Renderer* renderer)
     {
@@ -17,13 +42,20 @@ struct Component {
         SDL_Rect localClip = {0, 0, rect.w, rect.h};
         SDL_SetRenderClipRect(renderer, &localClip);
 
-        onDraw(renderer);
+        if (dirty)
+        {
+            onDraw(renderer);
+            dirty = false;
+        }
 
         std::sort(children.begin(), children.end(), [](auto& a, auto& b) {
             return a->zIndex < b->zIndex;
         });
+
         for (auto& c : children)
+        {
             c->draw(renderer);
+        }
 
         SDL_SetRenderViewport(renderer, nullptr);
         SDL_SetRenderClipRect(renderer, nullptr);

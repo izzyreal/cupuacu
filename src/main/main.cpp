@@ -46,7 +46,7 @@ const std::function<void(CupuacuState*)> renderCanvasToWindow = [](CupuacuState 
 
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
     SDL_RenderClear(renderer);
-    renderText(renderer, canvas, "File  View");
+    //renderText(renderer, canvas, "File  View");
     SDL_RenderTexture(renderer, canvas, NULL, &dstRect);
     SDL_RenderPresent(renderer);
 };
@@ -137,6 +137,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     waveformComponentHandle = waveformComponent.get(); 
     rootComponent->children.push_back(std::move(waveformComponent));
 
+    waveformComponentHandle->setDirty();
+
     return SDL_APP_CONTINUE;
 }
 
@@ -147,9 +149,14 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     rootComponent->timerCallback();
 
     SDL_SetRenderTarget(renderer, canvas);
-    rootComponent->draw(renderer);
 
-    renderCanvasToWindow(state);
+    const bool somethingIsDirty = rootComponent->isDirtyRecursive();
+
+    if (somethingIsDirty)
+    {
+        rootComponent->draw(renderer);
+        renderCanvasToWindow(state);
+    }
 
     SDL_Delay(16);
     return SDL_APP_CONTINUE;
@@ -183,7 +190,8 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                     waveformComponentHandle->rect.w,
                     state,
                     INITIAL_VERTICAL_ZOOM,
-                    INITIAL_SAMPLE_OFFSET);
+                    INITIAL_SAMPLE_OFFSET,
+                    waveformComponentHandle);
             break;
         case SDL_EVENT_MOUSE_MOTION:
         case SDL_EVENT_MOUSE_BUTTON_DOWN:

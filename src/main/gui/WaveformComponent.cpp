@@ -298,6 +298,8 @@ bool WaveformComponent::onHandleEvent(const SDL_Event &event)
 
                 const float x = motionx <= 0 ? 0.f : motionx;
                 state->selectionEndSample = sampleOffset + (x * samplesPerPixel);
+
+                setDirty();
             }
             break;
         }
@@ -316,6 +318,8 @@ bool WaveformComponent::onHandleEvent(const SDL_Event &event)
                 
                 state->selectionStartSample = sampleOffset + (buttonx * samplesPerPixel);
                 state->selectionEndSample = state->selectionStartSample;
+
+                setDirty();
             }
             break;
         }
