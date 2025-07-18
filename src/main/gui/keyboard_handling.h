@@ -1,8 +1,8 @@
 #include <SDL3/SDL.h>
 
-#include "CupuacuState.h"
+#include "../CupuacuState.h"
 
-#include "gui/Component.h"
+#include "Component.h"
 
 static void handleKeyDown(
         SDL_Event *event,

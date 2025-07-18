@@ -2,7 +2,7 @@
 
 #include <SDL3/SDL.h>
 
-#include "ResourceUtil.hpp"
+#include "../ResourceUtil.hpp"
 
 #include <functional>
 

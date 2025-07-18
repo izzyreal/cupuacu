@@ -5,8 +5,8 @@
 
 #include "CupuacuState.h"
 
-#include "keyboard_handling.h"
-#include "text.h"
+#include "gui/keyboard_handling.h"
+#include "gui/text.h"
 
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
