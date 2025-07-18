@@ -6,11 +6,11 @@
 #include "CupuacuState.h"
 
 #include "gui/keyboard_handling.h"
-#include "gui/text.h"
 
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
 static SDL_Texture *canvas = NULL;
+static SDL_Texture *textTexture = NULL;
 
 const uint16_t initialDimensions[] = { 1280, 720 };
 
@@ -26,11 +26,12 @@ static const double INITIAL_VERTICAL_ZOOM = 1;
 static const int64_t INITIAL_SAMPLE_OFFSET = 0;
 
 #include "gui/Component.h"
-
 #include "gui/WaveformComponent.h"
+#include "gui/Menu.h"
 
 std::unique_ptr<Component> rootComponent;
 Component *waveformComponentHandle;
+Component *menuComponentHandle;
 
 const std::function<void(CupuacuState*)> renderCanvasToWindow = [](CupuacuState *state)
 {
@@ -46,7 +47,7 @@ const std::function<void(CupuacuState*)> renderCanvasToWindow = [](CupuacuState 
 
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
     SDL_RenderClear(renderer);
-    //renderText(renderer, canvas, "File  View");
+//    renderText(renderer, "Foo1");
     SDL_RenderTexture(renderer, canvas, NULL, &dstRect);
     SDL_RenderPresent(renderer);
 };
@@ -133,11 +134,17 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     SDL_Rect waveformRect = {5, 5, (int) actualCanvasDimensions.x - 10, (int) actualCanvasDimensions.y - 10};
 
     state->samplesPerPixel = state->sampleDataL.size() / (double) waveformRect.w;
+
     auto waveformComponent = std::make_unique<WaveformComponent>(waveformRect, state);
     waveformComponentHandle = waveformComponent.get(); 
-    rootComponent->children.push_back(std::move(waveformComponent));
+    //rootComponent->children.push_back(std::move(waveformComponent));
+
+    auto menuComponent = std::make_unique<Menu>();
+    menuComponentHandle = menuComponent.get();
+    rootComponent->children.push_back(std::move(menuComponent));
 
     waveformComponentHandle->setDirty();
+    menuComponentHandle->setDirty();
 
     return SDL_APP_CONTINUE;
 }

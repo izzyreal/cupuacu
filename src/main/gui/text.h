@@ -6,7 +6,7 @@
 
 #include <functional>
 
-const std::function<void(SDL_Renderer*, SDL_Texture*, const std::string)> renderText = [](SDL_Renderer *renderer, SDL_Texture *canvas, const std::string text)
+const std::function<void(SDL_Renderer*, const std::string)> renderText = [](SDL_Renderer *renderer, const std::string text)
 {
     SDL_Color textColor = {255, 255, 255, 255};
 
@@ -22,14 +22,19 @@ const std::function<void(SDL_Renderer*, SDL_Texture*, const std::string)> render
         return;
     }
 
+    SDL_Texture *canvas = SDL_GetRenderTarget(renderer);
+
+    SDL_SetRenderTarget(renderer, NULL);
+
     SDL_Surface* textSurface = TTF_RenderText_Blended(font, text.c_str(), text.length(), textColor);
     SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
     SDL_FRect textDestRect = {0, 0, static_cast<float>(textSurface->w), static_cast<float>(textSurface->h)};
+
     SDL_SetRenderTarget(renderer, canvas);
+    
     SDL_RenderTexture(renderer, textTexture, nullptr, &textDestRect);
     SDL_DestroySurface(textSurface);
     SDL_DestroyTexture(textTexture);
     TTF_CloseFont(font);
-    SDL_SetRenderTarget(renderer, nullptr);
 };
 

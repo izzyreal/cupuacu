@@ -179,6 +179,7 @@ static void renderBlockWaveform(SDL_Renderer* renderer, int width, int height,
 
 void WaveformComponent::onDraw(SDL_Renderer *renderer)
 {
+    printf("drawing waveform\n");
     const float samplesPerPixel = state->samplesPerPixel;
     const float verticalZoom = state->verticalZoom;
     const size_t sampleOffset = state->sampleOffset;
