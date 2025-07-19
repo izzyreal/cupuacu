@@ -18,6 +18,12 @@ struct Component {
         dirty = true;
     }
 
+    void setDirtyRecursive()
+    {
+        dirty = true;
+        for (auto &c : children) c->setDirtyRecursive();
+    }
+
     bool isDirtyRecursive()
     {
         if (dirty)

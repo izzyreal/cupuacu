@@ -31,6 +31,7 @@ static const int64_t INITIAL_SAMPLE_OFFSET = 0;
 #include "gui/Menu.h"
 
 std::unique_ptr<Component> rootComponent;
+Component *backgroundComponentHandle;
 Component *waveformComponentHandle;
 Component *menuComponentHandle;
 
@@ -79,6 +80,17 @@ void createCanvas(const SDL_Point &dimensions)
     SDL_SetTextureScaleMode(canvas, SDL_SCALEMODE_NEAREST);
 }
 
+SDL_Rect getWaveformRect(const uint16_t canvasWidth, const uint16_t canvasHeight)
+{
+   SDL_Rect result {
+       WaveformComponent::LEFT_MARGIN,
+       WaveformComponent::TOP_MARGIN,
+       canvasWidth - (WaveformComponent::RIGHT_MARGIN + WaveformComponent::LEFT_MARGIN),
+       canvasHeight - (WaveformComponent::TOP_MARGIN + WaveformComponent::BOTTOM_MARGIN)
+   };
+   return result;
+}
+
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 {
     CupuacuState *state = new CupuacuState();
@@ -124,17 +136,18 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     SDL_FPoint actualCanvasDimensions;
     SDL_GetTextureSize(canvas, &actualCanvasDimensions.x, &actualCanvasDimensions.y);
 
-    SDL_Rect rootRect = {0, 0, (int) actualCanvasDimensions.x, (int) actualCanvasDimensions.y};
+    const SDL_Rect rootRect {0, 0, (int) actualCanvasDimensions.x, (int) actualCanvasDimensions.y};
 
     rootComponent = std::make_unique<Component>();
     rootComponent->rect = rootRect;
 
     auto backgroundComponent = std::make_unique<OpaqueRect>(rootRect);
+    backgroundComponentHandle = backgroundComponent.get();
     backgroundComponent->setDirty();
 
     rootComponent->children.push_back(std::move(backgroundComponent));
 
-    SDL_Rect waveformRect = {0, 20, (int) actualCanvasDimensions.x, (int) actualCanvasDimensions.y - 40};
+    const SDL_Rect waveformRect = getWaveformRect(actualCanvasDimensions.x, actualCanvasDimensions.y);
 
     state->samplesPerPixel = state->sampleDataL.size() / (double) waveformRect.w;
 
@@ -193,6 +206,16 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                         currentCanvasHeight != newCanvasDimensions.y)
                 {
                     createCanvas(newCanvasDimensions);
+                    SDL_FPoint actualCanvasDimensions;
+                    SDL_GetTextureSize(canvas, &actualCanvasDimensions.x, &actualCanvasDimensions.y);
+                    const SDL_Rect rootRect {0, 0, (int) actualCanvasDimensions.x, (int) actualCanvasDimensions.y};
+                    rootComponent->rect = rootRect;
+                    backgroundComponentHandle->rect = rootRect;
+                    const SDL_Rect waveformRect = getWaveformRect(actualCanvasDimensions.x, actualCanvasDimensions.y);
+                    waveformComponentHandle->rect = waveformRect;
+                    state->samplesPerPixel = state->sampleDataL.size() / (double) waveformRect.w;
+
+                    rootComponent->setDirtyRecursive();
                 }
                 break;
             }
