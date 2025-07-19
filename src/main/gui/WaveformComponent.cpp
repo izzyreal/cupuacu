@@ -179,7 +179,6 @@ static void renderBlockWaveform(SDL_Renderer* renderer, int width, int height,
 
 void WaveformComponent::onDraw(SDL_Renderer *renderer)
 {
-    printf("drawing waveform\n");
     const float samplesPerPixel = state->samplesPerPixel;
     const float verticalZoom = state->verticalZoom;
     const size_t sampleOffset = state->sampleOffset;
@@ -188,7 +187,7 @@ void WaveformComponent::onDraw(SDL_Renderer *renderer)
     const auto selectionEnd = state->selectionEndSample;
 
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-    SDL_RenderClear(renderer);
+    SDL_RenderFillRect(renderer, NULL);
     SDL_SetRenderDrawColor(renderer, 0, 185, 0, 255);
 
     if (samplesPerPixel < 1)

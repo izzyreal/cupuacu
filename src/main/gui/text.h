@@ -27,7 +27,9 @@ const std::function<void(SDL_Renderer*, const std::string)> renderText = [](SDL_
     SDL_SetRenderTarget(renderer, NULL);
 
     SDL_Surface* textSurface = TTF_RenderText_Blended(font, text.c_str(), text.length(), textColor);
+
     SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+
     SDL_FRect textDestRect = {0, 0, static_cast<float>(textSurface->w), static_cast<float>(textSurface->h)};
 
     SDL_SetRenderTarget(renderer, canvas);
