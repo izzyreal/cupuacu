@@ -206,10 +206,12 @@ void WaveformComponent::onDraw(SDL_Renderer *renderer)
 
         SDL_SetRenderDrawColor(renderer, 0, 64, 255, 128);
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+        auto selectionWidth = std::abs(endX - startX)  < 1 ? 1 : endX - startX;
+        if (endX - startX < 0 && selectionWidth > 0) selectionWidth = -selectionWidth;
         SDL_FRect selectionRect = {
             startX,
             0.0f,
-            endX - startX,
+            selectionWidth,
             (float)rect.h
         };
 
