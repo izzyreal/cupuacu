@@ -5,7 +5,7 @@
 #include <string>
 
 struct CupuacuState {
-    uint8_t hardwarePixelsPerAppPixel = 8;
+    uint8_t hardwarePixelsPerAppPixel = 8*2;
     std::string currentFile = "/Users/izmar/Downloads/ams_chill.wav";
 
     std::vector<int16_t> sampleDataL;

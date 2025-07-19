@@ -196,6 +196,20 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
             return SDL_APP_SUCCESS;
         case SDL_EVENT_WINDOW_RESIZED:
             {
+                int winW, winH;
+                SDL_GetWindowSize(window, &winW, &winH);
+
+                int hpp = state->hardwarePixelsPerAppPixel;
+
+                int newW = (winW / hpp) * hpp;
+                int newH = (winH / hpp) * hpp;
+
+                if (newW != winW || newH != winH)
+                {
+                    SDL_SetWindowSize(window, newW, newH);
+                    break;
+                }
+
                 SDL_FPoint currentCanvasDimensions;
                 SDL_GetTextureSize(canvas, &currentCanvasDimensions.x, &currentCanvasDimensions.y);
                 const SDL_Point newCanvasDimensions = computeDesiredCanvasDimensions(state->hardwarePixelsPerAppPixel);
@@ -212,8 +226,10 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                     rootComponent->rect = rootRect;
                     backgroundComponentHandle->rect = rootRect;
                     const SDL_Rect waveformRect = getWaveformRect(actualCanvasDimensions.x, actualCanvasDimensions.y);
+                    auto samplesPerPixelFactor = waveformComponentHandle->rect.w * state->samplesPerPixel;
                     waveformComponentHandle->rect = waveformRect;
-                    state->samplesPerPixel = state->sampleDataL.size() / (double) waveformRect.w;
+                    auto newSamplesPerPixel = samplesPerPixelFactor / waveformRect.w; 
+                    state->samplesPerPixel = newSamplesPerPixel;
 
                     rootComponent->setDirtyRecursive();
                 }
