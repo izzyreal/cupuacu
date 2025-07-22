@@ -6,7 +6,7 @@
 struct WaveformComponent : Component {
     const static uint8_t LEFT_MARGIN = 0;
     const static uint8_t RIGHT_MARGIN = 0;
-    const static uint8_t TOP_MARGIN = 20;
+    const static uint8_t TOP_MARGIN = 80;
     const static uint8_t BOTTOM_MARGIN = 0;
     CupuacuState* state = nullptr;
     WaveformComponent(SDL_Rect r, CupuacuState*s) { rect = r; state = s; }

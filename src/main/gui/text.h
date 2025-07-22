@@ -6,7 +6,14 @@
 
 #include <functional>
 
-const std::function<void(SDL_Renderer*, const std::string)> renderText = [](SDL_Renderer *renderer, const std::string text)
+const std::function<void(
+        SDL_Renderer*,
+        const std::string,
+        const uint8_t
+        )> renderText = [](
+            SDL_Renderer *renderer,
+            const std::string text,
+            const uint8_t pointSize)
 {
     SDL_Color textColor = {255, 255, 255, 255};
 
@@ -14,7 +21,7 @@ const std::function<void(SDL_Renderer*, const std::string)> renderText = [](SDL_
 
     auto fontIo = SDL_IOFromMem(&fontData[0], fontData.size());
 
-    TTF_Font* font = TTF_OpenFontIO(fontIo, false, 12);
+    TTF_Font* font = TTF_OpenFontIO(fontIo, false, pointSize);
     
     if (!font)
     {

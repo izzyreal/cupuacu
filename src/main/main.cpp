@@ -80,15 +80,19 @@ void createCanvas(const SDL_Point &dimensions)
     SDL_SetTextureScaleMode(canvas, SDL_SCALEMODE_NEAREST);
 }
 
-SDL_Rect getWaveformRect(const uint16_t canvasWidth, const uint16_t canvasHeight)
+SDL_Rect getWaveformRect(const uint16_t canvasWidth, const uint16_t canvasHeight, const uint8_t hardwarePixelsPerAppPixel)
 {
    SDL_Rect result {
-       WaveformComponent::LEFT_MARGIN,
-       WaveformComponent::TOP_MARGIN,
-       canvasWidth - (WaveformComponent::RIGHT_MARGIN + WaveformComponent::LEFT_MARGIN),
-       canvasHeight - (WaveformComponent::TOP_MARGIN + WaveformComponent::BOTTOM_MARGIN)
+       WaveformComponent::LEFT_MARGIN / hardwarePixelsPerAppPixel,
+       WaveformComponent::TOP_MARGIN / hardwarePixelsPerAppPixel,
+       canvasWidth - ((WaveformComponent::RIGHT_MARGIN + WaveformComponent::LEFT_MARGIN) / hardwarePixelsPerAppPixel),
+       canvasHeight - ((WaveformComponent::TOP_MARGIN + WaveformComponent::BOTTOM_MARGIN) / hardwarePixelsPerAppPixel)
    };
    return result;
+}
+
+SDL_Rect getMenuRect(const uint16_t canvasWidth, const uint16_t canvasHeight)
+{
 }
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
@@ -147,7 +151,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     rootComponent->children.push_back(std::move(backgroundComponent));
 
-    const SDL_Rect waveformRect = getWaveformRect(actualCanvasDimensions.x, actualCanvasDimensions.y);
+    const SDL_Rect waveformRect = getWaveformRect(actualCanvasDimensions.x, actualCanvasDimensions.y, state->hardwarePixelsPerAppPixel);
 
     state->samplesPerPixel = state->sampleDataL.size() / (double) waveformRect.w;
 
@@ -155,9 +159,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     waveformComponentHandle = waveformComponent.get(); 
     rootComponent->children.push_back(std::move(waveformComponent));
 
-    SDL_Rect menuRect = {0, 0, 100, 40};
+    SDL_Rect menuRect = {0, 0, 300, 80};
 
-    auto menuComponent = std::make_unique<Menu>(menuRect);
+    auto menuComponent = std::make_unique<Menu>(menuRect, state);
     menuComponentHandle = menuComponent.get();
     rootComponent->children.push_back(std::move(menuComponent));
 
@@ -225,7 +229,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                     const SDL_Rect rootRect {0, 0, (int) actualCanvasDimensions.x, (int) actualCanvasDimensions.y};
                     rootComponent->rect = rootRect;
                     backgroundComponentHandle->rect = rootRect;
-                    const SDL_Rect waveformRect = getWaveformRect(actualCanvasDimensions.x, actualCanvasDimensions.y);
+                    const SDL_Rect waveformRect = getWaveformRect(actualCanvasDimensions.x, actualCanvasDimensions.y, state->hardwarePixelsPerAppPixel);
                     auto samplesPerPixelFactor = waveformComponentHandle->rect.w * state->samplesPerPixel;
                     waveformComponentHandle->rect = waveformRect;
                     auto newSamplesPerPixel = samplesPerPixelFactor / waveformRect.w; 
