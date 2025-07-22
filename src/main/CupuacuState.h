@@ -5,6 +5,7 @@
 #include <string>
 
 struct CupuacuState {
+    uint8_t menuFontSize = 60;
     uint8_t hardwarePixelsPerAppPixel = 4;
     std::string currentFile = "/Users/izmar/Downloads/ams_chill.wav";
 

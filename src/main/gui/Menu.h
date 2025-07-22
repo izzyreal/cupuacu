@@ -13,7 +13,7 @@ class Menu : public Component {
         {
             SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
             SDL_RenderFillRect(renderer, NULL);
-            const uint8_t fontPointSize = 60 / state->hardwarePixelsPerAppPixel;
+            const uint8_t fontPointSize = state->menuFontSize / state->hardwarePixelsPerAppPixel;
             renderText(renderer, " File  View", fontPointSize);
         }
 };
