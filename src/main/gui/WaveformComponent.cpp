@@ -3,33 +3,36 @@
 #include <algorithm>
 #include "smooth_line.h"
 
-static void drawDot(SDL_Renderer* renderer, int x, int y)
+static void drawDot(SDL_Renderer* renderer, int x, int y, const uint8_t radius)
 {
-    struct Pixel {
-        int dx, dy;
-        Uint8 alpha;
-    };
-
-    const Pixel pixels[] = {
-        {-2, -2, 20}, {-1, -2, 40}, {0, -2, 60}, {1, -2, 40}, {2, -2, 20},
-        {-2, -1, 40}, {-1, -1, 80}, {0, -1, 120}, {1, -1, 80}, {2, -1, 40},
-        {-2,  0, 60}, {-1,  0, 120}, {0,  0, 255}, {1,  0, 120}, {2,  0, 60},
-        {-2,  1, 40}, {-1,  1, 80}, {0,  1, 120}, {1,  1, 80}, {2,  1, 40},
-        {-2,  2, 20}, {-1,  2, 40}, {0,  2, 60}, {1,  2, 40}, {2,  2, 20},
-    };
-
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
-    for (const auto& p : pixels)
+    const int r2 = radius * radius;
+
+    for (int dy = -radius; dy <= radius; ++dy)
     {
-        SDL_SetRenderDrawColor(renderer, 0, 255, 0, p.alpha);
-        SDL_RenderPoint(renderer, x + p.dx, y + p.dy);
+        for (int dx = -radius; dx <= radius; ++dx)
+        {
+            int dist2 = dx * dx + dy * dy;
+            if (dist2 > r2)
+                continue;
+
+            // Inverse square falloff (example)
+            float factor = 1.0f - (float)dist2 / r2;
+            Uint8 alpha = static_cast<Uint8>(factor * 255);
+
+            if (alpha > 0)
+            {
+                SDL_SetRenderDrawColor(renderer, 0, 255, 0, alpha);
+                SDL_RenderPoint(renderer, x + dx, y + dy);
+            }
+        }
     }
 }
 
 static void renderSmoothWaveform(SDL_Renderer* renderer, int width, int height,
                                  const std::vector<int16_t>& samples, size_t offset,
-                                 float samplesPerPixel, float verticalZoom)
+                                 float samplesPerPixel, float verticalZoom, const uint8_t hardwarePixelsPerAppPixel)
 {
     const int neededInputSamples = static_cast<int>(std::ceil((width + 1) * samplesPerPixel));
     const int availableSamples = static_cast<int>(samples.size()) - static_cast<int>(offset);
@@ -102,7 +105,11 @@ static void renderSmoothWaveform(SDL_Renderer* renderer, int width, int height,
     {
         float xPos = static_cast<float>(x[i]); // pixel x position matching spline parameterization
         float yPos = height / 2.0f - (samples[offset + i] * verticalZoom * height / 2.0f) / 32768.0f;
-        drawDot(renderer, xPos, yPos);
+        
+        if (samplesPerPixel < ((float)hardwarePixelsPerAppPixel / 40.f))
+        {
+            drawDot(renderer, xPos, yPos, 16 / hardwarePixelsPerAppPixel);
+        }
     }
 }
 
@@ -192,7 +199,7 @@ void WaveformComponent::onDraw(SDL_Renderer *renderer)
 
     if (samplesPerPixel < 1)
     {
-        renderSmoothWaveform(renderer, rect.w, rect.h, sampleDataL, sampleOffset, samplesPerPixel, verticalZoom);
+        renderSmoothWaveform(renderer, rect.w, rect.h, sampleDataL, sampleOffset, samplesPerPixel, verticalZoom, state->hardwarePixelsPerAppPixel);
     }
     else
     {
