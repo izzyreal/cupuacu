@@ -13,6 +13,7 @@ static void handleKeyDown(
         Component *waveform)
 {
     uint8_t multiplier = 1;
+    uint8_t multiplierFactor = 12 / state->hardwarePixelsPerAppPixel;
 
     if (event->key.scancode == SDL_SCANCODE_ESCAPE)
     {
@@ -23,9 +24,9 @@ static void handleKeyDown(
         return;
     }
     
-    if (event->key.mod & SDL_KMOD_SHIFT) multiplier *= 2;
-    if (event->key.mod & SDL_KMOD_ALT) multiplier *= 2;
-    if (event->key.mod & SDL_KMOD_CTRL) multiplier *= 2;
+    if (event->key.mod & SDL_KMOD_SHIFT) multiplier *= multiplierFactor;
+    if (event->key.mod & SDL_KMOD_ALT) multiplier *= multiplierFactor;
+    if (event->key.mod & SDL_KMOD_CTRL) multiplier *= multiplierFactor;
 
     if (event->key.scancode == SDL_SCANCODE_Q)
     {
