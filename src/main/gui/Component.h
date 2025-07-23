@@ -110,11 +110,13 @@ struct Component {
                     mouseLeave();
                 }
             }
-
-            if (!mouseIsOver)
+            else
             {
-                mouseIsOver = true;
-                mouseEnter();
+                if (!mouseIsOver)
+                {
+                    mouseIsOver = true;
+                    mouseEnter();
+                }
             }
 
             std::sort(children.begin(), children.end(), [](auto& a, auto& b) {
