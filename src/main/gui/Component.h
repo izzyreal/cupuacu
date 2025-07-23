@@ -4,6 +4,7 @@
 #include <vector>
 
 struct Component {
+    bool mouseIsOver = false;
     bool dirty = false;
     SDL_Rect rect;  // position and size
     Component *parent = nullptr;
@@ -44,7 +45,12 @@ struct Component {
 
     void draw(SDL_Renderer* renderer)
     {
-        SDL_SetRenderViewport(renderer, &rect);
+        SDL_Rect viewPortRect;
+        SDL_GetRenderViewport(renderer, &viewPortRect);
+        SDL_Rect oldViewPortRect = viewPortRect;
+        viewPortRect.x += rect.x;
+        viewPortRect.y += rect.y;
+        SDL_SetRenderViewport(renderer, &viewPortRect);
         SDL_Rect localClip = {0, 0, rect.w, rect.h};
         SDL_SetRenderClipRect(renderer, &localClip);
 
@@ -53,6 +59,7 @@ struct Component {
             onDraw(renderer);
             dirty = false;
         }
+
 
         std::sort(children.begin(), children.end(), [](auto& a, auto& b) {
             return a->zIndex < b->zIndex;
@@ -63,7 +70,7 @@ struct Component {
             c->draw(renderer);
         }
 
-        SDL_SetRenderViewport(renderer, nullptr);
+        SDL_SetRenderViewport(renderer, &oldViewPortRect);
         SDL_SetRenderClipRect(renderer, nullptr);
     }
 
@@ -71,6 +78,9 @@ struct Component {
     {
         // Base: maybe draw background or border
     }
+
+    virtual void mouseLeave() {}
+    virtual void mouseEnter() {}
 
     bool handleEvent(const SDL_Event& e)
     {
@@ -91,6 +101,22 @@ struct Component {
 
             const int x = e_rel.type == SDL_EVENT_MOUSE_MOTION ? e_rel.motion.x : e_rel.button.x;
             const int y = e_rel.type == SDL_EVENT_MOUSE_MOTION ? e_rel.motion.y : e_rel.button.y;
+
+            if (x < 0 || x > rect.w || y < 0 || y > rect.h)
+            {
+                if (mouseIsOver)
+                {
+                    mouseIsOver = false;
+                    mouseLeave();
+                }
+                return false;
+            }
+
+            if (!mouseIsOver)
+            {
+                mouseIsOver = true;
+                mouseEnter();
+            }
 
             std::sort(children.begin(), children.end(), [](auto& a, auto& b) {
                 return a->zIndex > b->zIndex;

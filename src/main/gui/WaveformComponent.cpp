@@ -3,34 +3,9 @@
 #include <algorithm>
 #include "smooth_line.h"
 
-static void drawDot(SDL_Renderer* renderer, int x, int y, const uint8_t radius)
-{
-    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+#include "SamplePoint.h"
 
-    const int r2 = radius * radius;
-
-    for (int dy = -radius; dy <= radius; ++dy)
-    {
-        for (int dx = -radius; dx <= radius; ++dx)
-        {
-            int dist2 = dx * dx + dy * dy;
-            if (dist2 > r2)
-                continue;
-
-            // Inverse square falloff (example)
-            float factor = 1.0f - (float)dist2 / r2;
-            Uint8 alpha = static_cast<Uint8>(factor * 255);
-
-            if (alpha > 0)
-            {
-                SDL_SetRenderDrawColor(renderer, 0, 255, 0, alpha);
-                SDL_RenderPoint(renderer, x + dx, y + dy);
-            }
-        }
-    }
-}
-
-static void renderSmoothWaveform(SDL_Renderer* renderer, int width, int height,
+void WaveformComponent::renderSmoothWaveform(SDL_Renderer* renderer, int width, int height,
                                  const std::vector<int16_t>& samples, size_t offset,
                                  float samplesPerPixel, float verticalZoom, const uint8_t hardwarePixelsPerAppPixel)
 {
@@ -100,15 +75,17 @@ static void renderSmoothWaveform(SDL_Renderer* renderer, int width, int height,
         SDL_RenderGeometry(renderer, nullptr, verts, 4, indices, 6);
     }
 
-    // Draw dots at original sample pixel positions & raw sample values (unchanged)
-    for (int i = 0; i < actualInputSamples; ++i)
+    if (samplesPerPixel < ((float)hardwarePixelsPerAppPixel / 40.f))
     {
-        float xPos = static_cast<float>(x[i]); // pixel x position matching spline parameterization
-        float yPos = height / 2.0f - (samples[offset + i] * verticalZoom * height / 2.0f) / 32768.0f;
-        
-        if (samplesPerPixel < ((float)hardwarePixelsPerAppPixel / 40.f))
+        const auto samplePointSize = 32 / hardwarePixelsPerAppPixel;
+        for (int i = 0; i < actualInputSamples; ++i)
         {
-            drawDot(renderer, xPos, yPos, 16 / hardwarePixelsPerAppPixel);
+            int xPos = x[i];
+            int yPos = height / 2.0f - (samples[offset + i] * verticalZoom * height / 2.0f) / 32768.0f;
+
+            children.push_back(std::make_unique<SamplePoint>(state));
+            children.back()->rect = SDL_Rect{xPos - (samplePointSize / 2), yPos - (samplePointSize / 2), samplePointSize, samplePointSize};
+            children.back()->setDirty();
         }
     }
 }
@@ -186,6 +163,8 @@ static void renderBlockWaveform(SDL_Renderer* renderer, int width, int height,
 
 void WaveformComponent::onDraw(SDL_Renderer *renderer)
 {
+    children.clear();
+
     const float samplesPerPixel = state->samplesPerPixel;
     const float verticalZoom = state->verticalZoom;
     const size_t sampleOffset = state->sampleOffset;

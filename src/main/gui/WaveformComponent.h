@@ -15,6 +15,9 @@ struct WaveformComponent : Component {
     void timerCallback() override;
 
     private:
+    void renderSmoothWaveform(SDL_Renderer* renderer, int width, int height,
+                                     const std::vector<int16_t>& samples, size_t offset,
+                                     float samplesPerPixel, float verticalZoom, const uint8_t hardwarePixelsPerAppPixel);
     void handleScroll(const SDL_Event&);
     void handleDoubleClick();
     void startSelection(const SDL_Event&);
