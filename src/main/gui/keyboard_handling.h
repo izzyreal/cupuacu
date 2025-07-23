@@ -70,6 +70,15 @@ static void handleKeyDown(
         state->verticalZoom += 0.3 * multiplier;
         updateWaveform(waveform, state);
     }
+    else if (event->key.scancode == SDL_SCANCODE_Z)
+    {
+        if (state->selectionStartSample == state->selectionEndSample) return;
+        state->verticalZoom = INITIAL_VERTICAL_ZOOM;
+        state->sampleOffset = state->selectionStartSample;
+        const auto selectionLength = state->selectionEndSample - state->selectionStartSample;
+        state->samplesPerPixel = selectionLength / waveform->rect.w;
+        updateWaveform(waveform, state);
+    }
     else if (event->key.scancode == SDL_SCANCODE_LEFT)
     {
         if (state->sampleOffset == 0)
