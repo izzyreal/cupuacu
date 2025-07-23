@@ -109,7 +109,6 @@ struct Component {
                     mouseIsOver = false;
                     mouseLeave();
                 }
-                return false;
             }
 
             if (!mouseIsOver)

@@ -5,6 +5,11 @@
 
 #include "SamplePoint.h"
 
+bool shouldShowSamplePoints(const double samplesPerPixel, const uint8_t hardwarePixelsPerAppPixel)
+{
+    return samplesPerPixel < ((float)hardwarePixelsPerAppPixel / 40.f);
+}
+
 void WaveformComponent::renderSmoothWaveform(SDL_Renderer* renderer, int width, int height,
                                  const std::vector<int16_t>& samples, size_t offset,
                                  float samplesPerPixel, float verticalZoom, const uint8_t hardwarePixelsPerAppPixel)
@@ -75,7 +80,7 @@ void WaveformComponent::renderSmoothWaveform(SDL_Renderer* renderer, int width, 
         SDL_RenderGeometry(renderer, nullptr, verts, 4, indices, 6);
     }
 
-    if (samplesPerPixel < ((float)hardwarePixelsPerAppPixel / 40.f))
+    if (shouldShowSamplePoints(samplesPerPixel, hardwarePixelsPerAppPixel))
     {
         const auto samplePointSize = 32 / hardwarePixelsPerAppPixel;
         for (int i = 0; i < actualInputSamples; ++i)
@@ -187,13 +192,31 @@ void WaveformComponent::onDraw(SDL_Renderer *renderer)
 
     if (selectionStart != selectionEnd && selectionEnd >= sampleOffset)
     {
-        float startX = sampleOffset > selectionStart ? 0 : ((int)selectionStart - sampleOffset - 0.5f) / samplesPerPixel;
-        float endX = ((int)selectionEnd - sampleOffset - 0.5f) / samplesPerPixel;
+        const bool goesRight = selectionEnd > selectionStart;
+
+        float orderedStart = goesRight ? selectionStart : selectionEnd;
+        float orderedEnd = goesRight ? selectionEnd : selectionStart;
+
+        double firstSample = std::floor(orderedStart);
+        double lastSample = std::floor(orderedEnd);
+
+        if (firstSample >= lastSample) return;
+
+        if (shouldShowSamplePoints(samplesPerPixel, state->hardwarePixelsPerAppPixel))
+        {
+            firstSample -= 0.5f;
+            lastSample -= 0.5f;
+        }
+ 
+        float startX = firstSample <= sampleOffset ? 0 : (firstSample - sampleOffset) / samplesPerPixel;
+        float endX = (lastSample - sampleOffset) / samplesPerPixel;
 
         SDL_SetRenderDrawColor(renderer, 0, 64, 255, 128);
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-        auto selectionWidth = std::abs(endX - startX)  < 1 ? 1 : endX - startX;
+        auto selectionWidth = std::abs(endX - startX) < 1 ? 1 : endX - startX;
+
         if (endX - startX < 0 && selectionWidth > 0) selectionWidth = -selectionWidth;
+
         SDL_FRect selectionRect = {
             startX,
             0.0f,
