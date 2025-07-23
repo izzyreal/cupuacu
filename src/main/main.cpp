@@ -32,7 +32,7 @@ static const int64_t INITIAL_SAMPLE_OFFSET = 0;
 
 std::unique_ptr<Component> rootComponent;
 Component *backgroundComponentHandle;
-Component *waveformComponentHandle;
+WaveformComponent *waveformComponentHandle;
 Component *menuComponentHandle;
 
 const std::function<void(CupuacuState*)> renderCanvasToWindow = [](CupuacuState *state)

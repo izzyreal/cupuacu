@@ -3,6 +3,28 @@
 #include <algorithm>
 #include "smooth_line.h"
 
+void WaveformComponent::updateSamplePoints()
+{
+    children.clear();
+
+    if (shouldShowSamplePoints(state->samplesPerPixel, state->hardwarePixelsPerAppPixel))
+    {
+        auto samplePoints = computeSamplePoints(
+                rect.w,
+                rect.h,
+                state->sampleDataL,
+                state->sampleOffset,
+                state->samplesPerPixel,
+                state->verticalZoom,
+                state->hardwarePixelsPerAppPixel);
+
+        for (auto &sp : samplePoints)
+        {
+            children.emplace_back(std::move(sp));
+        }
+    }
+}
+
 bool WaveformComponent::shouldShowSamplePoints(const double samplesPerPixel, const uint8_t hardwarePixelsPerAppPixel)
 {
     return samplesPerPixel < ((float)hardwarePixelsPerAppPixel / 40.f);
@@ -275,6 +297,7 @@ void WaveformComponent::timerCallback()
         if (oldOffset != state->sampleOffset)
         {
             setDirty();
+            updateSamplePoints();
         }
     }
 }
@@ -324,6 +347,7 @@ void WaveformComponent::handleScroll(const SDL_Event &event)
         state->selectionEndSample = sampleOffset + (x * samplesPerPixel);
 
         setDirty();
+        updateSamplePoints();
     }
 }
 
@@ -332,6 +356,7 @@ void WaveformComponent::handleDoubleClick()
     state->selectionStartSample = 0;
     state->selectionEndSample = state->sampleDataL.size();
     setDirty();
+    updateSamplePoints();
 }
 
 void WaveformComponent::startSelection(const SDL_Event &e)
@@ -372,6 +397,7 @@ void WaveformComponent::endSelection(const SDL_Event &e)
 
     state->samplesToScroll = 0;
     setDirty();
+    updateSamplePoints();
 }
 
 bool WaveformComponent::onHandleEvent(const SDL_Event &event)

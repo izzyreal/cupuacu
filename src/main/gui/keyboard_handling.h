@@ -2,22 +2,12 @@
 
 #include "../CupuacuState.h"
 
-#include "Component.h"
 #include "WaveformComponent.h"
 
-static void updateWaveform(Component *waveform, CupuacuState *state)
+static void updateWaveform(WaveformComponent *waveform, CupuacuState *state)
 {
-    waveform->children.clear();
     waveform->setDirty();
-
-    if (auto wave = dynamic_cast<WaveformComponent*>(waveform); wave->shouldShowSamplePoints(state->samplesPerPixel, state->hardwarePixelsPerAppPixel))
-    {
-        auto samplePoints = wave->computeSamplePoints(wave->rect.w, wave->rect.h, state->sampleDataL, state->sampleOffset, state->samplesPerPixel, state->verticalZoom, state->hardwarePixelsPerAppPixel);
-        for (auto &sp : samplePoints)
-        {
-            wave->children.emplace_back(std::move(sp));
-        }
-    }
+    waveform->updateSamplePoints();
 }
 
 static void handleKeyDown(
@@ -26,7 +16,7 @@ static void handleKeyDown(
         CupuacuState *state,
         const double INITIAL_VERTICAL_ZOOM,
         const uint64_t INITIAL_SAMPLE_OFFSET,
-        Component *waveform)
+        WaveformComponent *waveform)
 {
     uint8_t multiplier = 1;
     uint8_t multiplierFactor = 12 / state->hardwarePixelsPerAppPixel;
@@ -36,7 +26,7 @@ static void handleKeyDown(
         state->samplesPerPixel = state->sampleDataL.size() / (float) waveformWidth;
         state->verticalZoom = INITIAL_VERTICAL_ZOOM;
         state->sampleOffset = INITIAL_SAMPLE_OFFSET;
-        waveform->setDirty();
+        updateWaveform(waveform, state);
         return;
     }
     

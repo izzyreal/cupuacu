@@ -21,6 +21,8 @@ struct WaveformComponent : Component {
     std::vector<std::unique_ptr<SamplePoint>> computeSamplePoints(int width, int height,
                                  const std::vector<int16_t>& samples, size_t offset,
                                  float samplesPerPixel, float verticalZoom, const uint8_t hardwarePixelsPerAppPixel);
+    
+    void updateSamplePoints();
 
     private:
     void renderSmoothWaveform(SDL_Renderer* renderer, int width, int height,
