@@ -38,7 +38,10 @@ static void handleKeyDown(
     {
         if (state->samplesPerPixel < static_cast<float>(state->sampleDataL.size()) / 2.f)
         {
+            const auto centerSampleIndex = ((waveform->rect.w / 2.f) * state->samplesPerPixel) + state->sampleOffset;
             state->samplesPerPixel *= 2.f;
+            const auto newSampleOffset = centerSampleIndex - ((waveform->rect.w / 2.f) * state->samplesPerPixel);
+            state->sampleOffset = newSampleOffset < 0 ? 0 : newSampleOffset;
             updateWaveform(waveform, state);
         }
     }
