@@ -3,6 +3,22 @@
 #include "../CupuacuState.h"
 
 #include "Component.h"
+#include "WaveformComponent.h"
+
+static void updateWaveform(Component *waveform, CupuacuState *state)
+{
+    waveform->children.clear();
+    waveform->setDirty();
+
+    if (auto wave = dynamic_cast<WaveformComponent*>(waveform); wave->shouldShowSamplePoints(state->samplesPerPixel, state->hardwarePixelsPerAppPixel))
+    {
+        auto samplePoints = wave->computeSamplePoints(wave->rect.w, wave->rect.h, state->sampleDataL, state->sampleOffset, state->samplesPerPixel, state->verticalZoom, state->hardwarePixelsPerAppPixel);
+        for (auto &sp : samplePoints)
+        {
+            wave->children.emplace_back(std::move(sp));
+        }
+    }
+}
 
 static void handleKeyDown(
         SDL_Event *event,
@@ -33,7 +49,7 @@ static void handleKeyDown(
         if (state->samplesPerPixel < static_cast<float>(state->sampleDataL.size()) / 2.f)
         {
             state->samplesPerPixel *= 2.f;
-            waveform->setDirty();
+            updateWaveform(waveform, state);
         }
     }
     else if (event->key.scancode == SDL_SCANCODE_W)
@@ -46,8 +62,7 @@ static void handleKeyDown(
             {
                 state->samplesPerPixel = 0.02;
             }
-
-            waveform->setDirty();
+            updateWaveform(waveform, state);
         }
     }
     else if (event->key.scancode == SDL_SCANCODE_E)
@@ -58,13 +73,12 @@ static void handleKeyDown(
         {
             state->verticalZoom = 1;
         }
-
-        waveform->setDirty();
+        updateWaveform(waveform, state);
     }
     else if (event->key.scancode == SDL_SCANCODE_R)
     {
-            state->verticalZoom += 0.3 * multiplier;
-            waveform->setDirty();
+        state->verticalZoom += 0.3 * multiplier;
+        updateWaveform(waveform, state);
     }
     else if (event->key.scancode == SDL_SCANCODE_LEFT)
     {
@@ -79,8 +93,7 @@ static void handleKeyDown(
         {
             state->sampleOffset = 0;
         }
-
-        waveform->setDirty();
+        updateWaveform(waveform, state);
     }
     else if (event->key.scancode == SDL_SCANCODE_RIGHT)
     {
@@ -91,7 +104,7 @@ static void handleKeyDown(
 
         state->sampleOffset += std::max(state->samplesPerPixel, 1.0) * multiplier;
 
-        waveform->setDirty();
+        updateWaveform(waveform, state);
     }
 }
 

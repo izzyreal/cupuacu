@@ -3,11 +3,50 @@
 #include <algorithm>
 #include "smooth_line.h"
 
-#include "SamplePoint.h"
-
-bool shouldShowSamplePoints(const double samplesPerPixel, const uint8_t hardwarePixelsPerAppPixel)
+bool WaveformComponent::shouldShowSamplePoints(const double samplesPerPixel, const uint8_t hardwarePixelsPerAppPixel)
 {
     return samplesPerPixel < ((float)hardwarePixelsPerAppPixel / 40.f);
+}
+
+int getYPosForSampleValue(const int16_t sampleValue, const uint16_t waveformHeight, const double verticalZoom)
+{
+    return (waveformHeight / 2.0f) - ((sampleValue * verticalZoom * (waveformHeight / 2.0f)) / 32768.0f);
+}
+
+std::vector<std::unique_ptr<SamplePoint>> WaveformComponent::computeSamplePoints(int width, int height,
+                                 const std::vector<int16_t>& samples, size_t offset,
+                                 float samplesPerPixel, float verticalZoom, const uint8_t hardwarePixelsPerAppPixel)
+{
+    const int neededInputSamples = static_cast<int>(std::ceil((width + 1) * samplesPerPixel));
+    const int availableSamples = static_cast<int>(samples.size()) - static_cast<int>(offset);
+    const int actualInputSamples = std::min(neededInputSamples, availableSamples);
+
+    if (actualInputSamples < 4)
+        return {};
+
+    std::vector<double> x(actualInputSamples);
+
+    for (int i = 0; i < actualInputSamples; ++i)
+    {
+        x[i] = i / samplesPerPixel;
+    }
+
+    std::vector<std::unique_ptr<SamplePoint>> result;
+
+    const auto samplePointSize = 32 / hardwarePixelsPerAppPixel;
+
+    for (int i = 0; i < actualInputSamples; ++i)
+    {
+        int xPos = x[i];
+        int yPos = getYPosForSampleValue(samples[offset + i], height, verticalZoom);
+
+        result.push_back(std::make_unique<SamplePoint>(state, offset + i));
+        result.back()->rect = SDL_Rect{xPos - (samplePointSize / 2), yPos - (samplePointSize / 2), samplePointSize, samplePointSize};
+        result.back()->setDirty();
+        result.back()->parent = this;
+    }
+
+    return result;
 }
 
 void WaveformComponent::renderSmoothWaveform(SDL_Renderer* renderer, int width, int height,
@@ -21,26 +60,22 @@ void WaveformComponent::renderSmoothWaveform(SDL_Renderer* renderer, int width, 
     if (actualInputSamples < 4)
         return;
 
-    // Prepare x and y sample arrays with x scaled by 1/samplesPerPixel
     std::vector<double> x(actualInputSamples);
     std::vector<double> y(actualInputSamples);
 
     for (int i = 0; i < actualInputSamples; ++i)
     {
-        x[i] = i / samplesPerPixel;                 // x in pixel coordinates
-        y[i] = static_cast<double>(samples[offset + i]); // y sample value
+        x[i] = i / samplesPerPixel;
+        y[i] = static_cast<double>(samples[offset + i]);
     }
 
-    // Dense x query points for smooth spline curve, evenly spaced across width
     int numPoints = width + 1;
     std::vector<double> xq(numPoints);
     for (int i = 0; i < numPoints; ++i)
         xq[i] = static_cast<double>(i);
 
-    // Compute spline values at dense xq points
     auto smoothened = splineInterpolateNonUniform(x, y, xq);
 
-    // Draw smooth spline curve as thick lines
     for (int i = 0; i < numPoints - 1; ++i)
     {
         float x1 = static_cast<float>(xq[i]);
@@ -78,20 +113,6 @@ void WaveformComponent::renderSmoothWaveform(SDL_Renderer* renderer, int width, 
 
         int indices[6] = { 0, 1, 2, 0, 2, 3 };
         SDL_RenderGeometry(renderer, nullptr, verts, 4, indices, 6);
-    }
-
-    if (shouldShowSamplePoints(samplesPerPixel, hardwarePixelsPerAppPixel))
-    {
-        const auto samplePointSize = 32 / hardwarePixelsPerAppPixel;
-        for (int i = 0; i < actualInputSamples; ++i)
-        {
-            int xPos = x[i];
-            int yPos = height / 2.0f - (samples[offset + i] * verticalZoom * height / 2.0f) / 32768.0f;
-
-            children.push_back(std::make_unique<SamplePoint>(state));
-            children.back()->rect = SDL_Rect{xPos - (samplePointSize / 2), yPos - (samplePointSize / 2), samplePointSize, samplePointSize};
-            children.back()->setDirty();
-        }
     }
 }
 
@@ -168,8 +189,6 @@ static void renderBlockWaveform(SDL_Renderer* renderer, int width, int height,
 
 void WaveformComponent::onDraw(SDL_Renderer *renderer)
 {
-    children.clear();
-
     const float samplesPerPixel = state->samplesPerPixel;
     const float verticalZoom = state->verticalZoom;
     const size_t sampleOffset = state->sampleOffset;

@@ -276,7 +276,9 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                 if (e.type == SDL_EVENT_MOUSE_MOTION)
                 {
                     e.motion.x *= canvasDimensions.x / winDimensions.x;
+                    e.motion.xrel *= canvasDimensions.x / winDimensions.x;
                     e.motion.y *= canvasDimensions.y / winDimensions.y;
+                    e.motion.yrel *= (canvasDimensions.y / winDimensions.y);
                 }
                 else
                 {
