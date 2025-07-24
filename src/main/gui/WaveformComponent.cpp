@@ -442,6 +442,6 @@ bool WaveformComponent::onHandleEvent(const SDL_Event &event)
             break;
     }
 
-    return true;
+    return false;
 }
 

@@ -4,6 +4,7 @@
 #include <vector>
 
 struct Component {
+    std::string componentName;
     bool mouseIsOver = false;
     bool dirty = false;
     SDL_Rect rect;  // position and size
@@ -84,6 +85,8 @@ struct Component {
 
     bool handleEvent(const SDL_Event& e)
     {
+        printf("handleEvent called for component %s\n", componentName.c_str());
+
         if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP || e.type == SDL_EVENT_MOUSE_MOTION)
         {
             SDL_Event e_rel = e;
