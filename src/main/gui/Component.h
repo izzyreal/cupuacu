@@ -2,6 +2,8 @@
 #include <SDL3/SDL.h>
 
 #include <vector>
+#include <memory>
+#include <algorithm>
 
 struct Component {
     std::string componentName;
