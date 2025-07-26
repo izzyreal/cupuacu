@@ -155,16 +155,26 @@ public:
     virtual void onDraw(SDL_Renderer* renderer) {}
     virtual void mouseLeave() {}
     virtual void mouseEnter() {}
-    virtual void mouseDown() {}
-    virtual void mouseUp() {}
+    virtual bool mouseLeftButtonDown(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY) { return false; }
+    virtual bool mouseLeftButtonUp(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY) { return false; }
+    virtual bool mouseMove(const int32_t mouseX,
+                           const int32_t mouseY,
+                           const float mouseRelY, // This should be an int as well, but it should be accumulated by the system.
+                                                  // For now, components are expected to accumulate.
+                           const bool leftButtonIsDown)
+    {
+        return false;
+    }
 
     bool handleEvent(const SDL_Event& e)
     {
-        if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP || e.type == SDL_EVENT_MOUSE_MOTION)
+        if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
+            e.type == SDL_EVENT_MOUSE_BUTTON_UP ||
+            e.type == SDL_EVENT_MOUSE_MOTION)
         {
             SDL_Event e_rel = e;
 
-            if (e.type == SDL_EVENT_MOUSE_MOTION)
+            if (e_rel.type == SDL_EVENT_MOUSE_MOTION)
             {
                 e_rel.motion.x -= xPos;
                 e_rel.motion.y -= yPos;
@@ -175,6 +185,14 @@ public:
                 e_rel.button.y -= yPos;
             }
 
+            for (auto& c : children)
+            {
+                if (c->handleEvent(e_rel))
+                {
+                    return true;
+                }
+            }
+
             const int x = e_rel.type == SDL_EVENT_MOUSE_MOTION ? e_rel.motion.x : e_rel.button.x;
             const int y = e_rel.type == SDL_EVENT_MOUSE_MOTION ? e_rel.motion.y : e_rel.button.y;
 
@@ -182,32 +200,67 @@ public:
 
             if (x < 0 || x > width || y < 0 || y > height)
             {
-                if (e.type == SDL_EVENT_MOUSE_MOTION)
+                if (e_rel.type == SDL_EVENT_MOUSE_MOTION)
                 {
                     if (mouseIsOver)
                     {
                         mouseIsOver = false;
                         mouseLeave();
                     }
+
+                    if (this == capturingComponent)
+                    {
+                        if (mouseMove(e_rel.motion.x, e_rel.motion.y, e_rel.motion.yrel, e_rel.motion.state & SDL_BUTTON_LMASK))
+                        {
+                            return true;
+                        }
+                    }
+                }
+                else if (e_rel.type == SDL_EVENT_MOUSE_BUTTON_UP &&
+                         e_rel.button.button == SDL_BUTTON_LEFT)
+                {
+                    if (this == capturingComponent)
+                    {
+                        if (mouseLeftButtonUp(e_rel.button.clicks, e_rel.button.x, e_rel.button.y))
+                        {
+                            state->capturingComponent = nullptr;
+                            return true;
+                        }
+                    }
                 }
             }
             else
             {
-                if (e.type == SDL_EVENT_MOUSE_MOTION)
+                if (e_rel.type == SDL_EVENT_MOUSE_MOTION)
                 {
                     if (!mouseIsOver)
                     {
                         mouseIsOver = true;
                         mouseEnter();
                     }
-                }
-            }
 
-            for (auto& c : children)
-            {
-                if (c->handleEvent(e_rel))
+                    if (mouseMove(e_rel.motion.x, e_rel.motion.y, e_rel.motion.yrel, e_rel.motion.state & SDL_BUTTON_LMASK))
+                    {
+                        return true;
+                    }
+                }
+                else if (e_rel.type == SDL_EVENT_MOUSE_BUTTON_DOWN &&
+                         e_rel.button.button == SDL_BUTTON_LEFT)
                 {
-                    return true;
+                    if (mouseLeftButtonDown(e_rel.button.clicks, e_rel.button.x, e_rel.button.y))
+                    {
+                        state->capturingComponent = this;
+                        return true;
+                    }
+                }
+                else if (e.type == SDL_EVENT_MOUSE_BUTTON_UP &&
+                         e_rel.button.button == SDL_BUTTON_LEFT)
+                {
+                    if (mouseLeftButtonUp(e_rel.button.clicks, e_rel.button.x, e_rel.button.y))
+                    {
+                        state->capturingComponent = nullptr;
+                        return true;
+                    }
                 }
             }
 

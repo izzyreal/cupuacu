@@ -3,7 +3,7 @@
 #include <algorithm>
 #include "smooth_line.h"
 
-WaveformComponent::WaveformComponent(CupuacuState *state) : Component(state)
+WaveformComponent::WaveformComponent(CupuacuState *state) : Component(state, "Waveform")
 {
 }
 
@@ -320,53 +320,52 @@ void WaveformComponent::timerCallback()
     }
 }
 
-void WaveformComponent::handleScroll(const SDL_Event &event)
+void WaveformComponent::handleScroll(const int32_t mouseX,
+                                     const int32_t mouseY)
 {
     const auto samplesPerPixel = state->samplesPerPixel;
     auto sampleOffset = state->sampleOffset;
-    auto motionx = event.motion.x;
 
-    if (event.motion.state & SDL_BUTTON_LMASK)
+    if (mouseX > getWidth() || mouseX < 0)
     {
-        if (motionx > getWidth() || motionx < 0)
+        auto diff = (mouseX < 0)
+            ? mouseX 
+            : mouseX - getWidth();
+
+        auto samplesToScroll = diff * samplesPerPixel;
+
+        if (samplesToScroll < 0)
         {
-            auto diff = (motionx < 0)
-                ? motionx
-                : motionx - getWidth();
-
-            auto samplesToScroll = diff * samplesPerPixel;
-
-            if (samplesToScroll < 0)
-            {
-                double absScroll = -samplesToScroll;
-                state->sampleOffset = (state->sampleOffset > absScroll)
-                    ? state->sampleOffset - absScroll
-                    : 0;
-            }
-            else
-            {
-                state->sampleOffset += samplesToScroll;
-            }
-
-            sampleOffset = state->sampleOffset;
-            state->samplesToScroll = samplesToScroll;
+            double absScroll = -samplesToScroll;
+            state->sampleOffset = (state->sampleOffset > absScroll)
+                ? state->sampleOffset - absScroll
+                : 0;
         }
         else
         {
-            state->samplesToScroll = 0;
+            state->sampleOffset += samplesToScroll;
         }
 
-        if (samplesPerPixel < 1.f)
-        {
-            motionx += 0.5f/samplesPerPixel;
-        }
-
-        const float x = motionx <= 0 ? 0.f : motionx;
-        state->selectionEndSample = sampleOffset + (x * samplesPerPixel);
-
-        setDirty();
-        updateSamplePoints();
+        sampleOffset = state->sampleOffset;
+        state->samplesToScroll = samplesToScroll;
     }
+    else
+    {
+        state->samplesToScroll = 0;
+    }
+
+    auto waveformMouseX = mouseX;
+
+    if (samplesPerPixel < 1.f)
+    {
+        waveformMouseX += 0.5f/samplesPerPixel;
+    }
+
+    const float x = waveformMouseX <= 0 ? 0.f : waveformMouseX;
+    state->selectionEndSample = sampleOffset + (x * samplesPerPixel);
+
+    setDirty();
+    updateSamplePoints();
 }
 
 void WaveformComponent::handleDoubleClick()
@@ -377,12 +376,12 @@ void WaveformComponent::handleDoubleClick()
     updateSamplePoints();
 }
 
-void WaveformComponent::startSelection(const SDL_Event &e)
+void WaveformComponent::startSelection(const int32_t mouseX)
 {
     const auto samplesPerPixel = state->samplesPerPixel;
     const auto sampleOffset = state->sampleOffset;
 
-    auto buttonx = e.button.x;
+    auto buttonx = mouseX;
 
     if (samplesPerPixel < 1)
     {
@@ -393,18 +392,18 @@ void WaveformComponent::startSelection(const SDL_Event &e)
     state->selectionEndSample = state->selectionStartSample;
 }
 
-void WaveformComponent::endSelection(const SDL_Event &e)
+void WaveformComponent::endSelection(const int32_t mouseX)
 {
     const auto samplesPerPixel = state->samplesPerPixel;
 
-    auto buttonx = e.button.x;
+    auto waveformButtonX = mouseX;
 
     if (samplesPerPixel < 1)
     {
-        buttonx += 0.5f / samplesPerPixel;
+        waveformButtonX += 0.5f / samplesPerPixel;
     }
 
-    state->selectionEndSample = state->sampleOffset + (buttonx * state->samplesPerPixel);
+    state->selectionEndSample = state->sampleOffset + (waveformButtonX * state->samplesPerPixel);
 
     if (state->selectionEndSample < state->selectionStartSample)
     {
@@ -418,46 +417,42 @@ void WaveformComponent::endSelection(const SDL_Event &e)
     updateSamplePoints();
 }
 
-bool WaveformComponent::onHandleEvent(const SDL_Event &event)
+bool WaveformComponent::mouseMove(const int32_t mouseX,
+                                  const int32_t mouseY,
+                                  const float mouseRelY,
+                                  const bool leftButtonIsDown)
 {
-    switch (event.type)
+    if (leftButtonIsDown)
     {
-        case SDL_EVENT_MOUSE_MOTION:
-        {
-            handleScroll(event);
-            break;
-        }
-        case SDL_EVENT_MOUSE_WHEEL:
-            break;
-        case SDL_EVENT_MOUSE_BUTTON_DOWN:
-        {
-            if (event.button.button == SDL_BUTTON_LEFT)
-            {
-                if (event.button.clicks >= 2)
-                {
-                    handleDoubleClick();
-                    break;
-                }
+        handleScroll(mouseX, mouseY);
+        return true;
+    }
 
-                startSelection(event);
-            }
-            break;
-        }
-        case SDL_EVENT_MOUSE_BUTTON_UP:
-        {
-            if (event.button.button == SDL_BUTTON_LEFT)
-            {
-                if (event.button.clicks >= 2)
-                {
-                    break;
-                }
+    return false;
+}
 
-                endSelection(event);
-            }
-            break;
-        }
-        default:
-            break;
+bool WaveformComponent::mouseLeftButtonDown(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY)
+{
+    if (numClicks == 1)
+    {
+        startSelection(mouseX);
+        return true;
+    }
+    else if (numClicks == 2)
+    {
+        handleDoubleClick();
+        return true;
+    }
+
+    return false;
+}
+
+bool WaveformComponent::mouseLeftButtonUp(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY)
+{
+    if (numClicks == 1)
+    {
+        endSelection(mouseX);
+        return true;
     }
 
     return false;

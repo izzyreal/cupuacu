@@ -4,7 +4,7 @@
 
 class OpaqueRect : public Component {
     public:
-        OpaqueRect(CupuacuState *state) : Component(state) {}
+        OpaqueRect(CupuacuState *state) : Component(state, "OpaqueRect") {}
 
         void onDraw(SDL_Renderer *renderer) override
         {

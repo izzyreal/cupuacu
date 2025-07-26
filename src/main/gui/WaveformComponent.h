@@ -11,7 +11,12 @@ public:
     WaveformComponent(CupuacuState *stateToUse);
 
     void onDraw(SDL_Renderer*) override;
-    bool onHandleEvent(const SDL_Event&) override;
+    bool mouseMove(const int32_t mouseX,
+                   const int32_t mouseY,
+                   const float mouseRelY,
+                   const bool leftButtonIsDown) override;
+    bool mouseLeftButtonDown(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY) override;
+    bool mouseLeftButtonUp(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY) override;
     void timerCallback() override;
 
     void updateSamplePoints();
@@ -27,8 +32,9 @@ private:
                                      const std::vector<int16_t>& samples, size_t offset,
                                      float samplesPerPixel, float verticalZoom, const uint8_t hardwarePixelsPerAppPixel);
 
-    void handleScroll(const SDL_Event&);
+    void handleScroll(const int32_t mouseX,
+                      const int32_t mouseY);
     void handleDoubleClick();
-    void startSelection(const SDL_Event&);
-    void endSelection(const SDL_Event&);
+    void startSelection(const int32_t mouseX);
+    void endSelection(const int32_t mouseX);
 };

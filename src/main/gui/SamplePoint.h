@@ -19,7 +19,7 @@ private:
 
 public:
     SamplePoint(CupuacuState *state, const uint64_t sampleIndexToUse) :
-        Component(state), sampleIndex(sampleIndexToUse)
+        Component(state, "Sample point idx " + std::to_string(sampleIndexToUse)), sampleIndex(sampleIndexToUse)
     {}
 
     void mouseEnter() override
@@ -32,56 +32,45 @@ public:
         setDirty();
     }
 
-    bool onHandleEvent(const SDL_Event &event) override
+    bool mouseLeftButtonDown(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY) override
     {
-        switch (event.type)
+        isDragging = true;
+        prevY = 0.f;
+        dragYPos = getYPos();
+        return true;
+    }
+
+    bool mouseLeftButtonUp(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY) override
+    {
+        if (!isDragging)
         {
-            case SDL_EVENT_MOUSE_MOTION:
-            {
-                if (!isDragging) return false;
-
-                dragYPos += event.motion.yrel;
-                setYPos(dragYPos);
-                const auto vertCenter = getYPos() + (getHeight() * 0.5f);
-                const auto newSampleValue = getSampleValueForYPos(vertCenter, getParent()->getHeight(), state->verticalZoom);
-                state->sampleDataL[sampleIndex] = newSampleValue;
-                getParent()->setDirtyRecursive();
-                return true;
-            }
-            case SDL_EVENT_MOUSE_BUTTON_DOWN:
-            {
-                if (event.button.x < 0 ||
-                    event.button.x > getWidth() ||
-                    event.button.y < 0 ||
-                    event.button.y > getHeight())
-                {
-                    return false;
-                }
-
-                if (event.button.button == SDL_BUTTON_LEFT)
-                {
-                    isDragging = true;
-                    prevY = 0.f;
-                    dragYPos = getYPos();
-                    return true;
-                }
-                break;
-            }
-            case SDL_EVENT_MOUSE_BUTTON_UP:
-            {
-                if (event.button.button == SDL_BUTTON_LEFT && isDragging)
-                {
-                    isDragging = false;
-                    setDirty();
-                    return true;
-                }
-                break;
-            }
-            default:
-                break;
+            return false;
         }
 
-        return false;
+        isDragging = false;
+        setDirty();
+
+        return true;
+    }
+
+    bool mouseMove(const int32_t mouseX,
+                   const int32_t mouseY,
+                   const float mouseRelY,
+                   const bool leftButtonIsDown) override
+    {
+        if (!isDragging)
+        {
+            return false;
+        }
+
+        dragYPos += mouseRelY;
+        setYPos(dragYPos);
+        const auto vertCenter = getYPos() + (getHeight() * 0.5f);
+        const auto newSampleValue = getSampleValueForYPos(vertCenter, getParent()->getHeight(), state->verticalZoom);
+        state->sampleDataL[sampleIndex] = newSampleValue;
+        getParent()->setDirtyRecursive();
+
+        return true;
     }
 
     void onDraw(SDL_Renderer *r) override
