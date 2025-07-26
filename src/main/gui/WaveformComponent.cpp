@@ -3,15 +3,19 @@
 #include <algorithm>
 #include "smooth_line.h"
 
+WaveformComponent::WaveformComponent(CupuacuState *state) : Component(state)
+{
+}
+
 void WaveformComponent::updateSamplePoints()
 {
-    children.clear();
+    removeAllChildren();
 
     if (shouldShowSamplePoints(state->samplesPerPixel, state->hardwarePixelsPerAppPixel))
     {
         auto samplePoints = computeSamplePoints(
-                rect.w,
-                rect.h,
+                getWidth(),
+                getHeight(),
                 state->sampleDataL,
                 state->sampleOffset,
                 state->samplesPerPixel,
@@ -20,7 +24,7 @@ void WaveformComponent::updateSamplePoints()
 
         for (auto &sp : samplePoints)
         {
-            children.emplace_back(std::move(sp));
+            addChildAndSetDirty(sp);
         }
     }
 }
@@ -62,10 +66,9 @@ std::vector<std::unique_ptr<SamplePoint>> WaveformComponent::computeSamplePoints
         int xPos = x[i];
         int yPos = getYPosForSampleValue(samples[offset + i], height, verticalZoom);
 
-        result.push_back(std::make_unique<SamplePoint>(state, offset + i));
-        result.back()->rect = SDL_Rect{xPos - (samplePointSize / 2), yPos - (samplePointSize / 2), samplePointSize, samplePointSize};
-        result.back()->setDirty();
-        result.back()->parent = this;
+        auto samplePoint = std::make_unique<SamplePoint>(state, offset + i);
+        samplePoint->setBounds(xPos - (samplePointSize / 2), yPos - (samplePointSize / 2), samplePointSize, samplePointSize);
+        result.push_back(std::move(samplePoint));
     }
 
     return result;
@@ -224,11 +227,26 @@ void WaveformComponent::onDraw(SDL_Renderer *renderer)
 
     if (samplesPerPixel < 1)
     {
-        renderSmoothWaveform(renderer, rect.w, rect.h, sampleDataL, sampleOffset, samplesPerPixel, verticalZoom, state->hardwarePixelsPerAppPixel);
+        renderSmoothWaveform(
+                renderer,
+                getWidth(),
+                getHeight(),
+                sampleDataL,
+                sampleOffset,
+                samplesPerPixel,
+                verticalZoom,
+                state->hardwarePixelsPerAppPixel);
     }
     else
     {
-        renderBlockWaveform(renderer, rect.w, rect.h, sampleDataL, sampleOffset, samplesPerPixel, verticalZoom);
+        renderBlockWaveform(
+                renderer, 
+                getWidth(),
+                getHeight(),
+                sampleDataL,
+                sampleOffset,
+                samplesPerPixel,
+                verticalZoom);
     }
 
     if (selectionStart != selectionEnd && selectionEnd >= sampleOffset)
@@ -262,7 +280,7 @@ void WaveformComponent::onDraw(SDL_Renderer *renderer)
             startX,
             0.0f,
             selectionWidth,
-            (float)rect.h
+            (float)getHeight()
         };
 
         SDL_RenderFillRect(renderer, &selectionRect);
@@ -310,11 +328,11 @@ void WaveformComponent::handleScroll(const SDL_Event &event)
 
     if (event.motion.state & SDL_BUTTON_LMASK)
     {
-        if (motionx > rect.w || motionx < 0)
+        if (motionx > getWidth() || motionx < 0)
         {
             auto diff = (motionx < 0)
                 ? motionx
-                : motionx - rect.w;
+                : motionx - getWidth();
 
             auto samplesToScroll = diff * samplesPerPixel;
 

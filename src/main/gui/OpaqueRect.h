@@ -4,12 +4,12 @@
 
 class OpaqueRect : public Component {
     public:
-        OpaqueRect(const SDL_Rect &rectToUse) { rect = rectToUse; }
+        OpaqueRect(CupuacuState *state) : Component(state) {}
 
         void onDraw(SDL_Renderer *renderer) override
         {
             SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-            SDL_FRect rectToFill {0.f, 0.f, (float)rect.w, (float)rect.h};
+            SDL_FRect rectToFill {0.f, 0.f, (float)getWidth(), (float)getHeight()};
             SDL_RenderFillRect(renderer, &rectToFill);
         }
 };

@@ -4,6 +4,8 @@
 #include <vector>
 #include <string>
 
+struct Component;
+
 struct CupuacuState {
     uint8_t menuFontSize = 60;
     uint8_t hardwarePixelsPerAppPixel = 4;
@@ -18,4 +20,6 @@ struct CupuacuState {
     double selectionStartSample = 0;
     double selectionEndSample = 0;
     double samplesToScroll = 0;
+
+    Component *capturingComponent = nullptr;
 };

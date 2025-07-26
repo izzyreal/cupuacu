@@ -38,9 +38,9 @@ static void handleKeyDown(
     {
         if (state->samplesPerPixel < static_cast<float>(state->sampleDataL.size()) / 2.f)
         {
-            const auto centerSampleIndex = ((waveform->rect.w / 2.f) * state->samplesPerPixel) + state->sampleOffset;
+            const auto centerSampleIndex = ((waveform->getWidth() / 2.f) * state->samplesPerPixel) + state->sampleOffset;
             state->samplesPerPixel *= 2.f;
-            const auto newSampleOffset = centerSampleIndex - ((waveform->rect.w / 2.f) * state->samplesPerPixel);
+            const auto newSampleOffset = centerSampleIndex - ((waveform->getWidth() / 2.f) * state->samplesPerPixel);
             state->sampleOffset = newSampleOffset < 0 ? 0 : newSampleOffset;
             updateWaveform(waveform, state);
         }
@@ -79,7 +79,7 @@ static void handleKeyDown(
         state->verticalZoom = INITIAL_VERTICAL_ZOOM;
         state->sampleOffset = state->selectionStartSample;
         const auto selectionLength = state->selectionEndSample - state->selectionStartSample;
-        state->samplesPerPixel = selectionLength / waveform->rect.w;
+        state->samplesPerPixel = selectionLength / waveform->getWidth();
         updateWaveform(waveform, state);
     }
     else if (event->key.scancode == SDL_SCANCODE_LEFT)

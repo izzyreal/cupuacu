@@ -4,18 +4,98 @@
 #include <vector>
 #include <memory>
 #include <algorithm>
+#include <cstdint>
 
-struct Component {
+#include "../CupuacuState.h"
+
+class Component {
+private:
+    // Optional name, useful for debugging
     std::string componentName;
+
     bool mouseIsOver = false;
     bool dirty = false;
-    SDL_Rect rect;  // position and size
+
+    // Position relative to parent
+    uint16_t xPos = 0, yPos = 0;
+
+    uint16_t width = 0, height = 0;
+    
     Component *parent = nullptr;
     std::vector<std::unique_ptr<Component>> children;
-    int zIndex = 0;
 
-    // Will be called every frame
-    virtual void timerCallback() { for (auto &c : children) { c->timerCallback(); }}
+    void setParent(Component *parentToUse)
+    {
+        parent = parentToUse;
+    }
+
+protected:
+    CupuacuState *state;
+
+    void removeAllChildren()
+    {
+        children.clear();
+        setDirty();
+    }
+
+    const bool isMouseOver()
+    {
+        return mouseIsOver;
+    }
+
+    Component* getParent()
+    {
+        return parent;
+    }
+
+public:
+    Component(CupuacuState *stateToUse) :
+        state(stateToUse)
+    {
+    }
+    
+    Component(CupuacuState *stateToUse, const std::string componentNameToUse) :
+        state(stateToUse), componentName(componentNameToUse)
+    {
+    }
+
+    /**
+     * Note that this invalidates the unique_ptr.
+     */
+    template <typename T>
+    T* addChildAndSetDirty(std::unique_ptr<T> &childToAdd)
+    {
+        children.push_back(std::move(childToAdd));
+        children.back()->setParent(this);
+        children.back()->setDirty();
+        return dynamic_cast<T*>(children.back().get());
+    }
+
+    void setBounds(const uint16_t xPosToUse,
+                   const uint16_t yPosToUse,
+                   const uint16_t widthToUse,
+                   const uint16_t heightToUse)
+    {
+        xPos = xPosToUse;
+        yPos = yPosToUse;
+        width = widthToUse;
+        height = heightToUse;
+        setDirty();
+    }
+
+    void setSize(const uint16_t widthToUse,
+                 const uint16_t heightToUse)
+    {
+        width = widthToUse;
+        height = heightToUse;
+        setDirty();
+    }
+
+    void setYPos(const uint16_t yPosToUse)
+    {
+        yPos = yPosToUse;
+        setDirty();
+    }
 
     void setDirty()
     {
@@ -51,10 +131,10 @@ struct Component {
         SDL_Rect viewPortRect;
         SDL_GetRenderViewport(renderer, &viewPortRect);
         SDL_Rect oldViewPortRect = viewPortRect;
-        viewPortRect.x += rect.x;
-        viewPortRect.y += rect.y;
+        viewPortRect.x += xPos;
+        viewPortRect.y += yPos;
         SDL_SetRenderViewport(renderer, &viewPortRect);
-        SDL_Rect localClip = {0, 0, rect.w, rect.h};
+        SDL_Rect localClip = {0, 0, width, height};
         SDL_SetRenderClipRect(renderer, &localClip);
 
         if (dirty)
@@ -62,11 +142,6 @@ struct Component {
             onDraw(renderer);
             dirty = false;
         }
-
-
-        std::sort(children.begin(), children.end(), [](auto& a, auto& b) {
-            return a->zIndex < b->zIndex;
-        });
 
         for (auto& c : children)
         {
@@ -77,13 +152,11 @@ struct Component {
         SDL_SetRenderClipRect(renderer, nullptr);
     }
 
-    virtual void onDraw(SDL_Renderer* renderer)
-    {
-        // Base: maybe draw background or border
-    }
-
+    virtual void onDraw(SDL_Renderer* renderer) {}
     virtual void mouseLeave() {}
     virtual void mouseEnter() {}
+    virtual void mouseDown() {}
+    virtual void mouseUp() {}
 
     bool handleEvent(const SDL_Event& e)
     {
@@ -93,38 +166,42 @@ struct Component {
 
             if (e.type == SDL_EVENT_MOUSE_MOTION)
             {
-                e_rel.motion.x -= rect.x;
-                e_rel.motion.y -= rect.y;
+                e_rel.motion.x -= xPos;
+                e_rel.motion.y -= yPos;
             }
             else
             {
-                e_rel.button.x -= rect.x;
-                e_rel.button.y -= rect.y;
+                e_rel.button.x -= xPos;
+                e_rel.button.y -= yPos;
             }
 
             const int x = e_rel.type == SDL_EVENT_MOUSE_MOTION ? e_rel.motion.x : e_rel.button.x;
             const int y = e_rel.type == SDL_EVENT_MOUSE_MOTION ? e_rel.motion.y : e_rel.button.y;
 
-            if (x < 0 || x > rect.w || y < 0 || y > rect.h)
+            Component *capturingComponent = state->capturingComponent;
+
+            if (x < 0 || x > width || y < 0 || y > height)
             {
-                if (mouseIsOver)
+                if (e.type == SDL_EVENT_MOUSE_MOTION)
                 {
-                    mouseIsOver = false;
-                    mouseLeave();
+                    if (mouseIsOver)
+                    {
+                        mouseIsOver = false;
+                        mouseLeave();
+                    }
                 }
             }
             else
             {
-                if (!mouseIsOver)
+                if (e.type == SDL_EVENT_MOUSE_MOTION)
                 {
-                    mouseIsOver = true;
-                    mouseEnter();
+                    if (!mouseIsOver)
+                    {
+                        mouseIsOver = true;
+                        mouseEnter();
+                    }
                 }
             }
-
-            std::sort(children.begin(), children.end(), [](auto& a, auto& b) {
-                return a->zIndex > b->zIndex;
-            });
 
             for (auto& c : children)
             {
@@ -140,7 +217,13 @@ struct Component {
         return false;
     }
 
-    virtual bool onHandleEvent(const SDL_Event& e) {
-        return false; // override in subclasses
-    }
+    virtual bool onHandleEvent(const SDL_Event& e) { return false; }
+
+    uint16_t getWidth() { return width; }
+    uint16_t getHeight() { return height; }
+    uint16_t getXPos() { return xPos; }
+    uint16_t getYPos() { return yPos; }
+
+    // Called every frame
+    virtual void timerCallback() { for (auto &c : children) { c->timerCallback(); }}
 };

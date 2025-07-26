@@ -6,23 +6,21 @@
 
 class Menu : public Component {
     private:
-        const std::string name;
-        CupuacuState *state;
+        const std::string menuName;
 
     public:
-        Menu(const std::string nameToUse, SDL_Rect &rectToUse, CupuacuState *stateToUse) : name(nameToUse), state(stateToUse)
+        Menu(CupuacuState *state, const std::string menuNameToUse) :
+            Component(state, "Menu for " + menuNameToUse), menuName(menuNameToUse)
         {
-            componentName = "Menu for " + name;
-            rect = rectToUse;
         }
 
         void onDraw(SDL_Renderer *renderer) override
         {
-            const uint8_t bg = mouseIsOver ? 40 : 0;
+            const uint8_t bg = isMouseOver() ? 40 : 0;
             SDL_SetRenderDrawColor(renderer, bg, bg, bg, 255);
             SDL_RenderFillRect(renderer, NULL);
             const uint8_t fontPointSize = state->menuFontSize / state->hardwarePixelsPerAppPixel;
-            renderText(renderer, name, fontPointSize);
+            renderText(renderer, menuName, fontPointSize);
         }
 
         void mouseLeave() override
@@ -32,7 +30,6 @@ class Menu : public Component {
 
         void mouseEnter() override
         {
-            printf("mouse enter\n");
             setDirty();
         }
 };
@@ -40,26 +37,24 @@ class Menu : public Component {
 class MenuBar : public Component {
 
     public:
-        MenuBar(SDL_Rect r, CupuacuState *s)
+        MenuBar(CupuacuState *state) : Component(state, "MenuBar")
         {
-            componentName = "MenuBar";
-            rect = r;
+            auto fileMenu = std::make_unique<Menu>(state, "File");
+            fileMenu->setBounds(0, 0, 40, getHeight());
 
-            SDL_Rect fileMenuRect { 0, 0, 40, rect.h };
-            SDL_Rect viewMenuRect { 40, 0, 100, rect.h };
-
-            auto fileMenu = std::make_unique<Menu>("File", fileMenuRect, s);
-            auto viewMenu = std::make_unique<Menu>("View", viewMenuRect, s);
+            auto viewMenu = std::make_unique<Menu>(state, "View");
+            viewMenu->setBounds(fileMenu->getWidth(), 0, 100, getHeight());
 
             fileMenu->setDirty();
             viewMenu->setDirty();
 
-            children.push_back(std::move(fileMenu));
-            children.push_back(std::move(viewMenu));
+            addChildAndSetDirty(fileMenu);
+            addChildAndSetDirty(viewMenu);
         }
+
         void mouseEnter() override
         {
-            printf("mouse enter menubar\n");
             setDirty();
         }
 };
+
