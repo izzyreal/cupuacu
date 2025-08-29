@@ -36,20 +36,21 @@ class Menu : public Component {
 
 class MenuBar : public Component {
 
+    private:
+        Component* fileMenu = nullptr;
+        Component* viewMenu = nullptr;
+
     public:
         MenuBar(CupuacuState *state) : Component(state, "MenuBar")
         {
-            auto fileMenu = std::make_unique<Menu>(state, "File");
+            fileMenu = emplaceChildAndSetDirty<Menu>(state, "File");
+            viewMenu = emplaceChildAndSetDirty<Menu>(state, "View");
+        }
+
+        void resized() override
+        {
             fileMenu->setBounds(0, 0, 40, getHeight());
-
-            auto viewMenu = std::make_unique<Menu>(state, "View");
             viewMenu->setBounds(fileMenu->getWidth(), 0, 100, getHeight());
-
-            fileMenu->setDirty();
-            viewMenu->setDirty();
-
-            addChildAndSetDirty(fileMenu);
-            addChildAndSetDirty(viewMenu);
         }
 
         void mouseEnter() override

@@ -153,7 +153,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     SDL_FPoint actualCanvasDimensions;
     SDL_GetTextureSize(canvas, &actualCanvasDimensions.x, &actualCanvasDimensions.y);
 
-    rootComponent = std::make_unique<Component>(state);
+    rootComponent = std::make_unique<Component>(state, "RootComponent");
     rootComponent->setBounds(
             0, 0,
             actualCanvasDimensions.x,
@@ -170,6 +170,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     backgroundComponentHandle = rootComponent->addChildAndSetDirty(backgroundComponent);
 
     const SDL_Rect menuBarRect = getMenuBarRect(actualCanvasDimensions.x, actualCanvasDimensions.y, state->hardwarePixelsPerAppPixel, state->menuFontSize);
+
+    printf("menuBarRect: %i, %i, %i, %i\n", menuBarRect.x, menuBarRect.y, menuBarRect.w, menuBarRect.h);
     const SDL_Rect waveformRect = getWaveformRect(actualCanvasDimensions.x, actualCanvasDimensions.y, state->hardwarePixelsPerAppPixel, menuBarRect.h);
 
     state->samplesPerPixel = state->sampleDataL.size() / (double) waveformRect.w;
@@ -197,6 +199,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 
     if (somethingIsDirty)
     {
+        printf("===== DRAW ================================================\n");
         rootComponent->draw(renderer);
         renderCanvasToWindow(state);
     }

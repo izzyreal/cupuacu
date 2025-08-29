@@ -49,11 +49,6 @@ protected:
     }
 
 public:
-    Component(CupuacuState *stateToUse) :
-        state(stateToUse)
-    {
-    }
-    
     Component(CupuacuState *stateToUse, const std::string componentNameToUse) :
         state(stateToUse), componentName(componentNameToUse)
     {
@@ -71,6 +66,16 @@ public:
         return dynamic_cast<T*>(children.back().get());
     }
 
+    template <typename T, typename... Args>
+    T* emplaceChildAndSetDirty(Args&&... args)
+    {
+        auto child = std::make_unique<T>(std::forward<Args>(args)...);
+        children.push_back(std::move(child));
+        children.back()->setParent(this);
+        children.back()->setDirty();
+        return static_cast<T*>(children.back().get());
+    }
+
     void setBounds(const uint16_t xPosToUse,
                    const uint16_t yPosToUse,
                    const uint16_t widthToUse,
@@ -81,6 +86,7 @@ public:
         width = widthToUse;
         height = heightToUse;
         setDirty();
+        resized();
     }
 
     void setSize(const uint16_t widthToUse,
@@ -89,12 +95,14 @@ public:
         width = widthToUse;
         height = heightToUse;
         setDirty();
+        resized();
     }
 
     void setYPos(const uint16_t yPosToUse)
     {
         yPos = yPosToUse;
         setDirty();
+        resized();
     }
 
     void setDirty()
@@ -128,14 +136,21 @@ public:
 
     void draw(SDL_Renderer* renderer)
     {
+        printf("======= Drawing %s\n", componentName.c_str());
         SDL_Rect viewPortRect;
         SDL_GetRenderViewport(renderer, &viewPortRect);
+        printf("Original viewPortRect: %i, %i, %i, %i\n", viewPortRect.x, viewPortRect.y, viewPortRect.w, viewPortRect.h);
         SDL_Rect oldViewPortRect = viewPortRect;
-        viewPortRect.x += xPos;
-        viewPortRect.y += yPos;
+        viewPortRect.x += getXPos();
+        viewPortRect.y += getYPos();
+        viewPortRect.w = getWidth();
+        viewPortRect.h = getHeight();
+        printf("Modified viewPortRect: %i, %i, %i, %i\n", viewPortRect.x, viewPortRect.y, viewPortRect.w, viewPortRect.h);
+        printf("Old viewPortRect: %i, %i, %i, %i\n", oldViewPortRect.x, oldViewPortRect.y, oldViewPortRect.w, oldViewPortRect.h);
         SDL_SetRenderViewport(renderer, &viewPortRect);
-        SDL_Rect localClip = {0, 0, width, height};
-        SDL_SetRenderClipRect(renderer, &localClip);
+        //SDL_Rect localClip = {0, 0, width, height};
+        //SDL_SetRenderClipRect(renderer, &localClip);
+        //printf("localClip rect: %i, %i, %i, %i\n", localClip.x, localClip.y, localClip.w, localClip.h);
 
         if (dirty)
         {
@@ -149,7 +164,7 @@ public:
         }
 
         SDL_SetRenderViewport(renderer, &oldViewPortRect);
-        SDL_SetRenderClipRect(renderer, nullptr);
+        //SDL_SetRenderClipRect(renderer, nullptr);
     }
 
     virtual void onDraw(SDL_Renderer* renderer) {}
@@ -279,4 +294,6 @@ public:
 
     // Called every frame
     virtual void timerCallback() { for (auto &c : children) { c->timerCallback(); }}
+
+    virtual void resized() {}
 };
