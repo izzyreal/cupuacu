@@ -14,7 +14,6 @@ private:
     // Optional name, useful for debugging
     std::string componentName;
 
-    bool mouseIsOver = false;
     bool dirty = false;
 
     // Position relative to parent
@@ -41,7 +40,7 @@ protected:
 
     const bool isMouseOver()
     {
-        return mouseIsOver;
+        return state->componentUnderMouse == this;
     }
 
     Component* getParent()
@@ -53,6 +52,11 @@ public:
     Component(CupuacuState *stateToUse, const std::string componentNameToUse) :
         state(stateToUse), componentName(componentNameToUse)
     {
+    }
+
+    const std::string getComponentName()
+    {
+        return componentName;
     }
 
     /**
@@ -211,12 +215,6 @@ public:
             {
                 if (e_rel.type == SDL_EVENT_MOUSE_MOTION)
                 {
-                    if (mouseIsOver)
-                    {
-                        mouseIsOver = false;
-                        mouseLeave();
-                    }
-
                     if (this == capturingComponent)
                     {
                         if (mouseMove(e_rel.motion.x, e_rel.motion.y, e_rel.motion.yrel, e_rel.motion.state & SDL_BUTTON_LMASK))
@@ -242,12 +240,6 @@ public:
             {
                 if (e_rel.type == SDL_EVENT_MOUSE_MOTION)
                 {
-                    if (!mouseIsOver)
-                    {
-                        mouseIsOver = true;
-                        mouseEnter();
-                    }
-
                     if (mouseMove(e_rel.motion.x, e_rel.motion.y, e_rel.motion.yrel, e_rel.motion.state & SDL_BUTTON_LMASK))
                     {
                         return true;
@@ -296,4 +288,43 @@ public:
     virtual void timerCallback() { for (auto &c : children) { c->timerCallback(); }}
 
     virtual void resized() {}
+
+    const std::pair<int, int> getAbsolutePosition()
+    {
+        int resultX = getXPos(), resultY = getYPos();
+        Component *parent = getParent();
+        while (parent != nullptr)
+        {
+            resultX += parent->getXPos();
+            resultY += parent->getYPos();
+            parent = parent->getParent();
+        }
+        return {resultX, resultY};
+    }
+
+    const bool constainsAbsoluteCoordinate(const int x, const int y)
+    {
+        const auto absPos = getAbsolutePosition();
+        return x >= absPos.first && x <= absPos.first + getWidth() &&
+               y >= absPos.second && y <= absPos.second + getHeight();
+    }
+
+    Component* findComponentAt(const int x, const int y)
+    {
+        for (auto &c : std::views::reverse(children))
+        {
+            if (auto foundComponent = c->findComponentAt(x, y); foundComponent != nullptr)
+            {
+                return foundComponent;
+            }
+        }
+
+        if (constainsAbsoluteCoordinate(x, y))
+        {
+            return this;
+        }
+
+        return nullptr;
+    }
 };
+

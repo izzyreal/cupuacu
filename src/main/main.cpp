@@ -308,6 +308,26 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                 }
 
                 rootComponent->handleEvent(e);
+
+                if (e.type == SDL_EVENT_MOUSE_MOTION)
+                {
+                    const auto newComponentUnderMouse = rootComponent->findComponentAt(e.motion.x, e.motion.y);
+
+                    if (state->componentUnderMouse != newComponentUnderMouse)
+                    {
+                        if (state->componentUnderMouse != nullptr)
+                        {
+                            state->componentUnderMouse->mouseLeave();
+                        }
+
+                        if (newComponentUnderMouse != nullptr)
+                        {
+                            newComponentUnderMouse->mouseEnter();
+                        }
+                    }
+
+                    state->componentUnderMouse = newComponentUnderMouse;
+                }
             }
             break;
     }

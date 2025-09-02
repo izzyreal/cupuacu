@@ -23,6 +23,7 @@ struct CupuacuState {
     double samplesToScroll = 0;
 
     Component *capturingComponent = nullptr;
+    Component *componentUnderMouse = nullptr;
 
     std::function<void()> hideSubMenus = []{};
 };
