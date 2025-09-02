@@ -5,6 +5,7 @@
 #include <memory>
 #include <algorithm>
 #include <cstdint>
+#include <ranges>
 
 #include "../CupuacuState.h"
 
@@ -136,21 +137,14 @@ public:
 
     void draw(SDL_Renderer* renderer)
     {
-        printf("======= Drawing %s\n", componentName.c_str());
         SDL_Rect viewPortRect;
         SDL_GetRenderViewport(renderer, &viewPortRect);
-        printf("Original viewPortRect: %i, %i, %i, %i\n", viewPortRect.x, viewPortRect.y, viewPortRect.w, viewPortRect.h);
         SDL_Rect oldViewPortRect = viewPortRect;
         viewPortRect.x += getXPos();
         viewPortRect.y += getYPos();
         viewPortRect.w = getWidth();
         viewPortRect.h = getHeight();
-        printf("Modified viewPortRect: %i, %i, %i, %i\n", viewPortRect.x, viewPortRect.y, viewPortRect.w, viewPortRect.h);
-        printf("Old viewPortRect: %i, %i, %i, %i\n", oldViewPortRect.x, oldViewPortRect.y, oldViewPortRect.w, oldViewPortRect.h);
         SDL_SetRenderViewport(renderer, &viewPortRect);
-        //SDL_Rect localClip = {0, 0, width, height};
-        //SDL_SetRenderClipRect(renderer, &localClip);
-        //printf("localClip rect: %i, %i, %i, %i\n", localClip.x, localClip.y, localClip.w, localClip.h);
 
         if (dirty)
         {
@@ -200,7 +194,7 @@ public:
                 e_rel.button.y -= yPos;
             }
 
-            for (auto& c : children)
+            for (auto& c : std::views::reverse(children))
             {
                 if (c->handleEvent(e_rel))
                 {
@@ -213,7 +207,7 @@ public:
 
             Component *capturingComponent = state->capturingComponent;
 
-            if (x < 0 || x > width || y < 0 || y > height)
+            if (x < 0 || x >= width || y < 0 || y >= height)
             {
                 if (e_rel.type == SDL_EVENT_MOUSE_MOTION)
                 {
@@ -265,6 +259,12 @@ public:
                     if (mouseLeftButtonDown(e_rel.button.clicks, e_rel.button.x, e_rel.button.y))
                     {
                         state->capturingComponent = this;
+
+                        if (componentName.substr(0, 4) != "Menu")
+                        {
+                            state->hideSubMenus();
+                        }
+
                         return true;
                     }
                 }

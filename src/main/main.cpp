@@ -171,18 +171,20 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     const SDL_Rect menuBarRect = getMenuBarRect(actualCanvasDimensions.x, actualCanvasDimensions.y, state->hardwarePixelsPerAppPixel, state->menuFontSize);
 
-    printf("menuBarRect: %i, %i, %i, %i\n", menuBarRect.x, menuBarRect.y, menuBarRect.w, menuBarRect.h);
     const SDL_Rect waveformRect = getWaveformRect(actualCanvasDimensions.x, actualCanvasDimensions.y, state->hardwarePixelsPerAppPixel, menuBarRect.h);
 
     state->samplesPerPixel = state->sampleDataL.size() / (double) waveformRect.w;
 
-    auto menuBar = std::make_unique<MenuBar>(state);
-    menuBar->setBounds(menuBarRect.x, menuBarRect.y, menuBarRect.w, menuBarRect.h);
-    menuBarHandle = rootComponent->addChildAndSetDirty(menuBar);
-
     auto waveformComponent = std::make_unique<WaveformComponent>(state);
     waveformComponent->setBounds(waveformRect.x, waveformRect.y, waveformRect.w, waveformRect.h);
     waveformComponentHandle = rootComponent->addChildAndSetDirty(waveformComponent);
+
+    auto menuBar = std::make_unique<MenuBar>(state);
+
+    menuBar->setBounds(menuBarRect.x, menuBarRect.y, menuBarRect.w, menuBarRect.h);
+    menuBarHandle = rootComponent->addChildAndSetDirty(menuBar);
+
+    state->hideSubMenus = [&](){ dynamic_cast<MenuBar*>(menuBarHandle)->hideSubMenus(); rootComponent->setDirtyRecursive(); };
 
     return SDL_APP_CONTINUE;
 }
@@ -199,7 +201,6 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 
     if (somethingIsDirty)
     {
-        printf("===== DRAW ================================================\n");
         rootComponent->draw(renderer);
         renderCanvasToWindow(state);
     }

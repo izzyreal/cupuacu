@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <vector>
 #include <string>
+#include <functional>
 
 struct Component;
 
@@ -22,4 +23,6 @@ struct CupuacuState {
     double samplesToScroll = 0;
 
     Component *capturingComponent = nullptr;
+
+    std::function<void()> hideSubMenus = []{};
 };

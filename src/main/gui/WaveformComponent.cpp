@@ -422,7 +422,7 @@ bool WaveformComponent::mouseMove(const int32_t mouseX,
                                   const float mouseRelY,
                                   const bool leftButtonIsDown)
 {
-    if (leftButtonIsDown)
+    if (leftButtonIsDown && state->capturingComponent == this)
     {
         handleScroll(mouseX, mouseY);
         return true;
