@@ -141,6 +141,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
         return SDL_APP_FAILURE;
     }
 
+    state->window = window;
+
     loadSampleData(state);
 
     SDL_SetWindowTitle(window, state->currentFile.c_str()); 

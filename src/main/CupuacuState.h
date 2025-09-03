@@ -6,6 +6,7 @@
 #include <functional>
 
 struct Component;
+struct SDL_Window;
 
 struct CupuacuState {
     uint8_t menuFontSize = 60;
@@ -21,6 +22,8 @@ struct CupuacuState {
     double selectionStartSample = 0;
     double selectionEndSample = 0;
     double samplesToScroll = 0;
+
+    SDL_Window *window = nullptr;
 
     Component *capturingComponent = nullptr;
     Component *componentUnderMouse = nullptr;

@@ -4,6 +4,8 @@
 #include "text.h"
 #include "../CupuacuState.h"
 
+#include <SDL3/SDL.h>
+
 class Menu : public Component {
     private:
         bool currentlyOpen = false;
@@ -105,20 +107,34 @@ class Menu : public Component {
         }
 };
 
+const SDL_DialogFileFilter filters[] = {
+    { "All files", "*" },
+    { "SVI Session Indexes", "index;svi-index;index.pb" },
+    { "JPG images", "jpg;jpeg" },
+    { "PNG images", "png" }
+};
+
+static auto initialPath = SDL_GetUserFolder(SDL_FOLDER_HOME);
+
 class MenuBar : public Component {
 
     private:
         Menu* fileMenu = nullptr;
         Menu* viewMenu = nullptr;
 
+        static void fileDialogCallback(void *userdata, const char * const *files, int filter)
+        {
+        }
+
     public:
-        MenuBar(CupuacuState *state) : Component(state, "MenuBar")
+        MenuBar(CupuacuState *stateToUse) : Component(stateToUse, "MenuBar")
         {
             fileMenu = emplaceChildAndSetDirty<Menu>(state, "File");
             viewMenu = emplaceChildAndSetDirty<Menu>(state, "View");
 
             fileMenu->addSubMenu(state, "Load", [&]{
                         printf("Loading a file\n");
+                        SDL_ShowOpenFileDialog(fileDialogCallback, NULL, state->window, NULL, 0, NULL, true);
                     });
             fileMenu->addSubMenu(state, "Save", [&]{
                         printf("Saving a file\n");
