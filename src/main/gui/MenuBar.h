@@ -124,6 +124,16 @@ class MenuBar : public Component {
 
         static void fileDialogCallback(void *userdata, const char * const *files, int filter)
         {
+            auto state = (CupuacuState*)userdata;
+            
+            if (SDL_GetWindowFlags(state->window) & SDL_WINDOW_MOUSE_FOCUS)
+            {
+                printf("mouse focus\n");
+            }
+            else
+            {
+                printf("no mouse focus\n");
+            }
         }
 
     public:
@@ -133,8 +143,7 @@ class MenuBar : public Component {
             viewMenu = emplaceChildAndSetDirty<Menu>(state, "View");
 
             fileMenu->addSubMenu(state, "Load", [&]{
-                        printf("Loading a file\n");
-                        SDL_ShowOpenFileDialog(fileDialogCallback, NULL, state->window, NULL, 0, NULL, true);
+                        SDL_ShowOpenFileDialog(fileDialogCallback, state, state->window, NULL, 0, NULL, true);
                     });
             fileMenu->addSubMenu(state, "Save", [&]{
                         printf("Saving a file\n");
