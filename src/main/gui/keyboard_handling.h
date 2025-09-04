@@ -4,6 +4,8 @@
 
 #include "WaveformComponent.h"
 
+#include "../actions/ShowOpenFileDialog.h"
+
 static void updateWaveform(WaveformComponent *waveform, CupuacuState *state)
 {
     waveform->setDirty();
@@ -107,6 +109,17 @@ static void handleKeyDown(
         state->sampleOffset += std::max(state->samplesPerPixel, 1.0) * multiplier;
 
         updateWaveform(waveform, state);
+    }
+    else if (event->key.scancode == SDL_SCANCODE_O)
+    {
+#if __APPLE__
+        if (event->key.mod & SDL_KMOD_GUI)
+#else
+        if (event->key.mod & SDL_KMOD_CTRL)
+#endif
+        {
+            showOpenFileDialog(state);
+        }
     }
 }
 
