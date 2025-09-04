@@ -112,6 +112,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 {
     CupuacuState *state = new CupuacuState();
 
+    resetWaveformState(state);
+
     *appstate = state;
 
     SDL_SetAppMetadata("Cupuacu -- A minimalist audio editor by Izmar", "0.1", "nl.izmar.cupuacu");
@@ -180,6 +182,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     auto waveformComponent = std::make_unique<WaveformComponent>(state);
     waveformComponent->setBounds(waveformRect.x, waveformRect.y, waveformRect.w, waveformRect.h);
     waveformComponentHandle = rootComponent->addChildAndSetDirty(waveformComponent);
+    state->waveformComponent = waveformComponentHandle;
 
     auto menuBar = std::make_unique<MenuBar>(state);
 

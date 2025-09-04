@@ -17,16 +17,28 @@ struct CupuacuState {
     std::vector<int16_t> sampleDataR;
 
     double samplesPerPixel = 1;
-    double verticalZoom = 1;
-    double sampleOffset = 0;
-    double selectionStartSample = 0;
-    double selectionEndSample = 0;
-    double samplesToScroll = 0;
+    double verticalZoom;
+    double sampleOffset;
+    double selectionStartSample;
+    double selectionEndSample;
+    double samplesToScroll;
 
     SDL_Window *window = nullptr;
 
     Component *capturingComponent = nullptr;
     Component *componentUnderMouse = nullptr;
 
+    Component *waveformComponent = nullptr;
+
     std::function<void()> hideSubMenus = []{};
 };
+
+static void resetWaveformState(CupuacuState *state)
+{
+    state->verticalZoom = 1;
+    state->sampleOffset = 0;
+    state->selectionStartSample = 0;
+    state->selectionEndSample = 0;
+    state->samplesToScroll = 0;
+}
+
