@@ -3,8 +3,7 @@
 #include "Component.h"
 #include "text.h"
 #include "../CupuacuState.h"
-#include "../file_loading.h"
-#include "WaveformComponent.h"
+#include "../actions//ShowOpenFileDialog.h"
 
 #include <SDL3/SDL.h>
 
@@ -109,49 +108,11 @@ class Menu : public Component {
         }
 };
 
-const SDL_DialogFileFilter filters[] = {
-    { "WAV audio", "wav" }
-};
-
-static auto initialPath = SDL_GetUserFolder(SDL_FOLDER_HOME);
-
 class MenuBar : public Component {
 
     private:
         Menu* fileMenu = nullptr;
         Menu* viewMenu = nullptr;
-
-        static void fileDialogCallback(void *userdata, const char * const *filelist, int filter)
-        {
-            if (!filelist) {
-                SDL_Log("An error occured: %s", SDL_GetError());
-                return;
-            } else if (!*filelist) {
-                SDL_Log("The user did not select any file.");
-                SDL_Log("Most likely, the dialog was canceled.");
-                return;
-            }
-
-            std::string absoluteFilePath;
-
-            while (*filelist) {
-                //SDL_Log("Full path to selected file: '%s'", *filelist);
-                absoluteFilePath = *filelist;
-                break;
-                filelist++;
-            }
-
-            auto state = (CupuacuState*)userdata;
-
-            state->currentFile = absoluteFilePath;
-
-            loadSampleData(state);
-            const auto waveformWidth = state->waveformComponent->getWidth();
-            state->samplesPerPixel = state->sampleDataL.size() / (float) waveformWidth;
-            resetWaveformState(state);
-            dynamic_cast<WaveformComponent*>(state->waveformComponent)->updateSamplePoints();
-            state->waveformComponent->setDirty();
-        }
 
     public:
         MenuBar(CupuacuState *stateToUse) : Component(stateToUse, "MenuBar")
@@ -160,7 +121,7 @@ class MenuBar : public Component {
             viewMenu = emplaceChildAndSetDirty<Menu>(state, "View");
 
             fileMenu->addSubMenu(state, "Load", [&]{
-                        SDL_ShowOpenFileDialog(fileDialogCallback, state, NULL, filters, 1, NULL, false);
+                        showOpenFileDialog(state);
                     });
             fileMenu->addSubMenu(state, "Save", [&]{
                         printf("Saving a file\n");
