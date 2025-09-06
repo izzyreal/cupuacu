@@ -22,6 +22,8 @@ public:
     void updateSamplePoints();
 
 private:
+    uint8_t numClicksOfLastMouseDown = 0;
+
     bool shouldShowSamplePoints(const double samplesPerPixel, const uint8_t hardwarePixelsPerAppPixel);
 
     std::vector<std::unique_ptr<SamplePoint>> computeSamplePoints(int width, int height,

@@ -426,7 +426,7 @@ bool WaveformComponent::mouseMove(const int32_t mouseX,
                                   const float mouseRelY,
                                   const bool leftButtonIsDown)
 {
-    if (leftButtonIsDown && state->capturingComponent == this)
+    if (leftButtonIsDown && numClicksOfLastMouseDown == 1 && state->capturingComponent == this)
     {
         handleScroll(mouseX, mouseY);
         return true;
@@ -437,6 +437,8 @@ bool WaveformComponent::mouseMove(const int32_t mouseX,
 
 bool WaveformComponent::mouseLeftButtonDown(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY)
 {
+    numClicksOfLastMouseDown = numClicks;
+
     if (numClicks == 1)
     {
         startSelection(mouseX);
