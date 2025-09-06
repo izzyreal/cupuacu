@@ -18,6 +18,7 @@ const uint16_t initialDimensions[] = { 1280, 720 };
 #include <string>
 #include <vector>
 #include <functional>
+#include <filesystem>
 
 #include "file_loading.h"
 
@@ -145,9 +146,16 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     state->window = window;
 
-    loadSampleData(state);
+    if (std::filesystem::exists(state->currentFile))
+    {
+        loadSampleData(state);
+        SDL_SetWindowTitle(window, state->currentFile.c_str());
+    }
+    else
+    {
+        state->currentFile = "";
+    }
 
-    SDL_SetWindowTitle(window, state->currentFile.c_str()); 
     SDL_RenderPresent(renderer);
 
     const SDL_Point newCanvasDimensions = computeDesiredCanvasDimensions(state->hardwarePixelsPerAppPixel);
