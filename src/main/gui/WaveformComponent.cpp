@@ -417,6 +417,11 @@ void WaveformComponent::endSelection(const int32_t mouseX)
         state->selectionEndSample = temp;
     }
 
+    if (state->selectionStartSample < 0)
+    {
+        state->selectionStartSample = 0;
+    }
+
     state->samplesToScroll = 0;
     setDirtyRecursive();
 }

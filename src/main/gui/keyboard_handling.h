@@ -77,7 +77,11 @@ static void handleKeyDown(
     }
     else if (event->key.scancode == SDL_SCANCODE_Z)
     {
-        if (state->selectionStartSample == state->selectionEndSample) return;
+        if (state->selectionStartSample == state->selectionEndSample)
+        {
+            return;
+        }
+
         state->verticalZoom = INITIAL_VERTICAL_ZOOM;
         state->sampleOffset = state->selectionStartSample;
         const auto selectionLength = state->selectionEndSample - state->selectionStartSample;
