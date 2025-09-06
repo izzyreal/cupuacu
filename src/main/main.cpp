@@ -331,7 +331,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                             newComponentUnderMouse->mouseEnter();
                         }
                     }
-
+                    
                     state->componentUnderMouse = newComponentUnderMouse;
                 }
             }

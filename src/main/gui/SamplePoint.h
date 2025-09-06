@@ -20,7 +20,8 @@ private:
 public:
     SamplePoint(CupuacuState *state, const uint64_t sampleIndexToUse) :
         Component(state, "Sample point idx " + std::to_string(sampleIndexToUse)), sampleIndex(sampleIndexToUse)
-    {}
+    {
+    }
 
     void mouseEnter() override
     {

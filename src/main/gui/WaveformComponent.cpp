@@ -314,6 +314,7 @@ void WaveformComponent::timerCallback()
 
         if (oldOffset != state->sampleOffset)
         {
+            state->componentUnderMouse = nullptr;
             setDirty();
             updateSamplePoints();
         }
@@ -324,6 +325,7 @@ void WaveformComponent::handleScroll(const int32_t mouseX,
                                      const int32_t mouseY)
 {
     const auto samplesPerPixel = state->samplesPerPixel;
+    const auto oldSampleOffset = state->sampleOffset;
     auto sampleOffset = state->sampleOffset;
 
     if (mouseX > getWidth() || mouseX < 0)
@@ -364,16 +366,19 @@ void WaveformComponent::handleScroll(const int32_t mouseX,
     const float x = waveformMouseX <= 0 ? 0.f : waveformMouseX;
     state->selectionEndSample = sampleOffset + (x * samplesPerPixel);
 
-    setDirty();
-    updateSamplePoints();
+    setDirtyRecursive();
+
+    if (state->sampleOffset != oldSampleOffset)
+    {
+        updateSamplePoints();
+    }
 }
 
 void WaveformComponent::handleDoubleClick()
 {
     state->selectionStartSample = 0;
     state->selectionEndSample = state->sampleDataL.size();
-    setDirty();
-    updateSamplePoints();
+    setDirtyRecursive();
 }
 
 void WaveformComponent::startSelection(const int32_t mouseX)
@@ -413,8 +418,7 @@ void WaveformComponent::endSelection(const int32_t mouseX)
     }
 
     state->samplesToScroll = 0;
-    setDirty();
-    updateSamplePoints();
+    setDirtyRecursive();
 }
 
 bool WaveformComponent::mouseMove(const int32_t mouseX,
