@@ -32,7 +32,11 @@ static ma_result custom_data_source_read(ma_data_source* pDataSource,
     if (framesToRead == 0) {
         *pFramesRead = 0;
         if (ds->state) {
-            ds->state->playbackPosition.store((double)ds->end);
+            if (ds->state->selectionStartSample == ds->state->selectionEndSample) {
+                ds->state->playbackPosition.store(0);
+            } else {
+                ds->state->playbackPosition.store((double)ds->end);
+            }
             ds->state->isPlaying.store(false);
         }
         return MA_AT_END;
@@ -159,9 +163,12 @@ static void play(CupuacuState* state) {
     ma_uint64 totalSamples = sampleData.size();
     ma_uint64 start = 0;
     ma_uint64 end = totalSamples;
+
     if (state->selectionStartSample != state->selectionEndSample) {
         start = (ma_uint64)state->selectionStartSample;
         end = (ma_uint64)state->selectionEndSample;
+    } else {
+        start = (ma_uint64)state->playbackPosition.load();
     }
 
     ds = std::make_shared<CustomDataSource>();
@@ -198,7 +205,6 @@ static void play(CupuacuState* state) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
 
-        // Stop playback outside of the mutex to avoid deadlocks
         stop(state);
     }).detach();
 }
