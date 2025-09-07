@@ -5,6 +5,7 @@
 #include "WaveformComponent.h"
 
 #include "../actions/ShowOpenFileDialog.h"
+#include "../actions/Play.h"
 
 static void updateWaveform(WaveformComponent *waveform, CupuacuState *state)
 {
@@ -124,6 +125,10 @@ static void handleKeyDown(
         {
             showOpenFileDialog(state);
         }
+    }
+    else if (event->key.scancode == SDL_SCANCODE_SPACE)
+    {
+        play(state);
     }
 }
 
