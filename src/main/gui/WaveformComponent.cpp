@@ -292,7 +292,7 @@ void WaveformComponent::onDraw(SDL_Renderer *renderer)
 
         if (lineX >= 0 && lineX <= getWidth())
         {
-            SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+            SDL_SetRenderDrawColor(renderer, 0, 200, 200, 255);
             SDL_RenderLine(renderer, (int)lineX, 0, (int)lineX, getHeight());
         }
     }

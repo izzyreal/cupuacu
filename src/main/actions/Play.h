@@ -14,6 +14,8 @@ struct CustomDataSource {
     const int16_t* sampleData;
     ma_uint64 sampleCount;
     ma_uint64 cursor;
+    ma_uint64 start;
+    ma_uint64 end;
     CupuacuState* state;
     ma_device device;
 };
@@ -23,7 +25,7 @@ static ma_result custom_data_source_read(ma_data_source* pDataSource,
                                          ma_uint64 frameCount,
                                          ma_uint64* pFramesRead) {
     CustomDataSource* ds = (CustomDataSource*)pDataSource;
-    ma_uint64 framesAvailable = ds->sampleCount - ds->cursor;
+    ma_uint64 framesAvailable = ds->end - ds->cursor;
     ma_uint64 framesToRead = frameCount < framesAvailable ? frameCount : framesAvailable;
 
     if (framesToRead == 0) {
@@ -50,7 +52,7 @@ static ma_result custom_data_source_read(ma_data_source* pDataSource,
 
 static ma_result custom_data_source_seek(ma_data_source* pDataSource, ma_uint64 frameIndex) {
     CustomDataSource* ds = (CustomDataSource*)pDataSource;
-    if (frameIndex >= ds->sampleCount) return MA_INVALID_ARGS;
+    if (frameIndex < ds->start || frameIndex >= ds->end) return MA_INVALID_ARGS;
     ds->cursor = frameIndex;
     return MA_SUCCESS;
 }
@@ -87,6 +89,8 @@ static ma_data_source_vtable custom_data_source_vtable = {
 static ma_result custom_data_source_init(CustomDataSource* ds,
                                          const int16_t* sampleData,
                                          ma_uint64 sampleCount,
+                                         ma_uint64 start,
+                                         ma_uint64 end,
                                          CupuacuState* state) {
     ma_data_source_config config = ma_data_source_config_init();
     config.vtable = &custom_data_source_vtable;
@@ -95,7 +99,9 @@ static ma_result custom_data_source_init(CustomDataSource* ds,
 
     ds->sampleData = sampleData;
     ds->sampleCount = sampleCount;
-    ds->cursor = 0;
+    ds->cursor = start;
+    ds->start = start;
+    ds->end = end;
     ds->state = state;
     return MA_SUCCESS;
 }
@@ -112,10 +118,16 @@ static void stop(CupuacuState *state) {
 
 static void play(CupuacuState *state) {
     const auto& sampleData = state->sampleDataL;
-    ma_uint64 sampleCount = sampleData.size();
+    ma_uint64 totalSamples = sampleData.size();
+    ma_uint64 start = 0;
+    ma_uint64 end = totalSamples;
+    if (state->selectionStartSample != state->selectionEndSample) {
+        start = (ma_uint64)state->selectionStartSample;
+        end = (ma_uint64)state->selectionEndSample;
+    }
 
     auto ds = std::make_shared<CustomDataSource>();
-    if (custom_data_source_init(ds.get(), sampleData.data(), sampleCount, state) != MA_SUCCESS) {
+    if (custom_data_source_init(ds.get(), sampleData.data(), totalSamples, start, end, state) != MA_SUCCESS) {
         return;
     }
 
