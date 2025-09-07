@@ -4,9 +4,12 @@
 #include <vector>
 #include <string>
 #include <functional>
+#include <atomic>
+#include <memory>
 
 struct Component;
 struct SDL_Window;
+struct CustomDataSource;
 
 struct CupuacuState {
     uint8_t menuFontSize = 60;
@@ -22,6 +25,11 @@ struct CupuacuState {
     double selectionStartSample;
     double selectionEndSample;
     double samplesToScroll;
+
+    std::atomic<double> playbackPosition = 0;
+    std::atomic<bool> isPlaying = false;
+
+    std::shared_ptr<CustomDataSource> activePlayback;  // <-- keeps playback alive
 
     SDL_Window *window = nullptr;
 

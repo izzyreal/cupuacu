@@ -22,6 +22,7 @@ public:
     void updateSamplePoints();
 
 private:
+    double playbackPosition = 0;
     uint8_t numClicksOfLastMouseDown = 0;
 
     bool shouldShowSamplePoints(const double samplesPerPixel, const uint8_t hardwarePixelsPerAppPixel);

@@ -128,6 +128,12 @@ static void handleKeyDown(
     }
     else if (event->key.scancode == SDL_SCANCODE_SPACE)
     {
+        if (state->isPlaying.load())
+        {
+            stop(state);
+            return;
+        }
+
         play(state);
     }
 }

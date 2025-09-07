@@ -285,6 +285,17 @@ void WaveformComponent::onDraw(SDL_Renderer *renderer)
 
         SDL_RenderFillRect(renderer, &selectionRect);
     }
+
+    if (state->isPlaying.load())
+    {
+        const float lineX = (state->playbackPosition.load() - sampleOffset) / samplesPerPixel;
+
+        if (lineX >= 0 && lineX <= getWidth())
+        {
+            SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+            SDL_RenderLine(renderer, (int)lineX, 0, (int)lineX, getHeight());
+        }
+    }
 }
 
 void WaveformComponent::timerCallback()
@@ -318,6 +329,12 @@ void WaveformComponent::timerCallback()
             setDirty();
             updateSamplePoints();
         }
+    }
+
+    if (state->isPlaying.load())
+    {
+        playbackPosition = state->playbackPosition.load();
+        setDirtyRecursive();
     }
 }
 
