@@ -48,5 +48,6 @@ static void resetWaveformState(CupuacuState *state)
     state->selectionStartSample = 0;
     state->selectionEndSample = 0;
     state->samplesToScroll = 0;
+    state->playbackPosition = 0;
 }
 

@@ -286,15 +286,17 @@ void WaveformComponent::onDraw(SDL_Renderer *renderer)
         SDL_RenderFillRect(renderer, &selectionRect);
     }
 
-    if (state->isPlaying.load())
-    {
-        const float lineX = (state->playbackPosition.load() - sampleOffset) / samplesPerPixel;
+    drawPlaybackPosition(renderer, sampleOffset, samplesPerPixel);
+}
 
-        if (lineX >= 0 && lineX <= getWidth())
-        {
-            SDL_SetRenderDrawColor(renderer, 0, 200, 200, 255);
-            SDL_RenderLine(renderer, (int)lineX, 0, (int)lineX, getHeight());
-        }
+void WaveformComponent::drawPlaybackPosition(SDL_Renderer *renderer, const double sampleOffset, const double samplesPerPixel)
+{
+    const float lineX = (state->playbackPosition.load() - sampleOffset) / samplesPerPixel;
+
+    if (lineX >= 0 && lineX <= getWidth())
+    {
+        SDL_SetRenderDrawColor(renderer, 0, 200, 200, 255);
+        SDL_RenderLine(renderer, (int)lineX, 0, (int)lineX, getHeight());
     }
 }
 
@@ -331,9 +333,9 @@ void WaveformComponent::timerCallback()
         }
     }
 
-    if (state->isPlaying.load())
+    if (const auto newPlaybackPosition = state->playbackPosition.load(); newPlaybackPosition != playbackPosition)
     {
-        playbackPosition = state->playbackPosition.load();
+        playbackPosition = newPlaybackPosition;
         setDirtyRecursive();
     }
 }

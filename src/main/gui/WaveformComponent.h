@@ -40,4 +40,6 @@ private:
     void handleDoubleClick();
     void startSelection(const int32_t mouseX);
     void endSelection(const int32_t mouseX);
+
+    void drawPlaybackPosition(SDL_Renderer *renderer, const double sampleOffset, const double samplesPerPixel);
 };

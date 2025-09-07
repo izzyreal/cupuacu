@@ -8,6 +8,7 @@
 #include <chrono>
 #include <memory>
 #include <atomic>
+#include <mutex>
 
 struct CustomDataSource {
     ma_data_source_base base;
@@ -31,6 +32,7 @@ static ma_result custom_data_source_read(ma_data_source* pDataSource,
     if (framesToRead == 0) {
         *pFramesRead = 0;
         if (ds->state) {
+            ds->state->playbackPosition.store((double)ds->end);
             ds->state->isPlaying.store(false);
         }
         return MA_AT_END;
@@ -106,17 +108,53 @@ static ma_result custom_data_source_init(CustomDataSource* ds,
     return MA_SUCCESS;
 }
 
-static void stop(CupuacuState *state) {
-    auto ds = state->activePlayback;
-    if (!ds) return;
-    ma_device_stop(&ds->device);
-    ma_device_uninit(&ds->device);
-    ma_data_source_uninit(&ds->base);
-    state->activePlayback.reset();
-    state->isPlaying.store(false);
+static std::mutex playbackMutex;
+
+static void ma_playback_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
+    CustomDataSource* ds = (CustomDataSource*)pDevice->pUserData;
+    ma_uint64 framesRead;
+    ds->base.vtable->onRead((ma_data_source*)ds, pOutput, frameCount, &framesRead);
 }
 
-static void play(CupuacuState *state) {
+static void stop(CupuacuState* state) {
+    std::shared_ptr<CustomDataSource> ds;
+    {
+        std::lock_guard<std::mutex> lock(playbackMutex);
+        ds = state->activePlayback;
+        state->activePlayback.reset();
+        state->isPlaying.store(false);
+    }
+
+    if (!ds) return;
+
+    if (ma_device_get_state(&ds->device) == ma_device_state_started) {
+        ma_device_stop(&ds->device);
+    }
+
+    ma_device_uninit(&ds->device);
+    ma_data_source_uninit(&ds->base);
+}
+
+static void play(CupuacuState* state) {
+    std::shared_ptr<CustomDataSource> ds;
+
+    // Stop any previous playback safely without holding the lock while stopping the device
+    {
+        std::lock_guard<std::mutex> lock(playbackMutex);
+        auto prev = state->activePlayback;
+        state->activePlayback.reset();
+        state->isPlaying.store(false);
+        if (prev) {
+            std::thread([prev]() {
+                if (ma_device_get_state(&prev->device) == ma_device_state_started) {
+                    ma_device_stop(&prev->device);
+                }
+                ma_device_uninit(&prev->device);
+                ma_data_source_uninit(&prev->base);
+            }).detach();
+        }
+    }
+
     const auto& sampleData = state->sampleDataL;
     ma_uint64 totalSamples = sampleData.size();
     ma_uint64 start = 0;
@@ -126,7 +164,7 @@ static void play(CupuacuState *state) {
         end = (ma_uint64)state->selectionEndSample;
     }
 
-    auto ds = std::make_shared<CustomDataSource>();
+    ds = std::make_shared<CustomDataSource>();
     if (custom_data_source_init(ds.get(), sampleData.data(), totalSamples, start, end, state) != MA_SUCCESS) {
         return;
     }
@@ -135,13 +173,7 @@ static void play(CupuacuState *state) {
     deviceConfig.playback.format = ma_format_f32;
     deviceConfig.playback.channels = 1;
     deviceConfig.sampleRate = 44100;
-
-    deviceConfig.dataCallback = [](ma_device* pDevice, void* pOutput,
-                                   const void* pInput, ma_uint32 frameCount) {
-        CustomDataSource* ds = (CustomDataSource*)pDevice->pUserData;
-        ma_uint64 framesRead;
-        ds->base.vtable->onRead((ma_data_source*)ds, pOutput, frameCount, &framesRead);
-    };
+    deviceConfig.dataCallback = ma_playback_callback;
     deviceConfig.pUserData = ds.get();
 
     if (ma_device_init(NULL, &deviceConfig, &ds->device) != MA_SUCCESS) {
@@ -155,13 +187,18 @@ static void play(CupuacuState *state) {
         return;
     }
 
-    state->isPlaying.store(true);
-    state->activePlayback = ds;
+    {
+        std::lock_guard<std::mutex> lock(playbackMutex);
+        state->activePlayback = ds;
+        state->isPlaying.store(true);
+    }
 
-    std::thread([state]() {
+    std::thread([state, ds]() {
         while (state->isPlaying.load()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
+
+        // Stop playback outside of the mutex to avoid deadlocks
         stop(state);
     }).detach();
 }
