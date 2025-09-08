@@ -25,10 +25,13 @@ public:
 
     void resized() override
     {
-        // Set fixed positions for all fields when the StatusBar is resized
-        startField->setBounds(0, 0, 120, getHeight());
-        endField->setBounds(120, 0, 120, getHeight());
-        posField->setBounds(240, 0, 120, getHeight());
+        float scale = 4.0f / state->hardwarePixelsPerAppPixel;
+        int fieldWidth = int(120 * scale);
+        int fieldHeight = int(getHeight() * scale);
+
+        startField->setBounds(0, 0, fieldWidth, fieldHeight);
+        endField->setBounds(fieldWidth, 0, fieldWidth, fieldHeight);
+        posField->setBounds(2 * fieldWidth, 0, fieldWidth, fieldHeight);
     }
 
     void onDraw(SDL_Renderer* renderer) override

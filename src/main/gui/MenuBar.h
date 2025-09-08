@@ -23,21 +23,22 @@ class Menu : public Component {
         void showSubMenus()
         {
             if (subMenus.empty())
-            {
                 return;
-            }
 
-            int subMenuYPos = getHeight();
+            float scale = 4.0f / state->hardwarePixelsPerAppPixel;
+            int subMenuYPos = getHeight(); // already correct, don't scale
 
             for (auto &subMenu : subMenus)
             {
-                subMenu->setBounds(5, subMenuYPos, 100, 20);
-                subMenuYPos += 20;
+                int w = int(100 * scale);
+                int h = int(20 * scale);
+                subMenu->setBounds(int(5 * scale), subMenuYPos, w, h);
+                subMenuYPos += h;
             }
 
             currentlyOpen = true;
         }
-
+        
         void hideSubMenus()
         {
             for (auto &subMenu : subMenus)
@@ -140,13 +141,17 @@ class MenuBar : public Component {
             fileMenu->hideSubMenus();
             viewMenu->hideSubMenus();
         }
+void resized() override
+{
+    float scale = 4.0f / state->hardwarePixelsPerAppPixel;
 
-        void resized() override
-        {
-            fileMenu->setBounds(0, 0, 40, getHeight());
-            viewMenu->setBounds(fileMenu->getWidth(), 0, 100, getHeight());
-        }
+    int fileW = int(40 * scale);
+    int viewW = int(100 * scale);
+    int h = getHeight(); // keep unscaled!
 
+    fileMenu->setBounds(0, 0, fileW, h);
+    viewMenu->setBounds(fileW, 0, viewW, h);
+}
         void mouseEnter() override
         {
             setDirty();
