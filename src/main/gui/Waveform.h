@@ -5,10 +5,10 @@
 
 #include "SamplePoint.h"
 
-class WaveformComponent : public Component {
+class Waveform : public Component {
 
 public:
-    WaveformComponent(CupuacuState *stateToUse);
+    Waveform(CupuacuState *stateToUse);
 
     void onDraw(SDL_Renderer*) override;
     bool mouseMove(const int32_t mouseX,

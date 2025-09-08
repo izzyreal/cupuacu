@@ -2,12 +2,12 @@
 
 #include "../CupuacuState.h"
 
-#include "WaveformComponent.h"
+#include "Waveform.h"
 
 #include "../actions/ShowOpenFileDialog.h"
 #include "../actions/Play.h"
 
-static void updateWaveform(WaveformComponent *waveform, CupuacuState *state)
+static void updateWaveform(Waveform *waveform, CupuacuState *state)
 {
     waveform->setDirty();
     waveform->updateSamplePoints();
@@ -19,7 +19,7 @@ static void handleKeyDown(
         CupuacuState *state,
         const double INITIAL_VERTICAL_ZOOM,
         const uint64_t INITIAL_SAMPLE_OFFSET,
-        WaveformComponent *waveform)
+        Waveform *waveform)
 {
     uint8_t multiplier = 1;
     uint8_t multiplierFactor = 12 / state->hardwarePixelsPerAppPixel;

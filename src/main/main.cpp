@@ -28,13 +28,13 @@ static const int64_t INITIAL_SAMPLE_OFFSET = 0;
 
 #include "gui/Component.h"
 #include "gui/OpaqueRect.h"
-#include "gui/WaveformComponent.h"
+#include "gui/Waveform.h"
 #include "gui/MenuBar.h"
 #include "gui/StatusBar.h"
 
 std::unique_ptr<Component> rootComponent;
 Component *backgroundComponentHandle;
-WaveformComponent *waveformComponentHandle;
+Waveform *waveformHandle;
 Component *menuBarHandle;
 
 const std::function<void(CupuacuState*)> renderCanvasToWindow = [](CupuacuState *state)
@@ -204,10 +204,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     state->samplesPerPixel = state->sampleDataL.size() / (double) waveformRect.w;
 
-    auto waveformComponent = std::make_unique<WaveformComponent>(state);
-    waveformComponent->setBounds(waveformRect.x, waveformRect.y, waveformRect.w, waveformRect.h);
-    waveformComponentHandle = rootComponent->addChildAndSetDirty(waveformComponent);
-    state->waveformComponent = waveformComponentHandle;
+    auto waveform = std::make_unique<Waveform>(state);
+    waveform->setBounds(waveformRect.x, waveformRect.y, waveformRect.w, waveformRect.h);
+    waveformHandle = rootComponent->addChildAndSetDirty(waveform);
+    state->waveform = waveformHandle;
 
     auto menuBar = std::make_unique<MenuBar>(state);
 
@@ -296,9 +296,9 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                             state->hardwarePixelsPerAppPixel,
                             menuBarRect.h);
                     
-                    const auto samplesPerPixelFactor = waveformComponentHandle->getWidth() * state->samplesPerPixel;
+                    const auto samplesPerPixelFactor = waveformHandle->getWidth() * state->samplesPerPixel;
 
-                    waveformComponentHandle->setBounds(waveformRect.x, waveformRect.y, waveformRect.w, waveformRect.h);
+                    waveformHandle->setBounds(waveformRect.x, waveformRect.y, waveformRect.w, waveformRect.h);
                     
                     const auto newSamplesPerPixel = samplesPerPixelFactor / waveformRect.w; 
                     state->samplesPerPixel = newSamplesPerPixel;
@@ -310,11 +310,11 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
         case SDL_EVENT_KEY_DOWN:
             handleKeyDown(
                     event,
-                    waveformComponentHandle->getWidth(),
+                    waveformHandle->getWidth(),
                     state,
                     INITIAL_VERTICAL_ZOOM,
                     INITIAL_SAMPLE_OFFSET,
-                    waveformComponentHandle);
+                    waveformHandle);
             break;
         case SDL_EVENT_MOUSE_MOTION:
         case SDL_EVENT_MOUSE_BUTTON_DOWN:

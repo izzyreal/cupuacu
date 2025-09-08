@@ -36,7 +36,7 @@ struct CupuacuState {
     Component *capturingComponent = nullptr;
     Component *componentUnderMouse = nullptr;
 
-    Component *waveformComponent = nullptr;
+    Component *waveform = nullptr;
 
     std::function<void()> hideSubMenus = []{};
 };

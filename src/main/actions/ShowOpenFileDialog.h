@@ -4,7 +4,7 @@
 #include "../CupuacuState.h"
 #include "../file_loading.h"
 
-#include "../gui/WaveformComponent.h"
+#include "../gui/Waveform.h"
 
 #include <string>
 
@@ -39,11 +39,11 @@ static void fileDialogCallback(void *userdata, const char * const *filelist, int
     state->currentFile = absoluteFilePath;
 
     loadSampleData(state);
-    const auto waveformWidth = state->waveformComponent->getWidth();
+    const auto waveformWidth = state->waveform->getWidth();
     state->samplesPerPixel = state->sampleDataL.size() / (float) waveformWidth;
     resetWaveformState(state);
-    dynamic_cast<WaveformComponent*>(state->waveformComponent)->updateSamplePoints();
-    state->waveformComponent->setDirty();
+    dynamic_cast<Waveform*>(state->waveform)->updateSamplePoints();
+    state->waveform->setDirty();
 
     SDL_SetWindowTitle(state->window, state->currentFile.c_str()); 
 }
