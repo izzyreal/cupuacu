@@ -30,6 +30,7 @@ static const int64_t INITIAL_SAMPLE_OFFSET = 0;
 #include "gui/OpaqueRect.h"
 #include "gui/WaveformComponent.h"
 #include "gui/MenuBar.h"
+#include "gui/StatusBar.h"
 
 std::unique_ptr<Component> rootComponent;
 Component *backgroundComponentHandle;
@@ -90,7 +91,7 @@ SDL_Rect getWaveformRect(const uint16_t canvasWidth,
            0,
            menuHeight,
            canvasWidth,
-           canvasHeight - menuHeight
+           canvasHeight - (menuHeight*2)
    };
    return result;
 }
@@ -105,6 +106,22 @@ SDL_Rect getMenuBarRect(const uint16_t canvasWidth,
         0,
         canvasWidth,
         static_cast<int>((menuFontSize * 1.33) / hardwarePixelsPerAppPixel)
+    };
+    return result;
+}
+
+SDL_Rect getStatusBarRect(const uint16_t canvasWidth,
+                        const uint16_t canvasHeight,
+                        const uint8_t hardwarePixelsPerAppPixel,
+                        const uint8_t menuFontSize)
+{
+    const auto statusBarHeight = static_cast<int>((menuFontSize * 1.33) / hardwarePixelsPerAppPixel);
+
+    SDL_Rect result {
+        3,
+        canvasHeight - statusBarHeight,
+        canvasWidth,
+        statusBarHeight
     };
     return result;
 }
@@ -182,8 +199,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     backgroundComponentHandle = rootComponent->addChildAndSetDirty(backgroundComponent);
 
     const SDL_Rect menuBarRect = getMenuBarRect(actualCanvasDimensions.x, actualCanvasDimensions.y, state->hardwarePixelsPerAppPixel, state->menuFontSize);
-
     const SDL_Rect waveformRect = getWaveformRect(actualCanvasDimensions.x, actualCanvasDimensions.y, state->hardwarePixelsPerAppPixel, menuBarRect.h);
+    const SDL_Rect statusBarRect = getStatusBarRect(actualCanvasDimensions.x, actualCanvasDimensions.y, state->hardwarePixelsPerAppPixel, state->menuFontSize);
 
     state->samplesPerPixel = state->sampleDataL.size() / (double) waveformRect.w;
 
@@ -198,6 +215,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     menuBarHandle = rootComponent->addChildAndSetDirty(menuBar);
 
     state->hideSubMenus = [&](){ dynamic_cast<MenuBar*>(menuBarHandle)->hideSubMenus(); rootComponent->setDirtyRecursive(); };
+
+    auto statusBar = std::make_unique<StatusBar>(state);
+    statusBar->setBounds(statusBarRect.x, statusBarRect.y, statusBarRect.w, statusBarRect.h);
+    rootComponent->addChildAndSetDirty(statusBar);
 
     return SDL_APP_CONTINUE;
 }
