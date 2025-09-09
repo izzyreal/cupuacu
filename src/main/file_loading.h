@@ -71,4 +71,3 @@ static void loadSampleData(CupuacuState *state)
     ma_decoder_uninit(&decoder);
 }
 
-
