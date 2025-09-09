@@ -32,7 +32,7 @@ static ma_result custom_data_source_read(ma_data_source* pDataSource,
     if (framesToRead == 0) {
         *pFramesRead = 0;
         if (ds->state) {
-            if (ds->state->selectionStartSample == ds->state->selectionEndSample) {
+            if (!ds->state->selection.isActive()) {
                 ds->state->playbackPosition.store(0);
             } else {
                 ds->state->playbackPosition.store((double)ds->end);
@@ -164,9 +164,9 @@ static void play(CupuacuState* state) {
     ma_uint64 start = 0;
     ma_uint64 end = totalSamples;
 
-    if (state->selectionStartSample != state->selectionEndSample) {
-        start = (ma_uint64)state->selectionStartSample;
-        end = (ma_uint64)state->selectionEndSample;
+    if (state->selection.isActive()) {
+        start = (ma_uint64)state->selection.getStartFloorInt();
+        end = (ma_uint64)state->selection.getEndFloorInt();
     } else {
         start = (ma_uint64)state->playbackPosition.load();
     }

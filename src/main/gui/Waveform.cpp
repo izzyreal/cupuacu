@@ -218,8 +218,6 @@ void Waveform::onDraw(SDL_Renderer *renderer)
     const float verticalZoom = state->verticalZoom;
     const size_t sampleOffset = state->sampleOffset;
     const auto& sampleDataL = state->sampleDataL;
-    const auto selectionStart = state->selectionStartSample;
-    const auto selectionEnd = state->selectionEndSample;
 
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderFillRect(renderer, NULL);
@@ -249,18 +247,12 @@ void Waveform::onDraw(SDL_Renderer *renderer)
                 verticalZoom);
     }
 
-    if (selectionStart != selectionEnd && selectionEnd >= sampleOffset)
+    const auto selectionIsActive = state->selection.isActive();
+    auto firstSample = state->selection.getStartFloor();
+    auto lastSample = state->selection.getEndFloor();
+
+    if (selectionIsActive && lastSample >= sampleOffset)
     {
-        const bool goesRight = selectionEnd > selectionStart;
-
-        float orderedStart = goesRight ? selectionStart : selectionEnd;
-        float orderedEnd = goesRight ? selectionEnd : selectionStart;
-
-        double firstSample = std::floor(orderedStart);
-        double lastSample = std::floor(orderedEnd);
-
-        if (firstSample >= lastSample) return;
-
         if (shouldShowSamplePoints(samplesPerPixel, state->hardwarePixelsPerAppPixel))
         {
             firstSample -= 0.5f;
@@ -315,14 +307,14 @@ void Waveform::timerCallback()
                 ? state->sampleOffset - absScroll
                 : 0;
 
-            state->selectionEndSample = (state->selectionEndSample > absScroll)
-                ? state->selectionEndSample - absScroll
-                : 0;
+            state->selection.setValue2((state->selection.getEnd() > absScroll)
+                ? state->selection.getEnd() - absScroll
+                : 0);
         }
         else
         {
             state->sampleOffset += scroll;
-            state->selectionEndSample += scroll;
+            state->selection.bumpValue2(scroll);
         }
 
         if (oldOffset != state->sampleOffset)
@@ -383,7 +375,7 @@ void Waveform::handleScroll(const int32_t mouseX,
     }
 
     const float x = waveformMouseX <= 0 ? 0.f : waveformMouseX;
-    state->selectionEndSample = sampleOffset + (x * samplesPerPixel);
+    state->selection.setValue2(sampleOffset + (x * samplesPerPixel));
 
     setDirtyRecursive();
 
@@ -395,8 +387,8 @@ void Waveform::handleScroll(const int32_t mouseX,
 
 void Waveform::handleDoubleClick()
 {
-    state->selectionStartSample = 0;
-    state->selectionEndSample = state->sampleDataL.size();
+    state->selection.setValue1(0);
+    state->selection.setValue2(state->sampleDataL.size());
     setDirtyRecursive();
 }
 
@@ -412,8 +404,7 @@ void Waveform::startSelection(const int32_t mouseX)
         buttonx += 0.5f / samplesPerPixel;
     }
 
-    state->selectionStartSample = sampleOffset + (buttonx * samplesPerPixel);
-    state->selectionEndSample = state->selectionStartSample;
+    state->selection.startSelection(sampleOffset + (buttonx * samplesPerPixel));
 }
 
 void Waveform::endSelection(const int32_t mouseX)
@@ -427,19 +418,7 @@ void Waveform::endSelection(const int32_t mouseX)
         waveformButtonX += 0.5f / samplesPerPixel;
     }
 
-    state->selectionEndSample = state->sampleOffset + (waveformButtonX * state->samplesPerPixel);
-
-    if (state->selectionEndSample < state->selectionStartSample)
-    {
-        auto temp = state->selectionStartSample;
-        state->selectionStartSample = state->selectionEndSample;
-        state->selectionEndSample = temp;
-    }
-
-    if (state->selectionStartSample < 0)
-    {
-        state->selectionStartSample = 0;
-    }
+    state->selection.endSelection(state->sampleOffset + (waveformButtonX * state->samplesPerPixel));
 
     state->samplesToScroll = 0;
     setDirtyRecursive();

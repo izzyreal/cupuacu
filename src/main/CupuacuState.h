@@ -1,5 +1,7 @@
 #pragma once
 
+#include "gui/Selection.h"
+
 #include <cstdint>
 #include <vector>
 #include <string>
@@ -22,8 +24,7 @@ struct CupuacuState {
     double samplesPerPixel = 1;
     double verticalZoom;
     double sampleOffset;
-    double selectionStartSample;
-    double selectionEndSample;
+    Selection<double> selection;
     double samplesToScroll;
 
     std::atomic<double> playbackPosition = 0;
@@ -45,8 +46,7 @@ static void resetWaveformState(CupuacuState *state)
 {
     state->verticalZoom = 1;
     state->sampleOffset = 0;
-    state->selectionStartSample = 0;
-    state->selectionEndSample = 0;
+    state->selection.reset();
     state->samplesToScroll = 0;
     state->playbackPosition = 0;
 }

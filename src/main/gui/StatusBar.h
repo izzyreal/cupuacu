@@ -2,7 +2,6 @@
 
 #include "Component.h"
 #include "LabeledField.h"
-#include "text.h"
 #include "../CupuacuState.h"
 
 #include <SDL3/SDL.h>
@@ -40,14 +39,10 @@ public:
         SDL_FRect r{ 0, 0, (float)getWidth(), (float)getHeight() };
         SDL_RenderFillRect(renderer, &r);
 
-        if (state->selectionStartSample != state->selectionEndSample)
+        if (state->selection.isActive())
         {
-            const auto finalStart = state->selectionStartSample < state->selectionEndSample ?
-                (int)std::floor(state->selectionStartSample) : (int)std::floor(state->selectionEndSample);
-            const auto finalEnd = state->selectionStartSample < state->selectionEndSample ?
-                (int)std::floor(state->selectionEndSample) : (int)std::floor(state->selectionStartSample);
-            startField->setValue(std::to_string(finalStart));
-            endField->setValue(std::to_string(finalEnd));
+            startField->setValue(std::to_string(state->selection.getStartFloorInt()));
+            endField->setValue(std::to_string(state->selection.getEndFloorInt()));
         }
         else
         {
