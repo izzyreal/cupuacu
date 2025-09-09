@@ -3,7 +3,8 @@
 #include "Component.h"
 #include "text.h"
 #include "../CupuacuState.h"
-#include "../actions//ShowOpenFileDialog.h"
+#include "../actions/ShowOpenFileDialog.h"
+#include "../actions/Zoom.h"
 
 #include <SDL3/SDL.h>
 
@@ -30,7 +31,7 @@ class Menu : public Component {
 
             for (auto &subMenu : subMenus)
             {
-                int w = int(100 * scale);
+                int w = int(150 * scale);
                 int h = int(20 * scale);
                 subMenu->setBounds(int(5 * scale), subMenuYPos, w, h);
                 subMenuYPos += h;
@@ -128,11 +129,20 @@ class MenuBar : public Component {
                         printf("Saving a file\n");
                     });
 
-            viewMenu->addSubMenu(state, "Zoom in (W)", [&]{
-                        printf("Zooming in...\n");
+            viewMenu->addSubMenu(state, "Reset zoom (Esc)", [&]{
+                        resetZoom(state);
                     });
-            viewMenu->addSubMenu(state, "Zoom out (Q)", [&]{
-                        printf("Zooming out...\n");
+            viewMenu->addSubMenu(state, "Zoom out horiz. (Q)", [&]{
+                        tryZoomOutHorizontally(state);
+                    });
+            viewMenu->addSubMenu(state, "Zoom in horiz. (W)", [&]{
+                        tryZoomInHorizontally(state);
+                    });
+            viewMenu->addSubMenu(state, "Zoom out vert. (E)", [&]{
+                        tryZoomOutVertically(state, 1);
+                    });
+            viewMenu->addSubMenu(state, "Zoom in vert. (R)", [&]{
+                        zoomInVertically(state, 1);
                     });
         }
 
