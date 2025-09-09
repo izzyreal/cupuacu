@@ -22,10 +22,7 @@ const uint16_t initialDimensions[] = { 1280, 720 };
 
 #include "file_loading.h"
 
-static const double INITIAL_SAMPLES_PER_PIXEL = 1;
-static const double INITIAL_VERTICAL_ZOOM = 1;
-static const int64_t INITIAL_SAMPLE_OFFSET = 0;
-
+#include "Constants.h"
 #include "gui/Component.h"
 #include "gui/OpaqueRect.h"
 #include "gui/Waveform.h"
@@ -310,11 +307,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
         case SDL_EVENT_KEY_DOWN:
             handleKeyDown(
                     event,
-                    waveformHandle->getWidth(),
-                    state,
-                    INITIAL_VERTICAL_ZOOM,
-                    INITIAL_SAMPLE_OFFSET,
-                    waveformHandle);
+                    state);
             break;
         case SDL_EVENT_MOUSE_MOTION:
         case SDL_EVENT_MOUSE_BUTTON_DOWN:

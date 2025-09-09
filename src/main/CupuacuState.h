@@ -9,9 +9,12 @@
 #include <atomic>
 #include <memory>
 
-struct Component;
 struct SDL_Window;
+
 struct CustomDataSource;
+
+class Component;
+class Waveform;
 
 struct CupuacuState {
     uint8_t menuFontSize = 60;
@@ -37,7 +40,7 @@ struct CupuacuState {
     Component *capturingComponent = nullptr;
     Component *componentUnderMouse = nullptr;
 
-    Component *waveform = nullptr;
+    Waveform *waveform = nullptr;
 
     std::function<void()> hideSubMenus = []{};
 };
