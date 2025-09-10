@@ -4,6 +4,7 @@
 #include "text.h"
 #include "../CupuacuState.h"
 #include "../actions/ShowOpenFileDialog.h"
+#include "../actions/Save.h"
 #include "../actions/Zoom.h"
 
 #include <SDL3/SDL.h>
@@ -122,11 +123,21 @@ class MenuBar : public Component {
             fileMenu = emplaceChildAndSetDirty<Menu>(state, "File");
             viewMenu = emplaceChildAndSetDirty<Menu>(state, "View");
 
-            fileMenu->addSubMenu(state, "Load", [&]{
+#ifdef __APPLE__
+            const std::string openText{"Open (Cmd + O)"};
+#else
+            const std::string openText{"Open (Ctrl + O)"};
+#endif
+            fileMenu->addSubMenu(state, openText, [&]{
                         showOpenFileDialog(state);
                     });
-            fileMenu->addSubMenu(state, "Save", [&]{
-                        printf("Saving a file\n");
+#ifdef __APPLE__
+            const std::string overwriteText{"Overwrite (Cmd + S)"};
+#else
+            const std::string overwriteText{"Overwrite (Ctrl + S)"};
+#endif
+            fileMenu->addSubMenu(state, overwriteText, [&]{
+                        overwrite(state);
                     });
 
             viewMenu->addSubMenu(state, "Reset zoom (Esc)", [&]{
