@@ -26,9 +26,13 @@ endmacro()
 set(SDL_TEST OFF CACHE BOOL "" FORCE)
 set(SDL_INSTALL_TESTS OFF CACHE BOOL "" FORCE)
 
-# Dependencies
+set(BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+
 AddDependency(SDL3 "https://github.com/libsdl-org/SDL.git" "release-3.2.14")
 AddDependency(SDL_ttf "https://github.com/libsdl-org/SDL_ttf.git" "release-3.2.2")
+AddDependency(libsndfile "https://github.com/libsndfile/libsndfile.git" "1.2.2")
 AddDependency(Catch2 "https://github.com/catchorg/Catch2.git" "v3.8.1")
 
 add_executable(Cupuacu
@@ -42,6 +46,7 @@ add_executable(cupuacu-tests
 )
 
 target_link_libraries(Cupuacu PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf)
+target_link_libraries(Cupuacu PRIVATE SndFile::sndfile)
 target_link_libraries(cupuacu-tests PRIVATE Catch2::Catch2)
 
 _bundle_resources(Cupuacu)

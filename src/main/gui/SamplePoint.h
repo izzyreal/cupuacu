@@ -12,9 +12,9 @@ private:
     float prevY = 0.f;
     float dragYPos = 0.f;
 
-    int16_t getSampleValueForYPos(const int16_t y, const uint16_t h, const double v)
+    float getSampleValueForYPos(const int16_t y, const uint16_t h, const double v)
     {
-        return ((h/2.f - y) * 32768) / (v * (h/2.f));
+        return (h/2.f - y) / (v * (h/2.f));
     }
 
 public:
@@ -68,7 +68,7 @@ public:
         setYPos(dragYPos);
         const auto vertCenter = getYPos() + (getHeight() * 0.5f);
         const auto newSampleValue = getSampleValueForYPos(vertCenter, getParent()->getHeight(), state->verticalZoom);
-        state->sampleDataL[sampleIndex] = newSampleValue;
+        state->document.channels[0][sampleIndex] = newSampleValue;
         getParent()->setDirtyRecursive();
 
         return true;

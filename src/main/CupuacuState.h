@@ -16,13 +16,31 @@ struct CustomDataSource;
 class Component;
 class Waveform;
 
+enum class SampleFormat {
+    PCM_S8, PCM_S16, PCM_S24, PCM_S32,
+    FLOAT32, FLOAT64,
+    Unknown
+};
+ 
 struct CupuacuState {
     uint8_t menuFontSize = 60;
     uint8_t hardwarePixelsPerAppPixel = 1;
     std::string currentFile = "/Users/izmar/Downloads/ams_chill.wav";
 
-    std::vector<int16_t> sampleDataL;
-    std::vector<int16_t> sampleDataR;
+    struct Document {
+        int sampleRate = 0;
+        SampleFormat format = SampleFormat::Unknown;
+        std::vector<std::vector<float>> channels;
+        size_t getFrameCount()
+        {
+            if (channels.empty())
+            {
+                return 0;
+            }
+
+            return channels[0].size();
+        }
+    } document;
 
     double samplesPerPixel = 1;
     double verticalZoom;
@@ -33,7 +51,7 @@ struct CupuacuState {
     std::atomic<double> playbackPosition = 0;
     std::atomic<bool> isPlaying = false;
 
-    std::shared_ptr<CustomDataSource> activePlayback;  // <-- keeps playback alive
+    std::shared_ptr<CustomDataSource> activePlayback;
 
     SDL_Window *window = nullptr;
 

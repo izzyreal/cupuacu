@@ -2,9 +2,9 @@
 
 #include "../CupuacuState.h"
 
+#define MINIAUDIO_IMPLEMENTATION
 #include "../miniaudio.h"
 
-#include <vector>
 #include <cstring>
 #include <thread>
 #include <chrono>
@@ -14,7 +14,7 @@
 
 struct CustomDataSource {
     ma_data_source_base base;
-    const int16_t* sampleData;
+    const float* sampleData;
     ma_uint64 sampleCount;
     ma_uint64 cursor;
     ma_uint64 start;
@@ -54,11 +54,11 @@ static ma_result custom_data_source_read(ma_data_source *pDataSource,
     }
 
     float *out = (float*)pFramesOut;
-    const int16_t *in = ds->sampleData + ds->cursor;
+    const float *in = ds->sampleData + ds->cursor;
     
     for (ma_uint64 i = 0; i < framesToRead; i++)
     {
-        out[i] = in[i] / 32768.0f;
+        out[i] = in[i];
     }
 
     ds->cursor += framesToRead;
@@ -121,7 +121,7 @@ static ma_data_source_vtable custom_data_source_vtable = {
 };
 
 static ma_result custom_data_source_init(CustomDataSource *ds,
-                                         const int16_t *sampleData,
+                                         const float *sampleData,
                                          ma_uint64 sampleCount,
                                          ma_uint64 start,
                                          ma_uint64 end,
@@ -207,7 +207,7 @@ void play(CupuacuState *state)
         }
     }
 
-    const auto& sampleData = state->sampleDataL;
+    const auto& sampleData = state->document.channels[0];
     ma_uint64 totalSamples = sampleData.size();
     ma_uint64 start = 0;
     ma_uint64 end = totalSamples;

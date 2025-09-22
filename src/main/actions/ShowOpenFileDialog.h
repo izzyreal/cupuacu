@@ -40,7 +40,7 @@ static void fileDialogCallback(void *userdata, const char * const *filelist, int
 
     loadSampleData(state);
     const auto waveformWidth = state->waveform->getWidth();
-    state->samplesPerPixel = state->sampleDataL.size() / (float) waveformWidth;
+    state->samplesPerPixel = state->document.getFrameCount() / (float) waveformWidth;
     resetWaveformState(state);
     dynamic_cast<Waveform*>(state->waveform)->updateSamplePoints();
     state->waveform->setDirty();

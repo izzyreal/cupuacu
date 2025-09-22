@@ -36,7 +36,7 @@ static void handleKeyDown(
 
     if (event->key.scancode == SDL_SCANCODE_Q)
     {
-        if (state->samplesPerPixel < static_cast<float>(state->sampleDataL.size()) / 2.f)
+        if (state->samplesPerPixel < static_cast<float>(state->document.channels[0].size()) / 2.f)
         {
             if (tryZoomOutHorizontally(state))
             {
@@ -93,7 +93,7 @@ static void handleKeyDown(
     }
     else if (event->key.scancode == SDL_SCANCODE_RIGHT)
     {
-        if (state->sampleOffset >= state->sampleDataL.size())
+        if (state->sampleOffset >= state->document.channels[0].size())
         {
             return;
         }

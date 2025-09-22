@@ -16,13 +16,11 @@ const uint16_t initialDimensions[] = { 1280, 720 };
 
 #include <cstdint>
 #include <string>
-#include <vector>
 #include <functional>
 #include <filesystem>
 
 #include "file_loading.h"
 
-#include "Constants.h"
 #include "gui/Component.h"
 #include "gui/OpaqueRect.h"
 #include "gui/Waveform.h"
@@ -199,8 +197,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     const SDL_Rect waveformRect = getWaveformRect(actualCanvasDimensions.x, actualCanvasDimensions.y, state->hardwarePixelsPerAppPixel, menuBarRect.h);
     const SDL_Rect statusBarRect = getStatusBarRect(actualCanvasDimensions.x, actualCanvasDimensions.y, state->hardwarePixelsPerAppPixel, state->menuFontSize);
 
-    state->samplesPerPixel = state->sampleDataL.size() / (double) waveformRect.w;
-
     auto waveform = std::make_unique<Waveform>(state);
     waveform->setBounds(waveformRect.x, waveformRect.y, waveformRect.w, waveformRect.h);
     waveformHandle = rootComponent->addChildAndSetDirty(waveform);
@@ -216,6 +212,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     auto statusBar = std::make_unique<StatusBar>(state);
     statusBar->setBounds(statusBarRect.x, statusBarRect.y, statusBarRect.w, statusBarRect.h);
     rootComponent->addChildAndSetDirty(statusBar);
+
+    resetZoom(state);
 
     return SDL_APP_CONTINUE;
 }

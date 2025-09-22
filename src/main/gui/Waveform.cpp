@@ -1,4 +1,6 @@
 #include "Waveform.h"
+
+#include <limits>
 #include <cmath>
 #include <algorithm>
 #include "smooth_line.h"
@@ -16,7 +18,7 @@ void Waveform::updateSamplePoints()
         auto samplePoints = computeSamplePoints(
                 getWidth(),
                 getHeight(),
-                state->sampleDataL,
+                state->document.channels[0],
                 state->sampleOffset,
                 state->samplesPerPixel,
                 state->verticalZoom,
@@ -34,13 +36,13 @@ bool Waveform::shouldShowSamplePoints(const double samplesPerPixel, const uint8_
     return samplesPerPixel < ((float)hardwarePixelsPerAppPixel / 40.f);
 }
 
-int getYPosForSampleValue(const int16_t sampleValue, const uint16_t waveformHeight, const double verticalZoom)
+int getYPosForSampleValue(const float sampleValue, const uint16_t waveformHeight, const double verticalZoom)
 {
-    return (waveformHeight / 2.0f) - ((sampleValue * verticalZoom * (waveformHeight / 2.0f)) / 32768.0f);
+    return (waveformHeight * 0.5f) - (sampleValue * verticalZoom * waveformHeight * 0.5f);
 }
 
 std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints(int width, int height,
-                                 const std::vector<int16_t>& samples, size_t offset,
+                                 const std::vector<float>& samples, size_t offset,
                                  float samplesPerPixel, float verticalZoom, const uint8_t hardwarePixelsPerAppPixel)
 {
     const int neededInputSamples = static_cast<int>(std::ceil((width + 1) * samplesPerPixel));
@@ -75,7 +77,7 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints(int widt
 }
 
 void Waveform::renderSmoothWaveform(SDL_Renderer* renderer, int width, int height,
-                                 const std::vector<int16_t>& samples, size_t offset,
+                                 const std::vector<float>& samples, size_t offset,
                                  float samplesPerPixel, float verticalZoom, const uint8_t hardwarePixelsPerAppPixel)
 {
     const int neededInputSamples = static_cast<int>(std::ceil((width + 1) * samplesPerPixel));
@@ -106,8 +108,8 @@ void Waveform::renderSmoothWaveform(SDL_Renderer* renderer, int width, int heigh
         float x1 = static_cast<float>(xq[i]);
         float x2 = static_cast<float>(xq[i + 1]);
 
-        float y1f = height / 2.0f - (smoothened[i] * verticalZoom * height / 2.0f) / 32768.0f;
-        float y2f = height / 2.0f - (smoothened[i + 1] * verticalZoom * height / 2.0f) / 32768.0f;
+        float y1f = height / 2.0f - (smoothened[i] * verticalZoom * height / 2.0f);
+        float y2f = height / 2.0f - (smoothened[i + 1] * verticalZoom * height / 2.0f);
 
         float thickness = 1.0f;
 
@@ -142,10 +144,10 @@ void Waveform::renderSmoothWaveform(SDL_Renderer* renderer, int width, int heigh
 }
 
 static void renderBlockWaveform(SDL_Renderer* renderer, int width, int height,
-                                const std::vector<int16_t>& samples, size_t offset,
+                                const std::vector<float>& samples, size_t offset,
                                 float samplesPerPixel, float verticalZoom)
 {
-    const float scale = (verticalZoom * height * 0.5f) / 32768.0f;
+    const float scale = verticalZoom * height * 0.5f;
 
     int prevY = 0;
     bool hasPrev = false;
@@ -162,8 +164,8 @@ static void renderBlockWaveform(SDL_Renderer* renderer, int width, int height,
         if (endSample == startSample)
             endSample++;
 
-        int16_t minSample = INT16_MAX;
-        int16_t maxSample = INT16_MIN;
+        float minSample = std::numeric_limits<float>::max();
+        float maxSample = std::numeric_limits<float>::lowest();
 
         for (size_t i = startSample; i < endSample; ++i)
         {
@@ -173,7 +175,7 @@ static void renderBlockWaveform(SDL_Renderer* renderer, int width, int height,
                 break;
             }
 
-            const int16_t s = samples[i];
+            const float s = samples[i];
             minSample = std::min(minSample, s);
             maxSample = std::max(maxSample, s);
         }
@@ -217,7 +219,7 @@ void Waveform::onDraw(SDL_Renderer *renderer)
     const float samplesPerPixel = state->samplesPerPixel;
     const float verticalZoom = state->verticalZoom;
     const size_t sampleOffset = state->sampleOffset;
-    const auto& sampleDataL = state->sampleDataL;
+    const auto& sampleDataL = state->document.channels[0];
 
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderFillRect(renderer, NULL);
@@ -388,7 +390,7 @@ void Waveform::handleScroll(const int32_t mouseX,
 void Waveform::handleDoubleClick()
 {
     state->selection.setValue1(0);
-    state->selection.setValue2(state->sampleDataL.size());
+    state->selection.setValue2(state->document.getFrameCount());
     setDirtyRecursive();
 }
 
