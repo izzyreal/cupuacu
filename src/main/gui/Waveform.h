@@ -37,12 +37,6 @@ public:
     Waveform(CupuacuState *stateToUse, const uint8_t channelIndex);
 
     void onDraw(SDL_Renderer*) override;
-    bool mouseMove(const int32_t mouseX,
-                   const int32_t mouseY,
-                   const float mouseRelY,
-                   const bool leftButtonIsDown) override;
-    bool mouseLeftButtonDown(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY) override;
-    bool mouseLeftButtonUp(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY) override;
     void timerCallback() override;
 
     void updateSamplePoints();
@@ -61,12 +55,6 @@ private:
     void renderSmoothWaveform(SDL_Renderer* renderer, int width, int height,
                                      const std::vector<float>& samples, size_t offset,
                                      float samplesPerPixel, float verticalZoom, const uint8_t hardwarePixelsPerAppPixel);
-
-    void handleScroll(const int32_t mouseX,
-                      const int32_t mouseY);
-    void handleDoubleClick();
-    void startSelection(const int32_t mouseX);
-    void endSelection(const int32_t mouseX);
 
     void drawPlaybackPosition(SDL_Renderer *renderer, const double sampleOffset, const double samplesPerPixel);
 };

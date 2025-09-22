@@ -26,25 +26,28 @@ void Waveform::updateSamplePoints()
                 state->hardwarePixelsPerAppPixel);
 
         for (auto &sp : samplePoints)
-        {
             addChildAndSetDirty(sp);
-        }
     }
 }
 
-bool Waveform::shouldShowSamplePoints(const double samplesPerPixel, const uint8_t hardwarePixelsPerAppPixel)
+bool Waveform::shouldShowSamplePoints(const double samplesPerPixel,
+                                      const uint8_t hardwarePixelsPerAppPixel)
 {
     return samplesPerPixel < ((float)hardwarePixelsPerAppPixel / 40.f);
 }
 
-int getYPosForSampleValue(const float sampleValue, const uint16_t waveformHeight, const double verticalZoom)
+int getYPosForSampleValue(const float sampleValue,
+                          const uint16_t waveformHeight,
+                          const double verticalZoom)
 {
     return (waveformHeight * 0.5f) - (sampleValue * verticalZoom * waveformHeight * 0.5f);
 }
 
-std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints(int width, int height,
-                                 const std::vector<float>& samples, size_t offset,
-                                 float samplesPerPixel, float verticalZoom, const uint8_t hardwarePixelsPerAppPixel)
+std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints(
+    int width, int height,
+    const std::vector<float>& samples, size_t offset,
+    float samplesPerPixel, float verticalZoom,
+    const uint8_t hardwarePixelsPerAppPixel)
 {
     const int neededInputSamples = static_cast<int>(std::ceil((width + 1) * samplesPerPixel));
     const int availableSamples = static_cast<int>(samples.size()) - static_cast<int>(offset);
@@ -54,14 +57,10 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints(int widt
         return {};
 
     std::vector<double> x(actualInputSamples);
-
     for (int i = 0; i < actualInputSamples; ++i)
-    {
         x[i] = i / samplesPerPixel;
-    }
 
     std::vector<std::unique_ptr<SamplePoint>> result;
-
     const auto samplePointSize = 32 / hardwarePixelsPerAppPixel;
 
     for (int i = 0; i < actualInputSamples; ++i)
@@ -70,7 +69,9 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints(int widt
         int yPos = getYPosForSampleValue(samples[offset + i], height, verticalZoom);
 
         auto samplePoint = std::make_unique<SamplePoint>(state, offset + i);
-        samplePoint->setBounds(xPos - (samplePointSize / 2), yPos - (samplePointSize / 2), samplePointSize, samplePointSize);
+        samplePoint->setBounds(xPos - (samplePointSize / 2),
+                               yPos - (samplePointSize / 2),
+                               samplePointSize, samplePointSize);
         result.push_back(std::move(samplePoint));
     }
 
@@ -78,8 +79,9 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints(int widt
 }
 
 void Waveform::renderSmoothWaveform(SDL_Renderer* renderer, int width, int height,
-                                 const std::vector<float>& samples, size_t offset,
-                                 float samplesPerPixel, float verticalZoom, const uint8_t hardwarePixelsPerAppPixel)
+                                    const std::vector<float>& samples, size_t offset,
+                                    float samplesPerPixel, float verticalZoom,
+                                    const uint8_t hardwarePixelsPerAppPixel)
 {
     const int neededInputSamples = static_cast<int>(std::ceil((width + 1) * samplesPerPixel));
     const int availableSamples = static_cast<int>(samples.size()) - static_cast<int>(offset);
@@ -117,12 +119,9 @@ void Waveform::renderSmoothWaveform(SDL_Renderer* renderer, int width, int heigh
         float dx = x2 - x1;
         float dy = y2f - y1f;
         float len = std::sqrt(dx*dx + dy*dy);
+        if (len == 0.0f) continue;
 
-        if (len == 0.0f)
-            continue;
-
-        dx /= len;
-        dy /= len;
+        dx /= len; dy /= len;
 
         float px = -dy * thickness * 0.5f;
         float py = dx * thickness * 0.5f;
@@ -161,9 +160,7 @@ static void renderBlockWaveform(SDL_Renderer* renderer, int width, int height,
 
         const size_t startSample = static_cast<size_t>(x * samplesPerPixel) + offset;
         size_t endSample = static_cast<size_t>((x + 1) * samplesPerPixel) + offset;
-
-        if (endSample == startSample)
-            endSample++;
+        if (endSample == startSample) endSample++;
 
         float minSample = std::numeric_limits<float>::max();
         float maxSample = std::numeric_limits<float>::lowest();
@@ -175,7 +172,6 @@ static void renderBlockWaveform(SDL_Renderer* renderer, int width, int height,
                 noMoreStuffToDraw = true;
                 break;
             }
-
             const float s = samples[i];
             minSample = std::min(minSample, s);
             maxSample = std::max(maxSample, s);
@@ -187,9 +183,7 @@ static void renderBlockWaveform(SDL_Renderer* renderer, int width, int height,
         if (hasPrev)
         {
             if ((y >= 0 || prevY >= 0) && (y < height || prevY < height))
-            {
                 SDL_RenderLine(renderer, x - 1, prevY, x, y);
-            }
         }
 
         if (startSample >= samples.size())
@@ -205,13 +199,9 @@ static void renderBlockWaveform(SDL_Renderer* renderer, int width, int height,
             continue;
 
         if (y1 != y2)
-        {
             SDL_RenderLine(renderer, x, y1, x, y2);
-        }
         else
-        {
             SDL_RenderPoint(renderer, x, y1);
-        }
     }
 }
 
@@ -228,40 +218,33 @@ void Waveform::onDraw(SDL_Renderer *renderer)
 
     if (samplesPerPixel < 1)
     {
-        renderSmoothWaveform(
-                renderer,
-                getWidth(),
-                getHeight(),
-                sampleDataL,
-                sampleOffset,
-                samplesPerPixel,
-                verticalZoom,
-                state->hardwarePixelsPerAppPixel);
+        renderSmoothWaveform(renderer, getWidth(), getHeight(),
+                             sampleDataL, sampleOffset,
+                             samplesPerPixel, verticalZoom,
+                             state->hardwarePixelsPerAppPixel);
     }
     else
     {
-        renderBlockWaveform(
-                renderer, 
-                getWidth(),
-                getHeight(),
-                sampleDataL,
-                sampleOffset,
-                samplesPerPixel,
-                verticalZoom);
+        renderBlockWaveform(renderer, getWidth(), getHeight(),
+                            sampleDataL, sampleOffset,
+                            samplesPerPixel, verticalZoom);
     }
 
-    const auto selectionIsActive = state->selection.isActive();
+        const auto isSelected = state->selection.isActive() &&
+                            channelIndex >= state->selectionChannelStart &&
+                            channelIndex <= state->selectionChannelEnd;
+
     auto firstSample = state->selection.getStartFloor();
     auto lastSample = state->selection.getEndFloor();
 
-    if (selectionIsActive && lastSample >= sampleOffset)
+    if (isSelected && lastSample >= sampleOffset)
     {
         if (shouldShowSamplePoints(samplesPerPixel, state->hardwarePixelsPerAppPixel))
         {
             firstSample -= 0.5f;
             lastSample -= 0.5f;
         }
- 
+
         float startX = firstSample <= sampleOffset ? 0 : (firstSample - sampleOffset) / samplesPerPixel;
         float endX = (lastSample - sampleOffset) / samplesPerPixel;
 
@@ -284,7 +267,9 @@ void Waveform::onDraw(SDL_Renderer *renderer)
     drawPlaybackPosition(renderer, sampleOffset, samplesPerPixel);
 }
 
-void Waveform::drawPlaybackPosition(SDL_Renderer *renderer, const double sampleOffset, const double samplesPerPixel)
+void Waveform::drawPlaybackPosition(SDL_Renderer *renderer,
+                                    const double sampleOffset,
+                                    const double samplesPerPixel)
 {
     const float lineX = (state->playbackPosition.load() - sampleOffset) / samplesPerPixel;
 
@@ -305,19 +290,13 @@ void Waveform::timerCallback()
         if (scroll < 0)
         {
             auto absScroll = -scroll;
-
             state->sampleOffset = (state->sampleOffset > absScroll)
                 ? state->sampleOffset - absScroll
                 : 0;
-
-            state->selection.setValue2((state->selection.getEnd() > absScroll)
-                ? state->selection.getEnd() - absScroll
-                : 0);
         }
         else
         {
             state->sampleOffset += scroll;
-            state->selection.bumpValue2(scroll);
         }
 
         if (oldOffset != state->sampleOffset)
@@ -328,145 +307,11 @@ void Waveform::timerCallback()
         }
     }
 
-    if (const auto newPlaybackPosition = state->playbackPosition.load(); newPlaybackPosition != playbackPosition)
+    if (const auto newPlaybackPosition = state->playbackPosition.load();
+        newPlaybackPosition != playbackPosition)
     {
         playbackPosition = newPlaybackPosition;
         setDirtyRecursive();
     }
-}
-
-void Waveform::handleScroll(const int32_t mouseX,
-                                     const int32_t mouseY)
-{
-    const auto samplesPerPixel = state->samplesPerPixel;
-    const auto oldSampleOffset = state->sampleOffset;
-    auto sampleOffset = state->sampleOffset;
-
-    if (mouseX > getWidth() || mouseX < 0)
-    {
-        auto diff = (mouseX < 0)
-            ? mouseX 
-            : mouseX - getWidth();
-
-        auto samplesToScroll = diff * samplesPerPixel;
-
-        if (samplesToScroll < 0)
-        {
-            double absScroll = -samplesToScroll;
-            state->sampleOffset = (state->sampleOffset > absScroll)
-                ? state->sampleOffset - absScroll
-                : 0;
-        }
-        else
-        {
-            state->sampleOffset += samplesToScroll;
-        }
-
-        sampleOffset = state->sampleOffset;
-        state->samplesToScroll = samplesToScroll;
-    }
-    else
-    {
-        state->samplesToScroll = 0;
-    }
-
-    auto waveformMouseX = mouseX;
-
-    if (samplesPerPixel < 1.f)
-    {
-        waveformMouseX += 0.5f/samplesPerPixel;
-    }
-
-    const float x = waveformMouseX <= 0 ? 0.f : waveformMouseX;
-    state->selection.setValue2(sampleOffset + (x * samplesPerPixel));
-
-    setDirtyRecursive();
-
-    if (state->sampleOffset != oldSampleOffset)
-    {
-        updateSamplePoints();
-    }
-}
-
-void Waveform::handleDoubleClick()
-{
-    state->selection.setValue1(0);
-    state->selection.setValue2(state->document.getFrameCount());
-    setDirtyRecursive();
-}
-
-void Waveform::startSelection(const int32_t mouseX)
-{
-    const auto samplesPerPixel = state->samplesPerPixel;
-    const auto sampleOffset = state->sampleOffset;
-
-    auto buttonx = mouseX;
-
-    if (samplesPerPixel < 1)
-    {
-        buttonx += 0.5f / samplesPerPixel;
-    }
-
-    state->selection.startSelection(sampleOffset + (buttonx * samplesPerPixel));
-}
-
-void Waveform::endSelection(const int32_t mouseX)
-{
-    const auto samplesPerPixel = state->samplesPerPixel;
-
-    auto waveformButtonX = mouseX;
-
-    if (samplesPerPixel < 1)
-    {
-        waveformButtonX += 0.5f / samplesPerPixel;
-    }
-
-    state->selection.endSelection(state->sampleOffset + (waveformButtonX * state->samplesPerPixel));
-
-    state->samplesToScroll = 0;
-    setDirtyRecursive();
-}
-
-bool Waveform::mouseMove(const int32_t mouseX,
-                                  const int32_t mouseY,
-                                  const float mouseRelY,
-                                  const bool leftButtonIsDown)
-{
-    if (leftButtonIsDown && numClicksOfLastMouseDown == 1 && state->capturingComponent == this)
-    {
-        handleScroll(mouseX, mouseY);
-        return true;
-    }
-
-    return false;
-}
-
-bool Waveform::mouseLeftButtonDown(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY)
-{
-    numClicksOfLastMouseDown = numClicks;
-
-    if (numClicks == 1)
-    {
-        startSelection(mouseX);
-        return true;
-    }
-    else if (numClicks == 2)
-    {
-        handleDoubleClick();
-        return true;
-    }
-
-    return false;
-}
-
-bool Waveform::mouseLeftButtonUp(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY)
-{
-    if (numClicks == 1)
-    {
-        endSelection(mouseX);
-        return true;
-    }
-
-    return false;
 }
 

@@ -46,6 +46,9 @@ struct CupuacuState {
     double verticalZoom;
     double sampleOffset;
     Selection<double> selection;
+    int selectionChannelStart = -1;
+    int selectionChannelEnd   = -1;
+    int selectionAnchorChannel;
     double samplesToScroll;
 
     std::atomic<double> playbackPosition = 0;
@@ -69,6 +72,8 @@ static void resetWaveformState(CupuacuState *state)
     state->verticalZoom = 1;
     state->sampleOffset = 0;
     state->selection.reset();
+    state->selectionChannelStart = -1;
+    state->selectionChannelEnd = -1;
     state->samplesToScroll = 0;
     state->playbackPosition = 0;
 }

@@ -26,6 +26,7 @@ const uint16_t initialDimensions[] = { 1280, 720 };
 #include "gui/Waveform.h"
 #include "gui/MenuBar.h"
 #include "gui/StatusBar.h"
+#include "gui/WaveformsOverlay.h"
 
 std::unique_ptr<Component> rootComponent;
 Component *backgroundComponentHandle;
@@ -217,6 +218,16 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
             state->waveforms.push_back(static_cast<Waveform*>(handle));
         }
     }
+
+    auto waveformsOverlay = std::make_unique<WaveformsOverlay>(state);
+    waveformsOverlay->setBounds(
+        waveformRect.x,
+        waveformRect.y,
+        waveformRect.w,
+        waveformRect.h
+    );
+
+    rootComponent->addChildAndSetDirty(waveformsOverlay);
     
     auto menuBar = std::make_unique<MenuBar>(state);
 
