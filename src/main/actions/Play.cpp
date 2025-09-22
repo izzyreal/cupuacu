@@ -14,8 +14,8 @@
 
 struct CustomDataSource {
     ma_data_source_base base;
-    const float* sampleData;
-    ma_uint64 sampleCount;
+    std::vector<const float*> channelData;
+    ma_uint64 frameCount;
     ma_uint64 cursor;
     ma_uint64 start;
     ma_uint64 end;
@@ -23,14 +23,14 @@ struct CustomDataSource {
     ma_device device;
 };
 
-static ma_result custom_data_source_read(ma_data_source *pDataSource,
-                                         void *pFramesOut,
+static ma_result custom_data_source_read(ma_data_source* pDataSource,
+                                         void* pFramesOut,
                                          ma_uint64 frameCount,
-                                         ma_uint64 *pFramesRead)
+                                         ma_uint64* pFramesRead)
 {
-    CustomDataSource *ds = (CustomDataSource*)pDataSource;
+    CustomDataSource* ds = (CustomDataSource*)pDataSource;
     ma_uint64 framesAvailable = ds->end - ds->cursor;
-    ma_uint64 framesToRead = frameCount < framesAvailable ? frameCount : framesAvailable;
+    ma_uint64 framesToRead = (frameCount < framesAvailable) ? frameCount : framesAvailable;
 
     if (framesToRead == 0)
     {
@@ -53,22 +53,22 @@ static ma_result custom_data_source_read(ma_data_source *pDataSource,
         return MA_AT_END;
     }
 
-    float *out = (float*)pFramesOut;
-    const float *in = ds->sampleData + ds->cursor;
-    
-    for (ma_uint64 i = 0; i < framesToRead; i++)
-    {
-        out[i] = in[i];
+    float* out = (float*)pFramesOut;
+    size_t numChannels = ds->channelData.size();
+
+    for (ma_uint64 i = 0; i < framesToRead; ++i) {
+        for (size_t ch = 0; ch < numChannels; ++ch) {
+            out[i * numChannels + ch] = ds->channelData[ch][ds->cursor + i];
+        }
     }
 
     ds->cursor += framesToRead;
     *pFramesRead = framesToRead;
 
-    if (ds->state)
-    {
+    if (ds->state) {
         ds->state->playbackPosition.store((double)ds->cursor);
     }
-    
+
     return MA_SUCCESS;
 }
 
@@ -93,22 +93,27 @@ static ma_result custom_data_source_get_cursor(ma_data_source *pDataSource, ma_u
     return MA_SUCCESS;
 }
 
-static ma_result custom_data_source_get_data_format(ma_data_source *pDataSource,
-                                                    ma_format *pFormat,
-                                                    ma_uint32 *pChannels,
-                                                    ma_uint32 *pSampleRate,
-                                                    ma_channel *pChannelMap,
+static ma_result custom_data_source_get_data_format(ma_data_source* pDataSource,
+                                                    ma_format* pFormat,
+                                                    ma_uint32* pChannels,
+                                                    ma_uint32* pSampleRate,
+                                                    ma_channel* pChannelMap,
                                                     size_t channelMapSize)
 {
+    CustomDataSource* ds = (CustomDataSource*)pDataSource;
     *pFormat = ma_format_f32;
-    *pChannels = 1;
-    *pSampleRate = 44100;
+    *pChannels = (ma_uint32)ds->channelData.size();
+    *pSampleRate = (ma_uint32)ds->state->document.sampleRate;
 
-    if (pChannelMap && channelMapSize >= 1)
-    {
-        pChannelMap[0] = MA_CHANNEL_MONO;
+    if (pChannelMap && channelMapSize >= *pChannels) {
+        if (*pChannels == 1) {
+            pChannelMap[0] = MA_CHANNEL_MONO;
+        } else if (*pChannels == 2) {
+            pChannelMap[0] = MA_CHANNEL_FRONT_LEFT;
+            pChannelMap[1] = MA_CHANNEL_FRONT_RIGHT;
+        }
     }
-    
+
     return MA_SUCCESS;
 }
 
@@ -120,27 +125,26 @@ static ma_data_source_vtable custom_data_source_vtable = {
     NULL
 };
 
-static ma_result custom_data_source_init(CustomDataSource *ds,
-                                         const float *sampleData,
-                                         ma_uint64 sampleCount,
+static ma_result custom_data_source_init(CustomDataSource* ds,
+                                         const std::vector<std::vector<float>>& channels,
                                          ma_uint64 start,
                                          ma_uint64 end,
-                                         CupuacuState *state)
+                                         CupuacuState* state)
 {
     ma_data_source_config config = ma_data_source_config_init();
     config.vtable = &custom_data_source_vtable;
     ma_result result = ma_data_source_init(&config, &ds->base);
+    if (result != MA_SUCCESS) return result;
 
-    if (result != MA_SUCCESS)
-    {
-        return result;
+    ds->channelData.clear();
+    for (const auto& ch : channels) {
+        ds->channelData.push_back(ch.data());
     }
 
-    ds->sampleData = sampleData;
-    ds->sampleCount = sampleCount;
+    ds->frameCount = channels.empty() ? 0 : channels[0].size();
     ds->cursor = start;
     ds->start = start;
-    ds->end = end;
+    ds->end   = end;
     ds->state = state;
 
     return MA_SUCCESS;
@@ -184,66 +188,63 @@ void play(CupuacuState *state)
 {
     std::shared_ptr<CustomDataSource> ds;
 
-    // Stop any previous playback safely without holding the lock while stopping the device
     {
         std::lock_guard<std::mutex> lock(playbackMutex);
         auto prev = state->activePlayback;
         state->activePlayback.reset();
         state->isPlaying.store(false);
 
-        if (prev)
-        {
+        if (prev) {
             std::thread([prev]() {
-                
-                if (ma_device_get_state(&prev->device) == ma_device_state_started)
-                {
+                if (ma_device_get_state(&prev->device) == ma_device_state_started) {
                     ma_device_stop(&prev->device);
                 }
-
                 ma_device_uninit(&prev->device);
                 ma_data_source_uninit(&prev->base);
-
             }).detach();
         }
     }
+
+    uint32_t channelCount = static_cast<uint32_t>(state->document.channels.size());
+    if (channelCount == 0) return;
+    if (channelCount > 2) channelCount = 2;
 
     const auto& sampleData = state->document.channels[0];
     ma_uint64 totalSamples = sampleData.size();
     ma_uint64 start = 0;
     ma_uint64 end = totalSamples;
 
-    if (state->selection.isActive())
-    {
+    if (state->selection.isActive()) {
         start = (ma_uint64)state->selection.getStartFloorInt();
-        end = (ma_uint64)state->selection.getEndFloorInt();
-    }
-    else
-    {
+        end   = (ma_uint64)state->selection.getEndFloorInt();
+    } else {
         start = (ma_uint64)state->playbackPosition.load();
     }
 
     ds = std::make_shared<CustomDataSource>();
-    
-    if (custom_data_source_init(ds.get(), sampleData.data(), totalSamples, start, end, state) != MA_SUCCESS)
+
+    if (custom_data_source_init(ds.get(),
+                                state->document.channels,
+                                start,
+                                end,
+                                state) != MA_SUCCESS)
     {
         return;
     }
 
     ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
-    deviceConfig.playback.format = ma_format_f32;
-    deviceConfig.playback.channels = 1;
-    deviceConfig.sampleRate = 44100;
-    deviceConfig.dataCallback = ma_playback_callback;
-    deviceConfig.pUserData = ds.get();
+    deviceConfig.playback.format   = ma_format_f32;
+    deviceConfig.playback.channels = channelCount;
+    deviceConfig.sampleRate        = state->document.sampleRate;
+    deviceConfig.dataCallback      = ma_playback_callback;
+    deviceConfig.pUserData         = ds.get();
 
-    if (ma_device_init(NULL, &deviceConfig, &ds->device) != MA_SUCCESS)
-    {
+    if (ma_device_init(NULL, &deviceConfig, &ds->device) != MA_SUCCESS) {
         ma_data_source_uninit(&ds->base);
         return;
     }
 
-    if (ma_device_start(&ds->device) != MA_SUCCESS)
-    {
+    if (ma_device_start(&ds->device) != MA_SUCCESS) {
         ma_device_uninit(&ds->device);
         ma_data_source_uninit(&ds->base);
         return;
@@ -256,12 +257,9 @@ void play(CupuacuState *state)
     }
 
     std::thread([state, ds]() {
-        
-        while (state->isPlaying.load())
-        {
+        while (state->isPlaying.load()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
-
         stop(state);
     }).detach();
 }
