@@ -8,6 +8,7 @@ class SamplePoint : public Component {
 
 private:
     const uint64_t sampleIndex;
+    const int channelIndex;
     bool isDragging = false;
     float prevY = 0.f;
     float dragYPos = 0.f;
@@ -18,8 +19,8 @@ private:
     }
 
 public:
-    SamplePoint(CupuacuState *state, const uint64_t sampleIndexToUse) :
-        Component(state, "Sample point idx " + std::to_string(sampleIndexToUse)), sampleIndex(sampleIndexToUse)
+    SamplePoint(CupuacuState *state, const int channelIndexToUse, const uint64_t sampleIndexToUse) :
+        Component(state, "Sample point idx " + std::to_string(sampleIndexToUse)), sampleIndex(sampleIndexToUse), channelIndex(channelIndexToUse)
     {
     }
 
@@ -68,7 +69,7 @@ public:
         setYPos(dragYPos);
         const auto vertCenter = getYPos() + (getHeight() * 0.5f);
         const auto newSampleValue = getSampleValueForYPos(vertCenter, getParent()->getHeight(), state->verticalZoom);
-        state->document.channels[0][sampleIndex] = newSampleValue;
+        state->document.channels[channelIndex][sampleIndex] = newSampleValue;
         getParent()->setDirtyRecursive();
 
         return true;

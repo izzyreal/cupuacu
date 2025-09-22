@@ -68,7 +68,7 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints(
         int xPos = x[i];
         int yPos = getYPosForSampleValue(samples[offset + i], height, verticalZoom);
 
-        auto samplePoint = std::make_unique<SamplePoint>(state, offset + i);
+        auto samplePoint = std::make_unique<SamplePoint>(state, channelIndex, offset + i);
         samplePoint->setBounds(xPos - (samplePointSize / 2),
                                yPos - (samplePointSize / 2),
                                samplePointSize, samplePointSize);

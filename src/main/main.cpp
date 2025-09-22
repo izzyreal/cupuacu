@@ -197,6 +197,16 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     const SDL_Rect waveformRect = getWaveformRect(actualCanvasDimensions.x, actualCanvasDimensions.y, state->hardwarePixelsPerAppPixel, menuBarRect.h);
     const SDL_Rect statusBarRect = getStatusBarRect(actualCanvasDimensions.x, actualCanvasDimensions.y, state->hardwarePixelsPerAppPixel, state->menuFontSize);
 
+    auto waveformsOverlay = std::make_unique<WaveformsOverlay>(state);
+    waveformsOverlay->setBounds(
+        waveformRect.x,
+        waveformRect.y,
+        waveformRect.w,
+        waveformRect.h
+    );
+
+    rootComponent->addChildAndSetDirty(waveformsOverlay);
+
     state->waveforms.clear();
 
     int numChannels = static_cast<int>(state->document.channels.size());
@@ -219,15 +229,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
         }
     }
 
-    auto waveformsOverlay = std::make_unique<WaveformsOverlay>(state);
-    waveformsOverlay->setBounds(
-        waveformRect.x,
-        waveformRect.y,
-        waveformRect.w,
-        waveformRect.h
-    );
-
-    rootComponent->addChildAndSetDirty(waveformsOverlay);
     
     auto menuBar = std::make_unique<MenuBar>(state);
 
@@ -406,4 +407,3 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
     SDL_DestroyWindow(window);
     SDL_Quit();
 }
-
