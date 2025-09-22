@@ -8,7 +8,33 @@
 class Waveform : public Component {
 
 public:
-    Waveform(CupuacuState *stateToUse);
+    static uint32_t getWaveformWidth(CupuacuState *state)
+    {
+        if (state->waveforms.empty())
+        {
+            return 0;
+        }
+
+        return state->waveforms[0]->getWidth();
+    }
+
+    static void updateAllSamplePoints(CupuacuState *state)
+    {
+        for (auto &waveform : state->waveforms)
+        {
+            waveform->updateSamplePoints();
+        }
+    }
+
+    static void setAllWaveformsDirty(CupuacuState *state)
+    {
+        for (auto &waveform : state->waveforms)
+        {
+            waveform->setDirty();
+        }
+    }
+
+    Waveform(CupuacuState *stateToUse, const uint8_t channelIndex);
 
     void onDraw(SDL_Renderer*) override;
     bool mouseMove(const int32_t mouseX,
@@ -22,6 +48,7 @@ public:
     void updateSamplePoints();
 
 private:
+    const uint8_t channelIndex;
     double playbackPosition = 0;
     uint8_t numClicksOfLastMouseDown = 0;
 

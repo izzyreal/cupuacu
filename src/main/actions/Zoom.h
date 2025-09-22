@@ -7,7 +7,7 @@
 
 static void resetZoom(CupuacuState *state)
 {
-    const auto waveformWidth = state->waveform->getWidth();
+    const auto waveformWidth = Waveform::getWaveformWidth(state);
     state->samplesPerPixel = state->document.getFrameCount() / (float) waveformWidth;
     state->verticalZoom = INITIAL_VERTICAL_ZOOM;
     state->sampleOffset = INITIAL_SAMPLE_OFFSET;
@@ -40,7 +40,7 @@ static bool tryZoomOutHorizontally(CupuacuState *state)
         return false;
     }
 
-    const auto waveformWidth = state->waveform->getWidth();
+    const auto waveformWidth = Waveform::getWaveformWidth(state);
     const auto centerSampleIndex = ((waveformWidth / 2.f) * state->samplesPerPixel) + state->sampleOffset;
     state->samplesPerPixel *= 2.f;
     const auto newSampleOffset = centerSampleIndex - ((waveformWidth / 2.f) * state->samplesPerPixel);

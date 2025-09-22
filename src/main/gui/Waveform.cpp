@@ -5,7 +5,8 @@
 #include <algorithm>
 #include "smooth_line.h"
 
-Waveform::Waveform(CupuacuState *state) : Component(state, "Waveform")
+Waveform::Waveform(CupuacuState *state, const uint8_t channelIndexToUse)
+    : Component(state, "Waveform"), channelIndex(channelIndexToUse)
 {
 }
 
@@ -18,7 +19,7 @@ void Waveform::updateSamplePoints()
         auto samplePoints = computeSamplePoints(
                 getWidth(),
                 getHeight(),
-                state->document.channels[0],
+                state->document.channels[channelIndex],
                 state->sampleOffset,
                 state->samplesPerPixel,
                 state->verticalZoom,
@@ -219,7 +220,7 @@ void Waveform::onDraw(SDL_Renderer *renderer)
     const float samplesPerPixel = state->samplesPerPixel;
     const float verticalZoom = state->verticalZoom;
     const size_t sampleOffset = state->sampleOffset;
-    const auto& sampleDataL = state->document.channels[0];
+    const auto& sampleDataL = state->document.channels[channelIndex];
 
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderFillRect(renderer, NULL);

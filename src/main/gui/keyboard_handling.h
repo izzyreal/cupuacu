@@ -8,10 +8,13 @@
 #include "../actions/Play.h"
 #include "../actions/Zoom.h"
 
-static void updateWaveform(Waveform *waveform)
+static void updateWaveforms(CupuacuState *state)
 {
-    waveform->setDirty();
-    waveform->updateSamplePoints();
+    for (auto waveform : state->waveforms)
+    {
+        waveform->setDirty();
+        waveform->updateSamplePoints();
+    }
 }
 
 static void handleKeyDown(
@@ -24,7 +27,7 @@ static void handleKeyDown(
     if (event->key.scancode == SDL_SCANCODE_ESCAPE)
     {
         resetZoom(state);
-        updateWaveform(state->waveform);
+        updateWaveforms(state);
         return;
     }
     
@@ -32,7 +35,7 @@ static void handleKeyDown(
     if (event->key.mod & SDL_KMOD_ALT) multiplier *= multiplierFactor;
     if (event->key.mod & SDL_KMOD_CTRL) multiplier *= multiplierFactor;
 
-    const auto waveformWidth = state->waveform->getWidth();
+    const auto waveformWidth = Waveform::getWaveformWidth(state);
 
     if (event->key.scancode == SDL_SCANCODE_Q)
     {
@@ -40,7 +43,7 @@ static void handleKeyDown(
         {
             if (tryZoomOutHorizontally(state))
             {
-                updateWaveform(state->waveform);
+                updateWaveforms(state);
             }
         }
     }
@@ -48,20 +51,20 @@ static void handleKeyDown(
     {
         if (tryZoomInHorizontally(state))
         {
-            updateWaveform(state->waveform);
+            updateWaveforms(state);
         }
     }
     else if (event->key.scancode == SDL_SCANCODE_E)
     {
         if (tryZoomOutVertically(state, multiplier))
         {
-            updateWaveform(state->waveform);
+            updateWaveforms(state);
         }
     }
     else if (event->key.scancode == SDL_SCANCODE_R)
     {
         zoomInVertically(state, multiplier);
-        updateWaveform(state->waveform);
+        updateWaveforms(state);
     }
     else if (event->key.scancode == SDL_SCANCODE_Z)
     {
@@ -74,7 +77,7 @@ static void handleKeyDown(
         state->sampleOffset = state->selection.getStart();
         const auto selectionLength = state->selection.getLength();
         state->samplesPerPixel = selectionLength / waveformWidth;
-        updateWaveform(state->waveform);
+        updateWaveforms(state);
     }
     else if (event->key.scancode == SDL_SCANCODE_LEFT)
     {
@@ -89,7 +92,7 @@ static void handleKeyDown(
         {
             state->sampleOffset = 0;
         }
-        updateWaveform(state->waveform);
+        updateWaveforms(state);
     }
     else if (event->key.scancode == SDL_SCANCODE_RIGHT)
     {
@@ -100,7 +103,7 @@ static void handleKeyDown(
 
         state->sampleOffset += std::max(state->samplesPerPixel, 1.0) * multiplier;
 
-        updateWaveform(state->waveform);
+        updateWaveforms(state);
     }
     else if (event->key.scancode == SDL_SCANCODE_O)
     {

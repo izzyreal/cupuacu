@@ -39,11 +39,11 @@ static void fileDialogCallback(void *userdata, const char * const *filelist, int
     state->currentFile = absoluteFilePath;
 
     loadSampleData(state);
-    const auto waveformWidth = state->waveform->getWidth();
+    const auto waveformWidth = Waveform::getWaveformWidth(state);
     state->samplesPerPixel = state->document.getFrameCount() / (float) waveformWidth;
     resetWaveformState(state);
-    dynamic_cast<Waveform*>(state->waveform)->updateSamplePoints();
-    state->waveform->setDirty();
+    Waveform::updateAllSamplePoints(state);
+    Waveform::setAllWaveformsDirty(state);
 
     SDL_SetWindowTitle(state->window, state->currentFile.c_str()); 
 }

@@ -29,7 +29,6 @@ const uint16_t initialDimensions[] = { 1280, 720 };
 
 std::unique_ptr<Component> rootComponent;
 Component *backgroundComponentHandle;
-Waveform *waveformHandle;
 Component *menuBarHandle;
 
 const std::function<void(CupuacuState*)> renderCanvasToWindow = [](CupuacuState *state)
@@ -197,11 +196,28 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     const SDL_Rect waveformRect = getWaveformRect(actualCanvasDimensions.x, actualCanvasDimensions.y, state->hardwarePixelsPerAppPixel, menuBarRect.h);
     const SDL_Rect statusBarRect = getStatusBarRect(actualCanvasDimensions.x, actualCanvasDimensions.y, state->hardwarePixelsPerAppPixel, state->menuFontSize);
 
-    auto waveform = std::make_unique<Waveform>(state);
-    waveform->setBounds(waveformRect.x, waveformRect.y, waveformRect.w, waveformRect.h);
-    waveformHandle = rootComponent->addChildAndSetDirty(waveform);
-    state->waveform = waveformHandle;
+    state->waveforms.clear();
 
+    int numChannels = static_cast<int>(state->document.channels.size());
+
+    if (numChannels > 0)
+    {
+        float availableHeight = waveformRect.h;
+        float channelHeight = availableHeight / numChannels;
+
+        for (int ch = 0; ch < numChannels; ++ch) {
+            auto waveform = std::make_unique<Waveform>(state, ch);
+            waveform->setBounds(
+                waveformRect.x,
+                waveformRect.y + ch * channelHeight,
+                waveformRect.w,
+                channelHeight
+            );
+            auto *handle = rootComponent->addChildAndSetDirty(waveform);
+            state->waveforms.push_back(static_cast<Waveform*>(handle));
+        }
+    }
+    
     auto menuBar = std::make_unique<MenuBar>(state);
 
     menuBar->setBounds(menuBarRect.x, menuBarRect.y, menuBarRect.w, menuBarRect.h);
@@ -291,10 +307,21 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                             state->hardwarePixelsPerAppPixel,
                             menuBarRect.h);
                     
-                    const auto samplesPerPixelFactor = waveformHandle->getWidth() * state->samplesPerPixel;
+                    const auto samplesPerPixelFactor = Waveform::getWaveformWidth(state) * state->samplesPerPixel;
 
-                    waveformHandle->setBounds(waveformRect.x, waveformRect.y, waveformRect.w, waveformRect.h);
-                    
+                    const int numChannels = static_cast<int>(state->waveforms.size());
+                    const float channelHeight = (float) waveformRect.h / numChannels;
+
+                    for (int ch = 0; ch < numChannels; ++ch)
+                    {
+                        state->waveforms[ch]->setBounds(
+                            waveformRect.x,
+                            waveformRect.y + ch * channelHeight,
+                            waveformRect.w,
+                            channelHeight
+                        );
+                    }
+
                     const auto newSamplesPerPixel = samplesPerPixelFactor / waveformRect.w; 
                     state->samplesPerPixel = newSamplesPerPixel;
 
