@@ -13,14 +13,9 @@ public:
                              const int32_t mouseY) override
     {
         const auto samplesPerPixel = state->samplesPerPixel;
-        const double samplePos = state->sampleOffset + mouseX * samplesPerPixel;
+        const int channel = channelAt(mouseY);
 
-        state->selection.setValue1(samplePos);
-        state->selection.setValue2(samplePos);
-
-        int channel = channelAt(mouseY);
-
-        if (numClicks == 2)
+        if (numClicks >= 2)
         {
             double startSample = state->sampleOffset;
             double endSample   = state->sampleOffset + getWidth() * samplesPerPixel;
@@ -28,19 +23,38 @@ public:
             state->selection.setValue1(startSample);
             state->selection.setValue2(endSample);
 
-            state->selectionChannelStart = 0;
-            state->selectionChannelEnd   = static_cast<int>(state->waveforms.size()) - 1;
+            if (numClicks >= 3)
+            {
+                state->selectionAnchorChannel = 0;
+                state->selectionChannelStart = 0;
+                state->selectionChannelEnd   = static_cast<int>(state->waveforms.size()) - 1;
+            }
+            else
+            {
+                state->selectionAnchorChannel = channel;
+                state->selectionChannelStart = channel;
+                state->selectionChannelEnd = channel;
+            }
 
-            state->capturingComponent = nullptr;
             markAllWaveformsDirty();
             return true;
         }
 
-        state->selectionChannelStart = channel;
-        state->selectionChannelEnd   = channel;
-        state->selectionAnchorChannel = channel;
+        const auto *keyboard = SDL_GetKeyboardState(NULL);
+        const bool shiftPressed = keyboard[SDL_SCANCODE_LSHIFT] || keyboard[SDL_SCANCODE_RSHIFT];
 
-        state->capturingComponent = this;
+        const double samplePos = state->sampleOffset + mouseX * samplesPerPixel;
+
+        if (!shiftPressed || !state->selection.isActive())
+        {
+            state->selection.setValue1(samplePos);
+            state->selectionAnchorChannel = channel;
+            state->selectionChannelStart = channel;
+        }
+
+        state->selection.setValue2(samplePos);
+        state->selectionChannelEnd   = channel;
+
         markAllWaveformsDirty();
         return true;
     }
@@ -73,11 +87,6 @@ public:
                            const int32_t mouseX,
                            const int32_t mouseY) override
     {
-        if (state->capturingComponent != this)
-        {
-            return false;
-        }
-
         if (numClicks >= 2)
         {
             return true;
@@ -91,7 +100,6 @@ public:
         state->selectionChannelStart = std::min(state->selectionChannelStart, channel);
         state->selectionChannelEnd   = std::max(state->selectionChannelEnd, channel);
 
-        state->capturingComponent = nullptr;
         markAllWaveformsDirty();
         return true;
     }
