@@ -34,6 +34,18 @@ protected:
 
     void removeAllChildren()
     {
+        for (auto &c : children)
+        {
+            if (state->componentUnderMouse == c.get())
+            {
+                state->componentUnderMouse = nullptr;
+            }
+
+            if (state->capturingComponent == c.get())
+            {
+                state->capturingComponent = nullptr;
+            }
+        }
         children.clear();
         setDirty();
     }
@@ -162,7 +174,6 @@ public:
         }
 
         SDL_SetRenderViewport(renderer, &oldViewPortRect);
-        //SDL_SetRenderClipRect(renderer, nullptr);
     }
 
     virtual void onDraw(SDL_Renderer* renderer) {}
