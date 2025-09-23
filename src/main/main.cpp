@@ -309,19 +309,6 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
     {
         case SDL_EVENT_QUIT:
             return SDL_APP_SUCCESS;
-        case SDL_EVENT_WINDOW_MOUSE_LEAVE:
-            {
-                // Clear highlight for all Waveform components when mouse leaves the window
-                if (state->capturingComponent == nullptr && !state->selection.isActive())
-                {
-                    for (auto* waveform : state->waveforms)
-                    {
-                        waveform->clearHighlight();
-                    }
-                    state->componentUnderMouse = nullptr;
-                }
-                break;
-            }
         case SDL_EVENT_WINDOW_RESIZED:
             {
                 int winW, winH;
@@ -349,10 +336,21 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                 }
                 break;
             }
+        case SDL_EVENT_WINDOW_MOUSE_LEAVE:
+            {
+                // Clear highlight for all Waveform components when mouse leaves the window
+                if (state->capturingComponent == nullptr && !state->selection.isActive())
+                {
+                    for (auto* waveform : state->waveforms)
+                    {
+                        waveform->clearHighlight();
+                    }
+                    state->componentUnderMouse = nullptr;
+                }
+                break;
+            }
         case SDL_EVENT_KEY_DOWN:
-            handleKeyDown(
-                    event,
-                    state);
+            handleKeyDown(event, state);
             break;
         case SDL_EVENT_MOUSE_MOTION:
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
@@ -382,6 +380,21 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                     e.button.y *= canvasDimensions.y / winDimensions.y;
                 }
 
+                // If a component is capturing (e.g., dragging), send button up/down events to it
+                if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP)
+                {
+                    if (state->capturingComponent != nullptr)
+                    {
+                        state->capturingComponent->handleEvent(e);
+                        if (e.type == SDL_EVENT_MOUSE_BUTTON_UP)
+                        {
+                            state->capturingComponent = nullptr; // Clear after handling
+                        }
+                        break;
+                    }
+                }
+
+                // Otherwise, send events to the component under the mouse
                 rootComponent->handleEvent(e);
 
                 if (e.type == SDL_EVENT_MOUSE_MOTION)
