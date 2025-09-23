@@ -10,23 +10,23 @@ Waveform::Waveform(CupuacuState *state, const uint8_t channelIndexToUse)
 {
 }
 
+int getSamplePointSize(const int hardwarePixelsPerAppPixel)
+{
+    return 32 / hardwarePixelsPerAppPixel;
+}
+
 void Waveform::updateSamplePoints()
 {
     removeAllChildren();
 
     if (shouldShowSamplePoints(state->samplesPerPixel, state->hardwarePixelsPerAppPixel))
     {
-        auto samplePoints = computeSamplePoints(
-                getWidth(),
-                getHeight(),
-                state->document.channels[channelIndex],
-                state->sampleOffset,
-                state->samplesPerPixel,
-                state->verticalZoom,
-                state->hardwarePixelsPerAppPixel);
+        auto samplePoints = computeSamplePoints();
 
         for (auto &sp : samplePoints)
+        {
             addChildAndSetDirty(sp);
+        }
     }
 }
 
@@ -43,32 +43,39 @@ int getYPosForSampleValue(const float sampleValue,
     return (waveformHeight * 0.5f) - (sampleValue * verticalZoom * waveformHeight * 0.5f);
 }
 
-std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints(
-    int width, int height,
-    const std::vector<float>& samples, size_t offset,
-    float samplesPerPixel, float verticalZoom,
-    const uint8_t hardwarePixelsPerAppPixel)
+std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
 {
-    const int neededInputSamples = static_cast<int>(std::ceil((width + 1) * samplesPerPixel));
-    const int availableSamples = static_cast<int>(samples.size()) - static_cast<int>(offset);
+    const auto samplesPerPixel = state->samplesPerPixel;
+    const auto sampleOffset = state->sampleOffset;
+    const auto &sampleData = state->document.channels[channelIndex];
+    const auto hardwarePixelsPerAppPixel = state->hardwarePixelsPerAppPixel;
+    const auto verticalZoom = state->verticalZoom;
+
+    const int neededInputSamples = static_cast<int>(std::ceil((getWidth() + 1) * samplesPerPixel));
+    const int availableSamples = static_cast<int>(sampleData.size()) - static_cast<int>(sampleOffset);
     const int actualInputSamples = std::min(neededInputSamples, availableSamples);
 
     if (actualInputSamples < 4)
+    {
         return {};
+    }
 
     std::vector<double> x(actualInputSamples);
-    for (int i = 0; i < actualInputSamples; ++i)
-        x[i] = i / samplesPerPixel;
-
-    std::vector<std::unique_ptr<SamplePoint>> result;
-    const auto samplePointSize = 32 / hardwarePixelsPerAppPixel;
 
     for (int i = 0; i < actualInputSamples; ++i)
     {
-        int xPos = x[i];
-        int yPos = getYPosForSampleValue(samples[offset + i], height, verticalZoom);
+        x[i] = i / samplesPerPixel;
+    }
 
-        auto samplePoint = std::make_unique<SamplePoint>(state, channelIndex, offset + i);
+    std::vector<std::unique_ptr<SamplePoint>> result;
+    const auto samplePointSize = getSamplePointSize(hardwarePixelsPerAppPixel);
+
+    for (int i = 0; i < actualInputSamples; ++i)
+    {
+        const int xPos = x[i];
+        const int yPos = getYPosForSampleValue(sampleData[sampleOffset + i], getHeight(), verticalZoom);
+
+        auto samplePoint = std::make_unique<SamplePoint>(state, channelIndex, sampleOffset + i);
         samplePoint->setBounds(std::max(0, xPos - (samplePointSize / 2)),
                                yPos - (samplePointSize / 2),
                                i == 0 ? samplePointSize / 2 : samplePointSize, samplePointSize);

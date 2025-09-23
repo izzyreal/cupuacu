@@ -48,9 +48,7 @@ private:
 
     bool shouldShowSamplePoints(const double samplesPerPixel, const uint8_t hardwarePixelsPerAppPixel);
 
-    std::vector<std::unique_ptr<SamplePoint>> computeSamplePoints(int width, int height,
-                                 const std::vector<float>& samples, size_t offset,
-                                 float samplesPerPixel, float verticalZoom, const uint8_t hardwarePixelsPerAppPixel);
+    std::vector<std::unique_ptr<SamplePoint>> computeSamplePoints();
     
     void renderSmoothWaveform(SDL_Renderer* renderer, int width, int height,
                                      const std::vector<float>& samples, size_t offset,
