@@ -393,10 +393,28 @@ void Waveform::timerCallback()
     {
         if (const auto *samplePoint = dynamic_cast<SamplePoint*>(state->capturingComponent); samplePoint != nullptr)
         {
-            const size_t sampleIndex = samplePoint->getSampleIndex();
-            if (sampleIndex != static_cast<size_t>(samplePosUnderCursor))
+            // Only update if the SamplePoint is a child of this Waveform
+            bool isChild = false;
+            for (const auto& child : getChildren())
             {
-                samplePosUnderCursor = static_cast<int64_t>(sampleIndex);
+                if (child.get() == samplePoint)
+                {
+                    isChild = true;
+                    break;
+                }
+            }
+            if (isChild)
+            {
+                const size_t sampleIndex = samplePoint->getSampleIndex();
+                if (sampleIndex != static_cast<size_t>(samplePosUnderCursor))
+                {
+                    samplePosUnderCursor = static_cast<int64_t>(sampleIndex);
+                    setDirtyRecursive();
+                }
+            }
+            else if (samplePosUnderCursor != -1)
+            {
+                samplePosUnderCursor = -1;
                 setDirtyRecursive();
             }
             return;
