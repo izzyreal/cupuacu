@@ -66,6 +66,11 @@ public:
         return static_cast<int64_t>(std::floor((value1 < value2) ? value2 : value1));
     }
 
+    int64_t getLengthInt() const
+    {
+        return getEndFloorInt() - getStartFloorInt();
+    }
+
     void reset()
     {
         value1 = std::numeric_limits<T>::max();
