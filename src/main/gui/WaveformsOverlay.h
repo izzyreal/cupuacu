@@ -4,6 +4,23 @@
 #include <algorithm>
 
 class WaveformsOverlay : public Component {
+private:
+    static float getSamplePosForMouseX(const int32_t mouseX,
+                                         const double samplesPerPixel,
+                                         const double sampleOffset) 
+    {
+        auto waveformMouseX = mouseX;
+
+        if (samplesPerPixel < 1.f)
+        {
+            waveformMouseX += 0.5f / samplesPerPixel;
+        }
+
+        const float xToUse = waveformMouseX <= 0 ? 0.f : waveformMouseX;
+        const float result = sampleOffset + (xToUse * samplesPerPixel);
+        return result;
+    }
+
 public:
     WaveformsOverlay(CupuacuState* stateToUse)
         : Component(stateToUse, "WaveformsOverlay") {}
@@ -71,8 +88,7 @@ public:
 
         handleScroll(mouseX, mouseY);
         
-        const auto samplesPerPixel = state->samplesPerPixel;
-        const double samplePos = state->sampleOffset + mouseX * samplesPerPixel;
+        const auto samplePos = getSamplePosForMouseX(mouseX, state->samplesPerPixel, state->sampleOffset); 
         state->selection.setValue2(samplePos);
 
         int channel = channelAt(mouseY);
@@ -92,8 +108,7 @@ public:
             return true;
         }
 
-        const auto samplesPerPixel = state->samplesPerPixel;
-        const double samplePos = state->sampleOffset + mouseX * samplesPerPixel;
+        const auto samplePos = getSamplePosForMouseX(mouseX, state->samplesPerPixel, state->sampleOffset); 
         state->selection.setValue2(samplePos);
 
         int channel = channelAt(mouseY);
@@ -160,15 +175,8 @@ private:
             state->samplesToScroll = 0;
         }
 
-        auto waveformMouseX = mouseX;
-
-        if (samplesPerPixel < 1.f)
-        {
-            waveformMouseX += 0.5f / samplesPerPixel;
-        }
-
-        const float x = waveformMouseX <= 0 ? 0.f : waveformMouseX;
-        state->selection.setValue2(sampleOffset + (x * samplesPerPixel));
+        const auto samplePos = getSamplePosForMouseX(mouseX, samplesPerPixel, sampleOffset);
+        state->selection.setValue2(samplePos);
 
         markAllWaveformsDirty();
 
