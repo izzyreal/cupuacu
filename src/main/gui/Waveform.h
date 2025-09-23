@@ -44,7 +44,7 @@ public:
 private:
     const uint8_t channelIndex;
     double playbackPosition = 0;
-    uint8_t numClicksOfLastMouseDown = 0;
+    int64_t samplePosUnderCursor;
 
     bool shouldShowSamplePoints(const double samplesPerPixel, const uint8_t hardwarePixelsPerAppPixel);
 

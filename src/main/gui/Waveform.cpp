@@ -1,12 +1,14 @@
 #include "Waveform.h"
 
+#include "WaveformsOverlay.h"
+
 #include <limits>
 #include <cmath>
 #include <algorithm>
 #include "smooth_line.h"
 
 Waveform::Waveform(CupuacuState *state, const uint8_t channelIndexToUse)
-    : Component(state, "Waveform"), channelIndex(channelIndexToUse)
+    : Component(state, "Waveform"), channelIndex(channelIndexToUse), samplePosUnderCursor(-1)
 {
 }
 
@@ -297,6 +299,68 @@ void Waveform::onDraw(SDL_Renderer *renderer)
         renderBlockWaveform(renderer);
     }
 
+    // Draw rectangle over sample point under mouse when sample points are visible
+    if (shouldShowSamplePoints(samplesPerPixel, state->hardwarePixelsPerAppPixel))
+    {
+        const auto mouseX = state->mouseX;
+        const auto sampleOffset = state->sampleOffset;
+        const auto& sampleData = state->document.channels[channelIndex];
+
+        if (mouseX >= 0 && mouseX < getWidth() && !sampleData.empty())
+        {
+            const size_t sampleIndex = static_cast<size_t>(mouseX * samplesPerPixel) + sampleOffset;
+            if (sampleIndex < sampleData.size())
+            {
+                // Check if mouse has moved to a new sample region
+                if (sampleIndex != static_cast<size_t>(samplePosUnderCursor))
+                {
+                    setDirtyRecursive();
+                    samplePosUnderCursor = static_cast<int64_t>(sampleIndex);
+                }
+
+                const float sampleWidth = 1.0f / samplesPerPixel;
+                const float xPos = (sampleIndex - sampleOffset) / samplesPerPixel - (sampleWidth / 2.0f);
+
+                SDL_SetRenderDrawColor(renderer, 0, 128, 255, 100); // Light blue, semi-transparent
+                SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+                SDL_FRect sampleRect = {
+                    xPos,
+                    0.0f,
+                    sampleWidth,
+                    (float)getHeight()
+                };
+                SDL_RenderFillRect(renderer, &sampleRect);
+            }
+            else
+            {
+                // Clear samplePosUnderCursor if out of bounds
+                if (samplePosUnderCursor != -1)
+                {
+                    samplePosUnderCursor = -1;
+                    setDirtyRecursive();
+                }
+            }
+        }
+        else
+        {
+            // Clear samplePosUnderCursor if mouse is outside waveform
+            if (samplePosUnderCursor != -1)
+            {
+                samplePosUnderCursor = -1;
+                setDirtyRecursive();
+            }
+        }
+    }
+    else
+    {
+        // Clear samplePosUnderCursor when sample points are not visible
+        if (samplePosUnderCursor != -1)
+        {
+            samplePosUnderCursor = -1;
+            setDirtyRecursive();
+        }
+    }
+
     const auto isSelected = state->selection.isActive() &&
                             channelIndex >= state->selectionChannelStart &&
                             channelIndex <= state->selectionChannelEnd;
@@ -351,6 +415,51 @@ void Waveform::drawPlaybackPosition(SDL_Renderer *renderer,
 
 void Waveform::timerCallback()
 {
+    // Check for mouse movement to a new sample region
+    if (shouldShowSamplePoints(state->samplesPerPixel, state->hardwarePixelsPerAppPixel))
+    {
+        const auto mouseX = state->mouseX;
+        const auto sampleOffset = state->sampleOffset;
+        const auto& sampleData = state->document.channels[channelIndex];
+
+        if (mouseX >= 0 && mouseX < getWidth() && !sampleData.empty())
+        {
+            const size_t sampleIndex = WaveformsOverlay::getSamplePosForMouseX(mouseX, state->samplesPerPixel, sampleOffset);
+            if (sampleIndex < sampleData.size())
+            {
+                if (sampleIndex != static_cast<size_t>(samplePosUnderCursor))
+                {
+                    samplePosUnderCursor = static_cast<int64_t>(sampleIndex);
+                    setDirtyRecursive();
+                }
+            }
+            else
+            {
+                if (samplePosUnderCursor != -1)
+                {
+                    samplePosUnderCursor = -1;
+                    setDirtyRecursive();
+                }
+            }
+        }
+        else
+        {
+            if (samplePosUnderCursor != -1)
+            {
+                samplePosUnderCursor = -1;
+                setDirtyRecursive();
+            }
+        }
+    }
+    else
+    {
+        if (samplePosUnderCursor != -1)
+        {
+            samplePosUnderCursor = -1;
+            setDirtyRecursive();
+        }
+    }
+
     if (state->samplesToScroll != 0.0f)
     {
         const auto scroll = state->samplesToScroll;
