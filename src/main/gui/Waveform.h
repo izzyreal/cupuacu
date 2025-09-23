@@ -50,9 +50,8 @@ private:
 
     std::vector<std::unique_ptr<SamplePoint>> computeSamplePoints();
     
-    void renderSmoothWaveform(SDL_Renderer* renderer, int width, int height,
-                                     const std::vector<float>& samples, size_t offset,
-                                     float samplesPerPixel, float verticalZoom, const uint8_t hardwarePixelsPerAppPixel);
+    void renderBlockWaveform(SDL_Renderer* renderer);
+    void renderSmoothWaveform(SDL_Renderer* renderer);
 
     void drawPlaybackPosition(SDL_Renderer *renderer, const double sampleOffset, const double samplesPerPixel);
 };

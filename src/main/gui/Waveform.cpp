@@ -85,17 +85,23 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
     return result;
 }
 
-void Waveform::renderSmoothWaveform(SDL_Renderer* renderer, int width, int height,
-                                    const std::vector<float>& samples, size_t offset,
-                                    float samplesPerPixel, float verticalZoom,
-                                    const uint8_t hardwarePixelsPerAppPixel)
+void Waveform::renderSmoothWaveform(SDL_Renderer* renderer)
 {
-    const int neededInputSamples = static_cast<int>(std::ceil((width + 1) * samplesPerPixel));
-    const int availableSamples = static_cast<int>(samples.size()) - static_cast<int>(offset);
+    const auto samplesPerPixel = state->samplesPerPixel;
+    const auto sampleOffset = state->sampleOffset;
+    const auto &sampleData = state->document.channels[channelIndex];
+    const auto verticalZoom = state->verticalZoom;
+    const auto widthToUse = getWidth();
+    const auto heightToUse = getHeight();
+
+    const int neededInputSamples = static_cast<int>(std::ceil((widthToUse + 1) * samplesPerPixel));
+    const int availableSamples = static_cast<int>(sampleData.size()) - static_cast<int>(sampleOffset);
     const int actualInputSamples = std::min(neededInputSamples, availableSamples);
 
     if (actualInputSamples < 4)
+    {
         return;
+    }
 
     std::vector<double> x(actualInputSamples);
     std::vector<double> y(actualInputSamples);
@@ -103,13 +109,16 @@ void Waveform::renderSmoothWaveform(SDL_Renderer* renderer, int width, int heigh
     for (int i = 0; i < actualInputSamples; ++i)
     {
         x[i] = i / samplesPerPixel;
-        y[i] = static_cast<double>(samples[offset + i]);
+        y[i] = static_cast<double>(sampleData[sampleOffset + i]);
     }
 
-    int numPoints = width + 1;
+    int numPoints = widthToUse + 1;
     std::vector<double> xq(numPoints);
+
     for (int i = 0; i < numPoints; ++i)
+    {
         xq[i] = static_cast<double>(i);
+    }
 
     auto smoothened = splineInterpolateNonUniform(x, y, xq);
 
@@ -118,8 +127,8 @@ void Waveform::renderSmoothWaveform(SDL_Renderer* renderer, int width, int heigh
         float x1 = static_cast<float>(xq[i]);
         float x2 = static_cast<float>(xq[i + 1]);
 
-        float y1f = height / 2.0f - (smoothened[i] * verticalZoom * height / 2.0f);
-        float y2f = height / 2.0f - (smoothened[i + 1] * verticalZoom * height / 2.0f);
+        float y1f = heightToUse / 2.0f - (smoothened[i] * verticalZoom * heightToUse / 2.0f);
+        float y2f = heightToUse / 2.0f - (smoothened[i + 1] * verticalZoom * heightToUse / 2.0f);
 
         float thickness = 1.0f;
 
@@ -150,23 +159,30 @@ void Waveform::renderSmoothWaveform(SDL_Renderer* renderer, int width, int heigh
     }
 }
 
-static void renderBlockWaveform(SDL_Renderer* renderer, int width, int height,
-                                const std::vector<float>& samples, size_t offset,
-                                float samplesPerPixel, float verticalZoom)
+void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
 {
-    const float scale = verticalZoom * height * 0.5f;
+    const auto samplesPerPixel = state->samplesPerPixel;
+    const auto sampleOffset = state->sampleOffset;
+    const auto &sampleData = state->document.channels[channelIndex];
+    const auto verticalZoom = state->verticalZoom;
+    const auto widthToUse = getWidth();
+    const auto heightToUse = getHeight();
+
+    const float scale = verticalZoom * heightToUse * 0.5f;
 
     int prevY = 0;
     bool hasPrev = false;
     bool noMoreStuffToDraw = false;
 
-    for (int x = 0; x < width; ++x)
+    for (int x = 0; x < widthToUse; ++x)
     {
         if (noMoreStuffToDraw)
+        {
             break;
+        }
 
-        const size_t startSample = static_cast<size_t>(x * samplesPerPixel) + offset;
-        size_t endSample = static_cast<size_t>((x + 1) * samplesPerPixel) + offset;
+        const size_t startSample = static_cast<size_t>(x * samplesPerPixel) + sampleOffset;
+        size_t endSample = static_cast<size_t>((x + 1) * samplesPerPixel) + sampleOffset;
         if (endSample == startSample) endSample++;
 
         float minSample = std::numeric_limits<float>::max();
@@ -174,75 +190,79 @@ static void renderBlockWaveform(SDL_Renderer* renderer, int width, int height,
 
         for (size_t i = startSample; i < endSample; ++i)
         {
-            if (i >= samples.size())
+            if (i >= sampleData.size())
             {
                 noMoreStuffToDraw = true;
                 break;
             }
-            const float s = samples[i];
+            const float s = sampleData[i];
             minSample = std::min(minSample, s);
             maxSample = std::max(maxSample, s);
         }
 
         const float midSample = (minSample + maxSample) * 0.5f;
-        const int y = static_cast<int>(float(height) / 2 - midSample * scale);
+        const int y = static_cast<int>(float(heightToUse) / 2 - midSample * scale);
 
         if (hasPrev)
         {
-            if ((y >= 0 || prevY >= 0) && (y < height || prevY < height))
+            if ((y >= 0 || prevY >= 0) && (y < heightToUse || prevY < heightToUse))
+            {
                 SDL_RenderLine(renderer, x - 1, prevY, x, y);
+            }
         }
 
-        if (startSample >= samples.size())
+        if (startSample >= sampleData.size())
+        {
             break;
+        }
 
         prevY = y;
         hasPrev = true;
 
-        int y1 = static_cast<int>(float(height) / 2 - maxSample * scale);
-        int y2 = static_cast<int>(float(height) / 2 - minSample * scale);
+        int y1 = static_cast<int>(float(heightToUse) / 2 - maxSample * scale);
+        int y2 = static_cast<int>(float(heightToUse) / 2 - minSample * scale);
 
-        if ((y1 < 0 && y2 < 0) || (y1 >= height && y2 >= height))
+        if ((y1 < 0 && y2 < 0) || (y1 >= heightToUse && y2 >= heightToUse))
+        {
             continue;
+        }
 
         if (y1 != y2)
+        {
             SDL_RenderLine(renderer, x, y1, x, y2);
+        }
         else
+        {
             SDL_RenderPoint(renderer, x, y1);
+        }
     }
 }
 
 void Waveform::onDraw(SDL_Renderer *renderer)
 {
-    const float samplesPerPixel = state->samplesPerPixel;
-    const float verticalZoom = state->verticalZoom;
-    const size_t sampleOffset = state->sampleOffset;
-    const auto& sampleDataL = state->document.channels[channelIndex];
-
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderFillRect(renderer, NULL);
     SDL_SetRenderDrawColor(renderer, 0, 185, 0, 255);
 
+    const float samplesPerPixel = state->samplesPerPixel;
+
     if (samplesPerPixel < 1)
     {
-        renderSmoothWaveform(renderer, getWidth(), getHeight(),
-                             sampleDataL, sampleOffset,
-                             samplesPerPixel, verticalZoom,
-                             state->hardwarePixelsPerAppPixel);
+        renderSmoothWaveform(renderer);
     }
     else
     {
-        renderBlockWaveform(renderer, getWidth(), getHeight(),
-                            sampleDataL, sampleOffset,
-                            samplesPerPixel, verticalZoom);
+        renderBlockWaveform(renderer);
     }
 
-        const auto isSelected = state->selection.isActive() &&
+    const auto isSelected = state->selection.isActive() &&
                             channelIndex >= state->selectionChannelStart &&
                             channelIndex <= state->selectionChannelEnd;
 
     auto firstSample = state->selection.getStartFloor();
     auto lastSample = state->selection.getEndFloor();
+
+    const size_t sampleOffset = state->sampleOffset;
 
     if (isSelected && lastSample >= sampleOffset)
     {
@@ -252,8 +272,8 @@ void Waveform::onDraw(SDL_Renderer *renderer)
             lastSample -= 0.5f;
         }
 
-        float startX = firstSample <= sampleOffset ? 0 : (firstSample - sampleOffset) / samplesPerPixel;
-        float endX = (lastSample - sampleOffset) / samplesPerPixel;
+        const float startX = firstSample <= sampleOffset ? 0 : (firstSample - sampleOffset) / samplesPerPixel;
+        const float endX = (lastSample - sampleOffset) / samplesPerPixel;
 
         SDL_SetRenderDrawColor(renderer, 0, 64, 255, 128);
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
