@@ -4,7 +4,10 @@
 #include <algorithm>
 
 class WaveformsOverlay : public Component {
-private:
+public:
+    WaveformsOverlay(CupuacuState* stateToUse)
+        : Component(stateToUse, "WaveformsOverlay") {}
+
     static float getSamplePosForMouseX(const int32_t mouseX,
                                          const double samplesPerPixel,
                                          const double sampleOffset) 
@@ -20,10 +23,6 @@ private:
         const float result = sampleOffset + (xToUse * samplesPerPixel);
         return result;
     }
-
-public:
-    WaveformsOverlay(CupuacuState* stateToUse)
-        : Component(stateToUse, "WaveformsOverlay") {}
 
     bool mouseLeftButtonDown(const uint8_t numClicks,
                              const int32_t mouseX,

@@ -365,6 +365,8 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                     e.motion.xrel *= canvasDimensions.x / winDimensions.x;
                     e.motion.y *= canvasDimensions.y / winDimensions.y;
                     e.motion.yrel *= (canvasDimensions.y / winDimensions.y);
+                    state->mouseX = e.motion.x;
+                    state->mouseY = e.motion.y;
                 }
                 else
                 {
