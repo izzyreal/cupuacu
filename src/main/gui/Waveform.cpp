@@ -303,60 +303,34 @@ void Waveform::onDraw(SDL_Renderer *renderer)
     }
 
     // Draw rectangle over sample point under mouse when sample points are visible
-    if (shouldShowSamplePoints(samplesPerPixel, state->hardwarePixelsPerAppPixel))
+    if (shouldShowSamplePoints(samplesPerPixel, state->hardwarePixelsPerAppPixel) && samplePosUnderCursor != -1)
     {
-        const auto mouseX = state->mouseX;
         const auto sampleOffset = state->sampleOffset;
         const auto& sampleData = state->document.channels[channelIndex];
 
         const auto *samplePoint = dynamic_cast<SamplePoint*>(state->capturingComponent);
+        size_t sampleIndex = samplePosUnderCursor;
 
-        if ((mouseX >= 0 && mouseX < getWidth() && !sampleData.empty()) ||
-            samplePoint != nullptr)
+        if (samplePoint != nullptr)
         {
-            const size_t sampleIndex = samplePoint != nullptr ? samplePoint->getSampleIndex() : static_cast<size_t>(
-                Waveform::xPositionToSampleIndex(mouseX, sampleOffset, samplesPerPixel, true));
-            if (sampleIndex < sampleData.size())
-            {
-                // Check if mouse has moved to a new sample region
-                if (sampleIndex != static_cast<size_t>(samplePosUnderCursor))
-                {
-                    setDirtyRecursive();
-                    samplePosUnderCursor = static_cast<int64_t>(sampleIndex);
-                }
-
-                const float xPos = Waveform::sampleIndexToXPosition(
-                    static_cast<float>(sampleIndex), sampleOffset, samplesPerPixel, true);
-                const float sampleWidth = 1.0f / samplesPerPixel;
-
-                SDL_SetRenderDrawColor(renderer, 0, 128, 255, 100); // Light blue, semi-transparent
-                SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-                SDL_FRect sampleRect = {
-                    xPos,
-                    0.0f,
-                    sampleWidth,
-                    (float)getHeight()
-                };
-                SDL_RenderFillRect(renderer, &sampleRect);
-            }
-            else
-            {
-                // Clear samplePosUnderCursor if out of bounds
-                if (samplePosUnderCursor != -1)
-                {
-                    samplePosUnderCursor = -1;
-                    setDirtyRecursive();
-                }
-            }
+            sampleIndex = samplePoint->getSampleIndex();
         }
-        else
+
+        if (sampleIndex < sampleData.size())
         {
-            // Clear samplePosUnderCursor if mouse is outside waveform
-            if (samplePosUnderCursor != -1)
-            {
-                samplePosUnderCursor = -1;
-                setDirtyRecursive();
-            }
+            const float xPos = Waveform::sampleIndexToXPosition(
+                static_cast<float>(sampleIndex), sampleOffset, samplesPerPixel, true);
+            const float sampleWidth = 1.0f / samplesPerPixel;
+
+            SDL_SetRenderDrawColor(renderer, 0, 128, 255, 100); // Light blue, semi-transparent
+            SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+            SDL_FRect sampleRect = {
+                xPos,
+                0.0f,
+                sampleWidth,
+                (float)getHeight()
+            };
+            SDL_RenderFillRect(renderer, &sampleRect);
         }
     }
 
@@ -419,23 +393,56 @@ void Waveform::timerCallback()
     {
         if (const auto *samplePoint = dynamic_cast<SamplePoint*>(state->capturingComponent); samplePoint != nullptr)
         {
+            const size_t sampleIndex = samplePoint->getSampleIndex();
+            if (sampleIndex != static_cast<size_t>(samplePosUnderCursor))
+            {
+                samplePosUnderCursor = static_cast<int64_t>(sampleIndex);
+                setDirtyRecursive();
+            }
             return;
         }
 
-        const auto mouseX = state->mouseX;
-        const auto sampleOffset = state->sampleOffset;
-        const auto& sampleData = state->document.channels[channelIndex];
-
-        if (mouseX >= 0 && mouseX < getWidth() && !sampleData.empty())
+        // Update samplePosUnderCursor if mouse is over this Waveform or one of its SamplePoint children, and no selection is active
+        if (!state->selection.isActive())
         {
-            const size_t sampleIndex = static_cast<size_t>(
-                Waveform::xPositionToSampleIndex(mouseX, sampleOffset, state->samplesPerPixel, true));
-            if (sampleIndex < sampleData.size())
+            const auto mouseX = state->mouseX;
+            const auto sampleOffset = state->sampleOffset;
+            const auto& sampleData = state->document.channels[channelIndex];
+
+            const auto *componentUnderMouse = state->componentUnderMouse;
+            bool isOverWaveformOrChild = (componentUnderMouse == this);
+            if (!isOverWaveformOrChild)
             {
-                if (sampleIndex != static_cast<size_t>(samplePosUnderCursor))
+                // Check if componentUnderMouse is a SamplePoint child of this Waveform
+                for (const auto& child : getChildren())
                 {
-                    samplePosUnderCursor = static_cast<int64_t>(sampleIndex);
-                    setDirtyRecursive();
+                    if (child.get() == componentUnderMouse)
+                    {
+                        isOverWaveformOrChild = true;
+                        break;
+                    }
+                }
+            }
+
+            if (isOverWaveformOrChild && mouseX >= 0 && mouseX < getWidth() && !sampleData.empty())
+            {
+                const size_t sampleIndex = static_cast<size_t>(
+                    Waveform::xPositionToSampleIndex(mouseX, sampleOffset, state->samplesPerPixel, true));
+                if (sampleIndex < sampleData.size())
+                {
+                    if (sampleIndex != static_cast<size_t>(samplePosUnderCursor))
+                    {
+                        samplePosUnderCursor = static_cast<int64_t>(sampleIndex);
+                        setDirtyRecursive();
+                    }
+                }
+                else
+                {
+                    if (samplePosUnderCursor != -1)
+                    {
+                        samplePosUnderCursor = -1;
+                        setDirtyRecursive();
+                    }
                 }
             }
             else
@@ -445,14 +452,6 @@ void Waveform::timerCallback()
                     samplePosUnderCursor = -1;
                     setDirtyRecursive();
                 }
-            }
-        }
-        else
-        {
-            if (samplePosUnderCursor != -1)
-            {
-                samplePosUnderCursor = -1;
-                setDirtyRecursive();
             }
         }
     }
@@ -495,5 +494,29 @@ void Waveform::timerCallback()
     {
         playbackPosition = newPlaybackPosition;
         setDirtyRecursive();
+    }
+}
+
+void Waveform::mouseLeave()
+{
+    if (state->capturingComponent == nullptr)
+    {
+        if (samplePosUnderCursor != -1)
+        {
+            samplePosUnderCursor = -1;
+            setDirtyRecursive();
+        }
+    }
+}
+
+void Waveform::clearHighlight()
+{
+    if (state->capturingComponent == nullptr && !state->selection.isActive())
+    {
+        if (samplePosUnderCursor != -1)
+        {
+            samplePosUnderCursor = -1;
+            setDirtyRecursive();
+        }
     }
 }

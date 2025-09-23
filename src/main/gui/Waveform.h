@@ -54,7 +54,9 @@ public:
     void onDraw(SDL_Renderer*) override;
     void timerCallback() override;
     void resized() override;
+    void mouseLeave() override;
     void updateSamplePoints();
+    void clearHighlight();
 
 private:
     const uint8_t channelIndex;

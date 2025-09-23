@@ -309,6 +309,19 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
     {
         case SDL_EVENT_QUIT:
             return SDL_APP_SUCCESS;
+        case SDL_EVENT_WINDOW_MOUSE_LEAVE:
+            {
+                // Clear highlight for all Waveform components when mouse leaves the window
+                if (state->capturingComponent == nullptr && !state->selection.isActive())
+                {
+                    for (auto* waveform : state->waveforms)
+                    {
+                        waveform->clearHighlight();
+                    }
+                    state->componentUnderMouse = nullptr;
+                }
+                break;
+            }
         case SDL_EVENT_WINDOW_RESIZED:
             {
                 int winW, winH;

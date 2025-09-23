@@ -32,6 +32,11 @@ private:
 protected:
     CupuacuState *state;
 
+    const std::vector<std::unique_ptr<Component>>& getChildren() const
+    {
+        return children;
+    }
+
     void removeAllChildren()
     {
         for (auto &c : children)
