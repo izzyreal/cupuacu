@@ -47,7 +47,6 @@ bool SamplePoint::mouseLeftButtonUp(const uint8_t numClicks, const int32_t mouse
     }
 
     isDragging = false;
-    state->capturingComponent = nullptr;
     setDirty();
 
     return true;

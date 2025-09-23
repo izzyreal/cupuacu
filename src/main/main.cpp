@@ -383,9 +383,38 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                 // If a component is capturing (e.g., dragging), send button up/down events to it
                 if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP)
                 {
+                    if (e.type == SDL_EVENT_MOUSE_BUTTON_UP)
+                    {
+                        const auto newComponentUnderMouse = rootComponent->findComponentAt(e.motion.x, e.motion.y);
+
+                        if (state->componentUnderMouse != newComponentUnderMouse)
+                        {
+                            if (state->componentUnderMouse != nullptr)
+                            {
+                                state->componentUnderMouse->mouseLeave();
+                            }
+
+                            if (newComponentUnderMouse != nullptr)
+                            {
+                                newComponentUnderMouse->mouseEnter();
+                            }
+                        }
+
+                        state->componentUnderMouse = newComponentUnderMouse;
+                    }
+
                     if (state->capturingComponent != nullptr)
                     {
+                        if (e.type == SDL_EVENT_MOUSE_BUTTON_UP)
+                        {
+                            if (!state->capturingComponent->constainsAbsoluteCoordinate(e.button.x, e.button.y))
+                            {
+                                state->capturingComponent->mouseLeave();
+                            }
+                        }
+
                         state->capturingComponent->handleEvent(e);
+                        
                         if (e.type == SDL_EVENT_MOUSE_BUTTON_UP)
                         {
                             state->capturingComponent = nullptr; // Clear after handling
@@ -397,7 +426,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                 // Otherwise, send events to the component under the mouse
                 rootComponent->handleEvent(e);
 
-                if (e.type == SDL_EVENT_MOUSE_MOTION)
+                if (e.type == SDL_EVENT_MOUSE_MOTION && state->capturingComponent == nullptr)
                 {
                     const auto newComponentUnderMouse = rootComponent->findComponentAt(e.motion.x, e.motion.y);
 
