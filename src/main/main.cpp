@@ -30,7 +30,8 @@ const uint16_t initialDimensions[] = { 1280, 720 };
 std::unique_ptr<Component> rootComponent;
 Component *backgroundComponentHandle;
 Component *menuBarHandle;
-Component *statusBarHandle; // Added handle for StatusBar
+Component *statusBarHandle;
+Component *waveformsOverlayHandle;
 
 const std::function<void(CupuacuState*)> renderCanvasToWindow = [](CupuacuState *state)
 {
@@ -166,7 +167,8 @@ void rebuildComponentTree(CupuacuState *state, bool initializeComponents = false
             waveformRect.w,
             waveformRect.h
         );
-        rootComponent->addChildAndSetDirty(waveformsOverlay);
+
+        waveformsOverlayHandle = rootComponent->addChildAndSetDirty(waveformsOverlay);
 
         state->waveforms.clear();
         int numChannels = static_cast<int>(state->document.channels.size());
@@ -205,6 +207,13 @@ void rebuildComponentTree(CupuacuState *state, bool initializeComponents = false
 
     const int numChannels = static_cast<int>(state->waveforms.size());
     const float channelHeight = numChannels > 0 ? waveformRect.h / numChannels : 0;
+
+    waveformsOverlayHandle->setBounds(
+        waveformRect.x,
+        waveformRect.y,
+        waveformRect.w,
+        waveformRect.h
+    );
 
     for (int ch = 0; ch < numChannels; ++ch)
     {
