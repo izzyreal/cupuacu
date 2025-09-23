@@ -4,7 +4,6 @@
 #include <SDL3/SDL_main.h>
 
 #include "CupuacuState.h"
-
 #include "gui/keyboard_handling.h"
 
 static SDL_Window *window = NULL;
@@ -31,6 +30,7 @@ const uint16_t initialDimensions[] = { 1280, 720 };
 std::unique_ptr<Component> rootComponent;
 Component *backgroundComponentHandle;
 Component *menuBarHandle;
+Component *statusBarHandle; // Added handle for StatusBar
 
 const std::function<void(CupuacuState*)> renderCanvasToWindow = [](CupuacuState *state)
 {
@@ -121,6 +121,109 @@ SDL_Rect getStatusBarRect(const uint16_t canvasWidth,
     return result;
 }
 
+void rebuildComponentTree(CupuacuState *state, bool initializeComponents = false)
+{
+    const SDL_Point newCanvasDimensions = computeDesiredCanvasDimensions(state->hardwarePixelsPerAppPixel);
+    createCanvas(newCanvasDimensions);
+
+    SDL_FPoint actualCanvasDimensions;
+    SDL_GetTextureSize(canvas, &actualCanvasDimensions.x, &actualCanvasDimensions.y);
+
+    if (initializeComponents)
+    {
+        rootComponent = std::make_unique<Component>(state, "RootComponent");
+        auto backgroundComponent = std::make_unique<OpaqueRect>(state);
+        backgroundComponentHandle = rootComponent->addChildAndSetDirty(backgroundComponent);
+    }
+
+    rootComponent->setSize(actualCanvasDimensions.x, actualCanvasDimensions.y);
+    backgroundComponentHandle->setSize(actualCanvasDimensions.x, actualCanvasDimensions.y);
+
+    const SDL_Rect menuBarRect = getMenuBarRect(
+        actualCanvasDimensions.x,
+        actualCanvasDimensions.y,
+        state->hardwarePixelsPerAppPixel,
+        state->menuFontSize);
+
+    const SDL_Rect waveformRect = getWaveformRect(
+        actualCanvasDimensions.x,
+        actualCanvasDimensions.y,
+        state->hardwarePixelsPerAppPixel,
+        menuBarRect.h);
+
+    const SDL_Rect statusBarRect = getStatusBarRect(
+        actualCanvasDimensions.x,
+        actualCanvasDimensions.y,
+        state->hardwarePixelsPerAppPixel,
+        state->menuFontSize);
+
+    if (initializeComponents)
+    {
+        auto waveformsOverlay = std::make_unique<WaveformsOverlay>(state);
+        waveformsOverlay->setBounds(
+            waveformRect.x,
+            waveformRect.y,
+            waveformRect.w,
+            waveformRect.h
+        );
+        rootComponent->addChildAndSetDirty(waveformsOverlay);
+
+        state->waveforms.clear();
+        int numChannels = static_cast<int>(state->document.channels.size());
+
+        if (numChannels > 0)
+        {
+            float availableHeight = waveformRect.h;
+            float channelHeight = availableHeight / numChannels;
+
+            for (int ch = 0; ch < numChannels; ++ch)
+            {
+                auto waveform = std::make_unique<Waveform>(state, ch);
+                waveform->setBounds(
+                    waveformRect.x,
+                    waveformRect.y + ch * channelHeight,
+                    waveformRect.w,
+                    channelHeight
+                );
+                auto *handle = rootComponent->addChildAndSetDirty(waveform);
+                state->waveforms.push_back(static_cast<Waveform*>(handle));
+            }
+        }
+
+        auto menuBar = std::make_unique<MenuBar>(state);
+        menuBarHandle = rootComponent->addChildAndSetDirty(menuBar);
+
+        auto statusBar = std::make_unique<StatusBar>(state);
+        statusBarHandle = rootComponent->addChildAndSetDirty(statusBar);
+    }
+
+    menuBarHandle->setBounds(menuBarRect.x, menuBarRect.y, menuBarRect.w, menuBarRect.h);
+
+    const auto samplesPerPixelFactor = Waveform::getWaveformWidth(state) * state->samplesPerPixel;
+    const auto newSamplesPerPixel = samplesPerPixelFactor / waveformRect.w;
+    state->samplesPerPixel = newSamplesPerPixel;
+
+    const int numChannels = static_cast<int>(state->waveforms.size());
+    const float channelHeight = numChannels > 0 ? waveformRect.h / numChannels : 0;
+
+    for (int ch = 0; ch < numChannels; ++ch)
+    {
+        state->waveforms[ch]->setBounds(
+            waveformRect.x,
+            waveformRect.y + ch * channelHeight,
+            waveformRect.w,
+            channelHeight
+        );
+    }
+
+    if (statusBarHandle)
+    {
+        statusBarHandle->setBounds(statusBarRect.x, statusBarRect.y, statusBarRect.w, statusBarRect.h);
+    }
+
+    rootComponent->setDirtyRecursive();
+}
+
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 {
     CupuacuState *state = new CupuacuState();
@@ -168,80 +271,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
         state->currentFile = "";
     }
 
-    SDL_RenderPresent(renderer);
-
-    const SDL_Point newCanvasDimensions = computeDesiredCanvasDimensions(state->hardwarePixelsPerAppPixel);
-
-    createCanvas(newCanvasDimensions);
-
-    SDL_FPoint actualCanvasDimensions;
-    SDL_GetTextureSize(canvas, &actualCanvasDimensions.x, &actualCanvasDimensions.y);
-
-    rootComponent = std::make_unique<Component>(state, "RootComponent");
-    rootComponent->setBounds(
-            0, 0,
-            actualCanvasDimensions.x,
-            actualCanvasDimensions.y);
-
-    auto backgroundComponent = std::make_unique<OpaqueRect>(state);
-
-    backgroundComponent->setBounds(
-            rootComponent->getXPos(),
-            rootComponent->getYPos(),
-            rootComponent->getWidth(),
-            rootComponent->getHeight());
-
-    backgroundComponentHandle = rootComponent->addChildAndSetDirty(backgroundComponent);
-
-    const SDL_Rect menuBarRect = getMenuBarRect(actualCanvasDimensions.x, actualCanvasDimensions.y, state->hardwarePixelsPerAppPixel, state->menuFontSize);
-    const SDL_Rect waveformRect = getWaveformRect(actualCanvasDimensions.x, actualCanvasDimensions.y, state->hardwarePixelsPerAppPixel, menuBarRect.h);
-    const SDL_Rect statusBarRect = getStatusBarRect(actualCanvasDimensions.x, actualCanvasDimensions.y, state->hardwarePixelsPerAppPixel, state->menuFontSize);
-
-    auto waveformsOverlay = std::make_unique<WaveformsOverlay>(state);
-    waveformsOverlay->setBounds(
-        waveformRect.x,
-        waveformRect.y,
-        waveformRect.w,
-        waveformRect.h
-    );
-
-    rootComponent->addChildAndSetDirty(waveformsOverlay);
-
-    state->waveforms.clear();
-
-    int numChannels = static_cast<int>(state->document.channels.size());
-
-    if (numChannels > 0)
-    {
-        float availableHeight = waveformRect.h;
-        float channelHeight = availableHeight / numChannels;
-
-        for (int ch = 0; ch < numChannels; ++ch) {
-            auto waveform = std::make_unique<Waveform>(state, ch);
-            waveform->setBounds(
-                waveformRect.x,
-                waveformRect.y + ch * channelHeight,
-                waveformRect.w,
-                channelHeight
-            );
-            auto *handle = rootComponent->addChildAndSetDirty(waveform);
-            state->waveforms.push_back(static_cast<Waveform*>(handle));
-        }
-    }
-
-    
-    auto menuBar = std::make_unique<MenuBar>(state);
-
-    menuBar->setBounds(menuBarRect.x, menuBarRect.y, menuBarRect.w, menuBarRect.h);
-    menuBarHandle = rootComponent->addChildAndSetDirty(menuBar);
-
+    rebuildComponentTree(state, true);
     state->hideSubMenus = [&](){ dynamic_cast<MenuBar*>(menuBarHandle)->hideSubMenus(); rootComponent->setDirtyRecursive(); };
 
-    auto statusBar = std::make_unique<StatusBar>(state);
-    statusBar->setBounds(statusBarRect.x, statusBarRect.y, statusBarRect.w, statusBarRect.h);
-    rootComponent->addChildAndSetDirty(statusBar);
-
     resetZoom(state);
+
+    SDL_RenderPresent(renderer);
 
     return SDL_APP_CONTINUE;
 }
@@ -293,51 +328,11 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                 SDL_FPoint currentCanvasDimensions;
                 SDL_GetTextureSize(canvas, &currentCanvasDimensions.x, &currentCanvasDimensions.y);
                 const SDL_Point newCanvasDimensions = computeDesiredCanvasDimensions(state->hardwarePixelsPerAppPixel);
-                const auto currentCanvasWidth = static_cast<uint16_t>(currentCanvasDimensions.x);
-                const auto currentCanvasHeight = static_cast<uint16_t>(currentCanvasDimensions.y);
 
-                if (currentCanvasWidth != newCanvasDimensions.x ||
-                        currentCanvasHeight != newCanvasDimensions.y)
+                if (static_cast<uint16_t>(currentCanvasDimensions.x) != newCanvasDimensions.x ||
+                    static_cast<uint16_t>(currentCanvasDimensions.y) != newCanvasDimensions.y)
                 {
-                    createCanvas(newCanvasDimensions);
-                    SDL_FPoint actualCanvasDimensions;
-                    SDL_GetTextureSize(canvas, &actualCanvasDimensions.x, &actualCanvasDimensions.y);
-                    rootComponent->setSize(actualCanvasDimensions.x, actualCanvasDimensions.y);
-                    backgroundComponentHandle->setSize(actualCanvasDimensions.x, actualCanvasDimensions.y);
-                    
-                    const SDL_Rect menuBarRect = getMenuBarRect(
-                            actualCanvasDimensions.x,
-                            actualCanvasDimensions.y,
-                            state->hardwarePixelsPerAppPixel,
-                            state->menuFontSize);
-
-                    menuBarHandle->setBounds(menuBarRect.x, menuBarRect.y, menuBarRect.w, menuBarRect.h);
-
-                    const SDL_Rect waveformRect = getWaveformRect(
-                            actualCanvasDimensions.x,
-                            actualCanvasDimensions.y,
-                            state->hardwarePixelsPerAppPixel,
-                            menuBarRect.h);
-                    
-                    const auto samplesPerPixelFactor = Waveform::getWaveformWidth(state) * state->samplesPerPixel;
-
-                    const int numChannels = static_cast<int>(state->waveforms.size());
-                    const float channelHeight = (float) waveformRect.h / numChannels;
-
-                    for (int ch = 0; ch < numChannels; ++ch)
-                    {
-                        state->waveforms[ch]->setBounds(
-                            waveformRect.x,
-                            waveformRect.y + ch * channelHeight,
-                            waveformRect.w,
-                            channelHeight
-                        );
-                    }
-
-                    const auto newSamplesPerPixel = samplesPerPixelFactor / waveformRect.w; 
-                    state->samplesPerPixel = newSamplesPerPixel;
-
-                    rootComponent->setDirtyRecursive();
+                    rebuildComponentTree(state);
                 }
                 break;
             }

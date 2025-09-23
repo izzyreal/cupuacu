@@ -1,7 +1,5 @@
 #include "Waveform.h"
 
-#include "WaveformsOverlay.h"
-
 #include <limits>
 #include <cmath>
 #include <algorithm>
@@ -15,6 +13,11 @@ Waveform::Waveform(CupuacuState *state, const uint8_t channelIndexToUse)
 int getSamplePointSize(const int hardwarePixelsPerAppPixel)
 {
     return 32 / hardwarePixelsPerAppPixel;
+}
+
+void Waveform::resized()
+{
+    updateSamplePoints();
 }
 
 void Waveform::updateSamplePoints()

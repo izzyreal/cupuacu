@@ -53,7 +53,7 @@ public:
 
     void onDraw(SDL_Renderer*) override;
     void timerCallback() override;
-
+    void resized() override;
     void updateSamplePoints();
 
 private:
