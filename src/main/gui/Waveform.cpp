@@ -306,9 +306,12 @@ void Waveform::onDraw(SDL_Renderer *renderer)
         const auto sampleOffset = state->sampleOffset;
         const auto& sampleData = state->document.channels[channelIndex];
 
-        if (mouseX >= 0 && mouseX < getWidth() && !sampleData.empty())
+        const auto *samplePoint = dynamic_cast<SamplePoint*>(state->capturingComponent);
+
+        if ((mouseX >= 0 && mouseX < getWidth() && !sampleData.empty()) ||
+            samplePoint != nullptr)
         {
-            const size_t sampleIndex = static_cast<size_t>(
+            const size_t sampleIndex = samplePoint != nullptr ? samplePoint->getSampleIndex() : static_cast<size_t>(
                 Waveform::xPositionToSampleIndex(mouseX, sampleOffset, samplesPerPixel, true));
             if (sampleIndex < sampleData.size())
             {
@@ -411,6 +414,11 @@ void Waveform::timerCallback()
     // Check for mouse movement to a new sample region
     if (shouldShowSamplePoints(state->samplesPerPixel, state->hardwarePixelsPerAppPixel))
     {
+        if (const auto *samplePoint = dynamic_cast<SamplePoint*>(state->capturingComponent); samplePoint != nullptr)
+        {
+            return;
+        }
+
         const auto mouseX = state->mouseX;
         const auto sampleOffset = state->sampleOffset;
         const auto& sampleData = state->document.channels[channelIndex];

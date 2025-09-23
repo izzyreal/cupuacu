@@ -24,6 +24,16 @@ public:
     {
     }
 
+    uint64_t getSampleIndex() const
+    {
+        return sampleIndex;
+    }
+
+    float getSampleValue() const
+    {
+        return state->document.channels[channelIndex][sampleIndex];
+    }
+
     void mouseEnter() override
     {
         setDirty();

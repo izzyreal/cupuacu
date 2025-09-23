@@ -5,6 +5,7 @@
 #include "WaveformsOverlay.h"
 #include "LabeledField.h"
 #include "../CupuacuState.h"
+#include "SamplePoint.h"
 
 #include <SDL3/SDL.h>
 #include <string>
@@ -20,6 +21,11 @@ private:
 
     float getSampleValueAtMousePosition()
     {
+        if (const auto *samplePoint = dynamic_cast<SamplePoint*>(state->capturingComponent); samplePoint != nullptr)
+        {
+            return samplePoint->getSampleValue();
+        }
+
         const auto mouseX = state->mouseX;
         const auto mouseY = state->mouseY;
         const auto samplesPerPixel = state->samplesPerPixel;
@@ -126,7 +132,7 @@ public:
         // Set the sample value under the mouse cursor
         const float sampleValue = getSampleValueAtMousePosition();
         char buffer[16];
-        snprintf(buffer, sizeof(buffer), "%.3f", sampleValue);
+        snprintf(buffer, sizeof(buffer), "%.5f", sampleValue);
         valueField->setValue(buffer);
     }
 
