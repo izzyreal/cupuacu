@@ -38,9 +38,11 @@ bool Waveform::shouldShowSamplePoints(const double samplesPerPixel,
 
 int getYPosForSampleValue(const float sampleValue,
                           const uint16_t waveformHeight,
-                          const double verticalZoom)
+                          const double verticalZoom,
+                          const int samplePointSize)
 {
-    return (waveformHeight * 0.5f) - (sampleValue * verticalZoom * waveformHeight * 0.5f);
+    const float drawableHeight = waveformHeight - samplePointSize;
+    return (waveformHeight * 0.5f) - (sampleValue * verticalZoom * drawableHeight * 0.5f);
 }
 
 std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
@@ -73,7 +75,7 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
     for (int i = 0; i < actualInputSamples; ++i)
     {
         const int xPos = x[i];
-        const int yPos = getYPosForSampleValue(sampleData[sampleOffset + i], getHeight(), verticalZoom);
+        const int yPos = getYPosForSampleValue(sampleData[sampleOffset + i], getHeight(), verticalZoom, samplePointSize);
 
         auto samplePoint = std::make_unique<SamplePoint>(state, channelIndex, sampleOffset + i);
         samplePoint->setBounds(std::max(0, xPos - (samplePointSize / 2)),
@@ -85,14 +87,42 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
     return result;
 }
 
+void Waveform::drawHorizontalLines(SDL_Renderer* renderer)
+{
+    const auto heightToUse = getHeight();
+    const auto samplePointSize = getSamplePointSize(state->hardwarePixelsPerAppPixel);
+    const auto verticalZoom = state->verticalZoom;
+
+    // Draw DC line (center line)
+    SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255); // Gray color for DC line
+    SDL_RenderLine(renderer, 0, heightToUse / 2, getWidth(), heightToUse / 2);
+
+    // Draw boundary lines only if vertical zoom <= 1.0
+    if (verticalZoom <= 1.0)
+    {
+        SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255); // Light gray for boundaries
+        const int topY = samplePointSize / 2;
+        const int bottomY = heightToUse - samplePointSize / 2;
+        
+        // Top boundary
+        SDL_RenderLine(renderer, 0, topY, getWidth(), topY);
+        // Bottom boundary
+        SDL_RenderLine(renderer, 0, bottomY, getWidth(), bottomY);
+    }
+}
+
 void Waveform::renderSmoothWaveform(SDL_Renderer* renderer)
 {
+    SDL_SetRenderDrawColor(renderer, 0, 185, 0, 255);
+
     const auto samplesPerPixel = state->samplesPerPixel;
     const auto sampleOffset = state->sampleOffset;
     const auto &sampleData = state->document.channels[channelIndex];
     const auto verticalZoom = state->verticalZoom;
     const auto widthToUse = getWidth();
     const auto heightToUse = getHeight();
+    const auto samplePointSize = getSamplePointSize(state->hardwarePixelsPerAppPixel);
+    const auto drawableHeight = heightToUse - samplePointSize;
 
     const int neededInputSamples = static_cast<int>(std::ceil((widthToUse + 1) * samplesPerPixel));
     const int availableSamples = static_cast<int>(sampleData.size()) - static_cast<int>(sampleOffset);
@@ -127,8 +157,8 @@ void Waveform::renderSmoothWaveform(SDL_Renderer* renderer)
         float x1 = static_cast<float>(xq[i]);
         float x2 = static_cast<float>(xq[i + 1]);
 
-        float y1f = heightToUse / 2.0f - (smoothened[i] * verticalZoom * heightToUse / 2.0f);
-        float y2f = heightToUse / 2.0f - (smoothened[i + 1] * verticalZoom * heightToUse / 2.0f);
+        float y1f = heightToUse / 2.0f - (smoothened[i] * verticalZoom * drawableHeight / 2.0f);
+        float y2f = heightToUse / 2.0f - (smoothened[i + 1] * verticalZoom * drawableHeight / 2.0f);
 
         float thickness = 1.0f;
 
@@ -161,14 +191,18 @@ void Waveform::renderSmoothWaveform(SDL_Renderer* renderer)
 
 void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
 {
+    SDL_SetRenderDrawColor(renderer, 0, 185, 0, 255);
+
     const auto samplesPerPixel = state->samplesPerPixel;
     const auto sampleOffset = state->sampleOffset;
     const auto &sampleData = state->document.channels[channelIndex];
     const auto verticalZoom = state->verticalZoom;
     const auto widthToUse = getWidth();
     const auto heightToUse = getHeight();
+    const auto samplePointSize = getSamplePointSize(state->hardwarePixelsPerAppPixel);
+    const auto drawableHeight = heightToUse - samplePointSize;
 
-    const float scale = verticalZoom * heightToUse * 0.5f;
+    const float scale = verticalZoom * drawableHeight * 0.5f;
 
     int prevY = 0;
     bool hasPrev = false;
@@ -183,7 +217,11 @@ void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
 
         const size_t startSample = static_cast<size_t>(x * samplesPerPixel) + sampleOffset;
         size_t endSample = static_cast<size_t>((x + 1) * samplesPerPixel) + sampleOffset;
-        if (endSample == startSample) endSample++;
+
+        if (endSample == startSample)
+        {
+            endSample++;
+        }
 
         float minSample = std::numeric_limits<float>::max();
         float maxSample = std::numeric_limits<float>::lowest();
@@ -195,6 +233,7 @@ void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
                 noMoreStuffToDraw = true;
                 break;
             }
+
             const float s = sampleData[i];
             minSample = std::min(minSample, s);
             maxSample = std::max(maxSample, s);
@@ -205,7 +244,8 @@ void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
 
         if (hasPrev)
         {
-            if ((y >= 0 || prevY >= 0) && (y < heightToUse || prevY < heightToUse))
+            if ((y >= samplePointSize / 2 || prevY >= samplePointSize / 2) && 
+                (y < heightToUse - samplePointSize / 2 || prevY < heightToUse - samplePointSize / 2))
             {
                 SDL_RenderLine(renderer, x - 1, prevY, x, y);
             }
@@ -222,7 +262,8 @@ void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
         int y1 = static_cast<int>(float(heightToUse) / 2 - maxSample * scale);
         int y2 = static_cast<int>(float(heightToUse) / 2 - minSample * scale);
 
-        if ((y1 < 0 && y2 < 0) || (y1 >= heightToUse && y2 >= heightToUse))
+        if ((y1 < samplePointSize / 2 && y2 < samplePointSize / 2) || 
+            (y1 >= heightToUse - samplePointSize / 2 && y2 >= heightToUse - samplePointSize / 2))
         {
             continue;
         }
@@ -242,7 +283,8 @@ void Waveform::onDraw(SDL_Renderer *renderer)
 {
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderFillRect(renderer, NULL);
-    SDL_SetRenderDrawColor(renderer, 0, 185, 0, 255);
+
+    drawHorizontalLines(renderer);
 
     const float samplesPerPixel = state->samplesPerPixel;
 
@@ -341,4 +383,3 @@ void Waveform::timerCallback()
         setDirtyRecursive();
     }
 }
-

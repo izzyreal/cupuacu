@@ -50,6 +50,7 @@ private:
 
     std::vector<std::unique_ptr<SamplePoint>> computeSamplePoints();
     
+    void drawHorizontalLines(SDL_Renderer* renderer);
     void renderBlockWaveform(SDL_Renderer* renderer);
     void renderSmoothWaveform(SDL_Renderer* renderer);
 
