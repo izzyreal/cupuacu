@@ -50,7 +50,8 @@ public:
                    const float /*mouseRelY*/,
                    const bool leftButtonIsDown) override
     {
-        if (state->capturingComponent != this || !leftButtonIsDown) {
+        if (state->capturingComponent != this || !leftButtonIsDown)
+        {
             return false;
         }
 
@@ -72,7 +73,8 @@ public:
                            const int32_t mouseX,
                            const int32_t mouseY) override
     {
-        if (state->capturingComponent != this) {
+        if (state->capturingComponent != this)
+        {
             return false;
         }
 
@@ -93,12 +95,6 @@ public:
         markAllWaveformsDirty();
         return true;
     }
-    
-    void onDraw(SDL_Renderer* /*renderer*/) override
-    {
-        // Overlay itself does not paint anything —
-        // Waveform components will paint the selection when dirty.
-    }
 
 private:
     int channelHeight()
@@ -116,8 +112,12 @@ private:
 
     void markAllWaveformsDirty()
     {
-        for (auto* wf : state->waveforms) {
-            if (wf) wf->setDirtyRecursive();
+        for (auto* wf : state->waveforms)
+        {
+            if (wf)
+            {
+                wf->setDirtyRecursive();
+            }
         }
     }
 
@@ -127,37 +127,47 @@ private:
         const auto oldSampleOffset = state->sampleOffset;
         auto sampleOffset = state->sampleOffset;
 
-        if (mouseX > getWidth() || mouseX < 0) {
+        if (mouseX > getWidth() || mouseX < 0)
+        {
             auto diff = (mouseX < 0) ? mouseX : mouseX - getWidth();
             auto samplesToScroll = diff * samplesPerPixel;
 
-            if (samplesToScroll < 0) {
+            if (samplesToScroll < 0)
+            {
                 double absScroll = -samplesToScroll;
                 state->sampleOffset = (state->sampleOffset > absScroll)
                     ? state->sampleOffset - absScroll
                     : 0;
-            } else {
+            }
+            else
+            {
                 state->sampleOffset += samplesToScroll;
             }
 
             sampleOffset = state->sampleOffset;
             state->samplesToScroll = samplesToScroll;
-        } else {
+        }
+        else
+        {
             state->samplesToScroll = 0;
         }
 
-        // Update selection end point relative to new offset
         auto waveformMouseX = mouseX;
-        if (samplesPerPixel < 1.f) {
+
+        if (samplesPerPixel < 1.f)
+        {
             waveformMouseX += 0.5f / samplesPerPixel;
         }
+
         const float x = waveformMouseX <= 0 ? 0.f : waveformMouseX;
         state->selection.setValue2(sampleOffset + (x * samplesPerPixel));
 
         markAllWaveformsDirty();
 
-        if (state->sampleOffset != oldSampleOffset) {
-            for (auto* wf : state->waveforms) {
+        if (state->sampleOffset != oldSampleOffset)
+        {
+            for (auto* wf : state->waveforms)
+            {
                 if (wf) wf->updateSamplePoints();
             }
         }
