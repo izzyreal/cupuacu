@@ -308,7 +308,8 @@ void Waveform::onDraw(SDL_Renderer *renderer)
 
         if (mouseX >= 0 && mouseX < getWidth() && !sampleData.empty())
         {
-            const size_t sampleIndex = static_cast<size_t>(mouseX * samplesPerPixel) + sampleOffset;
+            const size_t sampleIndex = static_cast<size_t>(
+                Waveform::xPositionToSampleIndex(mouseX, sampleOffset, samplesPerPixel, true));
             if (sampleIndex < sampleData.size())
             {
                 // Check if mouse has moved to a new sample region
@@ -318,8 +319,9 @@ void Waveform::onDraw(SDL_Renderer *renderer)
                     samplePosUnderCursor = static_cast<int64_t>(sampleIndex);
                 }
 
+                const float xPos = Waveform::sampleIndexToXPosition(
+                    static_cast<float>(sampleIndex), sampleOffset, samplesPerPixel, true);
                 const float sampleWidth = 1.0f / samplesPerPixel;
-                const float xPos = (sampleIndex - sampleOffset) / samplesPerPixel - (sampleWidth / 2.0f);
 
                 SDL_SetRenderDrawColor(renderer, 0, 128, 255, 100); // Light blue, semi-transparent
                 SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
@@ -349,15 +351,6 @@ void Waveform::onDraw(SDL_Renderer *renderer)
                 samplePosUnderCursor = -1;
                 setDirtyRecursive();
             }
-        }
-    }
-    else
-    {
-        // Clear samplePosUnderCursor when sample points are not visible
-        if (samplePosUnderCursor != -1)
-        {
-            samplePosUnderCursor = -1;
-            setDirtyRecursive();
         }
     }
 
@@ -424,7 +417,8 @@ void Waveform::timerCallback()
 
         if (mouseX >= 0 && mouseX < getWidth() && !sampleData.empty())
         {
-            const size_t sampleIndex = WaveformsOverlay::getSamplePosForMouseX(mouseX, state->samplesPerPixel, sampleOffset);
+            const size_t sampleIndex = static_cast<size_t>(
+                Waveform::xPositionToSampleIndex(mouseX, sampleOffset, state->samplesPerPixel, true));
             if (sampleIndex < sampleData.size())
             {
                 if (sampleIndex != static_cast<size_t>(samplePosUnderCursor))

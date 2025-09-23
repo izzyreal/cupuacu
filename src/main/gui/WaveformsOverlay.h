@@ -12,16 +12,8 @@ public:
                                          const double samplesPerPixel,
                                          const double sampleOffset) 
     {
-        auto waveformMouseX = mouseX;
-
-        if (samplesPerPixel < 1.f)
-        {
-            waveformMouseX += 0.5f / samplesPerPixel;
-        }
-
-        const float xToUse = waveformMouseX <= 0 ? 0.f : waveformMouseX;
-        const float result = sampleOffset + (xToUse * samplesPerPixel);
-        return result;
+        const float xToUse = mouseX <= 0 ? 0.f : static_cast<float>(mouseX);
+        return Waveform::xPositionToSampleIndex(xToUse, sampleOffset, samplesPerPixel, samplesPerPixel < 1.f);
     }
 
     bool mouseLeftButtonDown(const uint8_t numClicks,

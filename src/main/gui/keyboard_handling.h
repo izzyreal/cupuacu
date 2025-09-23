@@ -43,6 +43,7 @@ static void handleKeyDown(
         {
             if (tryZoomOutHorizontally(state))
             {
+                snapSampleOffset(state);
                 updateWaveforms(state);
             }
         }
@@ -51,6 +52,7 @@ static void handleKeyDown(
     {
         if (tryZoomInHorizontally(state))
         {
+            snapSampleOffset(state);
             updateWaveforms(state);
         }
     }
@@ -74,9 +76,18 @@ static void handleKeyDown(
         }
 
         state->verticalZoom = INITIAL_VERTICAL_ZOOM;
-        state->sampleOffset = state->selection.getStart();
+
+        const auto waveformWidth = Waveform::getWaveformWidth(state);
+        const auto selectionStart = state->selection.getStart();
         const auto selectionLength = state->selection.getLength();
+
+        // Samples per pixel based on selection
         state->samplesPerPixel = selectionLength / waveformWidth;
+
+        // Align so that the first selected sample is centered on the first pixel
+        state->sampleOffset = selectionStart - (0.5f * state->samplesPerPixel);
+
+        snapSampleOffset(state);
         updateWaveforms(state);
     }
     else if (event->key.scancode == SDL_SCANCODE_LEFT)
@@ -87,11 +98,8 @@ static void handleKeyDown(
         }
 
         state->sampleOffset -= std::max(state->samplesPerPixel, 1.0) * multiplier;
-        
-        if (state->sampleOffset < 0)
-        {
-            state->sampleOffset = 0;
-        }
+        snapSampleOffset(state);
+
         updateWaveforms(state);
     }
     else if (event->key.scancode == SDL_SCANCODE_RIGHT)
@@ -102,6 +110,7 @@ static void handleKeyDown(
         }
 
         state->sampleOffset += std::max(state->samplesPerPixel, 1.0) * multiplier;
+        snapSampleOffset(state);
 
         updateWaveforms(state);
     }

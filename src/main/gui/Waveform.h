@@ -8,6 +8,21 @@
 class Waveform : public Component {
 
 public:
+    static float sampleIndexToXPosition(float sampleIndex, double sampleOffset, double samplesPerPixel, bool isSamplePointsVisible) {
+        if (isSamplePointsVisible) {
+            sampleIndex -= 0.5f;
+        }
+        return (sampleIndex - sampleOffset) / samplesPerPixel;
+    }
+
+    static float xPositionToSampleIndex(float xPos, double sampleOffset, double samplesPerPixel, bool isSamplePointsVisible) {
+        float sampleIndex = (xPos * samplesPerPixel) + sampleOffset;
+        if (isSamplePointsVisible) {
+            sampleIndex += 0.5f;
+        }
+        return sampleIndex;
+    }
+    
     static uint32_t getWaveformWidth(CupuacuState *state)
     {
         if (state->waveforms.empty())
