@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Component.h"
-
 #include "../CupuacuState.h"
 
 class SamplePoint : public Component {
@@ -13,9 +12,10 @@ private:
     float prevY = 0.f;
     float dragYPos = 0.f;
 
-    float getSampleValueForYPos(const int16_t y, const uint16_t h, const double v)
+    float getSampleValueForYPos(const int16_t y, const uint16_t h, const double v, const int samplePointSize)
     {
-        return (h/2.f - y) / (v * (h/2.f));
+        const float drawableHeight = h - samplePointSize;
+        return (h/2.f - y) / (v * (drawableHeight/2.f));
     }
 
 public:
@@ -65,10 +65,29 @@ public:
             return false;
         }
 
+        const auto samplePointSize = getHeight();
+        const auto parentHeight = getParent()->getHeight();
+        const auto drawableHeight = parentHeight - samplePointSize;
+        const auto verticalZoom = state->verticalZoom;
+
         dragYPos += mouseRelY;
+
+        // Calculate the new sample value
+        const auto vertCenter = dragYPos + (getHeight() * 0.5f);
+        auto newSampleValue = getSampleValueForYPos(vertCenter, parentHeight, verticalZoom, samplePointSize);
+
+        // Clamp sample value to [-1.0, 1.0]
+        newSampleValue = std::clamp(newSampleValue, -1.0f, 1.0f);
+
+        // Recalculate y-position based on clamped sample value
+        const float newYPos = (parentHeight * 0.5f) - (newSampleValue * verticalZoom * drawableHeight * 0.5f) - (getHeight() * 0.5f);
+
+        // Clamp y-position to allow center to reach drawable area edges
+        const float minY = 0.0f; // Top edge can reach 0
+        const float maxY = parentHeight - samplePointSize; // Bottom edge can reach drawableHeight
+        dragYPos = std::clamp(newYPos, minY, maxY);
+
         setYPos(dragYPos);
-        const auto vertCenter = getYPos() + (getHeight() * 0.5f);
-        const auto newSampleValue = getSampleValueForYPos(vertCenter, getParent()->getHeight(), state->verticalZoom);
         state->document.channels[channelIndex][sampleIndex] = newSampleValue;
         getParent()->setDirtyRecursive();
 
@@ -77,9 +96,8 @@ public:
 
     void onDraw(SDL_Renderer *r) override
     {
-        SDL_SetRenderDrawColor(r, 0, (isMouseOver()|| isDragging) ? 255 : 185, 0, 255);
+        SDL_SetRenderDrawColor(r, 0, (isMouseOver() || isDragging) ? 255 : 185, 0, 255);
         SDL_FRect rectToFill {0, 0, (float)getWidth(), (float)getHeight()};
         SDL_RenderFillRect(r, &rectToFill);
     }
 };
-
