@@ -94,6 +94,8 @@ public:
                            const int32_t mouseX,
                            const int32_t mouseY) override
     {
+        state->samplesToScroll = 0.0f;
+
         if (numClicks >= 2)
         {
             return true;
