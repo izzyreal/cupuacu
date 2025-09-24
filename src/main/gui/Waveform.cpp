@@ -1,7 +1,6 @@
 #include "Waveform.h"
-
 #include "WaveformsOverlay.h"
-
+#include "../actions/Zoom.h"
 #include <limits>
 #include <cmath>
 #include <algorithm>
@@ -100,20 +99,16 @@ void Waveform::drawHorizontalLines(SDL_Renderer* renderer)
     const auto samplePointSize = getSamplePointSize(state->hardwarePixelsPerAppPixel);
     const auto verticalZoom = state->verticalZoom;
 
-    // Draw DC line (center line)
-    SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255); // Gray color for DC line
+    SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
     SDL_RenderLine(renderer, 0, heightToUse / 2, getWidth(), heightToUse / 2);
 
-    // Draw boundary lines only if vertical zoom <= 1.0
     if (verticalZoom <= 1.0)
     {
-        SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255); // Light gray for boundaries
+        SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
         const int topY = samplePointSize / 2;
         const int bottomY = heightToUse - samplePointSize / 2;
         
-        // Top boundary
         SDL_RenderLine(renderer, 0, topY, getWidth(), topY);
-        // Bottom boundary
         SDL_RenderLine(renderer, 0, bottomY, getWidth(), bottomY);
     }
 }
@@ -347,7 +342,7 @@ void Waveform::drawHighlight(SDL_Renderer *renderer)
                 static_cast<float>(sampleIndex), sampleOffset, samplesPerPixel, true);
             const float sampleWidth = 1.0f / samplesPerPixel;
 
-            SDL_SetRenderDrawColor(renderer, 0, 128, 255, 100); // Light blue, semi-transparent
+            SDL_SetRenderDrawColor(renderer, 0, 128, 255, 100);
             SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
             SDL_FRect sampleRect = {
                 xPos,
@@ -451,15 +446,12 @@ void Waveform::updateSamplePosUnderMouseCursor()
     }
 }
 
-
 void Waveform::timerCallback()
 {
-    // Check for mouse movement to a new sample region
     if (shouldShowSamplePoints(state->samplesPerPixel, state->hardwarePixelsPerAppPixel))
     {
         if (const auto *samplePoint = dynamic_cast<SamplePoint*>(state->capturingComponent); samplePoint != nullptr)
         {
-            // Only update if the SamplePoint is a child of this Waveform
             bool isChild = false;
             for (const auto& child : getChildren())
             {
@@ -497,22 +489,23 @@ void Waveform::timerCallback()
         }
     }
 
-    if (state->samplesToScroll != 0.0f)
+    if (state->samplesToScroll != 0.0)
     {
         const auto scroll = state->samplesToScroll;
         const uint64_t oldOffset = state->sampleOffset;
+        const double maxOffset = std::max(0.0, state->document.getFrameCount() - getWidth() * state->samplesPerPixel);
 
         if (scroll < 0)
         {
             auto absScroll = -scroll;
-            state->sampleOffset = (state->sampleOffset > absScroll)
-                ? state->sampleOffset - absScroll
-                : 0;
+            state->sampleOffset = (state->sampleOffset > absScroll) ? state->sampleOffset - absScroll : 0;
         }
         else
         {
-            state->sampleOffset += scroll;
+            state->sampleOffset = std::min(state->sampleOffset + scroll, maxOffset);
         }
+
+        snapSampleOffset(state);
 
         if (oldOffset != state->sampleOffset)
         {

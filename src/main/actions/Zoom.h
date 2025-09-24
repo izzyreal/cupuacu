@@ -2,7 +2,6 @@
 
 #include "../Constants.h"
 #include "../CupuacuState.h"
-
 #include "../gui/Waveform.h"
 
 static inline void snapSampleOffset(CupuacuState *state)
@@ -13,8 +12,8 @@ static inline void snapSampleOffset(CupuacuState *state)
     }
     else
     {
-        // snap to nearest sample center
-        state->sampleOffset = std::floor(state->sampleOffset + 0.5f);
+        const double maxOffset = std::max(0.0, state->document.getFrameCount() - Waveform::getWaveformWidth(state) * state->samplesPerPixel);
+        state->sampleOffset = std::min(std::floor(state->sampleOffset + 0.5), maxOffset);
     }
 }
 
@@ -48,19 +47,19 @@ static bool tryZoomInHorizontally(CupuacuState *state)
 
 static bool tryZoomOutHorizontally(CupuacuState *state)
 {
-    if (state->samplesPerPixel >= static_cast<float>(state->document.getFrameCount()) / 20.f)
+    const auto waveformWidth = Waveform::getWaveformWidth(state);
+    const float maxSamplesPerPixel = static_cast<float>(state->document.getFrameCount()) / waveformWidth;
+
+    if (state->samplesPerPixel >= maxSamplesPerPixel)
     {
         return false;
     }
 
-    const auto waveformWidth = Waveform::getWaveformWidth(state);
-    const auto centerSampleIndex =
-        ((waveformWidth / 2.0 + 0.5) * state->samplesPerPixel) + state->sampleOffset;
+    const auto centerSampleIndex = ((waveformWidth / 2.0 + 0.5) * state->samplesPerPixel) + state->sampleOffset;
 
-    state->samplesPerPixel *= 2.0;
+    state->samplesPerPixel = std::min(state->samplesPerPixel * 2.0, static_cast<double>(maxSamplesPerPixel));
 
-    const auto newSampleOffset =
-        centerSampleIndex - ((waveformWidth / 2.0 + 0.5) * state->samplesPerPixel);
+    const auto newSampleOffset = centerSampleIndex - ((waveformWidth / 2.0 + 0.5) * state->samplesPerPixel);
 
     state->sampleOffset = newSampleOffset;
     snapSampleOffset(state);
@@ -88,4 +87,3 @@ static bool tryZoomOutVertically(CupuacuState *state, const uint8_t multiplier)
 
     return true;
 }
-

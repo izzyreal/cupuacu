@@ -1,9 +1,6 @@
 #include <SDL3/SDL.h>
-
 #include "../CupuacuState.h"
-
 #include "Waveform.h"
-
 #include "../actions/ShowOpenFileDialog.h"
 #include "../actions/Play.h"
 #include "../actions/Zoom.h"
@@ -39,7 +36,7 @@ static void handleKeyDown(
 
     if (event->key.scancode == SDL_SCANCODE_Q)
     {
-        if (state->samplesPerPixel < static_cast<float>(state->document.channels[0].size()) / 2.f)
+        if (state->samplesPerPixel < static_cast<float>(state->document.getFrameCount()) / 2.f)
         {
             if (tryZoomOutHorizontally(state))
             {
@@ -81,10 +78,7 @@ static void handleKeyDown(
         const auto selectionStart = state->selection.getStart();
         const auto selectionLength = state->selection.getLength();
 
-        // Samples per pixel based on selection
         state->samplesPerPixel = selectionLength / waveformWidth;
-
-        // Align so that the first selected sample is centered on the first pixel
         state->sampleOffset = selectionStart - (0.5f * state->samplesPerPixel);
 
         snapSampleOffset(state);
@@ -99,19 +93,18 @@ static void handleKeyDown(
 
         state->sampleOffset -= std::max(state->samplesPerPixel, 1.0) * multiplier;
         snapSampleOffset(state);
-
         updateWaveforms(state);
     }
     else if (event->key.scancode == SDL_SCANCODE_RIGHT)
     {
-        if (state->sampleOffset >= state->document.channels[0].size())
+        const double maxOffset = std::max(0.0, state->document.getFrameCount() - waveformWidth * state->samplesPerPixel);
+        if (state->sampleOffset >= maxOffset)
         {
             return;
         }
 
         state->sampleOffset += std::max(state->samplesPerPixel, 1.0) * multiplier;
         snapSampleOffset(state);
-
         updateWaveforms(state);
     }
     else if (event->key.scancode == SDL_SCANCODE_O)
@@ -136,4 +129,3 @@ static void handleKeyDown(
         play(state);
     }
 }
-
