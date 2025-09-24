@@ -21,6 +21,7 @@ struct CustomDataSource {
     ma_uint64 end;
     CupuacuState* state;
     ma_device device;
+    double playbackPositionToReturnTo = -1;
 };
 
 static ma_result custom_data_source_read(ma_data_source* pDataSource,
@@ -44,7 +45,14 @@ static ma_result custom_data_source_read(ma_data_source* pDataSource,
             }
             else
             {
-                ds->state->playbackPosition.store(0);
+                if (ds->playbackPositionToReturnTo != -1)
+                {
+                    ds->state->playbackPosition.store(ds->playbackPositionToReturnTo);
+                }
+                else
+                {
+                    ds->state->playbackPosition.store(ds->playbackPositionToReturnTo);
+                }
             }
             
             ds->state->isPlaying.store(false);
@@ -147,6 +155,11 @@ static ma_result custom_data_source_init(CustomDataSource* ds,
     ds->end   = end;
     ds->state = state;
 
+    if (!state->selection.isActive())
+    {
+        ds->playbackPositionToReturnTo = state->playbackPosition;
+    }
+
     return MA_SUCCESS;
 }
 
@@ -173,6 +186,11 @@ void stop(CupuacuState *state)
     if (!ds)
     {
         return;
+    }
+
+    if (ds->playbackPositionToReturnTo != -1)
+    {
+        state->playbackPosition.store(ds->playbackPositionToReturnTo);
     }
 
     if (ma_device_get_state(&ds->device) == ma_device_state_started)

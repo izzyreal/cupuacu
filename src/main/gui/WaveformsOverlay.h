@@ -62,6 +62,7 @@ public:
 
         state->selection.setValue2(samplePos);
         state->selectionChannelEnd   = channel;
+        state->playbackPosition.store(samplePos);
 
         markAllWaveformsDirty();
         return true;
