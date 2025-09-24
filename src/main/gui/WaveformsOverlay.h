@@ -27,6 +27,7 @@ public:
         {
             double startSample = state->sampleOffset;
             double endSample   = state->sampleOffset + getWidth() * samplesPerPixel;
+            endSample = std::min((double)state->document.getFrameCount(), endSample);
 
             state->selection.setValue1(startSample);
             state->selection.setValue2(endSample);
