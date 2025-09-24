@@ -418,7 +418,7 @@ void Waveform::updateSamplePosUnderMouseCursor()
     if (isOverWaveformOrChild && mouseX >= 0 && mouseX < getWidth() && !sampleData.empty())
     {
         const size_t sampleIndex = static_cast<size_t>(
-            Waveform::xPositionToSampleIndex(mouseX, sampleOffset, state->samplesPerPixel, true));
+            Waveform::xPositionToSampleIndex(mouseX, sampleOffset, state->samplesPerPixel, true, state->document.getFrameCount()));
         if (sampleIndex < sampleData.size())
         {
             if (sampleIndex != static_cast<size_t>(samplePosUnderCursor))

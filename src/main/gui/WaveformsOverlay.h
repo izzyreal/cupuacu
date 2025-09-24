@@ -11,10 +11,11 @@ public:
 
     static float getSamplePosForMouseX(const int32_t mouseX,
                                          const double samplesPerPixel,
-                                         const double sampleOffset) 
+                                         const double sampleOffset,
+                                         const size_t frameCount) 
     {
         const float xToUse = mouseX <= 0 ? 0.f : static_cast<float>(mouseX);
-        return Waveform::xPositionToSampleIndex(xToUse, sampleOffset, samplesPerPixel, samplesPerPixel < 1.f);
+        return Waveform::xPositionToSampleIndex(xToUse, sampleOffset, samplesPerPixel, samplesPerPixel < 1.f, frameCount);
     }
 
     bool mouseLeftButtonDown(const uint8_t numClicks,
@@ -82,7 +83,7 @@ public:
 
         handleScroll(mouseX, mouseY);
         
-        const auto samplePos = getSamplePosForMouseX(mouseX, state->samplesPerPixel, state->sampleOffset); 
+        const auto samplePos = getSamplePosForMouseX(mouseX, state->samplesPerPixel, state->sampleOffset, state->document.getFrameCount()); 
         state->selection.setValue2(samplePos);
 
         int channel = channelAt(mouseY);
@@ -104,7 +105,7 @@ public:
             return true;
         }
 
-        const auto samplePos = getSamplePosForMouseX(mouseX, state->samplesPerPixel, state->sampleOffset); 
+        const auto samplePos = getSamplePosForMouseX(mouseX, state->samplesPerPixel, state->sampleOffset, state->document.getFrameCount()); 
         state->selection.setValue2(samplePos);
 
         int channel = channelAt(mouseY);
@@ -171,7 +172,7 @@ public:
                 if (wf)
                 {
                     const auto samplePos =
-                        getSamplePosForMouseX(mouseX, state->samplesPerPixel, state->sampleOffset);
+                        getSamplePosForMouseX(mouseX, state->samplesPerPixel, state->sampleOffset, state->document.getFrameCount());
                     if (wf->samplePosUnderCursor != (int64_t)samplePos)
                     {
                         wf->samplePosUnderCursor = (int64_t)samplePos;
@@ -182,7 +183,6 @@ public:
         }
         else
         {
-            // hide highlight if zoomed out too far
             for (auto* wf : state->waveforms)
             {
                 if (wf && wf->samplePosUnderCursor != -1)
@@ -191,12 +191,6 @@ public:
                     wf->setDirtyRecursive();
                 }
             }
-        }
-
-        // --- Drive children’s timer callbacks ---
-        for (auto* wf : state->waveforms)
-        {
-            if (wf) wf->timerCallback();
         }
     }
 
@@ -256,13 +250,17 @@ private:
             state->samplesToScroll = 0;
         }
 
-        const auto samplePos = getSamplePosForMouseX(mouseX, samplesPerPixel, sampleOffset);
+        const auto samplePos = getSamplePosForMouseX(mouseX, samplesPerPixel, sampleOffset, state->document.getFrameCount());
         state->selection.setValue2(samplePos);
 
         markAllWaveformsDirty();
 
         if (state->sampleOffset != oldSampleOffset)
         {
+            const double maxOffset = std::max(0.0, state->document.getFrameCount() - getWidth() * state->samplesPerPixel);
+
+            state->sampleOffset = std::min(maxOffset, state->sampleOffset);
+            
             for (auto* wf : state->waveforms)
             {
                 if (wf) wf->updateSamplePoints();

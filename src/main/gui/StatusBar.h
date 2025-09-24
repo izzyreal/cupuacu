@@ -58,7 +58,7 @@ private:
             return 0.0f;
         }
 
-        const size_t sampleIndex = WaveformsOverlay::getSamplePosForMouseX(mouseX, samplesPerPixel, sampleOffset);
+        const size_t sampleIndex = WaveformsOverlay::getSamplePosForMouseX(mouseX, samplesPerPixel, sampleOffset, state->document.getFrameCount());
 
         if (sampleIndex >= sampleData.size())
         {

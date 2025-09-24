@@ -17,12 +17,12 @@ public:
         return (sampleIndex - sampleOffset) / samplesPerPixel;
     }
 
-    static float xPositionToSampleIndex(float xPos, double sampleOffset, double samplesPerPixel, bool isSamplePointsVisible) {
+    static float xPositionToSampleIndex(float xPos, double sampleOffset, double samplesPerPixel, bool isSamplePointsVisible, const size_t frameCount) {
         float sampleIndex = (xPos * samplesPerPixel) + sampleOffset;
         if (isSamplePointsVisible) {
             sampleIndex += 0.5f;
         }
-        return sampleIndex;
+        return std::min((float)frameCount, sampleIndex);
     }
     
     static uint32_t getWaveformWidth(CupuacuState *state)
