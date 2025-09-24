@@ -52,7 +52,6 @@ private:
         }
 
         const auto& sampleData = state->document.channels[channelIndex];
-        const bool showSamplePoints = samplesPerPixel < (static_cast<float>(state->hardwarePixelsPerAppPixel) / 40.f);
 
         if (mouseX < 0 || mouseX >= getParent()->getWidth() || sampleData.empty())
         {
@@ -65,6 +64,8 @@ private:
         {
             return 0.0f;
         }
+
+        const bool showSamplePoints = Waveform::shouldShowSamplePoints(samplesPerPixel, state->hardwarePixelsPerAppPixel);
 
         if (showSamplePoints)
         {

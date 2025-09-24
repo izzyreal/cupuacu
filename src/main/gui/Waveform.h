@@ -8,6 +8,8 @@
 class Waveform : public Component {
 
 public:
+    static bool shouldShowSamplePoints(const double samplesPerPixel, const uint8_t hardwarePixelsPerAppPixel);
+
     static float sampleIndexToXPosition(float sampleIndex, double sampleOffset, double samplesPerPixel, bool isSamplePointsVisible) {
         if (isSamplePointsVisible) {
             sampleIndex -= 0.5f;
@@ -62,8 +64,6 @@ private:
     const uint8_t channelIndex;
     double playbackPosition = 0;
     int64_t samplePosUnderCursor;
-
-    bool shouldShowSamplePoints(const double samplesPerPixel, const uint8_t hardwarePixelsPerAppPixel);
 
     std::vector<std::unique_ptr<SamplePoint>> computeSamplePoints();
     
