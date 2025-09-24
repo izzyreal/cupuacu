@@ -339,13 +339,8 @@ void Waveform::drawHighlight(SDL_Renderer *renderer)
         const auto sampleOffset = state->sampleOffset;
         const auto& sampleData = state->document.channels[channelIndex];
 
-        const auto *samplePoint = dynamic_cast<SamplePoint*>(state->capturingComponent);
-        size_t sampleIndex = samplePosUnderCursor;
-
-        if (samplePoint != nullptr)
-        {
-            sampleIndex = samplePoint->getSampleIndex();
-        }
+        const auto samplePoint = dynamic_cast<SamplePoint*>(state->capturingComponent);
+        const size_t sampleIndex = samplePoint == nullptr ? samplePosUnderCursor : samplePoint->getSampleIndex();
 
         if (sampleIndex < sampleData.size())
         {
