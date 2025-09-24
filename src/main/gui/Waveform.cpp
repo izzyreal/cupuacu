@@ -223,25 +223,36 @@ void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
         const size_t startSample = static_cast<size_t>(x * samplesPerPixel) + sampleOffset;
         size_t endSample = static_cast<size_t>((x + 1) * samplesPerPixel) + sampleOffset;
 
+        // Check if startSample is beyond the sample data
+        if (startSample >= sampleData.size())
+        {
+            break;
+        }
+
         if (endSample == startSample)
         {
             endSample++;
         }
 
+        // Ensure endSample doesn't exceed sampleData.size()
+        endSample = std::min(endSample, sampleData.size());
+
         float minSample = std::numeric_limits<float>::max();
         float maxSample = std::numeric_limits<float>::lowest();
 
+        bool hasValidSamples = false;
         for (size_t i = startSample; i < endSample; ++i)
         {
-            if (i >= sampleData.size())
-            {
-                noMoreStuffToDraw = true;
-                break;
-            }
-
+            hasValidSamples = true;
             const float s = sampleData[i];
             minSample = std::min(minSample, s);
             maxSample = std::max(maxSample, s);
+        }
+
+        // Skip drawing if no valid samples were processed
+        if (!hasValidSamples)
+        {
+            continue;
         }
 
         const float midSample = (minSample + maxSample) * 0.5f;
@@ -249,16 +260,11 @@ void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
 
         if (hasPrev)
         {
-            if ((y >= samplePointSize / 2 || prevY >= samplePointSize / 2) && 
+            if ((y >= samplePointSize / 2 || prevY >= samplePointSize / 2) &&
                 (y < heightToUse - samplePointSize / 2 || prevY < heightToUse - samplePointSize / 2))
             {
                 SDL_RenderLine(renderer, x - 1, prevY, x, y);
             }
-        }
-
-        if (startSample >= sampleData.size())
-        {
-            break;
         }
 
         prevY = y;
@@ -267,7 +273,7 @@ void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
         int y1 = static_cast<int>(float(heightToUse) / 2 - maxSample * scale);
         int y2 = static_cast<int>(float(heightToUse) / 2 - minSample * scale);
 
-        if ((y1 < samplePointSize / 2 && y2 < samplePointSize / 2) || 
+        if ((y1 < samplePointSize / 2 && y2 < samplePointSize / 2) ||
             (y1 >= heightToUse - samplePointSize / 2 && y2 >= heightToUse - samplePointSize / 2))
         {
             continue;
