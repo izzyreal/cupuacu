@@ -1,6 +1,7 @@
 #pragma once
 #include "Component.h"
 #include "Waveform.h"
+#include "../actions/Zoom.h"
 #include <algorithm>
 
 class WaveformsOverlay : public Component {
@@ -112,6 +113,91 @@ public:
 
         markAllWaveformsDirty();
         return true;
+    }
+
+    void timerCallback() override
+    {
+        if (state->samplesToScroll != 0.0)
+        {
+            const double scroll = state->samplesToScroll;
+            const uint64_t oldOffset = state->sampleOffset;
+            const double maxOffset =
+                std::max(0.0, state->document.getFrameCount() - getWidth() * state->samplesPerPixel);
+
+            if (scroll < 0)
+            {
+                const double absScroll = -scroll;
+                state->sampleOffset = (state->sampleOffset > absScroll)
+                                    ? state->sampleOffset - absScroll
+                                    : 0;
+            }
+            else
+            {
+                state->sampleOffset = std::min(state->sampleOffset + scroll, maxOffset);
+            }
+
+            snapSampleOffset(state);
+
+            if (oldOffset != state->sampleOffset)
+            {
+                state->componentUnderMouse = nullptr;
+                for (auto* wf : state->waveforms)
+                {
+                    if (wf) wf->updateSamplePoints();
+                }
+                markAllWaveformsDirty();
+            }
+        }
+
+        const int mouseX = state->mouseX;
+        const int mouseY = state->mouseY;
+
+        if (Waveform::shouldShowSamplePoints(state->samplesPerPixel, state->hardwarePixelsPerAppPixel))
+        {
+            for (auto* wf : state->waveforms)
+            {
+                if (wf && wf->samplePosUnderCursor != -1)
+                {
+                    wf->samplePosUnderCursor = -1;
+                    wf->setDirtyRecursive();
+                }
+            }
+
+            const int channel = channelAt(mouseY);
+            
+            if (channel >= 0 && channel < (int)state->waveforms.size())
+            {
+                auto* wf = state->waveforms[channel];
+                if (wf)
+                {
+                    const auto samplePos =
+                        getSamplePosForMouseX(mouseX, state->samplesPerPixel, state->sampleOffset);
+                    if (wf->samplePosUnderCursor != (int64_t)samplePos)
+                    {
+                        wf->samplePosUnderCursor = (int64_t)samplePos;
+                        wf->setDirtyRecursive();
+                    }
+                }
+            }
+        }
+        else
+        {
+            // hide highlight if zoomed out too far
+            for (auto* wf : state->waveforms)
+            {
+                if (wf && wf->samplePosUnderCursor != -1)
+                {
+                    wf->samplePosUnderCursor = -1;
+                    wf->setDirtyRecursive();
+                }
+            }
+        }
+
+        // --- Drive children’s timer callbacks ---
+        for (auto* wf : state->waveforms)
+        {
+            if (wf) wf->timerCallback();
+        }
     }
 
 private:

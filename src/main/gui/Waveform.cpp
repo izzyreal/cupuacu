@@ -448,73 +448,14 @@ void Waveform::updateSamplePosUnderMouseCursor()
 
 void Waveform::timerCallback()
 {
-    if (shouldShowSamplePoints(state->samplesPerPixel, state->hardwarePixelsPerAppPixel))
+    // Only handle highlighting of sample point under cursor *if Overlay told us so*
+    if (samplePosUnderCursor != -1)
     {
-        if (const auto *samplePoint = dynamic_cast<SamplePoint*>(state->capturingComponent); samplePoint != nullptr)
-        {
-            bool isChild = false;
-            for (const auto& child : getChildren())
-            {
-                if (child.get() == samplePoint)
-                {
-                    isChild = true;
-                    break;
-                }
-            }
-            if (isChild)
-            {
-                const size_t sampleIndex = samplePoint->getSampleIndex();
-                if (sampleIndex != static_cast<size_t>(samplePosUnderCursor))
-                {
-                    samplePosUnderCursor = static_cast<int64_t>(sampleIndex);
-                    setDirtyRecursive();
-                }
-            }
-            else if (samplePosUnderCursor != -1)
-            {
-                samplePosUnderCursor = -1;
-                setDirtyRecursive();
-            }
-            return;
-        }
-
-        updateSamplePosUnderMouseCursor();
-    }
-    else
-    {
-        if (samplePosUnderCursor != -1)
-        {
-            samplePosUnderCursor = -1;
-            setDirtyRecursive();
-        }
+        // keep state consistent; Overlay sets this value
+        setDirtyRecursive();
     }
 
-    if (state->samplesToScroll != 0.0)
-    {
-        const auto scroll = state->samplesToScroll;
-        const uint64_t oldOffset = state->sampleOffset;
-        const double maxOffset = std::max(0.0, state->document.getFrameCount() - getWidth() * state->samplesPerPixel);
-
-        if (scroll < 0)
-        {
-            auto absScroll = -scroll;
-            state->sampleOffset = (state->sampleOffset > absScroll) ? state->sampleOffset - absScroll : 0;
-        }
-        else
-        {
-            state->sampleOffset = std::min(state->sampleOffset + scroll, maxOffset);
-        }
-
-        snapSampleOffset(state);
-
-        if (oldOffset != state->sampleOffset)
-        {
-            state->componentUnderMouse = nullptr;
-            setDirty();
-            updateSamplePoints();
-        }
-    }
-
+    // Playback position change → repaint this waveform
     if (const auto newPlaybackPosition = state->playbackPosition.load();
         newPlaybackPosition != playbackPosition)
     {

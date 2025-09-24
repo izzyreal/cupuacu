@@ -60,10 +60,11 @@ public:
     void updateSamplePoints();
     void clearHighlight();
 
+    int64_t samplePosUnderCursor;
+
 private:
     const uint8_t channelIndex;
     double playbackPosition = 0;
-    int64_t samplePosUnderCursor;
 
     std::vector<std::unique_ptr<SamplePoint>> computeSamplePoints();
     
