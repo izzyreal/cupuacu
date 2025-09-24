@@ -41,7 +41,7 @@ static ma_result custom_data_source_read(ma_data_source* pDataSource,
         {
             if (ds->state->selection.isActive())
             {
-                ds->state->playbackPosition.store((double)ds->end);
+                ds->state->playbackPosition.store((double)ds->start);
             }
             else
             {
