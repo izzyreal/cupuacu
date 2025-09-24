@@ -1,5 +1,7 @@
 #include "Waveform.h"
 
+#include "WaveformsOverlay.h"
+
 #include <limits>
 #include <cmath>
 #include <algorithm>
@@ -332,6 +334,11 @@ void Waveform::drawSelection(SDL_Renderer *renderer)
 
 void Waveform::drawHighlight(SDL_Renderer *renderer)
 {
+    if (const auto waveformsOverlay = dynamic_cast<WaveformsOverlay*>(state->capturingComponent); waveformsOverlay != nullptr)
+    {
+        return;
+    }
+
     const auto samplesPerPixel = state->samplesPerPixel;
 
     if (shouldShowSamplePoints(samplesPerPixel, state->hardwarePixelsPerAppPixel) && samplePosUnderCursor != -1)
