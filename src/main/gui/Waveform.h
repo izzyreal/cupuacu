@@ -68,10 +68,11 @@ private:
     std::vector<std::unique_ptr<SamplePoint>> computeSamplePoints();
     
     void drawHorizontalLines(SDL_Renderer*);
+    void drawSelection(SDL_Renderer*);
     void drawHighlight(SDL_Renderer*);
     void renderBlockWaveform(SDL_Renderer*);
     void renderSmoothWaveform(SDL_Renderer*);
 
-    void drawPlaybackPosition(SDL_Renderer*, const double sampleOffset, const double samplesPerPixel);
+    void drawPlaybackPosition(SDL_Renderer*);
     void updateSamplePosUnderMouseCursor();
 };

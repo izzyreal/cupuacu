@@ -284,6 +284,46 @@ void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
     }
 }
 
+void Waveform::drawSelection(SDL_Renderer *renderer)
+{
+    const auto samplesPerPixel = state->samplesPerPixel;
+    const auto isSelected = state->selection.isActive() &&
+                            channelIndex >= state->selectionChannelStart &&
+                            channelIndex <= state->selectionChannelEnd;
+
+    auto firstSample = state->selection.getStartFloor();
+    auto lastSample = state->selection.getEndFloor();
+
+    const size_t sampleOffset = state->sampleOffset;
+
+    if (isSelected && lastSample >= sampleOffset)
+    {
+        if (shouldShowSamplePoints(samplesPerPixel, state->hardwarePixelsPerAppPixel))
+        {
+            firstSample -= 0.5f;
+            lastSample -= 0.5f;
+        }
+
+        const float startX = firstSample <= sampleOffset ? 0 : (firstSample - sampleOffset) / samplesPerPixel;
+        const float endX = (lastSample - sampleOffset) / samplesPerPixel;
+
+        SDL_SetRenderDrawColor(renderer, 0, 64, 255, 128);
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+        auto selectionWidth = std::abs(endX - startX) < 1 ? 1 : endX - startX;
+
+        if (endX - startX < 0 && selectionWidth > 0) selectionWidth = -selectionWidth;
+
+        SDL_FRect selectionRect = {
+            startX,
+            0.0f,
+            selectionWidth,
+            (float)getHeight()
+        };
+
+        SDL_RenderFillRect(renderer, &selectionRect);
+    }
+}
+
 void Waveform::drawHighlight(SDL_Renderer *renderer)
 {
     const auto samplesPerPixel = state->samplesPerPixel;
@@ -338,51 +378,18 @@ void Waveform::onDraw(SDL_Renderer *renderer)
         renderBlockWaveform(renderer);
     }
 
-    const auto isSelected = state->selection.isActive() &&
-                            channelIndex >= state->selectionChannelStart &&
-                            channelIndex <= state->selectionChannelEnd;
-
-    auto firstSample = state->selection.getStartFloor();
-    auto lastSample = state->selection.getEndFloor();
-
-    const size_t sampleOffset = state->sampleOffset;
-
-    if (isSelected && lastSample >= sampleOffset)
-    {
-        if (shouldShowSamplePoints(samplesPerPixel, state->hardwarePixelsPerAppPixel))
-        {
-            firstSample -= 0.5f;
-            lastSample -= 0.5f;
-        }
-
-        const float startX = firstSample <= sampleOffset ? 0 : (firstSample - sampleOffset) / samplesPerPixel;
-        const float endX = (lastSample - sampleOffset) / samplesPerPixel;
-
-        SDL_SetRenderDrawColor(renderer, 0, 64, 255, 128);
-        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-        auto selectionWidth = std::abs(endX - startX) < 1 ? 1 : endX - startX;
-
-        if (endX - startX < 0 && selectionWidth > 0) selectionWidth = -selectionWidth;
-
-        SDL_FRect selectionRect = {
-            startX,
-            0.0f,
-            selectionWidth,
-            (float)getHeight()
-        };
-
-        SDL_RenderFillRect(renderer, &selectionRect);
-    }
+    drawSelection(renderer);
 
     drawHighlight(renderer);
 
-    drawPlaybackPosition(renderer, sampleOffset, samplesPerPixel);
+    drawPlaybackPosition(renderer);
 }
 
-void Waveform::drawPlaybackPosition(SDL_Renderer *renderer,
-                                    const double sampleOffset,
-                                    const double samplesPerPixel)
+void Waveform::drawPlaybackPosition(SDL_Renderer *renderer)
 {
+    const auto sampleOffset = state->sampleOffset;
+    const auto samplesPerPixel = state->samplesPerPixel;
+
     const float lineX = (state->playbackPosition.load() - sampleOffset) / samplesPerPixel;
 
     if (lineX >= 0 && lineX <= getWidth())
