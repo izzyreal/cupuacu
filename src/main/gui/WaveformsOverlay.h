@@ -63,7 +63,7 @@ public:
 
         state->selection.setValue2(samplePos);
         state->selectionChannelEnd   = channel;
-        state->playbackPosition.store(samplePos);
+        state->playbackPosition.store(std::round(samplePos));
 
         markAllWaveformsDirty();
         return true;
