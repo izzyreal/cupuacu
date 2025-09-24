@@ -11,6 +11,8 @@ static SDL_Renderer *renderer = NULL;
 static SDL_Texture *canvas = NULL;
 static SDL_Texture *textTexture = NULL;
 
+bool wasMaximized = false;
+
 const uint16_t initialDimensions[] = { 1280, 720 };
 
 #include <cstdint>
@@ -318,6 +320,9 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
     {
         case SDL_EVENT_QUIT:
             return SDL_APP_SUCCESS;
+        case SDL_EVENT_WINDOW_MAXIMIZED:
+            wasMaximized = true;
+            break;
         case SDL_EVENT_WINDOW_RESIZED:
             {
                 int winW, winH;
@@ -330,7 +335,17 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 
                 if (newW != winW || newH != winH)
                 {
-                    SDL_SetWindowSize(window, newW, newH);
+                    if (wasMaximized)
+                    {
+                        wasMaximized = false;
+                        SDL_RestoreWindow(window);
+                        SDL_SetWindowSize(window, newW, newH);
+                        SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+                    }
+                    else
+                    {
+                        SDL_SetWindowSize(window, newW, newH);
+                    }
                     break;
                 }
 
