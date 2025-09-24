@@ -208,62 +208,54 @@ void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
     const auto heightToUse = getHeight();
     const auto samplePointSize = getSamplePointSize(state->hardwarePixelsPerAppPixel);
     const auto drawableHeight = heightToUse - samplePointSize;
+    const auto halfSamplePointSize = samplePointSize / 2;
 
     const float scale = verticalZoom * drawableHeight * 0.5f;
 
+    const int64_t availableSamples = static_cast<int64_t>(sampleData.size()) - static_cast<int64_t>(sampleOffset);
+    const int64_t actualInputSamples = std::min(static_cast<int64_t>(std::ceil((widthToUse + 1) * samplesPerPixel)), availableSamples);
+    const int maxPixel = static_cast<int>(std::ceil(actualInputSamples / samplesPerPixel));
+
+    if (actualInputSamples < 4)
+    {
+        return;
+    }
+
     int prevY = 0;
     bool hasPrev = false;
-    bool noMoreStuffToDraw = false;
 
-    for (int x = 0; x < widthToUse; ++x)
+    for (int x = 0; x < std::min(static_cast<int64_t>(widthToUse), static_cast<int64_t>(maxPixel)); ++x)
     {
-        if (noMoreStuffToDraw)
-        {
-            break;
-        }
+        const size_t startSample = static_cast<size_t>(x * samplesPerPixel) + static_cast<size_t>(sampleOffset);
+        size_t endSample = std::min(static_cast<size_t>((x + 1) * samplesPerPixel) + static_cast<size_t>(sampleOffset), sampleData.size());
 
-        const size_t startSample = static_cast<size_t>(x * samplesPerPixel) + sampleOffset;
-        size_t endSample = static_cast<size_t>((x + 1) * samplesPerPixel) + sampleOffset;
-
-        // Check if startSample is beyond the sample data
         if (startSample >= sampleData.size())
         {
             break;
         }
 
-        if (endSample == startSample)
+        if (endSample <= startSample)
         {
-            endSample++;
+            endSample = startSample + 1;
         }
-
-        // Ensure endSample doesn't exceed sampleData.size()
-        endSample = std::min(endSample, sampleData.size());
 
         float minSample = std::numeric_limits<float>::max();
         float maxSample = std::numeric_limits<float>::lowest();
 
-        bool hasValidSamples = false;
         for (size_t i = startSample; i < endSample; ++i)
         {
-            hasValidSamples = true;
             const float s = sampleData[i];
             minSample = std::min(minSample, s);
             maxSample = std::max(maxSample, s);
         }
 
-        // Skip drawing if no valid samples were processed
-        if (!hasValidSamples)
-        {
-            continue;
-        }
-
         const float midSample = (minSample + maxSample) * 0.5f;
-        const int y = static_cast<int>(float(heightToUse) / 2 - midSample * scale);
+        const int y = static_cast<int>(heightToUse / 2.0f - midSample * scale);
 
         if (hasPrev)
         {
-            if ((y >= samplePointSize / 2 || prevY >= samplePointSize / 2) &&
-                (y < heightToUse - samplePointSize / 2 || prevY < heightToUse - samplePointSize / 2))
+            if ((y >= halfSamplePointSize || prevY >= halfSamplePointSize) &&
+                (y < heightToUse - halfSamplePointSize || prevY < heightToUse - halfSamplePointSize))
             {
                 SDL_RenderLine(renderer, x - 1, prevY, x, y);
             }
@@ -272,11 +264,11 @@ void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
         prevY = y;
         hasPrev = true;
 
-        int y1 = static_cast<int>(float(heightToUse) / 2 - maxSample * scale);
-        int y2 = static_cast<int>(float(heightToUse) / 2 - minSample * scale);
+        const int y1 = static_cast<int>(heightToUse / 2.0f - maxSample * scale);
+        const int y2 = static_cast<int>(heightToUse / 2.0f - minSample * scale);
 
-        if ((y1 < samplePointSize / 2 && y2 < samplePointSize / 2) ||
-            (y1 >= heightToUse - samplePointSize / 2 && y2 >= heightToUse - samplePointSize / 2))
+        if ((y1 < halfSamplePointSize && y2 < halfSamplePointSize) ||
+            (y1 >= heightToUse - halfSamplePointSize && y2 >= heightToUse - halfSamplePointSize))
         {
             continue;
         }
