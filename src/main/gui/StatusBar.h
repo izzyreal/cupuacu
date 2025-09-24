@@ -62,7 +62,7 @@ private:
 
         if (sampleIndex >= sampleData.size())
         {
-            return 0.0f;
+            return -1;
         }
 
         const bool showSamplePoints = Waveform::shouldShowSamplePoints(samplesPerPixel, state->hardwarePixelsPerAppPixel);
@@ -132,9 +132,16 @@ public:
 
         // Set the sample value under the mouse cursor
         const float sampleValue = getSampleValueAtMousePosition();
-        char buffer[16];
-        snprintf(buffer, sizeof(buffer), "%.5f", sampleValue);
-        valueField->setValue(buffer);
+        if (sampleValue == -1)
+        {
+            valueField->setValue("");
+        }
+        else
+        {
+            char buffer[16];
+            snprintf(buffer, sizeof(buffer), "%.5f", sampleValue);
+            valueField->setValue(buffer);
+        }
     }
 
     void timerCallback() override
