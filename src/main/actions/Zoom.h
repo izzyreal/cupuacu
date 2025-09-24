@@ -25,10 +25,7 @@ static void resetZoom(CupuacuState *state)
 
     state->verticalZoom = INITIAL_VERTICAL_ZOOM;
 
-    // Center-align the very first sample on the first pixel
-    state->sampleOffset = INITIAL_SAMPLE_OFFSET - (0.5f * state->samplesPerPixel);
-
-    snapSampleOffset(state);
+    state->sampleOffset = 0;
 }
 
 static bool tryZoomInHorizontally(CupuacuState *state)
