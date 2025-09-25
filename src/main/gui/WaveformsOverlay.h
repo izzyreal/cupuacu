@@ -113,7 +113,7 @@ public:
             {
                 auto* wf = state->waveforms[channel];
                 const size_t sampleIndex = static_cast<size_t>(mouseX * state->samplesPerPixel) + state->sampleOffset;
-                printf("sampleIndex: %zu\n", sampleIndex);
+
                 if (wf->samplePosUnderCursor != (int64_t)sampleIndex)
                 {
                     wf->samplePosUnderCursor = (int64_t)sampleIndex;
@@ -180,37 +180,24 @@ public:
 
     void timerCallback() override
     {
-        if (state->samplesToScroll != 0.0)
+        if (state->samplesToScroll == 0.0)
         {
-            const double scroll = state->samplesToScroll;
-            const uint64_t oldOffset = state->sampleOffset;
-            const uint64_t visibleSampleCount = static_cast<uint64_t>(getWidth() * state->samplesPerPixel);
-            const uint64_t maxOffset = state->document.getFrameCount() - visibleSampleCount;
-
-            if (scroll < 0)
-            {
-                const double absScroll = -scroll;
-                state->sampleOffset = (state->sampleOffset > absScroll)
-                                    ? state->sampleOffset - absScroll
-                                    : 0;
-            }
-            else
-            {
-                state->sampleOffset = std::min(static_cast<uint64_t>(state->sampleOffset + scroll), maxOffset);
-            }
-
-            printf("WaveformsOverlay::timerCallback new sampleOffset: %llu\n", state->sampleOffset);
-
-            if (oldOffset != state->sampleOffset)
-            {
-                state->componentUnderMouse = nullptr;
-                for (auto* wf : state->waveforms)
-                {
-                    wf->updateSamplePoints();
-                }
-            }
+            return;
         }
 
+        const double samplesToScroll = state->samplesToScroll < 0.0 ? std::min(-1.0, state->samplesToScroll) : std::max(1.0, state->samplesToScroll);
+        const size_t oldOffset = state->sampleOffset;
+
+        updateSampleOffset(state, state->sampleOffset + samplesToScroll);
+
+        if (oldOffset != state->sampleOffset)
+        {
+            state->componentUnderMouse = nullptr;
+            for (auto* wf : state->waveforms)
+            {
+                wf->updateSamplePoints();
+            }
+        }
     }
 
 private:
@@ -238,27 +225,12 @@ private:
     void handleScroll(int32_t mouseX, int32_t mouseY)
     {
         const auto samplesPerPixel = state->samplesPerPixel;
-        const auto oldSampleOffset = state->sampleOffset;
-        auto sampleOffset = state->sampleOffset;
+        const size_t oldSampleOffset = state->sampleOffset;
 
         if (mouseX > getWidth() || mouseX < 0)
         {
             auto diff = (mouseX < 0) ? mouseX : mouseX - getWidth();
             auto samplesToScroll = diff * samplesPerPixel;
-
-            if (samplesToScroll < 0)
-            {
-                double absScroll = -samplesToScroll;
-                state->sampleOffset = (state->sampleOffset > absScroll)
-                    ? state->sampleOffset - absScroll
-                    : 0;
-            }
-            else
-            {
-                state->sampleOffset += samplesToScroll;
-            }
-
-            sampleOffset = state->sampleOffset;
             state->samplesToScroll = samplesToScroll;
         }
         else
@@ -266,18 +238,11 @@ private:
             state->samplesToScroll = 0;
         }
 
-        const uint64_t visibleSampleCount = static_cast<uint64_t>(getWidth() * state->samplesPerPixel);
-        const uint64_t maxOffset = state->document.getFrameCount() - visibleSampleCount;
-
-        const auto samplePos = getSamplePosForMouseX(mouseX, samplesPerPixel, sampleOffset, state->document.getFrameCount());
+        const auto samplePos = getSamplePosForMouseX(mouseX, samplesPerPixel, state->sampleOffset, state->document.getFrameCount());
         state->selection.setValue2(samplePos);
 
         if (state->sampleOffset != oldSampleOffset)
         {
-            state->sampleOffset = std::min(maxOffset, state->sampleOffset);
-
-            printf("WaveformsOverlay::handleScroll new sampleOffset: %llu\n", state->sampleOffset);
-            
             for (auto* wf : state->waveforms)
             {
                 wf->updateSamplePoints();

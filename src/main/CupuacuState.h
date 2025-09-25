@@ -47,7 +47,7 @@ struct CupuacuState {
 
     double samplesPerPixel = 1;
     double verticalZoom;
-    uint64_t sampleOffset;
+    size_t sampleOffset;
     Selection<double> selection = Selection<double>(0.0);
     int selectionChannelStart = -1;
     int selectionChannelEnd   = -1;
@@ -93,5 +93,15 @@ static void resetWaveformState(CupuacuState *state)
     state->selectionChannelEnd = -1;
     state->samplesToScroll = 0;
     state->playbackPosition = 0;
+}
+
+size_t getMaxSampleOffset(CupuacuState *state);
+
+static void updateSampleOffset(CupuacuState *state, const size_t sampleOffsetToUse)
+{
+    printf("Current offset: %zu\n", state->sampleOffset);
+    printf("Trying to set offset to %zu\n", sampleOffsetToUse);
+    state->sampleOffset = std::min(getMaxSampleOffset(state), sampleOffsetToUse);
+    printf("New sample offset: %zu\n", state->sampleOffset);
 }
 
