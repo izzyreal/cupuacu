@@ -29,6 +29,7 @@ public:
         {
             double startSample = state->sampleOffset;
             double endSample   = state->sampleOffset + getWidth() * samplesPerPixel;
+            endSample -= 0.5;
             endSample = std::min((double)state->document.getFrameCount(), endSample);
 
             state->selection.setValue1(startSample);
@@ -56,6 +57,11 @@ public:
 
         const double samplePos = state->sampleOffset + mouseX * samplesPerPixel;
 
+        if (!shiftPressed)
+        {
+            state->selection.reset();
+        }
+
         if (!shiftPressed || !state->selection.isActive())
         {
             state->selection.setValue1(samplePos);
@@ -82,8 +88,9 @@ public:
         }
 
         handleScroll(mouseX, mouseY);
+        const double samplePos = state->sampleOffset + mouseX * state->samplesPerPixel;
         
-        const auto samplePos = getSamplePosForMouseX(mouseX, state->samplesPerPixel, state->sampleOffset, state->document.getFrameCount()); 
+        //const auto samplePos = getSamplePosForMouseX(mouseX, state->samplesPerPixel, state->sampleOffset, state->document.getFrameCount()); 
         state->selection.setValue2(samplePos);
 
         int channel = channelAt(mouseY);
@@ -105,7 +112,9 @@ public:
             return true;
         }
 
-        const auto samplePos = getSamplePosForMouseX(mouseX, state->samplesPerPixel, state->sampleOffset, state->document.getFrameCount()); 
+        //const auto samplePos = getSamplePosForMouseX(mouseX, state->samplesPerPixel, state->sampleOffset, state->document.getFrameCount()); 
+        const double samplePos = state->sampleOffset + mouseX * state->samplesPerPixel;
+
         state->selection.setValue2(samplePos);
 
         int channel = channelAt(mouseY);

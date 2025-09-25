@@ -244,8 +244,8 @@ void play(CupuacuState *state)
     ma_uint64 end = totalSamples;
 
     if (state->selection.isActive()) {
-        start = (ma_uint64)state->selection.getStartFloorInt();
-        end   = (ma_uint64)state->selection.getEndFloorInt();
+        start = (ma_uint64)state->selection.getStartInt();
+        end   = (ma_uint64)state->selection.getEndInt();
     } else {
         start = (ma_uint64)state->playbackPosition.load();
     }

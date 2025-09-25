@@ -119,8 +119,8 @@ public:
 
         if (state->selection.isActive())
         {
-            startField->setValue(std::to_string(state->selection.getStartFloorInt()));
-            endField->setValue(std::to_string(state->selection.getEndFloorInt()));
+            startField->setValue(std::to_string(state->selection.getStartInt()));
+            endField->setValue(std::to_string(state->selection.getEndInt()));
             lengthField->setValue(std::to_string(state->selection.getLengthInt()));
         }
         else

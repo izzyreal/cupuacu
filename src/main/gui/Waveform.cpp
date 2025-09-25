@@ -286,8 +286,8 @@ void Waveform::drawSelection(SDL_Renderer *renderer)
                             channelIndex >= state->selectionChannelStart &&
                             channelIndex <= state->selectionChannelEnd;
 
-    auto firstSample = state->selection.getStartFloor();
-    auto lastSample = state->selection.getEndFloor();
+    auto firstSample = static_cast<double>(state->selection.getStartInt());
+    auto lastSample = static_cast<double>(state->selection.getEndInt());
 
     const size_t sampleOffset = state->sampleOffset;
 

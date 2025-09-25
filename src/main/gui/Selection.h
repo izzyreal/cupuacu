@@ -7,6 +7,7 @@
 template <typename T>
 class Selection {
 private:
+public:
     const T lowest;
 
     T value1;
@@ -46,29 +47,24 @@ public:
         value2 = std::max(v, lowest);
     }
 
-    T getStartFloor() const
+    int64_t getStartInt() const
     {
-        return std::floor((value1 < value2) ? value1 : value2);
+        return static_cast<int64_t>(std::round(value2 < value1 ? value2 : value1));
     }
 
-    T getEndFloor() const
+    int64_t getEndInt() const
     {
-        return std::floor((value1 < value2) ? value2 : value1);
-    }
+        if (value2 < value1)
+        {
+            return static_cast<int64_t>(std::ceil(value1 + 0.5));
+        }
 
-    int64_t getStartFloorInt() const
-    {
-        return static_cast<int64_t>(std::floor((value1 < value2) ? value1 : value2));
-    }
-
-    int64_t getEndFloorInt() const
-    {
-        return static_cast<int64_t>(std::floor((value1 < value2) ? value2 : value1));
+        return static_cast<int64_t>(std::ceil(value2 + 0.5));
     }
 
     int64_t getLengthInt() const
     {
-        return getEndFloorInt() - getStartFloorInt();
+        return getEndInt() - getStartInt();
     }
 
     void reset()
@@ -86,6 +82,7 @@ public:
     {
         return value1 != std::numeric_limits<T>::max() &&
                value2 != std::numeric_limits<T>::max() &&
-               getStartFloor() != getEndFloor();
+               getLengthInt() > 0 &&
+               value1 != value2;
     }
 };
