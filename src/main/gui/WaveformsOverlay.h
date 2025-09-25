@@ -11,7 +11,7 @@ public:
 
     static float getSamplePosForMouseX(const int32_t mouseX,
                                          const double samplesPerPixel,
-                                         const double sampleOffset,
+                                         const uint64_t sampleOffset,
                                          const size_t frameCount) 
     {
         const float xToUse = mouseX <= 0 ? 0.f : static_cast<float>(mouseX);
@@ -199,7 +199,7 @@ public:
                 state->sampleOffset = std::min(state->sampleOffset + scroll, maxOffset);
             }
 
-            snapSampleOffset(state);
+            printf("WaveformsOverlay::timerCallback new sampleOffset: %llu\n", state->sampleOffset);
 
             if (oldOffset != state->sampleOffset)
             {
@@ -271,9 +271,11 @@ private:
 
         if (state->sampleOffset != oldSampleOffset)
         {
-            const double maxOffset = std::max(0.0, state->document.getFrameCount() - getWidth() * state->samplesPerPixel);
+            const uint64_t maxOffset = std::max(0.0, state->document.getFrameCount() - getWidth() * state->samplesPerPixel);
 
             state->sampleOffset = std::min(maxOffset, state->sampleOffset);
+
+            printf("WaveformsOverlay::handleScroll new sampleOffset: %llu\n", state->sampleOffset);
             
             for (auto* wf : state->waveforms)
             {

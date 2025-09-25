@@ -58,9 +58,9 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
     const auto pixelScale = state->pixelScale;
     const auto verticalZoom = state->verticalZoom;
 
-    const int neededInputSamples = static_cast<int>(std::ceil((getWidth() + 1) * samplesPerPixel));
-    const int availableSamples = static_cast<int>(sampleData.size()) - static_cast<int>(sampleOffset);
-    const int actualInputSamples = std::min(neededInputSamples, availableSamples);
+    const uint64_t neededInputSamples = static_cast<uint64_t>(std::ceil((getWidth() + 1) * samplesPerPixel));
+    const uint64_t availableSamples = static_cast<uint64_t>(sampleData.size()) - sampleOffset;
+    const uint64_t actualInputSamples = std::min(neededInputSamples, availableSamples);
 
     if (actualInputSamples < 4)
     {
@@ -117,7 +117,7 @@ void Waveform::renderSmoothWaveform(SDL_Renderer* renderer)
     SDL_SetRenderDrawColor(renderer, 0, 185, 0, 255);
 
     const auto samplesPerPixel = state->samplesPerPixel;
-    const auto sampleOffset = state->sampleOffset;
+    const uint64_t sampleOffset = state->sampleOffset;
     const auto &sampleData = state->document.channels[channelIndex];
     const auto verticalZoom = state->verticalZoom;
     const auto widthToUse = getWidth();
@@ -125,8 +125,8 @@ void Waveform::renderSmoothWaveform(SDL_Renderer* renderer)
     const auto samplePointSize = getSamplePointSize(state->pixelScale);
     const auto drawableHeight = heightToUse - samplePointSize;
 
-    const int neededInputSamples = static_cast<int>(std::ceil((widthToUse + 1) * samplesPerPixel));
-    const int availableSamples = static_cast<int>(sampleData.size()) - static_cast<int>(sampleOffset);
+    const uint64_t neededInputSamples = static_cast<uint64_t>(std::ceil((widthToUse + 1) * samplesPerPixel));
+    const uint64_t availableSamples = static_cast<uint64_t>(sampleData.size()) - sampleOffset;
     const int actualInputSamples = std::min(neededInputSamples, availableSamples);
 
     if (actualInputSamples < 4)
@@ -195,7 +195,7 @@ void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
     SDL_SetRenderDrawColor(renderer, 0, 185, 0, 255);
 
     const auto samplesPerPixel = state->samplesPerPixel;
-    const auto sampleOffset = state->sampleOffset;
+    const uint64_t sampleOffset = state->sampleOffset;
     const auto &sampleData = state->document.channels[channelIndex];
     const auto verticalZoom = state->verticalZoom;
     const auto widthToUse = getWidth();
@@ -206,8 +206,8 @@ void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
 
     const float scale = verticalZoom * drawableHeight * 0.5f;
 
-    const int64_t availableSamples = static_cast<int64_t>(sampleData.size()) - static_cast<int64_t>(sampleOffset);
-    const int64_t actualInputSamples = std::min(static_cast<int64_t>(std::ceil((widthToUse + 1) * samplesPerPixel)), availableSamples);
+    const uint64_t availableSamples = static_cast<uint64_t>(sampleData.size()) - sampleOffset;
+    const uint64_t actualInputSamples = std::min(static_cast<uint64_t>(std::ceil((widthToUse + 1) * samplesPerPixel)), availableSamples);
     const int maxPixel = static_cast<int>(std::ceil(actualInputSamples / samplesPerPixel));
 
     if (actualInputSamples < 4)

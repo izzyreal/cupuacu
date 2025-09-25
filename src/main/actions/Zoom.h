@@ -4,19 +4,6 @@
 #include "../CupuacuState.h"
 #include "../gui/Waveform.h"
 
-static inline void snapSampleOffset(CupuacuState *state)
-{
-    if (state->sampleOffset < 0)
-    {
-        state->sampleOffset = 0;
-    }
-    else
-    {
-        const double maxOffset = std::max(0.0, state->document.getFrameCount() - Waveform::getWaveformWidth(state) * state->samplesPerPixel);
-        state->sampleOffset = std::min(std::floor(state->sampleOffset + 0.5), maxOffset);
-    }
-}
-
 static void resetZoom(CupuacuState *state)
 {
     const auto waveformWidth = Waveform::getWaveformWidth(state);
@@ -55,7 +42,6 @@ static bool tryZoomInHorizontally(CupuacuState *state)
         w->clearHighlight();
     }
 
-    snapSampleOffset(state);
     return true;
 }
 
@@ -83,7 +69,6 @@ static bool tryZoomOutHorizontally(CupuacuState *state)
         w->clearHighlight();
     }
     
-    snapSampleOffset(state);
     return true;
 }
 

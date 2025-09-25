@@ -7,6 +7,7 @@
 
 static void updateWaveforms(CupuacuState *state)
 {
+    printf("keyboard hanlding updateWaveforms new sample offset: %llu\n", state->sampleOffset);
     for (auto waveform : state->waveforms)
     {
         waveform->setDirty();
@@ -40,7 +41,6 @@ static void handleKeyDown(
         {
             if (tryZoomOutHorizontally(state))
             {
-                snapSampleOffset(state);
                 updateWaveforms(state);
             }
         }
@@ -49,7 +49,6 @@ static void handleKeyDown(
     {
         if (tryZoomInHorizontally(state))
         {
-            snapSampleOffset(state);
             updateWaveforms(state);
         }
     }
@@ -75,13 +74,11 @@ static void handleKeyDown(
         state->verticalZoom = INITIAL_VERTICAL_ZOOM;
 
         const auto waveformWidth = Waveform::getWaveformWidth(state);
-        const auto selectionStart = state->selection.getStart();
         const auto selectionLength = state->selection.getLength();
 
         state->samplesPerPixel = selectionLength / waveformWidth;
-        state->sampleOffset = selectionStart - (0.5f * state->samplesPerPixel);
+        state->sampleOffset = state->selection.getStartInt();
 
-        snapSampleOffset(state);
         updateWaveforms(state);
     }
     else if (event->key.scancode == SDL_SCANCODE_LEFT)
@@ -99,7 +96,6 @@ static void handleKeyDown(
             w->clearHighlight();
         }
         
-        snapSampleOffset(state);
         updateWaveforms(state);
     }
     else if (event->key.scancode == SDL_SCANCODE_RIGHT)
@@ -118,7 +114,6 @@ static void handleKeyDown(
             w->clearHighlight();
         }
         
-        snapSampleOffset(state);
         updateWaveforms(state);
     }
     else if (event->key.scancode == SDL_SCANCODE_O)

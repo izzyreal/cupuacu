@@ -47,7 +47,7 @@ struct CupuacuState {
 
     double samplesPerPixel = 1;
     double verticalZoom;
-    double sampleOffset;
+    uint64_t sampleOffset;
     Selection<double> selection = Selection<double>(0.0);
     int selectionChannelStart = -1;
     int selectionChannelEnd   = -1;

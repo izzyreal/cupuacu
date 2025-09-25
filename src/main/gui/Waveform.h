@@ -10,14 +10,14 @@ class Waveform : public Component {
 public:
     static bool shouldShowSamplePoints(const double samplesPerPixel, const uint8_t pixelScale);
 
-    static float sampleIndexToXPosition(float sampleIndex, double sampleOffset, double samplesPerPixel, bool isSamplePointsVisible) {
+    static float sampleIndexToXPosition(float sampleIndex, const uint64_t sampleOffset, double samplesPerPixel, bool isSamplePointsVisible) {
         if (isSamplePointsVisible) {
             sampleIndex -= 0.5f;
         }
         return (sampleIndex - sampleOffset) / samplesPerPixel;
     }
 
-    static float xPositionToSampleIndex(float xPos, double sampleOffset, double samplesPerPixel, bool isSamplePointsVisible, const size_t frameCount) {
+    static float xPositionToSampleIndex(float xPos, const uint64_t sampleOffset, double samplesPerPixel, bool isSamplePointsVisible, const size_t frameCount) {
         float sampleIndex = (xPos * samplesPerPixel) + sampleOffset;
         if (isSamplePointsVisible) {
             sampleIndex += 0.5f;
