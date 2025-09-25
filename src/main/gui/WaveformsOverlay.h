@@ -48,7 +48,6 @@ public:
                 state->selectionChannelEnd = channel;
             }
 
-            markAllWaveformsDirty();
             return true;
         }
 
@@ -78,7 +77,6 @@ public:
         state->selectionChannelEnd   = channel;
         state->playbackPosition.store(std::round(samplePos));
 
-        markAllWaveformsDirty();
         return true;
     }
 
@@ -126,7 +124,6 @@ public:
         state->selectionChannelStart = std::min(state->selectionChannelStart, channel);
         state->selectionChannelEnd   = std::max(state->selectionChannelEnd, channel);
 
-        markAllWaveformsDirty();
         return true;
     }
 
@@ -158,9 +155,8 @@ public:
                 state->componentUnderMouse = nullptr;
                 for (auto* wf : state->waveforms)
                 {
-                    if (wf) wf->updateSamplePoints();
+                    wf->updateSamplePoints();
                 }
-                markAllWaveformsDirty();
             }
         }
 
@@ -169,40 +165,27 @@ public:
 
         if (Waveform::shouldShowSamplePoints(state->samplesPerPixel, state->pixelScale))
         {
-            for (auto* wf : state->waveforms)
-            {
-                if (wf && wf->samplePosUnderCursor != -1)
-                {
-                    wf->samplePosUnderCursor = -1;
-                    wf->setDirtyRecursive();
-                }
-            }
-
             const int channel = channelAt(mouseY);
             
             if (channel >= 0 && channel < (int)state->waveforms.size())
             {
                 auto* wf = state->waveforms[channel];
-                if (wf)
+                const auto samplePos =
+                    getSamplePosForMouseX(mouseX, state->samplesPerPixel, state->sampleOffset, state->document.getFrameCount());
+                if (wf->samplePosUnderCursor != (int64_t)samplePos)
                 {
-                    const auto samplePos =
-                        getSamplePosForMouseX(mouseX, state->samplesPerPixel, state->sampleOffset, state->document.getFrameCount());
-                    if (wf->samplePosUnderCursor != (int64_t)samplePos)
-                    {
-                        wf->samplePosUnderCursor = (int64_t)samplePos;
-                        wf->setDirtyRecursive();
-                    }
-                }
-            }
-        }
-        else
-        {
-            for (auto* wf : state->waveforms)
-            {
-                if (wf && wf->samplePosUnderCursor != -1)
-                {
-                    wf->samplePosUnderCursor = -1;
+                    wf->samplePosUnderCursor = (int64_t)samplePos;
                     wf->setDirtyRecursive();
+                }
+
+                for (size_t waveformChannel = 0; waveformChannel < state->waveforms.size(); ++waveformChannel)
+                {
+                    if (waveformChannel == channel)
+                    {
+                        continue;
+                    }
+
+                    state->waveforms[waveformChannel]->clearHighlight();
                 }
             }
         }
@@ -226,10 +209,7 @@ private:
     {
         for (auto* wf : state->waveforms)
         {
-            if (wf)
-            {
-                wf->setDirtyRecursive();
-            }
+            wf->setDirtyRecursive();
         }
     }
 
@@ -267,8 +247,6 @@ private:
         const auto samplePos = getSamplePosForMouseX(mouseX, samplesPerPixel, sampleOffset, state->document.getFrameCount());
         state->selection.setValue2(samplePos);
 
-        markAllWaveformsDirty();
-
         if (state->sampleOffset != oldSampleOffset)
         {
             const double maxOffset = std::max(0.0, state->document.getFrameCount() - getWidth() * state->samplesPerPixel);
@@ -277,7 +255,7 @@ private:
             
             for (auto* wf : state->waveforms)
             {
-                if (wf) wf->updateSamplePoints();
+                wf->updateSamplePoints();
             }
         }
     }

@@ -142,6 +142,7 @@ public:
     {
         if (dirty)
         {
+            printf("%s is dirty\n", getComponentName().c_str());
             return true;
         }
 

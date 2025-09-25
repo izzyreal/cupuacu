@@ -1,6 +1,5 @@
 #include "Waveform.h"
 #include "WaveformsOverlay.h"
-#include "../actions/Zoom.h"
 #include <limits>
 #include <cmath>
 #include <algorithm>
@@ -394,68 +393,16 @@ void Waveform::drawPlaybackPosition(SDL_Renderer *renderer)
     }
 }
 
-void Waveform::updateSamplePosUnderMouseCursor()
-{
-    const auto mouseX = state->mouseX;
-    const auto sampleOffset = state->sampleOffset;
-    const auto &sampleData = state->document.channels[channelIndex];
-
-    const auto *componentUnderMouse = state->componentUnderMouse;
-    bool isOverWaveformOrChild = (componentUnderMouse == this);
-
-    if (!isOverWaveformOrChild)
-    {
-        for (const auto& child : getChildren())
-        {
-            if (child.get() == componentUnderMouse)
-            {
-                isOverWaveformOrChild = true;
-                break;
-            }
-        }
-    }
-
-    if (isOverWaveformOrChild && mouseX >= 0 && mouseX < getWidth() && !sampleData.empty())
-    {
-        const size_t sampleIndex = static_cast<size_t>(
-            Waveform::xPositionToSampleIndex(mouseX, sampleOffset, state->samplesPerPixel, true, state->document.getFrameCount()));
-        if (sampleIndex < sampleData.size())
-        {
-            if (sampleIndex != static_cast<size_t>(samplePosUnderCursor))
-            {
-                samplePosUnderCursor = static_cast<int64_t>(sampleIndex);
-                setDirtyRecursive();
-            }
-        }
-        else
-        {
-            if (samplePosUnderCursor != -1)
-            {
-                samplePosUnderCursor = -1;
-                setDirtyRecursive();
-            }
-        }
-    }
-    else
-    {
-        if (samplePosUnderCursor != -1)
-        {
-            samplePosUnderCursor = -1;
-            setDirtyRecursive();
-        }
-    }
-}
 
 void Waveform::timerCallback()
 {
-    // Only handle highlighting of sample point under cursor *if Overlay told us so*
-    if (samplePosUnderCursor != -1)
+    if (samplePosUnderCursor != -1 &&
+        lastDrawnSamplePosUnderCursor != samplePosUnderCursor)
     {
-        // keep state consistent; Overlay sets this value
+        lastDrawnSamplePosUnderCursor = samplePosUnderCursor;
         setDirtyRecursive();
     }
 
-    // Playback position change → repaint this waveform
     if (const auto newPlaybackPosition = state->playbackPosition.load();
         newPlaybackPosition != playbackPosition)
     {
@@ -466,24 +413,14 @@ void Waveform::timerCallback()
 
 void Waveform::mouseLeave()
 {
-    if (state->capturingComponent == nullptr)
-    {
-        if (samplePosUnderCursor != -1)
-        {
-            samplePosUnderCursor = -1;
-            setDirtyRecursive();
-        }
-    }
+    clearHighlight();
 }
 
 void Waveform::clearHighlight()
 {
-    if (state->capturingComponent == nullptr && !state->selection.isActive())
+    if (samplePosUnderCursor != -1)
     {
-        if (samplePosUnderCursor != -1)
-        {
-            samplePosUnderCursor = -1;
-            setDirtyRecursive();
-        }
+        samplePosUnderCursor = -1;
+        setDirtyRecursive();
     }
 }

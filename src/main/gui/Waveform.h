@@ -63,6 +63,7 @@ public:
     int64_t samplePosUnderCursor;
 
 private:
+    int64_t lastDrawnSamplePosUnderCursor = -1;
     const uint8_t channelIndex;
     double playbackPosition = 0;
 
@@ -75,5 +76,4 @@ private:
     void renderSmoothWaveform(SDL_Renderer*);
 
     void drawPlaybackPosition(SDL_Renderer*);
-    void updateSamplePosUnderMouseCursor();
 };
