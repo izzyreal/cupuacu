@@ -18,12 +18,12 @@ const uint16_t initialDimensions[] = { 1280, 720 };
 
 #include "gui/MenuBar.h"
 
-const std::function<void(CupuacuState*)> renderCanvasToWindow = [](CupuacuState *state)
+void renderCanvasToWindow(CupuacuState *state)
 {
     SDL_SetRenderTarget(state->renderer, NULL);
     SDL_RenderTexture(state->renderer, state->canvas, NULL, NULL);
     SDL_RenderPresent(state->renderer);
-};
+}
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 {
