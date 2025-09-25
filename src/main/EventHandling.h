@@ -79,8 +79,6 @@ inline SDL_AppResult HandleAppEvent(CupuacuState *state, SDL_Event *event)
                     e.motion.xrel *= canvasDimensions.x / winDimensions.x;
                     e.motion.y *= canvasDimensions.y / winDimensions.y;
                     e.motion.yrel *= canvasDimensions.y / winDimensions.y;
-                    state->mouseX = e.motion.x;
-                    state->mouseY = e.motion.y;
                 }
                 else
                 {
@@ -92,13 +90,16 @@ inline SDL_AppResult HandleAppEvent(CupuacuState *state, SDL_Event *event)
                 {
                     if (e.type == SDL_EVENT_MOUSE_BUTTON_UP)
                     {
+                        auto oldComponentUnderMouse = state->componentUnderMouse;
                         const auto newComponentUnderMouse = state->rootComponent->findComponentAt(e.motion.x, e.motion.y);
 
                         if (state->componentUnderMouse != newComponentUnderMouse)
                         {
-                            if (state->componentUnderMouse != nullptr)
+                            state->componentUnderMouse = newComponentUnderMouse;
+
+                            if (oldComponentUnderMouse != nullptr)
                             {
-                                state->componentUnderMouse->mouseLeave();
+                                oldComponentUnderMouse->mouseLeave();
                             }
 
                             if (newComponentUnderMouse != nullptr)
@@ -106,8 +107,6 @@ inline SDL_AppResult HandleAppEvent(CupuacuState *state, SDL_Event *event)
                                 newComponentUnderMouse->mouseEnter();
                             }
                         }
-
-                        state->componentUnderMouse = newComponentUnderMouse;
                     }
 
                     if (state->capturingComponent != nullptr)
@@ -134,13 +133,16 @@ inline SDL_AppResult HandleAppEvent(CupuacuState *state, SDL_Event *event)
 
                 if (e.type == SDL_EVENT_MOUSE_MOTION && state->capturingComponent == nullptr)
                 {
+                    auto oldComponentUnderMouse = state->componentUnderMouse;
                     const auto newComponentUnderMouse = state->rootComponent->findComponentAt(e.motion.x, e.motion.y);
 
                     if (state->componentUnderMouse != newComponentUnderMouse)
                     {
-                        if (state->componentUnderMouse != nullptr)
+                        state->componentUnderMouse = newComponentUnderMouse;
+
+                        if (oldComponentUnderMouse != nullptr)
                         {
-                            state->componentUnderMouse->mouseLeave();
+                            oldComponentUnderMouse->mouseLeave();
                         }
 
                         if (newComponentUnderMouse != nullptr)
@@ -148,8 +150,6 @@ inline SDL_AppResult HandleAppEvent(CupuacuState *state, SDL_Event *event)
                             newComponentUnderMouse->mouseEnter();
                         }
                     }
-                    
-                    state->componentUnderMouse = newComponentUnderMouse;
                 }
             }
             break;

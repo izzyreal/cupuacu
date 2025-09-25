@@ -413,6 +413,14 @@ void Waveform::timerCallback()
 
 void Waveform::mouseLeave()
 {
+    for (auto &c : getChildren())
+    {
+        // If we've just entered a sample point, don't clear the highlight
+        if (state->componentUnderMouse == c.get())
+        {
+            return;
+        }
+    }
     clearHighlight();
 }
 

@@ -19,82 +19,13 @@ private:
     LabeledField* lengthField = nullptr;
     LabeledField* valueField = nullptr;
 
-    // Track previous state for change detection
     int lastPlaybackPosition = -1;
     int lastSelectionStart = -1;
     int lastSelectionEnd = -1;
     bool lastSelectionActive = false;
     float lastSampleValue = -std::numeric_limits<float>::infinity();
-    int lastMouseX = -1;
-    int lastMouseY = -1;
     double lastSamplesPerPixel = -1.0;
     double lastSampleOffset = -1.0;
-
-    float getSampleValueAtMousePosition()
-    {
-        if (const auto *samplePoint = dynamic_cast<SamplePoint*>(state->capturingComponent); samplePoint != nullptr)
-        {
-            return samplePoint->getSampleValue();
-        }
-
-        const auto mouseX = state->mouseX;
-        const auto mouseY = state->mouseY;
-        const auto samplesPerPixel = state->samplesPerPixel;
-        const auto sampleOffset = state->sampleOffset;
-
-        // Find the channel under the mouse
-        int channelIndex = -1;
-        for (size_t i = 0; i < state->waveforms.size(); ++i)
-        {
-            const auto& waveform = state->waveforms[i];
-            const int yPos = waveform->getYPos();
-            const int height = waveform->getHeight();
-            if (mouseY >= yPos && mouseY < yPos + height)
-            {
-                channelIndex = static_cast<int>(i);
-                break;
-            }
-        }
-
-        // If no channel is under the mouse or channels are empty, return 0.0
-        if (channelIndex == -1 || state->document.channels.empty() || state->document.channels[channelIndex].empty())
-        {
-            return 0.0f;
-        }
-
-        const auto& sampleData = state->document.channels[channelIndex];
-
-        if (mouseX < 0 || mouseX >= getParent()->getWidth() || sampleData.empty())
-        {
-            return 0.0f;
-        }
-
-        const size_t sampleIndex = WaveformsOverlay::getSamplePosForMouseX(mouseX, samplesPerPixel, sampleOffset, state->document.getFrameCount());
-
-        if (sampleIndex >= sampleData.size())
-        {
-            return -1;
-        }
-
-        const bool showSamplePoints = Waveform::shouldShowSamplePoints(samplesPerPixel, state->pixelScale);
-
-        if (showSamplePoints)
-        {
-            // High zoom: return exact sample value
-            return sampleData[sampleIndex];
-        }
-        else
-        {
-            // Low zoom: interpolate between samples
-            const double fractionalIndex = mouseX * samplesPerPixel + sampleOffset;
-            const size_t indexFloor = static_cast<size_t>(std::floor(fractionalIndex));
-            const size_t indexCeil = std::min(indexFloor + 1, sampleData.size() - 1);
-            const double fraction = fractionalIndex - indexFloor;
-
-            // Linear interpolation
-            return sampleData[indexFloor] + static_cast<float>(fraction) * (sampleData[indexCeil] - sampleData[indexFloor]);
-        }
-    }
 
 public:
     StatusBar(CupuacuState* stateToUse)
@@ -141,16 +72,14 @@ public:
             lengthField->setValue("");
         }
 
-        // Set the sample value under the mouse cursor
-        const float sampleValue = getSampleValueAtMousePosition();
-        if (sampleValue == -1)
+        if (lastSampleValue == -1)
         {
             valueField->setValue("");
         }
         else
         {
             char buffer[16];
-            snprintf(buffer, sizeof(buffer), "%.5f", sampleValue);
+            snprintf(buffer, sizeof(buffer), "%.5f", lastSampleValue);
             valueField->setValue(buffer);
         }
     }
@@ -159,7 +88,6 @@ public:
     {
         bool needsRedraw = false;
 
-        // Check playback position
         int currentPlaybackPosition = (int)state->playbackPosition.load();
         if (currentPlaybackPosition != lastPlaybackPosition)
         {
@@ -167,7 +95,6 @@ public:
             needsRedraw = true;
         }
 
-        // Check selection state
         bool currentSelectionActive = state->selection.isActive();
         if (currentSelectionActive != lastSelectionActive ||
             (currentSelectionActive && 
@@ -188,17 +115,12 @@ public:
             needsRedraw = true;
         }
 
-        // Check sample value and related inputs
-        float currentSampleValue = getSampleValueAtMousePosition();
+        float currentSampleValue = lastSampleValue;
         if (currentSampleValue != lastSampleValue ||
-            state->mouseX != lastMouseX ||
-            state->mouseY != lastMouseY ||
             state->samplesPerPixel != lastSamplesPerPixel ||
             state->sampleOffset != lastSampleOffset)
         {
             lastSampleValue = currentSampleValue;
-            lastMouseX = state->mouseX;
-            lastMouseY = state->mouseY;
             lastSamplesPerPixel = state->samplesPerPixel;
             lastSampleOffset = state->sampleOffset;
             needsRedraw = true;

@@ -85,6 +85,33 @@ public:
                    const float /*mouseRelY*/,
                    const bool leftButtonIsDown) override
     {
+        if (Waveform::shouldShowSamplePoints(state->samplesPerPixel, state->pixelScale))
+        {
+            const int channel = channelAt(mouseY);
+            
+            if (channel >= 0 && channel < (int)state->waveforms.size())
+            {
+                auto* wf = state->waveforms[channel];
+                const auto samplePos =
+                    getSamplePosForMouseX(mouseX, state->samplesPerPixel, state->sampleOffset, state->document.getFrameCount());
+                if (wf->samplePosUnderCursor != (int64_t)samplePos)
+                {
+                    wf->samplePosUnderCursor = (int64_t)samplePos;
+                    wf->setDirtyRecursive();
+                }
+
+                for (size_t waveformChannel = 0; waveformChannel < state->waveforms.size(); ++waveformChannel)
+                {
+                    if (waveformChannel == channel)
+                    {
+                        continue;
+                    }
+
+                    state->waveforms[waveformChannel]->clearHighlight();
+                }
+            }
+        }
+
         if (state->capturingComponent != this || !leftButtonIsDown)
         {
             return false;
@@ -160,35 +187,6 @@ public:
             }
         }
 
-        const int mouseX = state->mouseX;
-        const int mouseY = state->mouseY;
-
-        if (Waveform::shouldShowSamplePoints(state->samplesPerPixel, state->pixelScale))
-        {
-            const int channel = channelAt(mouseY);
-            
-            if (channel >= 0 && channel < (int)state->waveforms.size())
-            {
-                auto* wf = state->waveforms[channel];
-                const auto samplePos =
-                    getSamplePosForMouseX(mouseX, state->samplesPerPixel, state->sampleOffset, state->document.getFrameCount());
-                if (wf->samplePosUnderCursor != (int64_t)samplePos)
-                {
-                    wf->samplePosUnderCursor = (int64_t)samplePos;
-                    wf->setDirtyRecursive();
-                }
-
-                for (size_t waveformChannel = 0; waveformChannel < state->waveforms.size(); ++waveformChannel)
-                {
-                    if (waveformChannel == channel)
-                    {
-                        continue;
-                    }
-
-                    state->waveforms[waveformChannel]->clearHighlight();
-                }
-            }
-        }
     }
 
 private:

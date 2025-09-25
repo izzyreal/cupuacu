@@ -63,8 +63,6 @@ struct CupuacuState {
     SDL_Texture *canvas = NULL;
     SDL_Texture *textTexture = NULL;
 
-    int32_t mouseX = 0;
-    int32_t mouseY = 0;
     Component *capturingComponent = nullptr;
     Component *componentUnderMouse = nullptr;
 
