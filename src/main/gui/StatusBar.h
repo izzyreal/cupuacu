@@ -90,7 +90,7 @@ public:
             if (currentSelectionActive)
             {
                 startField->setValue(std::to_string(state->selection.getStartInt()));
-                endField->setValue(std::to_string(state->selection.getEndInt()));
+                endField->setValue(std::to_string(state->selection.getEndInt() - 1));
                 lengthField->setValue(std::to_string(state->selection.getLengthInt()));
             }
             else
@@ -112,7 +112,7 @@ public:
             if (currentSelectionEnd != lastSelectionEnd)
             {
                 lastSelectionEnd = currentSelectionEnd;
-                endField->setValue(std::to_string(state->selection.getEndInt()));
+                endField->setValue(std::to_string(state->selection.getEndInt() - 1));
                 lengthField->setValue(std::to_string(state->selection.getLengthInt()));
             }
         }
