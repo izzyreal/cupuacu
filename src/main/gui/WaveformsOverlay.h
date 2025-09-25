@@ -62,6 +62,11 @@ public:
             state->selection.reset();
         }
 
+        if (shiftPressed && !state->selection.isActive())
+        {
+            state->selection.setValue1(state->playbackPosition.load());
+        }
+
         if (!shiftPressed || !state->selection.isActive())
         {
             state->selection.setValue1(samplePos);
