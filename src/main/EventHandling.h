@@ -42,7 +42,7 @@ inline SDL_AppResult HandleAppEvent(CupuacuState *state, SDL_Event *event)
                     break;
                 }
 
-                rebuildComponentTree(state);
+                resizeComponents(state);
                 break;
             }
         case SDL_EVENT_WINDOW_MOUSE_LEAVE:

@@ -70,7 +70,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
         state->currentFile = "";
     }
 
-    rebuildComponentTree(state, true);
+    buildComponents(state);
     state->hideSubMenus = [state](){ dynamic_cast<MenuBar*>(state->menuBarHandle)->hideSubMenus(); state->rootComponent->setDirtyRecursive(); };
 
     resetZoom(state);
