@@ -40,6 +40,7 @@ add_executable(Cupuacu
     src/main/gui/Waveform.cpp
     src/main/gui/SamplePoint.cpp
     src/main/actions/Play.cpp
+    src/main/Gui.cpp
 )
 
 add_executable(cupuacu-tests

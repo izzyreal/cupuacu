@@ -3,8 +3,9 @@
 
 #include "../CupuacuState.h"
 #include "../file_loading.h"
-
+#include "../Gui.h"
 #include "../gui/Waveform.h"
+#include "Zoom.h"
 
 #include <string>
 
@@ -39,9 +40,10 @@ static void fileDialogCallback(void *userdata, const char * const *filelist, int
     state->currentFile = absoluteFilePath;
 
     loadSampleData(state);
-    const auto waveformWidth = Waveform::getWaveformWidth(state);
-    state->samplesPerPixel = state->document.getFrameCount() / (float) waveformWidth;
+    rebuildWaveforms(state);
+    resizeWaveforms(state);
     resetWaveformState(state);
+    resetZoom(state);
     Waveform::updateAllSamplePoints(state);
     Waveform::setAllWaveformsDirty(state);
 
