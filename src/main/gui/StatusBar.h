@@ -19,6 +19,17 @@ private:
     LabeledField* lengthField = nullptr;
     LabeledField* valueField = nullptr;
 
+    // Track previous state for change detection
+    int lastPlaybackPosition = -1;
+    int lastSelectionStart = -1;
+    int lastSelectionEnd = -1;
+    bool lastSelectionActive = false;
+    float lastSampleValue = -std::numeric_limits<float>::infinity();
+    int lastMouseX = -1;
+    int lastMouseY = -1;
+    double lastSamplesPerPixel = -1.0;
+    double lastSampleOffset = -1.0;
+
     float getSampleValueAtMousePosition()
     {
         if (const auto *samplePoint = dynamic_cast<SamplePoint*>(state->capturingComponent); samplePoint != nullptr)
@@ -146,6 +157,56 @@ public:
 
     void timerCallback() override
     {
-        setDirtyRecursive();
+        bool needsRedraw = false;
+
+        // Check playback position
+        int currentPlaybackPosition = (int)state->playbackPosition.load();
+        if (currentPlaybackPosition != lastPlaybackPosition)
+        {
+            lastPlaybackPosition = currentPlaybackPosition;
+            needsRedraw = true;
+        }
+
+        // Check selection state
+        bool currentSelectionActive = state->selection.isActive();
+        if (currentSelectionActive != lastSelectionActive ||
+            (currentSelectionActive && 
+             (state->selection.getStartInt() != lastSelectionStart ||
+              state->selection.getEndInt() != lastSelectionEnd)))
+        {
+            lastSelectionActive = currentSelectionActive;
+            if (currentSelectionActive)
+            {
+                lastSelectionStart = state->selection.getStartInt();
+                lastSelectionEnd = state->selection.getEndInt();
+            }
+            else
+            {
+                lastSelectionStart = -1;
+                lastSelectionEnd = -1;
+            }
+            needsRedraw = true;
+        }
+
+        // Check sample value and related inputs
+        float currentSampleValue = getSampleValueAtMousePosition();
+        if (currentSampleValue != lastSampleValue ||
+            state->mouseX != lastMouseX ||
+            state->mouseY != lastMouseY ||
+            state->samplesPerPixel != lastSamplesPerPixel ||
+            state->sampleOffset != lastSampleOffset)
+        {
+            lastSampleValue = currentSampleValue;
+            lastMouseX = state->mouseX;
+            lastMouseY = state->mouseY;
+            lastSamplesPerPixel = state->samplesPerPixel;
+            lastSampleOffset = state->sampleOffset;
+            needsRedraw = true;
+        }
+
+        if (needsRedraw)
+        {
+            setDirtyRecursive();
+        }
     }
 };
