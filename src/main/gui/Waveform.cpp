@@ -11,9 +11,9 @@ Waveform::Waveform(CupuacuState *state, const uint8_t channelIndexToUse)
 {
 }
 
-int getSamplePointSize(const int hardwarePixelsPerAppPixel)
+int getSamplePointSize(const int pixelScale)
 {
-    return 32 / hardwarePixelsPerAppPixel;
+    return 32 / pixelScale;
 }
 
 void Waveform::resized()
@@ -25,7 +25,7 @@ void Waveform::updateSamplePoints()
 {
     removeAllChildren();
 
-    if (shouldShowSamplePoints(state->samplesPerPixel, state->hardwarePixelsPerAppPixel))
+    if (shouldShowSamplePoints(state->samplesPerPixel, state->pixelScale))
     {
         auto samplePoints = computeSamplePoints();
 
@@ -37,9 +37,9 @@ void Waveform::updateSamplePoints()
 }
 
 bool Waveform::shouldShowSamplePoints(const double samplesPerPixel,
-                                      const uint8_t hardwarePixelsPerAppPixel)
+                                      const uint8_t pixelScale)
 {
-    return samplesPerPixel < ((float)hardwarePixelsPerAppPixel / 40.f);
+    return samplesPerPixel < ((float)pixelScale / 40.f);
 }
 
 int getYPosForSampleValue(const float sampleValue,
@@ -56,7 +56,7 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
     const auto samplesPerPixel = state->samplesPerPixel;
     const auto sampleOffset = state->sampleOffset;
     const auto &sampleData = state->document.channels[channelIndex];
-    const auto hardwarePixelsPerAppPixel = state->hardwarePixelsPerAppPixel;
+    const auto pixelScale = state->pixelScale;
     const auto verticalZoom = state->verticalZoom;
 
     const int neededInputSamples = static_cast<int>(std::ceil((getWidth() + 1) * samplesPerPixel));
@@ -76,7 +76,7 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
     }
 
     std::vector<std::unique_ptr<SamplePoint>> result;
-    const auto samplePointSize = getSamplePointSize(hardwarePixelsPerAppPixel);
+    const auto samplePointSize = getSamplePointSize(pixelScale);
 
     for (int i = 0; i < actualInputSamples; ++i)
     {
@@ -96,7 +96,7 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
 void Waveform::drawHorizontalLines(SDL_Renderer* renderer)
 {
     const auto heightToUse = getHeight();
-    const auto samplePointSize = getSamplePointSize(state->hardwarePixelsPerAppPixel);
+    const auto samplePointSize = getSamplePointSize(state->pixelScale);
     const auto verticalZoom = state->verticalZoom;
 
     SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
@@ -123,7 +123,7 @@ void Waveform::renderSmoothWaveform(SDL_Renderer* renderer)
     const auto verticalZoom = state->verticalZoom;
     const auto widthToUse = getWidth();
     const auto heightToUse = getHeight();
-    const auto samplePointSize = getSamplePointSize(state->hardwarePixelsPerAppPixel);
+    const auto samplePointSize = getSamplePointSize(state->pixelScale);
     const auto drawableHeight = heightToUse - samplePointSize;
 
     const int neededInputSamples = static_cast<int>(std::ceil((widthToUse + 1) * samplesPerPixel));
@@ -201,7 +201,7 @@ void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
     const auto verticalZoom = state->verticalZoom;
     const auto widthToUse = getWidth();
     const auto heightToUse = getHeight();
-    const auto samplePointSize = getSamplePointSize(state->hardwarePixelsPerAppPixel);
+    const auto samplePointSize = getSamplePointSize(state->pixelScale);
     const auto drawableHeight = heightToUse - samplePointSize;
     const auto halfSamplePointSize = samplePointSize / 2;
 
@@ -293,7 +293,7 @@ void Waveform::drawSelection(SDL_Renderer *renderer)
 
     if (isSelected && lastSample >= sampleOffset)
     {
-        if (shouldShowSamplePoints(samplesPerPixel, state->hardwarePixelsPerAppPixel))
+        if (shouldShowSamplePoints(samplesPerPixel, state->pixelScale))
         {
             firstSample -= 0.5f;
             lastSample -= 0.5f;
@@ -328,7 +328,7 @@ void Waveform::drawHighlight(SDL_Renderer *renderer)
 
     const auto samplesPerPixel = state->samplesPerPixel;
 
-    if (shouldShowSamplePoints(samplesPerPixel, state->hardwarePixelsPerAppPixel) && samplePosUnderCursor != -1)
+    if (shouldShowSamplePoints(samplesPerPixel, state->pixelScale) && samplePosUnderCursor != -1)
     {
         const auto sampleOffset = state->sampleOffset;
         const auto& sampleData = state->document.channels[channelIndex];

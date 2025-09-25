@@ -167,7 +167,7 @@ public:
         const int mouseX = state->mouseX;
         const int mouseY = state->mouseY;
 
-        if (Waveform::shouldShowSamplePoints(state->samplesPerPixel, state->hardwarePixelsPerAppPixel))
+        if (Waveform::shouldShowSamplePoints(state->samplesPerPixel, state->pixelScale))
         {
             for (auto* wf : state->waveforms)
             {

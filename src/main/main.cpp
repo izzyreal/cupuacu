@@ -44,14 +44,14 @@ const std::function<void(CupuacuState*)> renderCanvasToWindow = [](CupuacuState 
     SDL_FRect dstRect;
     dstRect.x = 0;
     dstRect.y = 0;
-    dstRect.w = currentCanvasDimensions.x * state->hardwarePixelsPerAppPixel;
-    dstRect.h = currentCanvasDimensions.y * state->hardwarePixelsPerAppPixel;
+    dstRect.w = currentCanvasDimensions.x * state->pixelScale;
+    dstRect.h = currentCanvasDimensions.y * state->pixelScale;
 
     SDL_RenderTexture(renderer, canvas, NULL, &dstRect);
     SDL_RenderPresent(renderer);
 };
 
-SDL_Point computeDesiredCanvasDimensions(const uint8_t hardwarePixelsPerAppPixel)
+SDL_Point computeDesiredCanvasDimensions(const uint8_t pixelScale)
 {
     SDL_Point result;
 
@@ -60,8 +60,8 @@ SDL_Point computeDesiredCanvasDimensions(const uint8_t hardwarePixelsPerAppPixel
         return {0,0};
     }
 
-    result.x = std::floor(result.x / hardwarePixelsPerAppPixel);
-    result.y = std::floor(result.y / hardwarePixelsPerAppPixel);
+    result.x = std::floor(result.x / pixelScale);
+    result.y = std::floor(result.y / pixelScale);
 
     return result;
 }
@@ -82,7 +82,7 @@ void createCanvas(const SDL_Point &dimensions)
 
 SDL_Rect getWaveformRect(const uint16_t canvasWidth,
                          const uint16_t canvasHeight,
-                         const uint8_t hardwarePixelsPerAppPixel,
+                         const uint8_t pixelScale,
                          const uint8_t menuHeight)
 {
    SDL_Rect result {
@@ -96,24 +96,24 @@ SDL_Rect getWaveformRect(const uint16_t canvasWidth,
 
 SDL_Rect getMenuBarRect(const uint16_t canvasWidth,
                         const uint16_t canvasHeight,
-                        const uint8_t hardwarePixelsPerAppPixel,
+                        const uint8_t pixelScale,
                         const uint8_t menuFontSize)
 {
     SDL_Rect result {
         3,
         0,
         canvasWidth,
-        static_cast<int>((menuFontSize * 1.33) / hardwarePixelsPerAppPixel)
+        static_cast<int>((menuFontSize * 1.33) / pixelScale)
     };
     return result;
 }
 
 SDL_Rect getStatusBarRect(const uint16_t canvasWidth,
                         const uint16_t canvasHeight,
-                        const uint8_t hardwarePixelsPerAppPixel,
+                        const uint8_t pixelScale,
                         const uint8_t menuFontSize)
 {
-    const auto statusBarHeight = static_cast<int>((menuFontSize * 1.33) / hardwarePixelsPerAppPixel);
+    const auto statusBarHeight = static_cast<int>((menuFontSize * 1.33) / pixelScale);
 
     SDL_Rect result {
         3,
@@ -126,7 +126,7 @@ SDL_Rect getStatusBarRect(const uint16_t canvasWidth,
 
 void rebuildComponentTree(CupuacuState *state, bool initializeComponents = false)
 {
-    const SDL_Point newCanvasDimensions = computeDesiredCanvasDimensions(state->hardwarePixelsPerAppPixel);
+    const SDL_Point newCanvasDimensions = computeDesiredCanvasDimensions(state->pixelScale);
     createCanvas(newCanvasDimensions);
 
     SDL_FPoint actualCanvasDimensions;
@@ -145,19 +145,19 @@ void rebuildComponentTree(CupuacuState *state, bool initializeComponents = false
     const SDL_Rect menuBarRect = getMenuBarRect(
         actualCanvasDimensions.x,
         actualCanvasDimensions.y,
-        state->hardwarePixelsPerAppPixel,
+        state->pixelScale,
         state->menuFontSize);
 
     const SDL_Rect waveformRect = getWaveformRect(
         actualCanvasDimensions.x,
         actualCanvasDimensions.y,
-        state->hardwarePixelsPerAppPixel,
+        state->pixelScale,
         menuBarRect.h);
 
     const SDL_Rect statusBarRect = getStatusBarRect(
         actualCanvasDimensions.x,
         actualCanvasDimensions.y,
-        state->hardwarePixelsPerAppPixel,
+        state->pixelScale,
         state->menuFontSize);
 
     if (initializeComponents)
@@ -328,7 +328,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                 int winW, winH;
                 SDL_GetWindowSize(window, &winW, &winH);
 
-                int hpp = state->hardwarePixelsPerAppPixel;
+                int hpp = state->pixelScale;
 
                 int newW = (winW / hpp) * hpp;
                 int newH = (winH / hpp) * hpp;
@@ -351,7 +351,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 
                 SDL_FPoint currentCanvasDimensions;
                 SDL_GetTextureSize(canvas, &currentCanvasDimensions.x, &currentCanvasDimensions.y);
-                const SDL_Point newCanvasDimensions = computeDesiredCanvasDimensions(state->hardwarePixelsPerAppPixel);
+                const SDL_Point newCanvasDimensions = computeDesiredCanvasDimensions(state->pixelScale);
 
                 if (static_cast<uint16_t>(currentCanvasDimensions.x) != newCanvasDimensions.x ||
                     static_cast<uint16_t>(currentCanvasDimensions.y) != newCanvasDimensions.y)

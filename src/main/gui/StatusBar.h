@@ -65,7 +65,7 @@ private:
             return -1;
         }
 
-        const bool showSamplePoints = Waveform::shouldShowSamplePoints(samplesPerPixel, state->hardwarePixelsPerAppPixel);
+        const bool showSamplePoints = Waveform::shouldShowSamplePoints(samplesPerPixel, state->pixelScale);
 
         if (showSamplePoints)
         {
@@ -98,7 +98,7 @@ public:
 
     void resized() override
     {
-        float scale = 4.0f / state->hardwarePixelsPerAppPixel;
+        float scale = 4.0f / state->pixelScale;
         int fieldWidth = int(120 * scale);
         int fieldHeight = int(getHeight() * scale);
 

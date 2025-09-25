@@ -8,7 +8,7 @@
 class Waveform : public Component {
 
 public:
-    static bool shouldShowSamplePoints(const double samplesPerPixel, const uint8_t hardwarePixelsPerAppPixel);
+    static bool shouldShowSamplePoints(const double samplesPerPixel, const uint8_t pixelScale);
 
     static float sampleIndexToXPosition(float sampleIndex, double sampleOffset, double samplesPerPixel, bool isSamplePointsVisible) {
         if (isSamplePointsVisible) {

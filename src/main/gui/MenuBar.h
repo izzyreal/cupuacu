@@ -27,7 +27,7 @@ class Menu : public Component {
             if (subMenus.empty())
                 return;
 
-            float scale = 4.0f / state->hardwarePixelsPerAppPixel;
+            float scale = 4.0f / state->pixelScale;
             int subMenuYPos = getHeight(); // already correct, don't scale
 
             for (auto &subMenu : subMenus)
@@ -65,7 +65,7 @@ class Menu : public Component {
             SDL_SetRenderDrawColor(renderer, bg, bg, bg, 255);
             SDL_FRect r{0, 0, (float)getWidth(), (float)getHeight() };
             SDL_RenderFillRect(renderer, &r);
-            const uint8_t fontPointSize = state->menuFontSize / state->hardwarePixelsPerAppPixel;
+            const uint8_t fontPointSize = state->menuFontSize / state->pixelScale;
             renderText(renderer, menuName, fontPointSize);
         }
 
@@ -164,7 +164,7 @@ class MenuBar : public Component {
         }
 void resized() override
 {
-    float scale = 4.0f / state->hardwarePixelsPerAppPixel;
+    float scale = 4.0f / state->pixelScale;
 
     int fileW = int(40 * scale);
     int viewW = int(100 * scale);

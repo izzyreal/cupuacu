@@ -19,7 +19,7 @@ static void handleKeyDown(
         CupuacuState *state)
 {
     uint8_t multiplier = 1;
-    uint8_t multiplierFactor = 12 / state->hardwarePixelsPerAppPixel;
+    uint8_t multiplierFactor = 12 / state->pixelScale;
 
     if (event->key.scancode == SDL_SCANCODE_ESCAPE)
     {

@@ -28,7 +28,7 @@ public:
 
     void onDraw(SDL_Renderer* renderer) override
     {
-        const uint8_t fontPointSize = state->menuFontSize / state->hardwarePixelsPerAppPixel;
+        const uint8_t fontPointSize = state->menuFontSize / state->pixelScale;
         std::string displayText = label + ": " + value;
         renderText(renderer, displayText, fontPointSize);
     }
