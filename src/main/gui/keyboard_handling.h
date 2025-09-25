@@ -36,20 +36,15 @@ static void handleKeyDown(
 
     if (event->key.scancode == SDL_SCANCODE_Q)
     {
-        if (state->samplesPerPixel < static_cast<float>(state->document.getFrameCount()) / 2.f)
+        if (tryZoomOutHorizontally(state))
         {
-            if (tryZoomOutHorizontally(state))
-            {
-                snapSampleOffset(state);
-                updateWaveforms(state);
-            }
+            updateWaveforms(state);
         }
     }
     else if (event->key.scancode == SDL_SCANCODE_W)
     {
         if (tryZoomInHorizontally(state))
         {
-            snapSampleOffset(state);
             updateWaveforms(state);
         }
     }
@@ -75,13 +70,11 @@ static void handleKeyDown(
         state->verticalZoom = INITIAL_VERTICAL_ZOOM;
 
         const auto waveformWidth = Waveform::getWaveformWidth(state);
-        const auto selectionStart = state->selection.getStart();
         const auto selectionLength = state->selection.getLength();
 
         state->samplesPerPixel = selectionLength / waveformWidth;
-        state->sampleOffset = selectionStart - (0.5f * state->samplesPerPixel);
+        state->sampleOffset = state->selection.getStartInt();
 
-        snapSampleOffset(state);
         updateWaveforms(state);
     }
     else if (event->key.scancode == SDL_SCANCODE_LEFT)
@@ -91,26 +84,15 @@ static void handleKeyDown(
             return;
         }
 
-        state->sampleOffset -= std::max(state->samplesPerPixel, 1.0) * multiplier;
-        resetSampleValueUnderMouseCursor(state);
+        const size_t oldSampleOffset = state->sampleOffset;
 
-        for (auto w : state->waveforms)
-        {
-            w->clearHighlight();
-        }
-        
-        snapSampleOffset(state);
-        updateWaveforms(state);
-    }
-    else if (event->key.scancode == SDL_SCANCODE_RIGHT)
-    {
-        const double maxOffset = std::max(0.0, state->document.getFrameCount() - waveformWidth * state->samplesPerPixel);
-        if (state->sampleOffset >= maxOffset)
+        updateSampleOffset(state, state->sampleOffset - std::max(state->samplesPerPixel, 1.0) * multiplier);
+
+        if (oldSampleOffset == state->sampleOffset)
         {
             return;
         }
 
-        state->sampleOffset += std::max(state->samplesPerPixel, 1.0) * multiplier;
         resetSampleValueUnderMouseCursor(state);
 
         for (auto w : state->waveforms)
@@ -118,7 +100,26 @@ static void handleKeyDown(
             w->clearHighlight();
         }
         
-        snapSampleOffset(state);
+        updateWaveforms(state);
+    }
+    else if (event->key.scancode == SDL_SCANCODE_RIGHT)
+    {
+        const size_t oldSampleOffset = state->sampleOffset;
+
+        updateSampleOffset(state, state->sampleOffset + std::max(state->samplesPerPixel, 1.0) * multiplier);
+        
+        if (oldSampleOffset == state->sampleOffset)
+        {
+            return;
+        }
+
+        resetSampleValueUnderMouseCursor(state);
+
+        for (auto w : state->waveforms)
+        {
+            w->clearHighlight();
+        }
+        
         updateWaveforms(state);
     }
     else if (event->key.scancode == SDL_SCANCODE_O)

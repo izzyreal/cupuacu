@@ -10,22 +10,7 @@ class Waveform : public Component {
 public:
     static bool shouldShowSamplePoints(const double samplesPerPixel, const uint8_t pixelScale);
 
-    static float sampleIndexToXPosition(float sampleIndex, double sampleOffset, double samplesPerPixel, bool isSamplePointsVisible) {
-        if (isSamplePointsVisible) {
-            sampleIndex -= 0.5f;
-        }
-        return (sampleIndex - sampleOffset) / samplesPerPixel;
-    }
-
-    static float xPositionToSampleIndex(float xPos, double sampleOffset, double samplesPerPixel, bool isSamplePointsVisible, const size_t frameCount) {
-        float sampleIndex = (xPos * samplesPerPixel) + sampleOffset;
-        if (isSamplePointsVisible) {
-            sampleIndex += 0.5f;
-        }
-        return std::min((float)frameCount, sampleIndex);
-    }
-    
-    static uint32_t getWaveformWidth(CupuacuState *state)
+    static uint16_t getWaveformWidth(CupuacuState *state)
     {
         if (state->waveforms.empty())
         {
@@ -51,7 +36,7 @@ public:
         }
     }
 
-    Waveform(CupuacuState *stateToUse, const uint8_t channelIndex);
+    Waveform(CupuacuState*, const uint8_t channelIndex);
 
     void onDraw(SDL_Renderer*) override;
     void timerCallback() override;
@@ -60,10 +45,13 @@ public:
     void updateSamplePoints();
     void clearHighlight();
 
-    int64_t samplePosUnderCursor;
+    std::optional<size_t> getSamplePosUnderCursor() const;
+    void setSamplePosUnderCursor(const size_t samplePosUnderCursor);
+    void resetSamplePosUnderCursor();
 
 private:
-    int64_t lastDrawnSamplePosUnderCursor = -1;
+    std::optional<size_t> lastDrawnSamplePosUnderCursor;
+    std::optional<size_t> samplePosUnderCursor;
     const uint8_t channelIndex;
     double playbackPosition = 0;
 

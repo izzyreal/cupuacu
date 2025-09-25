@@ -1,11 +1,11 @@
 #include "SamplePoint.h"
 
-SamplePoint::SamplePoint(CupuacuState *state, const int channelIndexToUse, const uint64_t sampleIndexToUse) :
+SamplePoint::SamplePoint(CupuacuState *state, const uint8_t channelIndexToUse, const size_t sampleIndexToUse) :
     Component(state, "Sample point idx " + std::to_string(sampleIndexToUse)), sampleIndex(sampleIndexToUse), channelIndex(channelIndexToUse)
 {
 }
 
-float SamplePoint::getSampleValueForYPos(const int16_t y, const uint16_t h, const double v, const int samplePointSize)
+float SamplePoint::getSampleValueForYPos(const int16_t y, const uint16_t h, const double v, const uint16_t samplePointSize)
 {
     const float drawableHeight = h - samplePointSize;
     return (h / 2.f - y) / (v * (drawableHeight / 2.f));
@@ -34,7 +34,6 @@ void SamplePoint::mouseLeave()
 bool SamplePoint::mouseLeftButtonDown(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY)
 {
     isDragging = true;
-    prevY = 0.f;
     dragYPos = getYPos();
     return true;
 }
@@ -81,7 +80,7 @@ bool SamplePoint::mouseMove(const int32_t mouseX, const int32_t mouseY, const fl
     // Update the sample point's position and sample value
     setYPos(dragYPos);
     state->document.channels[channelIndex][sampleIndex] = newSampleValue;
-    state->sampleValueUnderMouseCursor = newSampleValue;
+    updateSampleValueUnderMouseCursor(state, newSampleValue);
     getParent()->setDirtyRecursive();
 
     return true;

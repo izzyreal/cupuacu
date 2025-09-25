@@ -5,12 +5,12 @@
 #include "gui/Selection.h"
 
 #include <cstdint>
-#include <limits>
 #include <vector>
 #include <string>
 #include <functional>
 #include <atomic>
 #include <memory>
+#include <optional>
 
 struct SDL_Window;
 
@@ -28,13 +28,14 @@ enum class SampleFormat {
 struct CupuacuState {
     uint8_t menuFontSize = 60;
     uint8_t pixelScale = 4;
-    std::string currentFile = "/Users/izmar/Downloads/ams_chill.wav";
+    std::string currentFile = "/Users/izmar/Downloads/env.wav";
 
     struct Document {
         int sampleRate = 0;
         SampleFormat format = SampleFormat::Unknown;
         std::vector<std::vector<float>> channels;
-        size_t getFrameCount()
+
+        size_t getFrameCount() const
         {
             if (channels.empty())
             {
@@ -47,15 +48,15 @@ struct CupuacuState {
 
     double samplesPerPixel = 1;
     double verticalZoom;
-    double sampleOffset;
+    size_t sampleOffset;
     Selection<double> selection = Selection<double>(0.0);
-    int selectionChannelStart = -1;
-    int selectionChannelEnd   = -1;
-    int selectionAnchorChannel;
+    std::optional<uint8_t> selectionChannelStart;
+    std::optional<uint8_t> selectionChannelEnd;
+    std::optional<uint8_t> selectionAnchorChannel;
     double samplesToScroll;
-    float sampleValueUnderMouseCursor;
+    std::optional<float> sampleValueUnderMouseCursor;
 
-    std::atomic<double> playbackPosition = 0;
+    std::atomic<size_t> playbackPosition = 0;
     std::atomic<bool> isPlaying = false;
 
     std::shared_ptr<CustomDataSource> activePlayback;
@@ -81,7 +82,12 @@ struct CupuacuState {
 
 static void resetSampleValueUnderMouseCursor(CupuacuState *state)
 {
-    state->sampleValueUnderMouseCursor = std::numeric_limits<float>::lowest(); 
+    state->sampleValueUnderMouseCursor.reset();
+}
+
+static void updateSampleValueUnderMouseCursor(CupuacuState *state, const float sampleValue)
+{
+    state->sampleValueUnderMouseCursor.emplace(sampleValue);
 }
 
 static void resetWaveformState(CupuacuState *state)
@@ -93,5 +99,12 @@ static void resetWaveformState(CupuacuState *state)
     state->selectionChannelEnd = -1;
     state->samplesToScroll = 0;
     state->playbackPosition = 0;
+}
+
+size_t getMaxSampleOffset(const CupuacuState*);
+
+static void updateSampleOffset(CupuacuState *state, const size_t sampleOffset)
+{
+    state->sampleOffset = std::min(getMaxSampleOffset(state), sampleOffset);
 }
 

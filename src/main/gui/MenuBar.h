@@ -28,7 +28,7 @@ class Menu : public Component {
                 return;
 
             float scale = 4.0f / state->pixelScale;
-            int subMenuYPos = getHeight(); // already correct, don't scale
+            int subMenuYPos = getHeight();
 
             for (auto &subMenu : subMenus)
             {

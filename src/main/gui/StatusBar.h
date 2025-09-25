@@ -6,6 +6,7 @@
 
 #include <SDL3/SDL.h>
 #include <limits>
+#include <optional>
 #include <string>
 
 class StatusBar : public Component {
@@ -16,11 +17,11 @@ private:
     LabeledField* lengthField = nullptr;
     LabeledField* valueField = nullptr;
 
-    int lastPlaybackPosition = -1;
-    int lastSelectionStart = -1;
-    int lastSelectionEnd = -1;
+    size_t lastPlaybackPosition = std::numeric_limits<size_t>::max();
+    size_t lastSelectionStart = std::numeric_limits<size_t>::max();
+    size_t lastSelectionEnd = std::numeric_limits<size_t>::max();
     bool lastSelectionActive = false;
-    float lastSampleValueUnderMouseCursor = std::numeric_limits<float>::max();
+    std::optional<float> lastSampleValueUnderMouseCursor;
 
 public:
     StatusBar(CupuacuState* stateToUse)
@@ -35,9 +36,9 @@ public:
 
     void resized() override
     {
-        float scale = 4.0f / state->pixelScale;
-        int fieldWidth = int(120 * scale);
-        int fieldHeight = int(getHeight() * scale);
+        const float scale = 4.0f / state->pixelScale;
+        const int fieldWidth = int(120 * scale);
+        const int fieldHeight = int(getHeight() * scale);
 
         posField->setBounds(0, 0, fieldWidth, fieldHeight);
         startField->setBounds(fieldWidth, 0, fieldWidth, fieldHeight);
@@ -55,7 +56,7 @@ public:
 
     void timerCallback() override
     {
-        const int currentPlaybackPosition = (int)state->playbackPosition.load();
+        const size_t currentPlaybackPosition = state->playbackPosition.load();
 
         if (currentPlaybackPosition != lastPlaybackPosition)
         {
@@ -67,19 +68,19 @@ public:
         {
             lastSampleValueUnderMouseCursor = state->sampleValueUnderMouseCursor;
 
-            if (state->sampleValueUnderMouseCursor == std::numeric_limits<float>::lowest())
+            if (state->sampleValueUnderMouseCursor.has_value())
             {
-                valueField->setValue("");
+                valueField->setValue(std::to_string(*state->sampleValueUnderMouseCursor));
             }
             else
             {
-                valueField->setValue(std::to_string(state->sampleValueUnderMouseCursor));
+                valueField->setValue("");
             }
         }
 
         const bool currentSelectionActive = state->selection.isActive();
-        const int currentSelectionStart = state->selection.getStartInt();
-        const int currentSelectionEnd = state->selection.getEndInt();
+        const size_t currentSelectionStart = state->selection.getStartInt();
+        const size_t currentSelectionEnd = state->selection.getEndInt();
 
         if (currentSelectionActive != lastSelectionActive)
         {
@@ -90,7 +91,7 @@ public:
             if (currentSelectionActive)
             {
                 startField->setValue(std::to_string(state->selection.getStartInt()));
-                endField->setValue(std::to_string(state->selection.getEndInt() - 1));
+                endField->setValue(std::to_string(state->selection.getEndInt()));
                 lengthField->setValue(std::to_string(state->selection.getLengthInt()));
             }
             else
@@ -112,7 +113,7 @@ public:
             if (currentSelectionEnd != lastSelectionEnd)
             {
                 lastSelectionEnd = currentSelectionEnd;
-                endField->setValue(std::to_string(state->selection.getEndInt() - 1));
+                endField->setValue(std::to_string(state->selection.getEndInt()));
                 lengthField->setValue(std::to_string(state->selection.getLengthInt()));
             }
         }

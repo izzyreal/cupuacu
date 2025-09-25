@@ -1,15 +1,14 @@
 #pragma once
 #include <cmath>
 #include <limits>
-#include <cstdint>
 #include <algorithm>
 
 template <typename T>
 class Selection {
 private:
-public:
     const T lowest;
 
+    T highest = std::numeric_limits<T>::max();
     T value1;
     T value2;
 
@@ -19,6 +18,11 @@ public:
           value1(std::numeric_limits<T>::max()),
           value2(std::numeric_limits<T>::max())
     {
+    }
+
+    void setHighest(const T highestToUse)
+    {
+        highest = highestToUse;
     }
 
     T getStart() const
@@ -31,40 +35,29 @@ public:
         return (value1 < value2) ? value2 : value1;
     }
 
-    void startSelection(const T initialValue)
-    {
-        value1 = std::max(initialValue, lowest);
-        value2 = std::max(initialValue, lowest);
-    }
-
     void setValue1(const T v)
     {
-        value1 = std::max(v, lowest);
+        value1 = std::clamp(std::round(v), lowest, highest);
     }
 
     void setValue2(const T v)
     {
-        value2 = std::max(v, lowest);
+        value2 = std::clamp(v, lowest, highest);
     }
 
-    int64_t getStartInt() const
+    size_t getStartInt() const
     {
-        return static_cast<int64_t>(std::round(value2 < value1 ? value2 : value1));
+        return static_cast<size_t>(std::round(getStart()));
     }
 
-    int64_t getEndInt() const
+    size_t getEndInt() const
     {
-        if (value2 < value1)
-        {
-            return static_cast<int64_t>(std::ceil(value1 + 0.5));
-        }
-
-        return static_cast<int64_t>(std::ceil(value2 + 0.5));
+        return static_cast<size_t>(std::round(getEnd() - 1));
     }
 
-    int64_t getLengthInt() const
+    size_t getLengthInt() const
     {
-        return getEndInt() - getStartInt();
+        return (getEndInt() - getStartInt()) + 1;
     }
 
     void reset()
@@ -82,7 +75,6 @@ public:
     {
         return value1 != std::numeric_limits<T>::max() &&
                value2 != std::numeric_limits<T>::max() &&
-               getLengthInt() > 0 &&
-               value1 != value2;
+               getLengthInt() > 0;
     }
 };

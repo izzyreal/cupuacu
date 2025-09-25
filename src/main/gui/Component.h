@@ -142,7 +142,7 @@ public:
     {
         if (dirty)
         {
-            printf("%s is dirty\n", getComponentName().c_str());
+            //printf("%s is dirty\n", getComponentName().c_str());
             return true;
         }
 
@@ -296,10 +296,10 @@ public:
 
     virtual bool onHandleEvent(const SDL_Event& e) { return false; }
 
-    uint16_t getWidth() { return width; }
-    uint16_t getHeight() { return height; }
-    uint16_t getXPos() { return xPos; }
-    uint16_t getYPos() { return yPos; }
+    uint16_t getWidth() const { return width; }
+    uint16_t getHeight() const { return height; }
+    uint16_t getXPos() const { return xPos; }
+    uint16_t getYPos() const { return yPos; }
 
     // Called every frame
     virtual void timerCallback() { for (auto &c : children) { c->timerCallback(); }}

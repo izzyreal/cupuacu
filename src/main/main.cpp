@@ -7,7 +7,7 @@
 #include "EventHandling.h"
 #include "Gui.h"
 
-const uint16_t initialDimensions[] = { 1280, 720 };
+const uint16_t initialDimensions[] = { 1280, 420 };
 
 #include <cstdint>
 #include <string>

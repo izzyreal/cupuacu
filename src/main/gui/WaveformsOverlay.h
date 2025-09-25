@@ -1,29 +1,39 @@
 #pragma once
 #include "Component.h"
 #include "Waveform.h"
-#include "../actions/Zoom.h"
 #include <algorithm>
+
+#include <cassert>
 
 class WaveformsOverlay : public Component {
 public:
     WaveformsOverlay(CupuacuState* stateToUse)
         : Component(stateToUse, "WaveformsOverlay") {}
 
+public:
     static float getSamplePosForMouseX(const int32_t mouseX,
                                          const double samplesPerPixel,
-                                         const double sampleOffset,
-                                         const size_t frameCount) 
+                                         const uint64_t sampleOffset,
+                                         const size_t frameCount,
+                                         const uint8_t pixelScale) 
     {
         const float xToUse = mouseX <= 0 ? 0.f : static_cast<float>(mouseX);
-        return Waveform::xPositionToSampleIndex(xToUse, sampleOffset, samplesPerPixel, samplesPerPixel < 1.f, frameCount);
+        float sampleIndex = (xToUse * samplesPerPixel) + sampleOffset;
+
+        if (Waveform::shouldShowSamplePoints(samplesPerPixel, pixelScale)) {
+            sampleIndex += 0.5f;
+        }
+        
+        return std::min((float)frameCount, sampleIndex);
     }
 
     static size_t getValidSampleIndexUnderMouseCursor(const int32_t mouseX,
                                                  const double samplesPerPixel,
                                                  const double sampleOffset,
-                                                 const size_t frameCount)
+                                                 const size_t frameCount,
+                                                 const uint8_t pixelScale)
     {
-        auto floatResult = getSamplePosForMouseX(mouseX, samplesPerPixel, sampleOffset, frameCount);
+        auto floatResult = getSamplePosForMouseX(mouseX, samplesPerPixel, sampleOffset, frameCount, pixelScale);
         
         if (floatResult >= frameCount)
         {
@@ -112,12 +122,11 @@ public:
             if (channel >= 0 && channel < (int)state->waveforms.size())
             {
                 auto* wf = state->waveforms[channel];
-                const auto samplePos =
-                    getSamplePosForMouseX(mouseX, state->samplesPerPixel, state->sampleOffset, state->document.getFrameCount());
-                if (wf->samplePosUnderCursor != (int64_t)samplePos)
+                const size_t sampleIndex = static_cast<size_t>(mouseX * state->samplesPerPixel) + state->sampleOffset;
+
+                if (wf->getSamplePosUnderCursor() != sampleIndex)
                 {
-                    wf->samplePosUnderCursor = (int64_t)samplePos;
-                    wf->setDirtyRecursive();
+                    wf->setSamplePosUnderCursor(sampleIndex);
                 }
 
                 for (size_t waveformChannel = 0; waveformChannel < state->waveforms.size(); ++waveformChannel)
@@ -132,12 +141,16 @@ public:
             }
         }
 
-        const int channel = channelAt(mouseY);
-        const size_t sampleIndex = getValidSampleIndexUnderMouseCursor(mouseX, state->samplesPerPixel, state->sampleOffset, state->document.getFrameCount());
+        const size_t sampleIndex = getValidSampleIndexUnderMouseCursor(mouseX,
+                                                                       state->samplesPerPixel,
+                                                                       state->sampleOffset,
+                                                                       state->document.getFrameCount(),
+                                                                       state->pixelScale);
 
+        const uint8_t channel = channelAt(mouseY);
         const float sampleValueUnderMouseCursor = state->document.channels[channel][sampleIndex];
 
-        state->sampleValueUnderMouseCursor = sampleValueUnderMouseCursor;
+        updateSampleValueUnderMouseCursor(state, sampleValueUnderMouseCursor);
 
         if (state->capturingComponent != this || !leftButtonIsDown)
         {
@@ -149,8 +162,10 @@ public:
         const double samplePos = state->sampleOffset + mouseX * state->samplesPerPixel;
         state->selection.setValue2(samplePos);
 
-        state->selectionChannelStart = std::min(state->selectionAnchorChannel, channel);
-        state->selectionChannelEnd   = std::max(state->selectionAnchorChannel, channel);
+        assert(state->selectionAnchorChannel.has_value());
+
+        state->selectionChannelStart.emplace(std::min(*state->selectionAnchorChannel, channel));
+        state->selectionChannelEnd.emplace(std::max(*state->selectionAnchorChannel, channel));
 
         markAllWaveformsDirty();
         return true;
@@ -171,56 +186,45 @@ public:
 
         state->selection.setValue2(samplePos);
 
-        int channel = channelAt(mouseY);
-        state->selectionChannelStart = std::min(state->selectionChannelStart, channel);
-        state->selectionChannelEnd   = std::max(state->selectionChannelEnd, channel);
+        const uint8_t channel = channelAt(mouseY);
+        assert(state->selectionChannelStart.has_value());
+        assert(state->selectionChannelEnd.has_value());
+        state->selectionChannelStart.emplace(std::min(*state->selectionChannelStart, channel));
+        state->selectionChannelEnd.emplace(std::max(*state->selectionChannelEnd, channel));
 
         return true;
     }
 
     void timerCallback() override
     {
-        if (state->samplesToScroll != 0.0)
+        if (state->samplesToScroll == 0.0)
         {
-            const double scroll = state->samplesToScroll;
-            const uint64_t oldOffset = state->sampleOffset;
-            const double maxOffset =
-                std::max(0.0, state->document.getFrameCount() - getWidth() * state->samplesPerPixel);
-
-            if (scroll < 0)
-            {
-                const double absScroll = -scroll;
-                state->sampleOffset = (state->sampleOffset > absScroll)
-                                    ? state->sampleOffset - absScroll
-                                    : 0;
-            }
-            else
-            {
-                state->sampleOffset = std::min(state->sampleOffset + scroll, maxOffset);
-            }
-
-            snapSampleOffset(state);
-
-            if (oldOffset != state->sampleOffset)
-            {
-                state->componentUnderMouse = nullptr;
-                for (auto* wf : state->waveforms)
-                {
-                    wf->updateSamplePoints();
-                }
-            }
+            return;
         }
 
+        const double samplesToScroll = state->samplesToScroll < 0.0 ? std::min(-1.0, state->samplesToScroll) : std::max(1.0, state->samplesToScroll);
+        const size_t oldOffset = state->sampleOffset;
+
+        updateSampleOffset(state, state->sampleOffset + samplesToScroll);
+
+        if (oldOffset != state->sampleOffset)
+        {
+            state->componentUnderMouse = nullptr;
+            for (auto* wf : state->waveforms)
+            {
+                wf->updateSamplePoints();
+            }
+        }
     }
 
 private:
-    int channelHeight()
+    uint16_t channelHeight() const
     {
-        int numChannels = static_cast<int>(state->waveforms.size());
+        const size_t numChannels = state->waveforms.size();
         return numChannels > 0 ? getHeight() / numChannels : getHeight();
     }
 
-    int channelAt(int y)
+    uint8_t channelAt(const uint16_t y) const
     {
         int ch = y / channelHeight();
         int maxCh = static_cast<int>(state->waveforms.size()) - 1;
@@ -235,52 +239,19 @@ private:
         }
     }
 
-    void handleScroll(int32_t mouseX, int32_t mouseY)
+    void handleScroll(const int32_t mouseX, const int32_t mouseY)
     {
-        const auto samplesPerPixel = state->samplesPerPixel;
-        const auto oldSampleOffset = state->sampleOffset;
-        auto sampleOffset = state->sampleOffset;
-
         if (mouseX > getWidth() || mouseX < 0)
         {
+            const auto samplesPerPixel = state->samplesPerPixel;
             auto diff = (mouseX < 0) ? mouseX : mouseX - getWidth();
             auto samplesToScroll = diff * samplesPerPixel;
-
-            if (samplesToScroll < 0)
-            {
-                double absScroll = -samplesToScroll;
-                state->sampleOffset = (state->sampleOffset > absScroll)
-                    ? state->sampleOffset - absScroll
-                    : 0;
-            }
-            else
-            {
-                state->sampleOffset += samplesToScroll;
-            }
-
-            sampleOffset = state->sampleOffset;
             state->samplesToScroll = samplesToScroll;
         }
         else
         {
             state->samplesToScroll = 0;
         }
-
-        const auto samplePos = getSamplePosForMouseX(mouseX, samplesPerPixel, sampleOffset, state->document.getFrameCount());
-        state->selection.setValue2(samplePos);
-
-        if (state->sampleOffset != oldSampleOffset)
-        {
-            const double maxOffset = std::max(0.0, state->document.getFrameCount() - getWidth() * state->samplesPerPixel);
-
-            state->sampleOffset = std::min(maxOffset, state->sampleOffset);
-            
-            for (auto* wf : state->waveforms)
-            {
-                wf->updateSamplePoints();
-            }
-        }
     }
-
 };
 

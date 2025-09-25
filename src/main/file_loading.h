@@ -48,5 +48,7 @@ static void loadSampleData(CupuacuState* state)
             state->document.channels[ch][i] = interleaved[i * channels + ch];
         }
     }
+
+    state->selection.setHighest(state->document.getFrameCount());
 }
 
