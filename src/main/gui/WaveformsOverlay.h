@@ -112,11 +112,11 @@ public:
             if (channel >= 0 && channel < (int)state->waveforms.size())
             {
                 auto* wf = state->waveforms[channel];
-                const auto samplePos =
-                    getSamplePosForMouseX(mouseX, state->samplesPerPixel, state->sampleOffset, state->document.getFrameCount());
-                if (wf->samplePosUnderCursor != (int64_t)samplePos)
+                const size_t sampleIndex = static_cast<size_t>(mouseX * state->samplesPerPixel) + state->sampleOffset;
+                printf("sampleIndex: %zu\n", sampleIndex);
+                if (wf->samplePosUnderCursor != (int64_t)sampleIndex)
                 {
-                    wf->samplePosUnderCursor = (int64_t)samplePos;
+                    wf->samplePosUnderCursor = (int64_t)sampleIndex;
                     wf->setDirtyRecursive();
                 }
 
@@ -184,8 +184,8 @@ public:
         {
             const double scroll = state->samplesToScroll;
             const uint64_t oldOffset = state->sampleOffset;
-            const double maxOffset =
-                std::max(0.0, state->document.getFrameCount() - getWidth() * state->samplesPerPixel);
+            const uint64_t visibleSampleCount = static_cast<uint64_t>(getWidth() * state->samplesPerPixel);
+            const uint64_t maxOffset = state->document.getFrameCount() - visibleSampleCount;
 
             if (scroll < 0)
             {
@@ -196,7 +196,7 @@ public:
             }
             else
             {
-                state->sampleOffset = std::min(state->sampleOffset + scroll, maxOffset);
+                state->sampleOffset = std::min(static_cast<uint64_t>(state->sampleOffset + scroll), maxOffset);
             }
 
             printf("WaveformsOverlay::timerCallback new sampleOffset: %llu\n", state->sampleOffset);
@@ -266,13 +266,14 @@ private:
             state->samplesToScroll = 0;
         }
 
+        const uint64_t visibleSampleCount = static_cast<uint64_t>(getWidth() * state->samplesPerPixel);
+        const uint64_t maxOffset = state->document.getFrameCount() - visibleSampleCount;
+
         const auto samplePos = getSamplePosForMouseX(mouseX, samplesPerPixel, sampleOffset, state->document.getFrameCount());
         state->selection.setValue2(samplePos);
 
         if (state->sampleOffset != oldSampleOffset)
         {
-            const uint64_t maxOffset = std::max(0.0, state->document.getFrameCount() - getWidth() * state->samplesPerPixel);
-
             state->sampleOffset = std::min(maxOffset, state->sampleOffset);
 
             printf("WaveformsOverlay::handleScroll new sampleOffset: %llu\n", state->sampleOffset);

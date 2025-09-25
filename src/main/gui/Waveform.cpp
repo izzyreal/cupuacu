@@ -57,6 +57,7 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
     const auto &sampleData = state->document.channels[channelIndex];
     const auto pixelScale = state->pixelScale;
     const auto verticalZoom = state->verticalZoom;
+    const float halfSampleWidth = 0.5f / samplesPerPixel;
 
     const uint64_t neededInputSamples = static_cast<uint64_t>(std::ceil((getWidth() + 1) * samplesPerPixel));
     const uint64_t availableSamples = static_cast<uint64_t>(sampleData.size()) - sampleOffset;
@@ -71,7 +72,7 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
 
     for (int i = 0; i < actualInputSamples; ++i)
     {
-        x[i] = i / samplesPerPixel;
+        x[i] = (i / samplesPerPixel) + halfSampleWidth;
     }
 
     std::vector<std::unique_ptr<SamplePoint>> result;
@@ -85,7 +86,7 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
         auto samplePoint = std::make_unique<SamplePoint>(state, channelIndex, sampleOffset + i);
         samplePoint->setBounds(std::max(0, xPos - (samplePointSize / 2)),
                                yPos - (samplePointSize / 2),
-                               i == 0 ? samplePointSize / 2 : samplePointSize, samplePointSize);
+                               samplePointSize, samplePointSize);
         result.push_back(std::move(samplePoint));
     }
 
@@ -117,6 +118,7 @@ void Waveform::renderSmoothWaveform(SDL_Renderer* renderer)
     SDL_SetRenderDrawColor(renderer, 0, 185, 0, 255);
 
     const auto samplesPerPixel = state->samplesPerPixel;
+    const double halfSampleWidth = 0.5 / samplesPerPixel;
     const uint64_t sampleOffset = state->sampleOffset;
     const auto &sampleData = state->document.channels[channelIndex];
     const auto verticalZoom = state->verticalZoom;
@@ -139,7 +141,7 @@ void Waveform::renderSmoothWaveform(SDL_Renderer* renderer)
 
     for (int i = 0; i < actualInputSamples; ++i)
     {
-        x[i] = i / samplesPerPixel;
+        x[i] = (i / samplesPerPixel) + halfSampleWidth;
         y[i] = static_cast<double>(sampleData[sampleOffset + i]);
     }
 
@@ -286,18 +288,12 @@ void Waveform::drawSelection(SDL_Renderer *renderer)
                             channelIndex <= state->selectionChannelEnd;
 
     auto firstSample = static_cast<double>(state->selection.getStartInt());
-    auto lastSample = static_cast<double>(state->selection.getEndInt());
+    auto lastSample = static_cast<double>(state->selection.getEndInt() + 1);
 
     const size_t sampleOffset = state->sampleOffset;
 
     if (isSelected && lastSample >= sampleOffset)
     {
-        if (shouldShowSamplePoints(samplesPerPixel, state->pixelScale))
-        {
-            firstSample -= 0.5f;
-            lastSample -= 0.5f;
-        }
-
         const float startX = firstSample <= sampleOffset ? 0 : (firstSample - sampleOffset) / samplesPerPixel;
         const float endX = (lastSample - sampleOffset) / samplesPerPixel;
 
@@ -337,8 +333,7 @@ void Waveform::drawHighlight(SDL_Renderer *renderer)
 
         if (sampleIndex < sampleData.size())
         {
-            const float xPos = Waveform::sampleIndexToXPosition(
-                static_cast<float>(sampleIndex), sampleOffset, samplesPerPixel, true);
+            const float xPos = (sampleIndex - sampleOffset) / state->samplesPerPixel;
             const float sampleWidth = 1.0f / samplesPerPixel;
 
             SDL_SetRenderDrawColor(renderer, 0, 128, 255, 100);

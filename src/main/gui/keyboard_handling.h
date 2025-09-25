@@ -100,13 +100,16 @@ static void handleKeyDown(
     }
     else if (event->key.scancode == SDL_SCANCODE_RIGHT)
     {
-        const double maxOffset = std::max(0.0, state->document.getFrameCount() - waveformWidth * state->samplesPerPixel);
+        const uint64_t visibleSampleCount = static_cast<uint64_t>(waveformWidth * state->samplesPerPixel);
+        const uint64_t maxOffset = state->document.getFrameCount() - visibleSampleCount;
+
         if (state->sampleOffset >= maxOffset)
         {
             return;
         }
 
         state->sampleOffset += std::max(state->samplesPerPixel, 1.0) * multiplier;
+        state->sampleOffset = std::min(maxOffset, state->sampleOffset);
         resetSampleValueUnderMouseCursor(state);
 
         for (auto w : state->waveforms)
