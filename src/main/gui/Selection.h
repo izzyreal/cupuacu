@@ -36,20 +36,16 @@ public:
         return (value1 < value2) ? value2 : value1;
     }
 
-    void startSelection(const T initialValue)
-    {
-        value1 = std::clamp(initialValue, lowest, highest);
-        value2 = std::clamp(initialValue, lowest, highest);
-    }
-
     void setValue1(const T v)
     {
-        value1 = std::clamp(v, lowest, highest);
+        value1 = std::clamp(std::round(v), lowest, highest);
+        printf("Setting value1 at %f\n", value1);
     }
 
     void setValue2(const T v)
     {
         value2 = std::clamp(v, lowest, highest);
+        printf("Setting value2 at %f\n", value2);
     }
 
     int64_t getStartInt() const
@@ -61,13 +57,10 @@ public:
     {
         if (value2 < value1)
         {
-            //printf("value1 is the end and it is %f\n", value1);
-            return static_cast<int64_t>(std::round(value1));
+            return static_cast<int64_t>(std::round(value1 - 1));
         }
 
-        //printf("value2 is the end and it is %f\n", value2);
-
-        return static_cast<int64_t>(std::round(value2));
+        return static_cast<int64_t>(std::round(value2 - 1));
     }
 
     int64_t getLengthInt() const
@@ -90,7 +83,6 @@ public:
     {
         return value1 != std::numeric_limits<T>::max() &&
                value2 != std::numeric_limits<T>::max() &&
-               getLengthInt() > 0 &&
-               value1 != value2;
+               getLengthInt() > 0;
     }
 };

@@ -316,6 +316,7 @@ void Waveform::drawSelection(SDL_Renderer *renderer)
 
 void Waveform::drawHighlight(SDL_Renderer *renderer)
 {
+    return;
     if (const auto waveformsOverlay = dynamic_cast<WaveformsOverlay*>(state->capturingComponent); waveformsOverlay != nullptr)
     {
         return;

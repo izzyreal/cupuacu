@@ -61,7 +61,8 @@ static bool tryZoomOutHorizontally(CupuacuState *state)
 
     const auto newSampleOffset = centerSampleIndex - ((waveformWidth / 2.0 + 0.5) * state->samplesPerPixel);
 
-    state->sampleOffset = newSampleOffset;
+    updateSampleOffset(state, newSampleOffset);
+
     resetSampleValueUnderMouseCursor(state);
 
     for (auto w : state->waveforms)

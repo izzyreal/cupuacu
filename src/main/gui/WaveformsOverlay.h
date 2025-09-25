@@ -224,11 +224,9 @@ private:
 
     void handleScroll(int32_t mouseX, int32_t mouseY)
     {
-        const auto samplesPerPixel = state->samplesPerPixel;
-        const size_t oldSampleOffset = state->sampleOffset;
-
         if (mouseX > getWidth() || mouseX < 0)
         {
+            const auto samplesPerPixel = state->samplesPerPixel;
             auto diff = (mouseX < 0) ? mouseX : mouseX - getWidth();
             auto samplesToScroll = diff * samplesPerPixel;
             state->samplesToScroll = samplesToScroll;
@@ -236,17 +234,6 @@ private:
         else
         {
             state->samplesToScroll = 0;
-        }
-
-        const auto samplePos = getSamplePosForMouseX(mouseX, samplesPerPixel, state->sampleOffset, state->document.getFrameCount());
-        state->selection.setValue2(samplePos);
-
-        if (state->sampleOffset != oldSampleOffset)
-        {
-            for (auto* wf : state->waveforms)
-            {
-                wf->updateSamplePoints();
-            }
         }
     }
 

@@ -49,6 +49,6 @@ static void loadSampleData(CupuacuState* state)
         }
     }
 
-    state->selection.setHighest(state->document.getFrameCount() - 1);
+    state->selection.setHighest(state->document.getFrameCount());
 }
 
