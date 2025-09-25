@@ -1,5 +1,7 @@
 #pragma once
 
+#include <SDL3/SDL.h>
+
 #include "gui/Selection.h"
 
 #include <cstdint>
@@ -56,7 +58,10 @@ struct CupuacuState {
 
     std::shared_ptr<CustomDataSource> activePlayback;
 
-    SDL_Window *window = nullptr;
+    SDL_Window *window = NULL;
+    SDL_Renderer *renderer = NULL;
+    SDL_Texture *canvas = NULL;
+    SDL_Texture *textTexture = NULL;
 
     int32_t mouseX = 0;
     int32_t mouseY = 0;
@@ -64,6 +69,11 @@ struct CupuacuState {
     Component *componentUnderMouse = nullptr;
 
     std::vector<Waveform*> waveforms;
+    std::unique_ptr<Component> rootComponent;
+    Component *backgroundComponentHandle;
+    Component *menuBarHandle;
+    Component *statusBarHandle;
+    Component *waveformsOverlayHandle;
 
     std::function<void()> hideSubMenus = []{};
 
