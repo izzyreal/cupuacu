@@ -92,6 +92,13 @@ static void handleKeyDown(
         }
 
         state->sampleOffset -= std::max(state->samplesPerPixel, 1.0) * multiplier;
+        resetSampleValueUnderMouseCursor(state);
+
+        for (auto w : state->waveforms)
+        {
+            w->clearHighlight();
+        }
+        
         snapSampleOffset(state);
         updateWaveforms(state);
     }
@@ -104,6 +111,13 @@ static void handleKeyDown(
         }
 
         state->sampleOffset += std::max(state->samplesPerPixel, 1.0) * multiplier;
+        resetSampleValueUnderMouseCursor(state);
+
+        for (auto w : state->waveforms)
+        {
+            w->clearHighlight();
+        }
+        
         snapSampleOffset(state);
         updateWaveforms(state);
     }

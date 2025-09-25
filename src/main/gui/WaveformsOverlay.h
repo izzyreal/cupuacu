@@ -18,6 +18,26 @@ public:
         return Waveform::xPositionToSampleIndex(xToUse, sampleOffset, samplesPerPixel, samplesPerPixel < 1.f, frameCount);
     }
 
+    static size_t getValidSampleIndexUnderMouseCursor(const int32_t mouseX,
+                                                 const double samplesPerPixel,
+                                                 const double sampleOffset,
+                                                 const size_t frameCount)
+    {
+        auto floatResult = getSamplePosForMouseX(mouseX, samplesPerPixel, sampleOffset, frameCount);
+        
+        if (floatResult >= frameCount)
+        {
+            floatResult = frameCount - 1;
+        }
+
+        return std::max(0.f, floatResult);
+    }
+
+    void mouseLeave() override
+    {
+        resetSampleValueUnderMouseCursor(state);
+    }
+
     bool mouseLeftButtonDown(const uint8_t numClicks,
                              const int32_t mouseX,
                              const int32_t mouseY) override
@@ -112,18 +132,23 @@ public:
             }
         }
 
+        const int channel = channelAt(mouseY);
+        const size_t sampleIndex = getValidSampleIndexUnderMouseCursor(mouseX, state->samplesPerPixel, state->sampleOffset, state->document.getFrameCount());
+
+        const float sampleValueUnderMouseCursor = state->document.channels[channel][sampleIndex];
+
+        state->sampleValueUnderMouseCursor = sampleValueUnderMouseCursor;
+
         if (state->capturingComponent != this || !leftButtonIsDown)
         {
             return false;
         }
 
         handleScroll(mouseX, mouseY);
-        const double samplePos = state->sampleOffset + mouseX * state->samplesPerPixel;
         
-        //const auto samplePos = getSamplePosForMouseX(mouseX, state->samplesPerPixel, state->sampleOffset, state->document.getFrameCount()); 
+        const double samplePos = state->sampleOffset + mouseX * state->samplesPerPixel;
         state->selection.setValue2(samplePos);
 
-        int channel = channelAt(mouseY);
         state->selectionChannelStart = std::min(state->selectionAnchorChannel, channel);
         state->selectionChannelEnd   = std::max(state->selectionAnchorChannel, channel);
 
@@ -142,7 +167,6 @@ public:
             return true;
         }
 
-        //const auto samplePos = getSamplePosForMouseX(mouseX, state->samplesPerPixel, state->sampleOffset, state->document.getFrameCount()); 
         const double samplePos = state->sampleOffset + mouseX * state->samplesPerPixel;
 
         state->selection.setValue2(samplePos);

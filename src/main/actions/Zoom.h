@@ -24,6 +24,13 @@ static void resetZoom(CupuacuState *state)
 
     state->verticalZoom = INITIAL_VERTICAL_ZOOM;
 
+    resetSampleValueUnderMouseCursor(state);
+
+    for (auto w : state->waveforms)
+    {
+        w->clearHighlight();
+    }
+
     state->sampleOffset = 0;
 }
 
@@ -39,6 +46,13 @@ static bool tryZoomInHorizontally(CupuacuState *state)
     if (state->samplesPerPixel <= 0.02)
     {
         state->samplesPerPixel = 0.02;
+    }
+
+    resetSampleValueUnderMouseCursor(state);
+
+    for (auto w : state->waveforms)
+    {
+        w->clearHighlight();
     }
 
     snapSampleOffset(state);
@@ -62,6 +76,13 @@ static bool tryZoomOutHorizontally(CupuacuState *state)
     const auto newSampleOffset = centerSampleIndex - ((waveformWidth / 2.0 + 0.5) * state->samplesPerPixel);
 
     state->sampleOffset = newSampleOffset;
+    resetSampleValueUnderMouseCursor(state);
+
+    for (auto w : state->waveforms)
+    {
+        w->clearHighlight();
+    }
+    
     snapSampleOffset(state);
     return true;
 }

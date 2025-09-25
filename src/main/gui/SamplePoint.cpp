@@ -81,6 +81,7 @@ bool SamplePoint::mouseMove(const int32_t mouseX, const int32_t mouseY, const fl
     // Update the sample point's position and sample value
     setYPos(dragYPos);
     state->document.channels[channelIndex][sampleIndex] = newSampleValue;
+    state->sampleValueUnderMouseCursor = newSampleValue;
     getParent()->setDirtyRecursive();
 
     return true;

@@ -5,6 +5,7 @@
 #include "gui/Selection.h"
 
 #include <cstdint>
+#include <limits>
 #include <vector>
 #include <string>
 #include <functional>
@@ -52,6 +53,7 @@ struct CupuacuState {
     int selectionChannelEnd   = -1;
     int selectionAnchorChannel;
     double samplesToScroll;
+    float sampleValueUnderMouseCursor;
 
     std::atomic<double> playbackPosition = 0;
     std::atomic<bool> isPlaying = false;
@@ -76,6 +78,11 @@ struct CupuacuState {
     std::function<void()> hideSubMenus = []{};
 
 };
+
+static void resetSampleValueUnderMouseCursor(CupuacuState *state)
+{
+    state->sampleValueUnderMouseCursor = std::numeric_limits<float>::lowest(); 
+}
 
 static void resetWaveformState(CupuacuState *state)
 {

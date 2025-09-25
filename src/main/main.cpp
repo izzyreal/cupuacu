@@ -30,6 +30,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     CupuacuState *state = new CupuacuState();
 
     resetWaveformState(state);
+    resetSampleValueUnderMouseCursor(state);
 
     *appstate = state;
 

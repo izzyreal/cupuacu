@@ -1,15 +1,12 @@
 #pragma once
 
 #include "Component.h"
-#include "Waveform.h"
-#include "WaveformsOverlay.h"
 #include "LabeledField.h"
 #include "../CupuacuState.h"
-#include "SamplePoint.h"
 
 #include <SDL3/SDL.h>
+#include <limits>
 #include <string>
-#include <cmath>
 
 class StatusBar : public Component {
 private:
@@ -23,6 +20,7 @@ private:
     int lastSelectionStart = -1;
     int lastSelectionEnd = -1;
     bool lastSelectionActive = false;
+    float lastSampleValueUnderMouseCursor = std::numeric_limits<float>::max();
 
 public:
     StatusBar(CupuacuState* stateToUse)
@@ -63,6 +61,20 @@ public:
         {
             lastPlaybackPosition = currentPlaybackPosition;
             posField->setValue(std::to_string(currentPlaybackPosition));
+        }
+
+        if (lastSampleValueUnderMouseCursor != state->sampleValueUnderMouseCursor)
+        {
+            lastSampleValueUnderMouseCursor = state->sampleValueUnderMouseCursor;
+
+            if (state->sampleValueUnderMouseCursor == std::numeric_limits<float>::lowest())
+            {
+                valueField->setValue("");
+            }
+            else
+            {
+                valueField->setValue(std::to_string(state->sampleValueUnderMouseCursor));
+            }
         }
 
         const bool currentSelectionActive = state->selection.isActive();
