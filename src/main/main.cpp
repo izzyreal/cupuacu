@@ -38,20 +38,11 @@ Component *waveformsOverlayHandle;
 const std::function<void(CupuacuState*)> renderCanvasToWindow = [](CupuacuState *state)
 {
     SDL_SetRenderTarget(renderer, NULL);
-
-    SDL_FPoint currentCanvasDimensions;
-    SDL_GetTextureSize(canvas, &currentCanvasDimensions.x, &currentCanvasDimensions.y);
-    SDL_FRect dstRect;
-    dstRect.x = 0;
-    dstRect.y = 0;
-    dstRect.w = currentCanvasDimensions.x * state->pixelScale;
-    dstRect.h = currentCanvasDimensions.y * state->pixelScale;
-
-    SDL_RenderTexture(renderer, canvas, NULL, &dstRect);
+    SDL_RenderTexture(renderer, canvas, NULL, NULL);
     SDL_RenderPresent(renderer);
 };
 
-SDL_Point computeDesiredCanvasDimensions(const uint8_t pixelScale)
+SDL_Point computeRequiredCanvasDimensions(const uint8_t pixelScale)
 {
     SDL_Point result;
 
@@ -126,11 +117,20 @@ SDL_Rect getStatusBarRect(const uint16_t canvasWidth,
 
 void rebuildComponentTree(CupuacuState *state, bool initializeComponents = false)
 {
-    const SDL_Point newCanvasDimensions = computeDesiredCanvasDimensions(state->pixelScale);
-    createCanvas(newCanvasDimensions);
+    float currentCanvasW, currentCanvasH;
+    SDL_GetTextureSize(canvas, &currentCanvasW, &currentCanvasH);
 
-    SDL_FPoint actualCanvasDimensions;
-    SDL_GetTextureSize(canvas, &actualCanvasDimensions.x, &actualCanvasDimensions.y);
+    const SDL_Point requiredCanvasDimensions = computeRequiredCanvasDimensions(state->pixelScale);
+
+    if (requiredCanvasDimensions.x == (int) currentCanvasW &&
+        requiredCanvasDimensions.y == (int) currentCanvasH)
+    {
+        return;
+    }
+
+    createCanvas(requiredCanvasDimensions);
+
+    const int newCanvasW = requiredCanvasDimensions.x, newCanvasH = requiredCanvasDimensions.y;
 
     if (initializeComponents)
     {
@@ -139,24 +139,24 @@ void rebuildComponentTree(CupuacuState *state, bool initializeComponents = false
         backgroundComponentHandle = rootComponent->addChildAndSetDirty(backgroundComponent);
     }
 
-    rootComponent->setSize(actualCanvasDimensions.x, actualCanvasDimensions.y);
-    backgroundComponentHandle->setSize(actualCanvasDimensions.x, actualCanvasDimensions.y);
+    rootComponent->setSize(newCanvasW, newCanvasH);
+    backgroundComponentHandle->setSize(newCanvasW, newCanvasH);
 
     const SDL_Rect menuBarRect = getMenuBarRect(
-        actualCanvasDimensions.x,
-        actualCanvasDimensions.y,
+        newCanvasW,
+        newCanvasH,
         state->pixelScale,
         state->menuFontSize);
 
     const SDL_Rect waveformRect = getWaveformRect(
-        actualCanvasDimensions.x,
-        actualCanvasDimensions.y,
+        newCanvasW,
+        newCanvasH,
         state->pixelScale,
         menuBarRect.h);
 
     const SDL_Rect statusBarRect = getStatusBarRect(
-        actualCanvasDimensions.x,
-        actualCanvasDimensions.y,
+        newCanvasW,
+        newCanvasH,
         state->pixelScale,
         state->menuFontSize);
 
@@ -349,20 +349,11 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                     break;
                 }
 
-                SDL_FPoint currentCanvasDimensions;
-                SDL_GetTextureSize(canvas, &currentCanvasDimensions.x, &currentCanvasDimensions.y);
-                const SDL_Point newCanvasDimensions = computeDesiredCanvasDimensions(state->pixelScale);
-
-                if (static_cast<uint16_t>(currentCanvasDimensions.x) != newCanvasDimensions.x ||
-                    static_cast<uint16_t>(currentCanvasDimensions.y) != newCanvasDimensions.y)
-                {
-                    rebuildComponentTree(state);
-                }
+                rebuildComponentTree(state);
                 break;
             }
         case SDL_EVENT_WINDOW_MOUSE_LEAVE:
             {
-                // Clear highlight for all Waveform components when mouse leaves the window
                 if (state->capturingComponent == nullptr && !state->selection.isActive())
                 {
                     for (auto* waveform : state->waveforms)
@@ -394,17 +385,16 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                     e.motion.x *= canvasDimensions.x / winDimensions.x;
                     e.motion.xrel *= canvasDimensions.x / winDimensions.x;
                     e.motion.y *= canvasDimensions.y / winDimensions.y;
-                    e.motion.yrel *= (canvasDimensions.y / winDimensions.y);
+                    e.motion.yrel *= canvasDimensions.y / winDimensions.y;
                     state->mouseX = e.motion.x;
                     state->mouseY = e.motion.y;
                 }
                 else
                 {
-                    e.button.x *= canvasDimensions.x / winDimensions.x;
-                    e.button.y *= canvasDimensions.y / winDimensions.y;
+                    e.button.x *= (float)canvasDimensions.x / winDimensions.x;
+                    e.button.y *= (float)canvasDimensions.y / winDimensions.y;
                 }
 
-                // If a component is capturing (e.g., dragging), send button up/down events to it
                 if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP)
                 {
                     if (e.type == SDL_EVENT_MOUSE_BUTTON_UP)
@@ -441,13 +431,12 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                         
                         if (e.type == SDL_EVENT_MOUSE_BUTTON_UP)
                         {
-                            state->capturingComponent = nullptr; // Clear after handling
+                            state->capturingComponent = nullptr;
                         }
                         break;
                     }
                 }
 
-                // Otherwise, send events to the component under the mouse
                 rootComponent->handleEvent(e);
 
                 if (e.type == SDL_EVENT_MOUSE_MOTION && state->capturingComponent == nullptr)
@@ -483,3 +472,4 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
     SDL_DestroyWindow(window);
     SDL_Quit();
 }
+
