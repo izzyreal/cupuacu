@@ -23,9 +23,6 @@ private:
     int lastSelectionStart = -1;
     int lastSelectionEnd = -1;
     bool lastSelectionActive = false;
-    float lastSampleValue = -std::numeric_limits<float>::infinity();
-    double lastSamplesPerPixel = -1.0;
-    double lastSampleOffset = -1.0;
 
 public:
     StatusBar(CupuacuState* stateToUse)
@@ -56,79 +53,56 @@ public:
         SDL_SetRenderDrawColor(renderer, 30, 30, 30, 255);
         SDL_FRect r{ 0, 0, (float)getWidth(), (float)getHeight() };
         SDL_RenderFillRect(renderer, &r);
-
-        posField->setValue(std::to_string((int)state->playbackPosition.load()));
-
-        if (state->selection.isActive())
-        {
-            startField->setValue(std::to_string(state->selection.getStartInt()));
-            endField->setValue(std::to_string(state->selection.getEndInt()));
-            lengthField->setValue(std::to_string(state->selection.getLengthInt()));
-        }
-        else
-        {
-            startField->setValue("");
-            endField->setValue("");
-            lengthField->setValue("");
-        }
-
-        if (lastSampleValue == -1)
-        {
-            valueField->setValue("");
-        }
-        else
-        {
-            char buffer[16];
-            snprintf(buffer, sizeof(buffer), "%.5f", lastSampleValue);
-            valueField->setValue(buffer);
-        }
     }
 
     void timerCallback() override
     {
-        bool needsRedraw = false;
+        const int currentPlaybackPosition = (int)state->playbackPosition.load();
 
-        int currentPlaybackPosition = (int)state->playbackPosition.load();
         if (currentPlaybackPosition != lastPlaybackPosition)
         {
             lastPlaybackPosition = currentPlaybackPosition;
-            needsRedraw = true;
+            posField->setValue(std::to_string(currentPlaybackPosition));
         }
 
-        bool currentSelectionActive = state->selection.isActive();
-        if (currentSelectionActive != lastSelectionActive ||
-            (currentSelectionActive && 
-             (state->selection.getStartInt() != lastSelectionStart ||
-              state->selection.getEndInt() != lastSelectionEnd)))
+        const bool currentSelectionActive = state->selection.isActive();
+        const int currentSelectionStart = state->selection.getStartInt();
+        const int currentSelectionEnd = state->selection.getEndInt();
+
+        if (currentSelectionActive != lastSelectionActive)
         {
             lastSelectionActive = currentSelectionActive;
+            lastSelectionStart = currentSelectionStart;
+            lastSelectionEnd = currentSelectionEnd;
+
             if (currentSelectionActive)
             {
-                lastSelectionStart = state->selection.getStartInt();
-                lastSelectionEnd = state->selection.getEndInt();
+                startField->setValue(std::to_string(state->selection.getStartInt()));
+                endField->setValue(std::to_string(state->selection.getEndInt()));
+                lengthField->setValue(std::to_string(state->selection.getLengthInt()));
             }
             else
             {
-                lastSelectionStart = -1;
-                lastSelectionEnd = -1;
+                startField->setValue("");
+                endField->setValue("");
+                lengthField->setValue("");
             }
-            needsRedraw = true;
         }
-
-        float currentSampleValue = lastSampleValue;
-        if (currentSampleValue != lastSampleValue ||
-            state->samplesPerPixel != lastSamplesPerPixel ||
-            state->sampleOffset != lastSampleOffset)
+        else if (currentSelectionActive)
         {
-            lastSampleValue = currentSampleValue;
-            lastSamplesPerPixel = state->samplesPerPixel;
-            lastSampleOffset = state->sampleOffset;
-            needsRedraw = true;
-        }
+            if (currentSelectionStart != lastSelectionStart)
+            {
+                lastSelectionStart = currentSelectionStart;
+                startField->setValue(std::to_string(state->selection.getStartInt()));
+                lengthField->setValue(std::to_string(state->selection.getLengthInt()));
+            }
 
-        if (needsRedraw)
-        {
-            setDirtyRecursive();
+            if (currentSelectionEnd != lastSelectionEnd)
+            {
+                lastSelectionEnd = currentSelectionEnd;
+                endField->setValue(std::to_string(state->selection.getEndInt()));
+                lengthField->setValue(std::to_string(state->selection.getLengthInt()));
+            }
         }
     }
 };

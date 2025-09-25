@@ -28,6 +28,10 @@ public:
 
     void onDraw(SDL_Renderer* renderer) override
     {
+        SDL_SetRenderDrawColor(renderer, 30, 30, 30, 255);
+        SDL_FRect r{ 0, 0, (float)getWidth(), (float)getHeight() };
+        SDL_RenderFillRect(renderer, &r);
+
         const uint8_t fontPointSize = state->menuFontSize / state->pixelScale;
         std::string displayText = label + ": " + value;
         renderText(renderer, displayText, fontPointSize);
