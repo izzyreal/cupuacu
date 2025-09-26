@@ -38,10 +38,10 @@ AddDependency(Catch2 "https://github.com/catchorg/Catch2.git" "v3.8.1")
 add_executable(Cupuacu
     src/main/main.cpp
     src/main/CupuacuState.cpp
+    src/main/gui/Gui.cpp
     src/main/gui/Waveform.cpp
     src/main/gui/SamplePoint.cpp
     src/main/actions/Play.cpp
-    src/main/Gui.cpp
 )
 
 add_executable(cupuacu-tests

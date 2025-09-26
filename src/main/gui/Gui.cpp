@@ -1,11 +1,11 @@
 #include "Gui.h"
 
-#include "CupuacuState.h"
+#include "../CupuacuState.h"
 
-#include "gui/MenuBar.h"
-#include "gui/StatusBar.h"
-#include "gui/WaveformsOverlay.h"
-#include "gui/OpaqueRect.h"
+#include "MenuBar.h"
+#include "StatusBar.h"
+#include "WaveformsOverlay.h"
+#include "OpaqueRect.h"
 
 #include <cmath>
 

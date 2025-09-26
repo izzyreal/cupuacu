@@ -3,7 +3,7 @@
 
 #include "../CupuacuState.h"
 #include "../file_loading.h"
-#include "../Gui.h"
+#include "../gui/Gui.h"
 #include "../gui/Waveform.h"
 #include "Zoom.h"
 

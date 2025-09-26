@@ -1,9 +1,9 @@
 #pragma once
 #include <SDL3/SDL.h>
-#include "CupuacuState.h"
+#include "../CupuacuState.h"
 #include "Gui.h"
-#include "gui/Component.h"
-#include "gui/keyboard_handling.h"
+#include "Component.h"
+#include "keyboard_handling.h"
 
 static bool wasMaximized = false;
 

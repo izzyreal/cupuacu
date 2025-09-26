@@ -4,10 +4,10 @@
 #include <SDL3/SDL_main.h>
 
 #include "CupuacuState.h"
-#include "EventHandling.h"
-#include "Gui.h"
+#include "gui/EventHandling.h"
+#include "gui/Gui.h"
 
-const uint16_t initialDimensions[] = { 1280, 420 };
+const uint16_t initialDimensions[] = { 1280, 720 };
 
 #include <cstdint>
 #include <string>
