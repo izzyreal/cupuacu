@@ -6,42 +6,20 @@
 #include <cassert>
 
 class WaveformsOverlay : public Component {
+private:
+    static size_t getValidSampleIndexUnderMouseCursor(const int32_t mouseX,
+                                                 const double samplesPerPixel,
+                                                 const size_t sampleOffset,
+                                                 const size_t frameCount)
+    {
+        assert(frameCount > 0);
+        const size_t sampleIndex = static_cast<size_t>(mouseX * samplesPerPixel) + sampleOffset;
+        return std::clamp(sampleIndex, size_t{0}, frameCount - 1);
+    }
+
 public:
     WaveformsOverlay(CupuacuState* stateToUse)
         : Component(stateToUse, "WaveformsOverlay") {}
-
-public:
-    static float getSamplePosForMouseX(const int32_t mouseX,
-                                         const double samplesPerPixel,
-                                         const uint64_t sampleOffset,
-                                         const size_t frameCount,
-                                         const uint8_t pixelScale) 
-    {
-        const float xToUse = mouseX <= 0 ? 0.f : static_cast<float>(mouseX);
-        float sampleIndex = (xToUse * samplesPerPixel) + sampleOffset;
-
-        if (Waveform::shouldShowSamplePoints(samplesPerPixel, pixelScale)) {
-            sampleIndex += 0.5f;
-        }
-        
-        return std::min((float)frameCount, sampleIndex);
-    }
-
-    static size_t getValidSampleIndexUnderMouseCursor(const int32_t mouseX,
-                                                 const double samplesPerPixel,
-                                                 const double sampleOffset,
-                                                 const size_t frameCount,
-                                                 const uint8_t pixelScale)
-    {
-        auto floatResult = getSamplePosForMouseX(mouseX, samplesPerPixel, sampleOffset, frameCount, pixelScale);
-        
-        if (floatResult >= frameCount)
-        {
-            floatResult = frameCount - 1;
-        }
-
-        return std::max(0.f, floatResult);
-    }
 
     void mouseLeave() override
     {
@@ -148,8 +126,7 @@ public:
         const size_t sampleIndex = getValidSampleIndexUnderMouseCursor(mouseX,
                                                                        state->samplesPerPixel,
                                                                        state->sampleOffset,
-                                                                       state->document.getFrameCount(),
-                                                                       state->pixelScale);
+                                                                       state->document.getFrameCount());
 
         const uint8_t channel = channelAt(mouseY);
         const float sampleValueUnderMouseCursor = state->document.channels[channel][sampleIndex];
