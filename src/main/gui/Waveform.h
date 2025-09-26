@@ -10,7 +10,7 @@ class Waveform : public Component {
 public:
     static bool shouldShowSamplePoints(const double samplesPerPixel, const uint8_t pixelScale);
 
-    static uint16_t getWaveformWidth(CupuacuState *state)
+    static uint16_t getWaveformWidth(const CupuacuState *state)
     {
         if (state->waveforms.empty())
         {

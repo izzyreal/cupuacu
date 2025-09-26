@@ -4,6 +4,12 @@
 #include "../CupuacuState.h"
 #include "../gui/Waveform.h"
 
+static double getMinSamplesPerPixel(const CupuacuState *state)
+{
+    const auto waveformWidth = Waveform::getWaveformWidth(state);
+    return 1.0 / waveformWidth;
+}
+
 static void resetZoom(CupuacuState *state)
 {
     const auto waveformWidth = Waveform::getWaveformWidth(state);
@@ -23,17 +29,14 @@ static void resetZoom(CupuacuState *state)
 
 static bool tryZoomInHorizontally(CupuacuState *state)
 {
-    if (state->samplesPerPixel <= 0.02)
+    const double minSamplesPerPixel = getMinSamplesPerPixel(state);
+
+    if (state->samplesPerPixel <= minSamplesPerPixel)
     {
         return false;
     }
 
-    state->samplesPerPixel /= 2.0;
-
-    if (state->samplesPerPixel <= 0.02)
-    {
-        state->samplesPerPixel = 0.02;
-    }
+    state->samplesPerPixel = std::max(state->samplesPerPixel / 2.0, minSamplesPerPixel);
 
     resetSampleValueUnderMouseCursor(state);
 
