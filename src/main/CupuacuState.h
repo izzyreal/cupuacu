@@ -34,7 +34,7 @@ struct CupuacuState {
         SampleFormat format = SampleFormat::Unknown;
         std::vector<std::vector<float>> channels;
 
-        size_t getFrameCount() const
+        int64_t getFrameCount() const
         {
             if (channels.empty())
             {
@@ -47,7 +47,7 @@ struct CupuacuState {
 
     double samplesPerPixel = 1;
     double verticalZoom;
-    size_t sampleOffset;
+    int64_t sampleOffset;
     Selection<double> selection = Selection<double>(0.0);
     std::optional<uint8_t> selectionChannelStart;
     std::optional<uint8_t> selectionChannelEnd;
@@ -55,7 +55,7 @@ struct CupuacuState {
     double samplesToScroll;
     std::optional<float> sampleValueUnderMouseCursor;
 
-    std::atomic<size_t> playbackPosition = 0;
+    std::atomic<int64_t> playbackPosition = 0;
     std::atomic<bool> isPlaying = false;
 
     std::shared_ptr<CustomDataSource> activePlayback;
@@ -97,10 +97,10 @@ static void resetWaveformState(CupuacuState *state)
     state->playbackPosition = 0;
 }
 
-size_t getMaxSampleOffset(const CupuacuState*);
+int64_t getMaxSampleOffset(const CupuacuState*);
 
-static void updateSampleOffset(CupuacuState *state, const size_t sampleOffset)
+static void updateSampleOffset(CupuacuState *state, const int64_t sampleOffset)
 {
-    state->sampleOffset = std::min(getMaxSampleOffset(state), sampleOffset);
+    state->sampleOffset = std::clamp(sampleOffset, int64_t{0}, getMaxSampleOffset(state));
 }
 

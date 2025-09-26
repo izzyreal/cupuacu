@@ -2,7 +2,7 @@
 
 #include "gui/MainView.h"
 
-size_t getMaxSampleOffset(const CupuacuState *state)
+int64_t getMaxSampleOffset(const CupuacuState *state)
 {
     if (state->mainView == nullptr ||
         state->document.getFrameCount() == 0)
@@ -10,8 +10,8 @@ size_t getMaxSampleOffset(const CupuacuState *state)
         return 0;
     }
 
-    const size_t visibleSampleCount = static_cast<size_t>(state->mainView->getWidth() * state->samplesPerPixel);
-    const size_t maxOffset = state->document.getFrameCount() - visibleSampleCount;
+    const int64_t visibleSampleCount = static_cast<int64_t>(state->mainView->getWidth() * state->samplesPerPixel);
+    const int64_t maxOffset = state->document.getFrameCount() - visibleSampleCount;
     return maxOffset;
 }
 

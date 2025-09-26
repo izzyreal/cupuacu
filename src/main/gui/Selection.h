@@ -45,17 +45,17 @@ public:
         value2 = std::clamp(v, lowest, highest);
     }
 
-    size_t getStartInt() const
+    int64_t getStartInt() const
     {
-        return static_cast<size_t>(std::round(getStart()));
+        return static_cast<int64_t>(std::round(getStart()));
     }
 
-    size_t getEndInt() const
+    int64_t getEndInt() const
     {
-        return static_cast<size_t>(std::round(getEnd() - 1));
+        return static_cast<int64_t>(std::round(getEnd() - 1));
     }
 
-    size_t getLengthInt() const
+    int64_t getLengthInt() const
     {
         return (getEndInt() - getStartInt()) + 1;
     }

@@ -74,7 +74,7 @@ static void handleKeyDown(
             return;
         }
 
-        const size_t oldSampleOffset = state->sampleOffset;
+        const int64_t oldSampleOffset = state->sampleOffset;
 
         updateSampleOffset(state, state->sampleOffset - std::max(state->samplesPerPixel, 1.0) * multiplier);
 
@@ -94,7 +94,7 @@ static void handleKeyDown(
     }
     else if (event->key.scancode == SDL_SCANCODE_RIGHT)
     {
-        const size_t oldSampleOffset = state->sampleOffset;
+        const int64_t oldSampleOffset = state->sampleOffset;
 
         updateSampleOffset(state, state->sampleOffset + std::max(state->samplesPerPixel, 1.0) * multiplier);
         

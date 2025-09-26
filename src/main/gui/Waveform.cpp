@@ -56,15 +56,14 @@ int getYPosForSampleValue(const float sampleValue,
 std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
 {
     const double samplesPerPixel = state->samplesPerPixel;
-    const size_t sampleOffset = state->sampleOffset;
-    const auto &sampleData = state->document.channels[channelIndex];
+    const int64_t sampleOffset = state->sampleOffset;
     const uint8_t pixelScale = state->pixelScale;
     const double verticalZoom = state->verticalZoom;
     const float halfSampleWidth = 0.5f / samplesPerPixel;
 
-    const size_t neededInputSamples = static_cast<size_t>(std::ceil((getWidth() + 1) * samplesPerPixel));
-    const size_t availableSamples = sampleData.size() - sampleOffset;
-    const size_t actualInputSamples = std::min(neededInputSamples, availableSamples);
+    const int64_t neededInputSamples = static_cast<int64_t>(std::ceil((getWidth() + 1) * samplesPerPixel));
+    const int64_t availableSamples = state->document.getFrameCount() - sampleOffset;
+    const int64_t actualInputSamples = std::min(neededInputSamples, availableSamples);
 
     if (actualInputSamples < 1)
     {
@@ -80,6 +79,8 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
 
     std::vector<std::unique_ptr<SamplePoint>> result;
     const uint16_t samplePointSize = getSamplePointSize(pixelScale);
+
+    const auto &sampleData = state->document.channels[channelIndex];
 
     for (int i = 0; i < actualInputSamples; ++i)
     {
@@ -123,17 +124,18 @@ void Waveform::renderSmoothWaveform(SDL_Renderer* renderer)
 
     const auto samplesPerPixel = state->samplesPerPixel;
     const double halfSampleWidth = 0.5 / samplesPerPixel;
-    const size_t sampleOffset = state->sampleOffset;
+    const int64_t sampleOffset = state->sampleOffset;
     const auto &sampleData = state->document.channels[channelIndex];
+    const auto frameCount = state->document.getFrameCount();
     const auto verticalZoom = state->verticalZoom;
     const auto widthToUse = getWidth();
     const auto heightToUse = getHeight();
     const auto samplePointSize = getSamplePointSize(state->pixelScale);
     const auto drawableHeight = heightToUse - samplePointSize;
 
-    const size_t neededInputSamples = static_cast<size_t>(std::ceil((widthToUse + 1) * samplesPerPixel));
-    const size_t availableSamples = sampleData.size() - sampleOffset;
-    const size_t actualInputSamples = std::min(neededInputSamples, availableSamples);
+    const int64_t neededInputSamples = static_cast<int64_t>(std::ceil((widthToUse + 1) * samplesPerPixel));
+    const int64_t availableSamples = frameCount - sampleOffset;
+    const int64_t actualInputSamples = std::min(neededInputSamples, availableSamples);
 
     if (actualInputSamples < 1)
     {
@@ -201,8 +203,8 @@ void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
     SDL_SetRenderDrawColor(renderer, 0, 185, 0, 255);
 
     const auto samplesPerPixel = state->samplesPerPixel;
-    const size_t sampleOffset = state->sampleOffset;
-    const auto &sampleData = state->document.channels[channelIndex];
+    const int64_t sampleOffset = state->sampleOffset;
+    const int64_t frameCount = state->document.getFrameCount();
     const auto verticalZoom = state->verticalZoom;
     const auto widthToUse = getWidth();
     const auto heightToUse = getHeight();
@@ -212,7 +214,7 @@ void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
 
     const float scale = verticalZoom * drawableHeight * 0.5f;
 
-    const uint64_t availableSamples = static_cast<uint64_t>(sampleData.size()) - sampleOffset;
+    const uint64_t availableSamples = static_cast<uint64_t>(frameCount) - sampleOffset;
     const uint64_t actualInputSamples = std::min(static_cast<uint64_t>(std::ceil((widthToUse + 1) * samplesPerPixel)), availableSamples);
     const int maxPixel = static_cast<int>(std::ceil(actualInputSamples / samplesPerPixel));
 
@@ -224,12 +226,14 @@ void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
     int prevY = 0;
     bool hasPrev = false;
 
+    const auto &sampleData = state->document.channels[channelIndex];
+
     for (int x = 0; x < std::min(static_cast<int64_t>(widthToUse), static_cast<int64_t>(maxPixel)); ++x)
     {
-        const size_t startSample = static_cast<size_t>(x * samplesPerPixel) + static_cast<size_t>(sampleOffset);
-        size_t endSample = std::min(static_cast<size_t>((x + 1) * samplesPerPixel) + static_cast<size_t>(sampleOffset), sampleData.size());
+        const int64_t startSample = static_cast<int64_t>(x * samplesPerPixel) + static_cast<int64_t>(sampleOffset);
+        int64_t endSample = std::min(static_cast<int64_t>((x + 1) * samplesPerPixel) + static_cast<int64_t>(sampleOffset), frameCount);
 
-        if (startSample >= sampleData.size())
+        if (startSample >= frameCount)
         {
             break;
         }
@@ -242,7 +246,7 @@ void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
         float minSample = std::numeric_limits<float>::max();
         float maxSample = std::numeric_limits<float>::lowest();
 
-        for (size_t i = startSample; i < endSample; ++i)
+        for (int64_t i = startSample; i < endSample; ++i)
         {
             const float s = sampleData[i];
             minSample = std::min(minSample, s);
@@ -294,7 +298,7 @@ void Waveform::drawSelection(SDL_Renderer *renderer)
     auto firstSample = static_cast<double>(state->selection.getStartInt());
     auto lastSample = static_cast<double>(state->selection.getEndInt() + 1);
 
-    const size_t sampleOffset = state->sampleOffset;
+    const int64_t sampleOffset = state->sampleOffset;
 
     if (isSelected && lastSample >= sampleOffset)
     {
@@ -330,12 +334,11 @@ void Waveform::drawHighlight(SDL_Renderer *renderer)
     if (shouldShowSamplePoints(samplesPerPixel, state->pixelScale) && samplePosUnderCursor.has_value())
     {
         const auto sampleOffset = state->sampleOffset;
-        const auto& sampleData = state->document.channels[channelIndex];
 
         const auto samplePoint = dynamic_cast<SamplePoint*>(state->capturingComponent);
-        const size_t sampleIndex = samplePoint == nullptr ? *samplePosUnderCursor : samplePoint->getSampleIndex();
+        const int64_t sampleIndex = samplePoint == nullptr ? *samplePosUnderCursor : samplePoint->getSampleIndex();
 
-        if (sampleIndex < sampleData.size())
+        if (sampleIndex < state->document.getFrameCount())
         {
             const float xPos = (sampleIndex - sampleOffset) / state->samplesPerPixel;
             const float sampleWidth = 1.0f / samplesPerPixel;
@@ -380,7 +383,7 @@ void Waveform::onDraw(SDL_Renderer *renderer)
 
 void Waveform::drawPlaybackPosition(SDL_Renderer *renderer)
 {
-    const size_t sampleOffset = state->sampleOffset;
+    const int64_t sampleOffset = state->sampleOffset;
     const double samplesPerPixel = state->samplesPerPixel;
 
     const float lineX = (state->playbackPosition.load() - sampleOffset) / samplesPerPixel;
@@ -433,7 +436,7 @@ void Waveform::clearHighlight()
     }
 }
 
-void Waveform::setSamplePosUnderCursor(const size_t samplePosUnderCursorToUse)
+void Waveform::setSamplePosUnderCursor(const int64_t samplePosUnderCursorToUse)
 {
     samplePosUnderCursor.emplace(samplePosUnderCursorToUse);
     setDirtyRecursive();
@@ -444,7 +447,7 @@ void Waveform::resetSamplePosUnderCursor()
     samplePosUnderCursor.reset();
 }
 
-std::optional<size_t> Waveform::getSamplePosUnderCursor() const
+std::optional<int64_t> Waveform::getSamplePosUnderCursor() const
 {
     return samplePosUnderCursor;
 }

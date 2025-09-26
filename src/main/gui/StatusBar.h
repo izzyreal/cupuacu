@@ -17,9 +17,9 @@ private:
     LabeledField* lengthField = nullptr;
     LabeledField* valueField = nullptr;
 
-    size_t lastPlaybackPosition = std::numeric_limits<size_t>::max();
-    size_t lastSelectionStart = std::numeric_limits<size_t>::max();
-    size_t lastSelectionEnd = std::numeric_limits<size_t>::max();
+    int64_t lastPlaybackPosition = std::numeric_limits<int64_t>::max();
+    int64_t lastSelectionStart = std::numeric_limits<int64_t>::max();
+    int64_t lastSelectionEnd = std::numeric_limits<int64_t>::max();
     bool lastSelectionActive = false;
     std::optional<float> lastSampleValueUnderMouseCursor;
 
@@ -56,7 +56,7 @@ public:
 
     void timerCallback() override
     {
-        const size_t currentPlaybackPosition = state->playbackPosition.load();
+        const int64_t currentPlaybackPosition = state->playbackPosition.load();
 
         if (currentPlaybackPosition != lastPlaybackPosition)
         {
@@ -79,8 +79,8 @@ public:
         }
 
         const bool currentSelectionActive = state->selection.isActive();
-        const size_t currentSelectionStart = state->selection.getStartInt();
-        const size_t currentSelectionEnd = state->selection.getEndInt();
+        const int64_t currentSelectionStart = state->selection.getStartInt();
+        const int64_t currentSelectionEnd = state->selection.getEndInt();
 
         if (currentSelectionActive != lastSelectionActive)
         {

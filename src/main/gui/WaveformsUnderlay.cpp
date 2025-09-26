@@ -5,14 +5,14 @@
 
 #include <cassert>
 
-size_t getValidSampleIndexUnderMouseCursor(const int32_t mouseX,
+int64_t getValidSampleIndexUnderMouseCursor(const int32_t mouseX,
                                              const double samplesPerPixel,
-                                             const size_t sampleOffset,
-                                             const size_t frameCount)
+                                             const int64_t sampleOffset,
+                                             const int64_t frameCount)
 {
     assert(frameCount > 0);
-    const size_t sampleIndex = static_cast<size_t>(mouseX * samplesPerPixel) + sampleOffset;
-    return std::clamp(sampleIndex, size_t{0}, frameCount - 1);
+    const int64_t sampleIndex = static_cast<int64_t>(mouseX * samplesPerPixel) + sampleOffset;
+    return std::clamp(sampleIndex, int64_t{0}, frameCount - 1);
 }
 
 WaveformsUnderlay::WaveformsUnderlay(CupuacuState* stateToUse)
@@ -103,14 +103,14 @@ bool WaveformsUnderlay::mouseMove(const int32_t mouseX,
         if (channel >= 0 && channel < (int)state->waveforms.size())
         {
             auto* wf = state->waveforms[channel];
-            const size_t sampleIndex = static_cast<size_t>(mouseX * state->samplesPerPixel) + state->sampleOffset;
+            const int64_t sampleIndex = static_cast<int64_t>(mouseX * state->samplesPerPixel) + state->sampleOffset;
 
             if (wf->getSamplePosUnderCursor() != sampleIndex)
             {
                 wf->setSamplePosUnderCursor(sampleIndex);
             }
 
-            for (size_t waveformChannel = 0; waveformChannel < state->waveforms.size(); ++waveformChannel)
+            for (int64_t waveformChannel = 0; waveformChannel < state->waveforms.size(); ++waveformChannel)
             {
                 if (waveformChannel == channel)
                 {
@@ -122,7 +122,7 @@ bool WaveformsUnderlay::mouseMove(const int32_t mouseX,
         }
     }
 
-    const size_t sampleIndex = getValidSampleIndexUnderMouseCursor(mouseX,
+    const int64_t sampleIndex = getValidSampleIndexUnderMouseCursor(mouseX,
                                                                    state->samplesPerPixel,
                                                                    state->sampleOffset,
                                                                    state->document.getFrameCount());
@@ -183,7 +183,7 @@ void WaveformsUnderlay::timerCallback()
     }
 
     const double samplesToScroll = state->samplesToScroll < 0.0 ? std::min(-1.0, state->samplesToScroll) : std::max(1.0, state->samplesToScroll);
-    const size_t oldOffset = state->sampleOffset;
+    const int64_t oldOffset = state->sampleOffset;
 
     updateSampleOffset(state, state->sampleOffset + samplesToScroll);
 
@@ -199,7 +199,7 @@ void WaveformsUnderlay::timerCallback()
 
 uint16_t WaveformsUnderlay::channelHeight() const
 {
-    const size_t numChannels = state->waveforms.size();
+    const int64_t numChannels = state->waveforms.size();
     return numChannels > 0 ? getHeight() / numChannels : getHeight();
 }
 

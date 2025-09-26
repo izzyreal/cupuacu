@@ -45,13 +45,13 @@ public:
     void updateSamplePoints();
     void clearHighlight();
 
-    std::optional<size_t> getSamplePosUnderCursor() const;
-    void setSamplePosUnderCursor(const size_t samplePosUnderCursor);
+    std::optional<int64_t> getSamplePosUnderCursor() const;
+    void setSamplePosUnderCursor(const int64_t samplePosUnderCursor);
     void resetSamplePosUnderCursor();
 
 private:
-    std::optional<size_t> lastDrawnSamplePosUnderCursor;
-    std::optional<size_t> samplePosUnderCursor;
+    std::optional<int64_t> lastDrawnSamplePosUnderCursor;
+    std::optional<int64_t> samplePosUnderCursor;
     const uint8_t channelIndex;
     double playbackPosition = 0;
 
