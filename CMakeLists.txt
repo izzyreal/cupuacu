@@ -42,6 +42,7 @@ add_executable(Cupuacu
     src/main/gui/MainView.cpp
     src/main/gui/Component.cpp
     src/main/gui/WaveformsUnderlay.cpp
+    src/main/gui/Waveforms.cpp
     src/main/gui/Waveform.cpp
     src/main/gui/SamplePoint.cpp
     src/main/gui/Menu.cpp

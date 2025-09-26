@@ -2,6 +2,8 @@
 
 #include "Component.h"
 
+class Waveforms;
+
 class MainView : public Component {
     public:
         MainView(CupuacuState*);
@@ -10,7 +12,9 @@ class MainView : public Component {
 
         void resized() override;
 
+        void onDraw(SDL_Renderer*) override;
+
     private:
         void resizeWaveforms();
-        Component *waveformsUnderlay = nullptr;
+        Waveforms *waveforms = nullptr;
 };
