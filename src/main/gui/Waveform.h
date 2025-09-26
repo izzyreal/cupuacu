@@ -10,6 +10,19 @@ class Waveform : public Component {
 public:
     static bool shouldShowSamplePoints(const double samplesPerPixel, const uint8_t pixelScale);
 
+    static void clearHighlightIfNotChannel(CupuacuState *state, const uint8_t channelIndexNotToClear)
+    {
+        for (int64_t waveformChannel = 0; waveformChannel < state->waveforms.size(); ++waveformChannel)
+        {
+            if (waveformChannel == channelIndexNotToClear)
+            {
+                continue;
+            }
+
+            state->waveforms[waveformChannel]->clearHighlight();
+        }
+    }
+
     static uint16_t getWaveformWidth(const CupuacuState *state)
     {
         if (state->waveforms.empty())
@@ -42,6 +55,7 @@ public:
     void timerCallback() override;
     void resized() override;
     void mouseLeave() override;
+    void setDirty() override;
     void updateSamplePoints();
     void clearHighlight();
 
@@ -50,7 +64,7 @@ public:
     void resetSamplePosUnderCursor();
 
 private:
-    std::optional<int64_t> lastDrawnSamplePosUnderCursor;
+    std::optional<int64_t> lastDrawnSamplePosUnderCursor = -1;
     std::optional<int64_t> samplePosUnderCursor;
     const uint8_t channelIndex;
     double playbackPosition = 0;

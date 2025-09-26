@@ -70,7 +70,7 @@ public:
     void setBounds(const uint16_t xPosToUse, const uint16_t yPosToUse, const uint16_t widthToUse, const uint16_t heightToUse);
     void setSize(const uint16_t widthToUse, const uint16_t heightToUse);
     void setYPos(const uint16_t yPosToUse);
-    void setDirty();
+    virtual void setDirty();
     void setDirtyRecursive();
     bool isDirtyRecursive();
     void draw(SDL_Renderer* renderer);

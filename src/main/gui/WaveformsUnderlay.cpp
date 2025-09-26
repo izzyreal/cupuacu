@@ -105,20 +105,9 @@ bool WaveformsUnderlay::mouseMove(const int32_t mouseX,
             auto* wf = state->waveforms[channel];
             const int64_t sampleIndex = static_cast<int64_t>(mouseX * state->samplesPerPixel) + state->sampleOffset;
 
-            if (wf->getSamplePosUnderCursor() != sampleIndex)
-            {
-                wf->setSamplePosUnderCursor(sampleIndex);
-            }
+            wf->setSamplePosUnderCursor(sampleIndex);
 
-            for (int64_t waveformChannel = 0; waveformChannel < state->waveforms.size(); ++waveformChannel)
-            {
-                if (waveformChannel == channel)
-                {
-                    continue;
-                }
-
-                state->waveforms[waveformChannel]->clearHighlight();
-            }
+            Waveform::clearHighlightIfNotChannel(state, channel);
         }
     }
 

@@ -13,6 +13,12 @@ Waveform::Waveform(CupuacuState *state, const uint8_t channelIndexToUse)
 {
 }
 
+void Waveform::setDirty()
+{
+    Component::setDirty();
+    lastDrawnSamplePosUnderCursor = -1;
+}
+
 uint16_t getSamplePointSize(const uint8_t pixelScale)
 {
     return 32 / pixelScale;
@@ -438,6 +444,11 @@ void Waveform::clearHighlight()
 
 void Waveform::setSamplePosUnderCursor(const int64_t samplePosUnderCursorToUse)
 {
+    if (samplePosUnderCursor.has_value() && *samplePosUnderCursor == samplePosUnderCursorToUse)
+    {
+        return;
+    }
+
     samplePosUnderCursor.emplace(samplePosUnderCursorToUse);
     setDirtyRecursive();
 }
@@ -445,6 +456,7 @@ void Waveform::setSamplePosUnderCursor(const int64_t samplePosUnderCursorToUse)
 void Waveform::resetSamplePosUnderCursor()
 {
     samplePosUnderCursor.reset();
+    lastDrawnSamplePosUnderCursor = -1;
 }
 
 std::optional<int64_t> Waveform::getSamplePosUnderCursor() const

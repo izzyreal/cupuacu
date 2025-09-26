@@ -1,5 +1,7 @@
 #include "SamplePoint.h"
 
+#include "Waveform.h"
+
 SamplePoint::SamplePoint(CupuacuState *state, const uint8_t channelIndexToUse, const int64_t sampleIndexToUse) :
     Component(state, "Sample point idx " + std::to_string(sampleIndexToUse)), sampleIndex(sampleIndexToUse), channelIndex(channelIndexToUse)
 {
