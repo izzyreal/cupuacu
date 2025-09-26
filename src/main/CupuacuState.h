@@ -16,6 +16,7 @@ struct CustomDataSource;
 class MenuBar;
 class Component;
 class Waveform;
+class MainView;
 
 enum class SampleFormat {
     PCM_S8, PCM_S16, PCM_S24, PCM_S32,
@@ -72,7 +73,7 @@ struct CupuacuState {
     Component *backgroundComponent;
     MenuBar *menuBar;
     Component *statusBar;
-    Component *waveformsOverlay;
+    MainView *mainView;
 };
 
 static void resetSampleValueUnderMouseCursor(CupuacuState *state)

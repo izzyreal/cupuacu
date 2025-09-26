@@ -4,10 +4,10 @@
 
 struct CupuacuState;
 
-class WaveformsOverlay : public Component {
+class WaveformsUnderlay : public Component {
 private:
 public:
-    WaveformsOverlay(CupuacuState*);
+    WaveformsUnderlay(CupuacuState*);
 
     void mouseLeave() override;
 

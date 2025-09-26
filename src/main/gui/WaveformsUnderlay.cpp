@@ -1,4 +1,4 @@
-#include "WaveformsOverlay.h"
+#include "WaveformsUnderlay.h"
 
 #include "Waveform.h"
 #include <algorithm>
@@ -15,17 +15,17 @@ size_t getValidSampleIndexUnderMouseCursor(const int32_t mouseX,
     return std::clamp(sampleIndex, size_t{0}, frameCount - 1);
 }
 
-WaveformsOverlay::WaveformsOverlay(CupuacuState* stateToUse)
-    : Component(stateToUse, "WaveformsOverlay")
+WaveformsUnderlay::WaveformsUnderlay(CupuacuState* stateToUse)
+    : Component(stateToUse, "WaveformsUnderlay")
 {
 }
 
-void WaveformsOverlay::mouseLeave() 
+void WaveformsUnderlay::mouseLeave() 
 {
     resetSampleValueUnderMouseCursor(state);
 }
 
-bool WaveformsOverlay::mouseLeftButtonDown(const uint8_t numClicks,
+bool WaveformsUnderlay::mouseLeftButtonDown(const uint8_t numClicks,
                          const int32_t mouseX,
                          const int32_t mouseY) 
 {
@@ -91,7 +91,7 @@ bool WaveformsOverlay::mouseLeftButtonDown(const uint8_t numClicks,
     return true;
 }
 
-bool WaveformsOverlay::mouseMove(const int32_t mouseX,
+bool WaveformsUnderlay::mouseMove(const int32_t mouseX,
                const int32_t mouseY,
                const float /*mouseRelY*/,
                const bool leftButtonIsDown) 
@@ -151,7 +151,7 @@ bool WaveformsOverlay::mouseMove(const int32_t mouseX,
     return true;
 }
 
-bool WaveformsOverlay::mouseLeftButtonUp(const uint8_t numClicks,
+bool WaveformsUnderlay::mouseLeftButtonUp(const uint8_t numClicks,
                        const int32_t mouseX,
                        const int32_t mouseY) 
 {
@@ -175,7 +175,7 @@ bool WaveformsOverlay::mouseLeftButtonUp(const uint8_t numClicks,
     return true;
 }
 
-void WaveformsOverlay::timerCallback() 
+void WaveformsUnderlay::timerCallback() 
 {
     if (state->samplesToScroll == 0.0)
     {
@@ -197,20 +197,20 @@ void WaveformsOverlay::timerCallback()
     }
 }
 
-uint16_t WaveformsOverlay::channelHeight() const
+uint16_t WaveformsUnderlay::channelHeight() const
 {
     const size_t numChannels = state->waveforms.size();
     return numChannels > 0 ? getHeight() / numChannels : getHeight();
 }
 
-uint8_t WaveformsOverlay::channelAt(const uint16_t y) const
+uint8_t WaveformsUnderlay::channelAt(const uint16_t y) const
 {
     int ch = y / channelHeight();
     int maxCh = static_cast<int>(state->waveforms.size()) - 1;
     return std::clamp(ch, 0, maxCh);
 }
 
-void WaveformsOverlay::markAllWaveformsDirty()
+void WaveformsUnderlay::markAllWaveformsDirty()
 {
     for (auto* wf : state->waveforms)
     {
@@ -218,7 +218,7 @@ void WaveformsOverlay::markAllWaveformsDirty()
     }
 }
 
-void WaveformsOverlay::handleScroll(const int32_t mouseX, const int32_t mouseY)
+void WaveformsUnderlay::handleScroll(const int32_t mouseX, const int32_t mouseY)
 {
     if (mouseX > getWidth() || mouseX < 0)
     {

@@ -2,11 +2,12 @@
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <vector>
 #include <memory>
 #include <string>
 
-#include "../CupuacuState.h"
+struct CupuacuState;
 
 class Component {
 private:
@@ -22,12 +23,27 @@ private:
 protected:
     CupuacuState *state;
     const std::vector<std::unique_ptr<Component>>& getChildren() const;
+    void removeChild(Component*);
     void removeAllChildren();
     const bool isMouseOver() const;
     Component* getParent() const;
 
 public:
-    Component(CupuacuState *stateToUse, const std::string componentNameToUse);
+    Component(CupuacuState*, const std::string componentName);
+
+    template <typename T>
+    void removeChildrenOfType()
+    {
+        children.erase(
+            std::remove_if(children.begin(), children.end(),
+                [](const std::unique_ptr<Component>& child) {
+                    return dynamic_cast<T*>(child.get()) != nullptr;
+                }),
+            children.end()
+        );
+
+        setDirtyRecursive();
+    }
 
     template <typename T>
     T* addChildAndSetDirty(std::unique_ptr<T> &childToAdd)
@@ -50,6 +66,7 @@ public:
 
     const std::string getComponentName() const;
 
+    void bringToFront();
     void setBounds(const uint16_t xPosToUse, const uint16_t yPosToUse, const uint16_t widthToUse, const uint16_t heightToUse);
     void setSize(const uint16_t widthToUse, const uint16_t heightToUse);
     void setYPos(const uint16_t yPosToUse);
@@ -75,4 +92,21 @@ public:
     const std::pair<int, int> getAbsolutePosition();
     const bool constainsAbsoluteCoordinate(const int x, const int y);
     Component* findComponentAt(const int x, const int y);
+
+    void printTree(int depth = 0) const
+    {
+        for (int i = 0; i < depth; ++i)
+        {
+            printf("  ");
+        }
+
+        printf("%s (%dx%d at %d,%d)\n",
+               componentName.c_str(),
+               width, height, xPos, yPos);
+
+        for (const auto& child : children)
+        {
+            child->printTree(depth + 1);
+        }
+    }
 };

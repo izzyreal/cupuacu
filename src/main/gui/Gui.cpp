@@ -4,8 +4,7 @@
 
 #include "MenuBar.h"
 #include "StatusBar.h"
-#include "Waveform.h"
-#include "WaveformsOverlay.h"
+#include "MainView.h"
 #include "OpaqueRect.h"
 
 #include <cmath>
@@ -39,18 +38,18 @@ void createCanvas(CupuacuState *state, const SDL_Point &dimensions)
     SDL_SetTextureScaleMode(state->canvas, SDL_SCALEMODE_NEAREST);
 }
 
-SDL_Rect getWaveformRect(const uint16_t canvasWidth,
+SDL_Rect computeMainViewBounds(const uint16_t canvasWidth,
                          const uint16_t canvasHeight,
                          const uint8_t pixelScale,
                          const uint8_t menuHeight)
 {
-   SDL_Rect result {
+    SDL_Rect result {
            0,
            menuHeight,
            canvasWidth,
            canvasHeight - (menuHeight*2)
-   };
-   return result;
+    };
+    return result;
 }
 
 SDL_Rect getMenuBarRect(const uint16_t canvasWidth,
@@ -83,33 +82,22 @@ SDL_Rect getStatusBarRect(const uint16_t canvasWidth,
     return result;
 }
 
-void resizeWaveforms(CupuacuState *state)
+void buildComponents(CupuacuState *state)
 {
-    float currentCanvasW, currentCanvasH;
-    SDL_GetTextureSize(state->canvas, &currentCanvasW, &currentCanvasH);
+    state->rootComponent = std::make_unique<Component>(state, "RootComponent");
+    auto backgroundComponent = std::make_unique<OpaqueRect>(state);
+    state->backgroundComponent = state->rootComponent->addChildAndSetDirty(backgroundComponent);
 
-    const SDL_Rect waveformRect = getWaveformRect(
-        currentCanvasW,
-        currentCanvasH,
-        state->pixelScale,
-        state->menuBar->getHeight());
+    auto mainView = std::make_unique<MainView>(state);
+    state->mainView = state->rootComponent->addChildAndSetDirty(mainView);
 
-    const auto samplesPerPixelFactor = Waveform::getWaveformWidth(state) * state->samplesPerPixel;
-    const auto newSamplesPerPixel = samplesPerPixelFactor / waveformRect.w;
-    state->samplesPerPixel = newSamplesPerPixel;
+    auto menuBar = std::make_unique<MenuBar>(state);
+    state->menuBar = state->rootComponent->addChildAndSetDirty(menuBar);
 
-    const int numChannels = static_cast<int>(state->waveforms.size());
-    const float channelHeight = numChannels > 0 ? waveformRect.h / numChannels : 0;
+    auto statusBar = std::make_unique<StatusBar>(state);
+    state->statusBar = state->rootComponent->addChildAndSetDirty(statusBar);
 
-    for (int ch = 0; ch < numChannels; ++ch)
-    {
-        state->waveforms[ch]->setBounds(
-            waveformRect.x,
-            waveformRect.y + ch * channelHeight,
-            waveformRect.w,
-            channelHeight
-        );
-    }
+    resizeComponents(state);
 }
 
 void resizeComponents(CupuacuState *state)
@@ -145,61 +133,21 @@ void resizeComponents(CupuacuState *state)
 
     state->menuBar->setBounds(menuBarRect.x, menuBarRect.y, menuBarRect.w, menuBarRect.h);
 
-    const auto samplesPerPixelFactor = Waveform::getWaveformWidth(state) * state->samplesPerPixel;
-
-    const SDL_Rect waveformRect = getWaveformRect(
+    const SDL_Rect mainViewBounds = computeMainViewBounds(
         newCanvasW,
         newCanvasH,
         state->pixelScale,
         menuBarRect.h);
 
-    state->waveformsOverlay->setBounds(
-        waveformRect.x,
-        waveformRect.y,
-        waveformRect.w,
-        waveformRect.h
+    state->mainView->setBounds(
+        mainViewBounds.x,
+        mainViewBounds.y,
+        mainViewBounds.w,
+        mainViewBounds.h
     );
-
-    resizeWaveforms(state);
 
     state->statusBar->setBounds(statusBarRect.x, statusBarRect.y, statusBarRect.w, statusBarRect.h);
 
     state->rootComponent->setDirtyRecursive();
-}
-
-void rebuildWaveforms(CupuacuState *state)
-{
-    state->waveforms.clear();
-    int numChannels = static_cast<int>(state->document.channels.size());
-
-    if (numChannels > 0)
-    {
-        for (int ch = 0; ch < numChannels; ++ch)
-        {
-            auto waveform = std::make_unique<Waveform>(state, ch);
-            auto *handle = state->rootComponent->addChildAndSetDirty(waveform);
-            state->waveforms.push_back(static_cast<Waveform*>(handle));
-        }
-    }
-}
-
-void buildComponents(CupuacuState *state)
-{
-    state->rootComponent = std::make_unique<Component>(state, "RootComponent");
-    auto backgroundComponent = std::make_unique<OpaqueRect>(state);
-    state->backgroundComponent = state->rootComponent->addChildAndSetDirty(backgroundComponent);
-
-    auto waveformsOverlay = std::make_unique<WaveformsOverlay>(state);
-    state->waveformsOverlay = state->rootComponent->addChildAndSetDirty(waveformsOverlay);
-
-    rebuildWaveforms(state);
-
-    auto menuBar = std::make_unique<MenuBar>(state);
-    state->menuBar = state->rootComponent->addChildAndSetDirty(menuBar);
-
-    auto statusBar = std::make_unique<StatusBar>(state);
-    state->statusBar = state->rootComponent->addChildAndSetDirty(statusBar);
-
-    resizeComponents(state);
 }
 

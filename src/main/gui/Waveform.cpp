@@ -1,9 +1,12 @@
 #include "Waveform.h"
-#include "WaveformsOverlay.h"
+
+#include "WaveformsUnderlay.h"
+
+#include "smooth_line.h"
+
 #include <limits>
 #include <cmath>
 #include <algorithm>
-#include "smooth_line.h"
 
 Waveform::Waveform(CupuacuState *state, const uint8_t channelIndexToUse)
     : Component(state, "Waveform"), channelIndex(channelIndexToUse)
@@ -317,7 +320,7 @@ void Waveform::drawSelection(SDL_Renderer *renderer)
 
 void Waveform::drawHighlight(SDL_Renderer *renderer)
 {
-    if (const auto waveformsOverlay = dynamic_cast<WaveformsOverlay*>(state->capturingComponent); waveformsOverlay != nullptr)
+    if (const auto waveformsUnderlay = dynamic_cast<WaveformsUnderlay*>(state->capturingComponent); waveformsUnderlay != nullptr)
     {
         return;
     }

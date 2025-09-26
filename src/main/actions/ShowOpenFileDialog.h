@@ -3,6 +3,7 @@
 
 #include "../CupuacuState.h"
 #include "../file_loading.h"
+#include "../gui/MainView.h"
 #include "../gui/Gui.h"
 #include "../gui/Waveform.h"
 #include "Zoom.h"
@@ -40,8 +41,7 @@ static void fileDialogCallback(void *userdata, const char * const *filelist, int
     state->currentFile = absoluteFilePath;
 
     loadSampleData(state);
-    rebuildWaveforms(state);
-    resizeWaveforms(state);
+    state->mainView->rebuildWaveforms();
     resetWaveformState(state);
     resetZoom(state);
     Waveform::updateAllSamplePoints(state);

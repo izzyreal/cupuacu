@@ -1,8 +1,8 @@
 #include "Component.h"
 
 #include "MenuBar.h"
+#include "../CupuacuState.h"
 
-#include <algorithm>
 #include <ranges>
 
 Component::Component(CupuacuState *stateToUse, const std::string componentNameToUse) :
@@ -18,6 +18,38 @@ void Component::setParent(Component *parentToUse)
 const std::vector<std::unique_ptr<Component>>& Component::getChildren() const
 {
     return children;
+}
+
+void Component::removeChild(Component *child)
+{
+    for (auto it = children.begin(); it != children.end(); ++it)
+    {
+        if (it->get() == child)
+        {
+            children.erase(it);
+            return;
+        }
+    }
+}
+
+void Component::bringToFront()
+{
+    if (parent == nullptr)
+    {
+        return;
+    }
+
+    auto& parentChildren = parent->children;
+
+    auto thisIter = std::find_if(parentChildren.begin(), parentChildren.end(),
+        [this](const std::unique_ptr<Component>& child) { return child.get() == this; });
+
+    if (thisIter != parentChildren.end() && thisIter != parentChildren.end() - 1)
+    {
+        parentChildren.push_back(std::move(*thisIter));
+        parentChildren.erase(thisIter);
+        parent->setDirtyRecursive();
+    }
 }
 
 void Component::removeAllChildren()
