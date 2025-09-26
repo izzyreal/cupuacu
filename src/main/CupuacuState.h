@@ -12,8 +12,6 @@
 #include <memory>
 #include <optional>
 
-struct SDL_Window;
-
 struct CustomDataSource;
 
 class Component;
