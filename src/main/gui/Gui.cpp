@@ -4,6 +4,7 @@
 
 #include "MenuBar.h"
 #include "StatusBar.h"
+#include "Waveform.h"
 #include "WaveformsOverlay.h"
 #include "OpaqueRect.h"
 
