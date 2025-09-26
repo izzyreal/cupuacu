@@ -69,7 +69,7 @@ public:
             {
                 state->selectionAnchorChannel = 0;
                 state->selectionChannelStart = 0;
-                state->selectionChannelEnd   = static_cast<int>(state->waveforms.size()) - 1;
+                state->selectionChannelEnd = static_cast<int>(state->waveforms.size()) - 1;
             }
             else
             {
@@ -77,6 +77,8 @@ public:
                 state->selectionChannelStart = channel;
                 state->selectionChannelEnd = channel;
             }
+
+            Waveform::setAllWaveformsDirty(state);
 
             return true;
         }
@@ -106,6 +108,8 @@ public:
         state->selection.setValue2(samplePos);
         state->selectionChannelEnd   = channel;
         state->playbackPosition.store(std::round(samplePos));
+
+        Waveform::setAllWaveformsDirty(state);
 
         return true;
     }

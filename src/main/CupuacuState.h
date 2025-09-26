@@ -7,13 +7,13 @@
 #include <cstdint>
 #include <vector>
 #include <string>
-#include <functional>
 #include <atomic>
 #include <memory>
 #include <optional>
 
 struct CustomDataSource;
 
+class MenuBar;
 class Component;
 class Waveform;
 
@@ -69,13 +69,10 @@ struct CupuacuState {
 
     std::vector<Waveform*> waveforms;
     std::unique_ptr<Component> rootComponent;
-    Component *backgroundComponentHandle;
-    Component *menuBarHandle;
-    Component *statusBarHandle;
-    Component *waveformsOverlayHandle;
-
-    std::function<void()> hideSubMenus = []{};
-
+    Component *backgroundComponent;
+    MenuBar *menuBar;
+    Component *statusBar;
+    Component *waveformsOverlay;
 };
 
 static void resetSampleValueUnderMouseCursor(CupuacuState *state)

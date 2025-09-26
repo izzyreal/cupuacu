@@ -7,7 +7,7 @@
 
 static bool wasMaximized = false;
 
-inline SDL_AppResult HandleAppEvent(CupuacuState *state, SDL_Event *event)
+inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
 {
     switch (event->type)
     {

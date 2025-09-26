@@ -2,6 +2,7 @@
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+#include <SDL3_ttf/SDL_ttf.h>
 
 #include "CupuacuState.h"
 #include "gui/EventHandling.h"
@@ -11,7 +12,6 @@ const uint16_t initialDimensions[] = { 1280, 720 };
 
 #include <cstdint>
 #include <string>
-#include <functional>
 #include <filesystem>
 
 #include "file_loading.h"
@@ -72,7 +72,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     }
 
     buildComponents(state);
-    state->hideSubMenus = [state](){ dynamic_cast<MenuBar*>(state->menuBarHandle)->hideSubMenus(); state->rootComponent->setDirtyRecursive(); };
 
     resetZoom(state);
 
@@ -103,7 +102,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
-    return HandleAppEvent((CupuacuState*)appstate, event);
+    return handleAppEvent((CupuacuState*)appstate, event);
 }
 
 void SDL_AppQuit(void *appstate, SDL_AppResult result)

@@ -39,8 +39,11 @@ add_executable(Cupuacu
     src/main/main.cpp
     src/main/CupuacuState.cpp
     src/main/gui/Gui.cpp
+    src/main/gui/Component.cpp
     src/main/gui/Waveform.cpp
     src/main/gui/SamplePoint.cpp
+    src/main/gui/Menu.cpp
+    src/main/gui/MenuBar.cpp
     src/main/actions/Play.cpp
 )
 

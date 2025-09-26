@@ -1,12 +1,13 @@
 #pragma once
 
 #include "CupuacuState.h"
-#include "sndfile.hh"
+
+#include <sndfile.hh>
 
 #include <stdexcept>
 #include <vector>
 
-static void loadSampleData(CupuacuState* state)
+static void loadSampleData(CupuacuState *state)
 {
     // Open file
     SndfileHandle snd(state->currentFile);
