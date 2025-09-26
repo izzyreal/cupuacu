@@ -63,7 +63,7 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
     const size_t availableSamples = sampleData.size() - sampleOffset;
     const size_t actualInputSamples = std::min(neededInputSamples, availableSamples);
 
-    if (actualInputSamples < 4)
+    if (actualInputSamples < 1)
     {
         return {};
     }
@@ -132,7 +132,7 @@ void Waveform::renderSmoothWaveform(SDL_Renderer* renderer)
     const size_t availableSamples = sampleData.size() - sampleOffset;
     const size_t actualInputSamples = std::min(neededInputSamples, availableSamples);
 
-    if (actualInputSamples < 4)
+    if (actualInputSamples < 1)
     {
         return;
     }

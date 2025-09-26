@@ -62,20 +62,10 @@ static void handleKeyDown(
     }
     else if (event->key.scancode == SDL_SCANCODE_Z)
     {
-        if (!state->selection.isActive())
+        if (tryZoomSelection(state))
         {
-            return;
+            updateWaveforms(state);
         }
-
-        state->verticalZoom = INITIAL_VERTICAL_ZOOM;
-
-        const auto waveformWidth = Waveform::getWaveformWidth(state);
-        const auto selectionLength = state->selection.getLength();
-
-        state->samplesPerPixel = selectionLength / waveformWidth;
-        state->sampleOffset = state->selection.getStartInt();
-
-        updateWaveforms(state);
     }
     else if (event->key.scancode == SDL_SCANCODE_LEFT)
     {

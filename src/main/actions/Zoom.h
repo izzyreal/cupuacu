@@ -94,3 +94,21 @@ static bool tryZoomOutVertically(CupuacuState *state, const uint8_t multiplier)
 
     return true;
 }
+
+static bool tryZoomSelection(CupuacuState *state)
+{
+    if (!state->selection.isActive() || state->selection.getLengthInt() < 1)
+    {
+        return false;
+    }
+
+    state->verticalZoom = INITIAL_VERTICAL_ZOOM;
+
+    const auto waveformWidth = Waveform::getWaveformWidth(state);
+    const auto selectionLength = state->selection.getLength();
+
+    state->samplesPerPixel = selectionLength / waveformWidth;
+    state->sampleOffset = state->selection.getStartInt();
+    return true;
+}
+
