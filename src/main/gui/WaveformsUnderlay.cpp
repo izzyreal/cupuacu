@@ -37,11 +37,22 @@ bool WaveformsUnderlay::mouseLeftButtonDown(const uint8_t numClicks,
     {
         double startSample = state->sampleOffset;
         double endSample   = state->sampleOffset + getWidth() * samplesPerPixel;
+
         endSample = std::min((double)state->document.getFrameCount(), endSample);
+
+        if (samplesPerPixel < 1.0) {
+            double endFloor = std::floor(endSample);
+            double coverage = endSample - endFloor;
+
+            if (coverage < 1.0) {
+                endSample = endFloor;
+            } else {
+                endSample = endFloor + 1.0;
+            }
+        }
 
         state->selection.setValue1(startSample);
         state->selection.setValue2(endSample);
-
         if (numClicks >= 3)
         {
             state->selectionAnchorChannel = 0;
