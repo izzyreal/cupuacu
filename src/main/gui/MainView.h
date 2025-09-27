@@ -15,6 +15,8 @@ class MainView : public Component {
         void onDraw(SDL_Renderer*) override;
 
     private:
+        const uint8_t baseBorderWidth = 16;
+        uint8_t computeBorderWidth() const;
         void resizeWaveforms();
         Waveforms *waveforms = nullptr;
 };

@@ -10,6 +10,11 @@ MainView::MainView(CupuacuState *state) : Component(state, "MainView")
     rebuildWaveforms();
 }
 
+uint8_t MainView::computeBorderWidth() const
+{
+    return baseBorderWidth / state->pixelScale;
+}
+
 void MainView::rebuildWaveforms()
 {
     waveforms->rebuildWaveforms();
@@ -18,7 +23,8 @@ void MainView::rebuildWaveforms()
 
 void MainView::resized()
 {
-    waveforms->setBounds(5, 5, getWidth() - 10, getHeight() - 10);
+    const auto borderWidth = computeBorderWidth();
+    waveforms->setBounds(borderWidth, borderWidth, getWidth() - (borderWidth * 2), getHeight() - (borderWidth * 2));
 }
 
 void MainView::onDraw(SDL_Renderer *r)
