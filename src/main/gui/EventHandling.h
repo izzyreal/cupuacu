@@ -47,7 +47,7 @@ static void updateMousePointer(const Component* underMouse) {
     }
 }
 
-static void updateComponentUnderMouse(CupuacuState *state, const int32_t mouseX, const int32_t mouseY, bool &componentUnderMouseChanged)
+static void updateComponentUnderMouse(CupuacuState *state, const int32_t mouseX, const int32_t mouseY)
 {
     auto oldComponentUnderMouse = state->componentUnderMouse;
     const auto newComponentUnderMouse = state->rootComponent->findComponentAt(mouseX, mouseY);
@@ -55,7 +55,6 @@ static void updateComponentUnderMouse(CupuacuState *state, const int32_t mouseX,
     if (state->componentUnderMouse != newComponentUnderMouse)
     {
         state->componentUnderMouse = newComponentUnderMouse;
-        componentUnderMouseChanged = true;
 
         if (oldComponentUnderMouse != nullptr)
         {
@@ -121,9 +120,73 @@ static void handleResize(CupuacuState *state)
     resizeComponents(state);
 }
 
+static void handleMouseMotion(CupuacuState *state, SDL_Event *event)
+{
+    scaleMouseMotionEvent(state, event);
+    state->rootComponent->handleEvent(*event);
+
+    if (state->capturingComponent == nullptr)
+    {
+        updateComponentUnderMouse(state, event->motion.x, event->motion.y);
+    }
+}
+
+static void handleMouseDown(CupuacuState *state, SDL_Event *event)
+{
+    scaleMouseButtonEvent(state, event);
+
+    if (state->capturingComponent == nullptr)
+    {
+        state->rootComponent->handleEvent(*event);
+        return;
+    }
+
+    state->capturingComponent->handleEvent(*event);
+}
+
+static void handleMouseUp(CupuacuState *state, SDL_Event *event)
+{
+    scaleMouseButtonEvent(state, event);
+    updateComponentUnderMouse(state, event->button.x, event->button.y);
+
+    if (state->capturingComponent == nullptr)
+    {
+        state->rootComponent->handleEvent(*event);
+        return;
+    }
+
+    if (!state->capturingComponent->constainsAbsoluteCoordinate(event->button.x, event->button.y))
+    {
+        state->capturingComponent->mouseLeave();
+    }
+
+    state->capturingComponent->handleEvent(*event);
+    state->capturingComponent = nullptr;
+}
+
+static void handleWindowMouseLeave(CupuacuState *state)
+{
+    if (state->capturingComponent != nullptr)
+    {
+        return;
+    }
+
+    if (state->selection.isActive())
+    {
+        return;
+    }
+
+    for (auto* waveform : state->waveforms)
+    {
+        waveform->clearHighlight();
+    }
+
+    state->componentUnderMouse = nullptr;
+}
+
 inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
 {
-    bool componentUnderMouseChanged = false;
+    const Component *oldComponentUnderMouse = state->componentUnderMouse;
 
     switch (event->type)
     {
@@ -137,61 +200,23 @@ inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
             handleResize(state);
             break;
         case SDL_EVENT_WINDOW_MOUSE_LEAVE:
-            if (state->capturingComponent == nullptr && !state->selection.isActive())
-            {
-                for (auto* waveform : state->waveforms)
-                {
-                    waveform->clearHighlight();
-                }
-                state->componentUnderMouse = nullptr;
-                componentUnderMouseChanged = true;
-            }
+            handleWindowMouseLeave(state);
             break;
         case SDL_EVENT_KEY_DOWN:
             handleKeyDown(event, state);
             break;
         case SDL_EVENT_MOUSE_MOTION:
-            scaleMouseMotionEvent(state, event);
-            state->rootComponent->handleEvent(*event);
-
-            if (state->capturingComponent == nullptr)
-            {
-                updateComponentUnderMouse(state, event->motion.x, event->motion.y, componentUnderMouseChanged);
-            }
+            handleMouseMotion(state, event);
             break;
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
+            handleMouseDown(state, event);
+            break;
         case SDL_EVENT_MOUSE_BUTTON_UP:
-            scaleMouseButtonEvent(state, event);
-
-            if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
-            {
-                updateComponentUnderMouse(state, event->button.x, event->button.y, componentUnderMouseChanged);
-            }
-
-            if (state->capturingComponent != nullptr)
-            {
-                if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
-                {
-                    if (!state->capturingComponent->constainsAbsoluteCoordinate(event->button.x, event->button.y))
-                    {
-                        state->capturingComponent->mouseLeave();
-                    }
-                }
-
-                state->capturingComponent->handleEvent(*event);
-                
-                if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
-                {
-                    state->capturingComponent = nullptr;
-                }
-                break;
-            }
-
-            state->rootComponent->handleEvent(*event);
+            handleMouseUp(state, event);
             break;
     }
 
-    if (componentUnderMouseChanged)
+    if (state->componentUnderMouse != oldComponentUnderMouse)
     {
         updateMousePointer(state->componentUnderMouse);
     }
