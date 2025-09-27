@@ -9,6 +9,10 @@ static bool wasMaximized = false;
 
 inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
 {
+    if (event->type == SDL_EVENT_MOUSE_BUTTON_DOWN)
+    {
+        //state->rootComponent->printTree();
+    }
     switch (event->type)
     {
         case SDL_EVENT_QUIT:

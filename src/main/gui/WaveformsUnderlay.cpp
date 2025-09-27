@@ -36,7 +36,6 @@ bool WaveformsUnderlay::mouseLeftButtonDown(const uint8_t numClicks,
     {
         double startSample = state->sampleOffset;
         double endSample   = state->sampleOffset + getWidth() * samplesPerPixel;
-        endSample -= 0.5;
         endSample = std::min((double)state->document.getFrameCount(), endSample);
 
         state->selection.setValue1(startSample);
