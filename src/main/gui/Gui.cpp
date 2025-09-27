@@ -84,6 +84,8 @@ SDL_Rect getStatusBarRect(const uint16_t canvasWidth,
 
 void buildComponents(CupuacuState *state)
 {
+    state->componentUnderMouse = nullptr;
+    state->capturingComponent = nullptr;
     state->rootComponent = std::make_unique<Component>(state, "RootComponent");
     auto backgroundComponent = std::make_unique<OpaqueRect>(state);
     state->backgroundComponent = state->rootComponent->addChildAndSetDirty(backgroundComponent);

@@ -133,4 +133,42 @@ static void handleKeyDown(
 
         play(state);
     }
+    else if (event->key.scancode == SDL_SCANCODE_PERIOD &&
+             (event->key.mod & SDL_KMOD_SHIFT))
+    {
+        if (state->pixelScale < 4)
+        {
+            state->pixelScale = std::min<uint8_t>(state->pixelScale * 2, 4);
+
+            const double newSamplesPerPixel = state->samplesPerPixel * 2;
+            
+            buildComponents(state);
+            
+            state->samplesPerPixel = newSamplesPerPixel;
+            
+            for (auto &w : state->waveforms)
+            {
+                w->setDirtyRecursive();
+            }
+        }
+    }
+    else if (event->key.scancode == SDL_SCANCODE_COMMA &&
+             (event->key.mod & SDL_KMOD_SHIFT))
+    {
+        if (state->pixelScale > 1)
+        {
+            state->pixelScale = std::max<uint8_t>(state->pixelScale / 2, 1);
+
+            const double newSamplesPerPixel = state->samplesPerPixel / 2;
+            
+            buildComponents(state);
+
+            state->samplesPerPixel = newSamplesPerPixel;
+
+            for (auto &w : state->waveforms)
+            {
+                w->setDirtyRecursive();
+            }
+        }
+    }
 }
