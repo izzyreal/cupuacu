@@ -425,7 +425,7 @@ void Waveform::drawCursor(SDL_Renderer *renderer)
 
         const int yInterval = 10 * (1.f/state->pixelScale);
 
-        for (int i = 0; i < getHeight(); i += yInterval)
+        for (int i = yInterval; i < getHeight(); i += yInterval)
         {
             SDL_RenderPoint(renderer, lineX, i);
         }

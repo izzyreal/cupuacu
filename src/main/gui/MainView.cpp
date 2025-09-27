@@ -78,7 +78,7 @@ void MainView::drawCursorTriangles(SDL_Renderer *r)
     if (cursorX < 0.0f || cursorX > innerW)
         return;
 
-    const float screenCursorX = innerX + cursorX;
+    const float screenCursorX = std::round(innerX + cursorX) + 1.f;
 
     SDL_FColor triColor {188/255.f, 188/255.f, 0.0f, 1.0f};
 
