@@ -67,7 +67,7 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
     const double verticalZoom = state->verticalZoom;
     const float halfSampleWidth = 0.5f / samplesPerPixel;
 
-    const int64_t neededInputSamples = static_cast<int64_t>(std::ceil((getWidth() + 1) * samplesPerPixel));
+    const int64_t neededInputSamples = static_cast<int64_t>(std::round(getWidth() * samplesPerPixel));
     const int64_t availableSamples = state->document.getFrameCount() - sampleOffset;
     const int64_t actualInputSamples = std::min(neededInputSamples, availableSamples);
 
