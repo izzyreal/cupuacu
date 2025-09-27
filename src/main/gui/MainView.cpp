@@ -118,7 +118,8 @@ void MainView::drawSelectionTriangles(SDL_Renderer *r)
 
     const auto sampleToScreenX = [&](int sample, float& outX) -> bool {
         const double pxWithinInner = (static_cast<double>(sample) - firstVisible) / samplesPerPx;
-        if (pxWithinInner < 0.0 || pxWithinInner > innerW)
+        const double tolerance = (samplesPerPx < 1.0) ? (1.0 / samplesPerPx) : 0.0;
+        if (pxWithinInner < 0.0 || pxWithinInner > innerW + tolerance)
             return false;
         outX = innerX + static_cast<float>(pxWithinInner);
         return true;
@@ -145,7 +146,6 @@ void MainView::drawSelectionTriangles(SDL_Renderer *r)
     }
 
     int64_t selectionEnd = state->selection.getEndInt();
-
     if (state->samplesPerPixel < 1)
     {
         selectionEnd++;
@@ -168,7 +168,6 @@ void MainView::drawSelectionTriangles(SDL_Renderer *r)
         drawTriangle(r, bottomPts, triColor);
     }
 }
-
 void MainView::timerCallback()
 {
     if (state->cursor != lastDrawnCursor ||
