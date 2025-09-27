@@ -84,7 +84,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 {
     CupuacuState *state = (CupuacuState*) appstate;
 
-    state->rootComponent->timerCallback();
+    state->rootComponent->timerCallbackRecursive();
 
     SDL_SetRenderTarget(state->renderer, state->canvas);
 

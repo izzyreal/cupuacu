@@ -55,7 +55,8 @@ struct CupuacuState {
     double samplesToScroll;
     std::optional<float> sampleValueUnderMouseCursor;
 
-    std::atomic<int64_t> playbackPosition = 0;
+    int64_t cursor = 0;
+    std::atomic<int64_t> playbackPosition;
     std::atomic<bool> isPlaying = false;
 
     std::shared_ptr<CustomDataSource> activePlayback;
@@ -94,7 +95,7 @@ static void resetWaveformState(CupuacuState *state)
     state->selectionChannelStart = -1;
     state->selectionChannelEnd = -1;
     state->samplesToScroll = 0;
-    state->playbackPosition = 0;
+    state->playbackPosition.store(-1);
 }
 
 int64_t getMaxSampleOffset(const CupuacuState*);

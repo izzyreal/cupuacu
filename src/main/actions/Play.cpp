@@ -21,7 +21,6 @@ struct CustomDataSource {
     ma_uint64 end;
     CupuacuState* state;
     ma_device device;
-    double playbackPositionToReturnTo = -1;
 };
 
 static ma_result custom_data_source_read(ma_data_source* pDataSource,
@@ -36,28 +35,7 @@ static ma_result custom_data_source_read(ma_data_source* pDataSource,
     if (framesToRead == 0)
     {
         *pFramesRead = 0;
-    
-        if (ds->state)
-        {
-            if (ds->state->selection.isActive())
-            {
-                ds->state->playbackPosition.store((double)ds->start);
-            }
-            else
-            {
-                if (ds->playbackPositionToReturnTo != -1)
-                {
-                    ds->state->playbackPosition.store(ds->playbackPositionToReturnTo);
-                }
-                else
-                {
-                    ds->state->playbackPosition.store(ds->playbackPositionToReturnTo);
-                }
-            }
-            
-            ds->state->isPlaying.store(false);
-        }
-        
+        ds->state->isPlaying.store(false);
         return MA_AT_END;
     }
 
@@ -84,7 +62,8 @@ static ma_result custom_data_source_read(ma_data_source* pDataSource,
     ds->cursor += framesToRead;
     *pFramesRead = framesToRead;
 
-    if (ds->state) {
+    if (ds->state)
+    {
         ds->state->playbackPosition.store((double)ds->cursor);
     }
 
@@ -166,11 +145,6 @@ static ma_result custom_data_source_init(CustomDataSource* ds,
     ds->end   = end;
     ds->state = state;
 
-    if (!state->selection.isActive())
-    {
-        ds->playbackPositionToReturnTo = state->playbackPosition;
-    }
-
     return MA_SUCCESS;
 }
 
@@ -185,6 +159,7 @@ static void ma_playback_callback(ma_device *pDevice, void *pOutput, const void *
 
 void stop(CupuacuState *state)
 {
+    state->playbackPosition.store(-1);
     std::shared_ptr<CustomDataSource> ds;
 
     {
@@ -197,11 +172,6 @@ void stop(CupuacuState *state)
     if (!ds)
     {
         return;
-    }
-
-    if (ds->playbackPositionToReturnTo != -1)
-    {
-        state->playbackPosition.store(ds->playbackPositionToReturnTo);
     }
 
     if (ma_device_get_state(&ds->device) == ma_device_state_started)
@@ -247,10 +217,12 @@ void play(CupuacuState *state)
         start = (ma_uint64)state->selection.getStartInt();
         end   = (ma_uint64)state->selection.getEndInt();
     } else {
-        start = (ma_uint64)state->playbackPosition.load();
+        start = (ma_uint64)state->cursor;
     }
 
     ds = std::make_shared<CustomDataSource>();
+
+    state->playbackPosition = start;
 
     if (custom_data_source_init(ds.get(),
                                 state->document.channels,

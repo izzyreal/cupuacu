@@ -78,4 +78,5 @@ private:
     void renderSmoothWaveform(SDL_Renderer*);
 
     void drawPlaybackPosition(SDL_Renderer*);
+    void drawCursor(SDL_Renderer*);
 };

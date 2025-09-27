@@ -59,31 +59,18 @@ bool WaveformsUnderlay::mouseLeftButtonDown(const uint8_t numClicks,
         return true;
     }
 
-    const auto *keyboard = SDL_GetKeyboardState(NULL);
-    const bool shiftPressed = keyboard[SDL_SCANCODE_LSHIFT] || keyboard[SDL_SCANCODE_RSHIFT];
+    //const auto *keyboard = SDL_GetKeyboardState(NULL);
+    //const bool shiftPressed = keyboard[SDL_SCANCODE_LSHIFT] || keyboard[SDL_SCANCODE_RSHIFT];
 
     const double samplePos = state->sampleOffset + mouseX * samplesPerPixel;
 
-    if (!shiftPressed)
-    {
-        state->selection.reset();
-    }
+    state->selection.reset();
 
-    if (shiftPressed && !state->selection.isActive())
-    {
-        state->selection.setValue1(state->playbackPosition.load());
-    }
-
-    if (!shiftPressed || !state->selection.isActive())
-    {
-        state->selection.setValue1(samplePos);
-        state->selectionAnchorChannel = channel;
-        state->selectionChannelStart = channel;
-    }
-
-    state->selection.setValue2(samplePos);
+    state->selection.setValue1(samplePos);
+    state->selectionAnchorChannel = channel;
+    state->selectionChannelStart = channel;
     state->selectionChannelEnd   = channel;
-    state->playbackPosition.store(std::round(samplePos));
+    state->cursor = state->selection.getStartInt();
 
     Waveform::setAllWaveformsDirty(state);
 
@@ -144,22 +131,6 @@ bool WaveformsUnderlay::mouseLeftButtonUp(const uint8_t numClicks,
                        const int32_t mouseY) 
 {
     state->samplesToScroll = 0.0f;
-
-    if (numClicks >= 2)
-    {
-        return true;
-    }
-
-    const double samplePos = state->sampleOffset + mouseX * state->samplesPerPixel;
-
-    state->selection.setValue2(samplePos);
-
-    const uint8_t channel = channelAt(mouseY);
-    assert(state->selectionChannelStart.has_value());
-    assert(state->selectionChannelEnd.has_value());
-    state->selectionChannelStart.emplace(std::min(*state->selectionChannelStart, channel));
-    state->selectionChannelEnd.emplace(std::max(*state->selectionChannelEnd, channel));
-
     return true;
 }
 

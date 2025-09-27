@@ -17,10 +17,14 @@ private:
     LabeledField* lengthField = nullptr;
     LabeledField* valueField = nullptr;
 
-    int64_t lastPlaybackPosition = std::numeric_limits<int64_t>::max();
+    int64_t lastDrawnPos = std::numeric_limits<int64_t>::max();
     int64_t lastSelectionStart = std::numeric_limits<int64_t>::max();
     int64_t lastSelectionEnd = std::numeric_limits<int64_t>::max();
-    bool lastSelectionActive = false;
+
+    // We assume the user starts without a selection.
+    // We have to be careful after implementing state restoration and the state
+    // is restored to an active selection.
+    bool lastSelectionActive = true;
     std::optional<float> lastSampleValueUnderMouseCursor;
 
 public:
@@ -56,12 +60,14 @@ public:
 
     void timerCallback() override
     {
-        const int64_t currentPlaybackPosition = state->playbackPosition.load();
+        const bool isPlaying = state->isPlaying.load();
 
-        if (currentPlaybackPosition != lastPlaybackPosition)
+        const int64_t currentPos = isPlaying ? state->playbackPosition.load() : state->cursor;
+
+        if (currentPos != lastDrawnPos)
         {
-            lastPlaybackPosition = currentPlaybackPosition;
-            posField->setValue(std::to_string(currentPlaybackPosition));
+            lastDrawnPos = currentPos;
+            posField->setValue(std::to_string(currentPos));
         }
 
         if (lastSampleValueUnderMouseCursor != state->sampleValueUnderMouseCursor)
@@ -96,9 +102,9 @@ public:
             }
             else
             {
-                startField->setValue("");
+                startField->setValue(std::to_string(state->cursor));
                 endField->setValue("");
-                lengthField->setValue("");
+                lengthField->setValue(std::to_string(0));
             }
         }
         else if (currentSelectionActive)

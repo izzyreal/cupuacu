@@ -81,7 +81,7 @@ public:
     virtual bool mouseLeftButtonDown(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY) { return false; }
     virtual bool mouseLeftButtonUp(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY) { return false; }
     virtual bool mouseMove(const int32_t mouseX, const int32_t mouseY, const float mouseRelY, const bool leftButtonIsDown) { return false; }
-    virtual void timerCallback() { for (auto &c : children) { c->timerCallback(); }}
+    virtual void timerCallback() {}
     virtual void resized() {}
 
     bool handleEvent(const SDL_Event& e);
@@ -92,6 +92,15 @@ public:
     const std::pair<int, int> getAbsolutePosition();
     const bool constainsAbsoluteCoordinate(const int x, const int y);
     Component* findComponentAt(const int x, const int y);
+
+    void timerCallbackRecursive()
+    {
+        timerCallback();
+        for (auto &c : children)
+        {
+            c->timerCallbackRecursive();
+        }
+    }
 
     void printTree(int depth = 0) const
     {

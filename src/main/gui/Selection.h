@@ -77,4 +77,9 @@ public:
                value2 != std::numeric_limits<T>::max() &&
                getLengthInt() > 0;
     }
+
+    void printInfo()
+    {
+        printf("active: %i, value1: %d, value2: %d, startInt: %i, endInt: %i, lengthInt: %i\n", isActive(), value1, value2, getStartInt(), getEndInt(), getLengthInt());
+    }
 };
