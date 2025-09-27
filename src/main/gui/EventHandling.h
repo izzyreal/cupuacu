@@ -69,6 +69,29 @@ static void updateComponentUnderMouse(CupuacuState *state, const int32_t mouseX,
     }
 }
 
+static void scaleMouseCoordinates(const CupuacuState *const state, float &x, float &y)
+{
+    SDL_FPoint canvasDimensions;
+    SDL_GetTextureSize(state->canvas, &canvasDimensions.x, &canvasDimensions.y);
+
+    SDL_Point winDimensions;
+    SDL_GetWindowSize(state->window, &winDimensions.x, &winDimensions.y);
+
+    x *= canvasDimensions.x / winDimensions.x;
+    y *= canvasDimensions.y / winDimensions.y;
+}
+
+static void scaleMouseButtonEvent(const CupuacuState *const state, SDL_Event *e)
+{
+    scaleMouseCoordinates(state, e->button.x, e->button.y);
+}
+
+static void scaleMouseMotionEvent(const CupuacuState *const state, SDL_Event *e)
+{
+    scaleMouseCoordinates(state, e->motion.x, e->motion.y);
+    scaleMouseCoordinates(state, e->motion.xrel, e->motion.yrel);
+}
+
 inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
 {
     bool componentUnderMouseChanged = false;
@@ -129,49 +152,36 @@ inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
         case SDL_EVENT_MOUSE_MOTION:
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
         case SDL_EVENT_MOUSE_BUTTON_UP:
-        case SDL_EVENT_MOUSE_WHEEL:
             {
-                SDL_FPoint canvasDimensions;
-                SDL_GetTextureSize(state->canvas, &canvasDimensions.x, &canvasDimensions.y);
-
-                SDL_Point winDimensions;
-                SDL_GetWindowSize(state->window, &winDimensions.x, &winDimensions.y);
-
-                SDL_Event e = *event;
-                
-                if (e.type == SDL_EVENT_MOUSE_MOTION)
+                if (event->type == SDL_EVENT_MOUSE_MOTION)
                 {
-                    e.motion.x *= canvasDimensions.x / winDimensions.x;
-                    e.motion.xrel *= canvasDimensions.x / winDimensions.x;
-                    e.motion.y *= canvasDimensions.y / winDimensions.y;
-                    e.motion.yrel *= canvasDimensions.y / winDimensions.y;
+                    scaleMouseMotionEvent(state, event);
                 }
                 else
                 {
-                    e.button.x *= (float)canvasDimensions.x / winDimensions.x;
-                    e.button.y *= (float)canvasDimensions.y / winDimensions.y;
+                    scaleMouseButtonEvent(state, event);
                 }
 
-                if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP)
+                if (event->type == SDL_EVENT_MOUSE_BUTTON_DOWN || event->type == SDL_EVENT_MOUSE_BUTTON_UP)
                 {
-                    if (e.type == SDL_EVENT_MOUSE_BUTTON_UP)
+                    if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
                     {
-                        updateComponentUnderMouse(state, e.button.x, e.button.y, componentUnderMouseChanged);
+                        updateComponentUnderMouse(state, event->button.x, event->button.y, componentUnderMouseChanged);
                     }
 
                     if (state->capturingComponent != nullptr)
                     {
-                        if (e.type == SDL_EVENT_MOUSE_BUTTON_UP)
+                        if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
                         {
-                            if (!state->capturingComponent->constainsAbsoluteCoordinate(e.button.x, e.button.y))
+                            if (!state->capturingComponent->constainsAbsoluteCoordinate(event->button.x, event->button.y))
                             {
                                 state->capturingComponent->mouseLeave();
                             }
                         }
 
-                        state->capturingComponent->handleEvent(e);
+                        state->capturingComponent->handleEvent(*event);
                         
-                        if (e.type == SDL_EVENT_MOUSE_BUTTON_UP)
+                        if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
                         {
                             state->capturingComponent = nullptr;
                         }
@@ -179,11 +189,11 @@ inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
                     }
                 }
 
-                state->rootComponent->handleEvent(e);
+                state->rootComponent->handleEvent(*event);
 
-                if (e.type == SDL_EVENT_MOUSE_MOTION && state->capturingComponent == nullptr)
+                if (event->type == SDL_EVENT_MOUSE_MOTION && state->capturingComponent == nullptr)
                 {
-                    updateComponentUnderMouse(state, e.motion.x, e.motion.y, componentUnderMouseChanged);
+                    updateComponentUnderMouse(state, event->motion.x, event->motion.y, componentUnderMouseChanged);
                 }
             }
             break;
