@@ -27,6 +27,8 @@ public:
     void timerCallback() override;
 
 private:
+    uint8_t lastNumClicks = 0;
+
     uint16_t channelHeight() const;
 
     uint8_t channelAt(const uint16_t y) const;

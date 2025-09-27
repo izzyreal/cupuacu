@@ -29,6 +29,7 @@ bool WaveformsUnderlay::mouseLeftButtonDown(const uint8_t numClicks,
                          const int32_t mouseX,
                          const int32_t mouseY) 
 {
+    lastNumClicks = numClicks;
     const auto samplesPerPixel = state->samplesPerPixel;
     const int channel = channelAt(mouseY);
 
@@ -113,14 +114,17 @@ bool WaveformsUnderlay::mouseMove(const int32_t mouseX,
     }
 
     handleScroll(mouseX, mouseY);
-    
-    const double samplePos = state->sampleOffset + mouseX * state->samplesPerPixel;
-    state->selection.setValue2(samplePos);
 
-    assert(state->selectionAnchorChannel.has_value());
+    if (lastNumClicks == 1)
+    {
+        const double samplePos = state->sampleOffset + mouseX * state->samplesPerPixel;
+        state->selection.setValue2(samplePos);
 
-    state->selectionChannelStart.emplace(std::min(*state->selectionAnchorChannel, channel));
-    state->selectionChannelEnd.emplace(std::max(*state->selectionAnchorChannel, channel));
+        assert(state->selectionAnchorChannel.has_value());
+
+        state->selectionChannelStart.emplace(std::min(*state->selectionAnchorChannel, channel));
+        state->selectionChannelEnd.emplace(std::max(*state->selectionAnchorChannel, channel));
+    }
 
     markAllWaveformsDirty();
     return true;
