@@ -68,6 +68,11 @@ public:
         {
             lastDrawnPos = currentPos;
             posField->setValue(std::to_string(currentPos));
+
+            if (!state->selection.isActive())
+            {
+                startField->setValue(std::to_string(currentPos));
+            }
         }
 
         if (lastSampleValueUnderMouseCursor != state->sampleValueUnderMouseCursor)
