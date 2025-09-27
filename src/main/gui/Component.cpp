@@ -285,7 +285,7 @@ uint16_t Component::getYPos() const
     return yPos;
 }
 
-const std::pair<int, int> Component::getAbsolutePosition()
+std::pair<int, int> Component::getAbsolutePosition()
 {
     int resultX = getXPos(), resultY = getYPos();
     Component *parent = getParent();
@@ -298,11 +298,30 @@ const std::pair<int, int> Component::getAbsolutePosition()
     return {resultX, resultY};
 }
 
-const bool Component::containsAbsoluteCoordinate(const int x, const int y)
+bool Component::containsAbsoluteCoordinate(const int x, const int y)
 {
-    const auto absPos = getAbsolutePosition();
-    return x >= absPos.first && x <= absPos.first + getWidth() &&
-           y >= absPos.second && y <= absPos.second + getHeight();
+    auto [absX, absY] = getAbsolutePosition();
+    SDL_Rect rect { absX, absY, (int)getWidth(), (int)getHeight() };
+
+    Component* p = parent;
+    while (p != nullptr)
+    {
+        auto [px, py] = p->getAbsolutePosition();
+        SDL_Rect parentRect { px, py, (int)p->getWidth(), (int)p->getHeight() };
+
+        SDL_Rect intersection;
+        if (!SDL_GetRectIntersection(&rect, &parentRect, &intersection))
+        {
+            return false;
+        }
+        rect = intersection;
+
+        p = p->getParent();
+    }
+
+    const SDL_Point pointToUse{x, y};
+
+    return SDL_PointInRect(&pointToUse, &rect);
 }
 
 Component* Component::findComponentAt(const int x, const int y)
