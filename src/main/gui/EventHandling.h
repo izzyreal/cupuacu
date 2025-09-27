@@ -151,52 +151,43 @@ inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
             handleKeyDown(event, state);
             break;
         case SDL_EVENT_MOUSE_MOTION:
+            scaleMouseMotionEvent(state, event);
+            state->rootComponent->handleEvent(*event);
+
+            if (state->capturingComponent == nullptr)
+            {
+                updateComponentUnderMouse(state, event->motion.x, event->motion.y, componentUnderMouseChanged);
+            }
+            break;
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
         case SDL_EVENT_MOUSE_BUTTON_UP:
+            scaleMouseButtonEvent(state, event);
+
+            if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
             {
-                if (event->type == SDL_EVENT_MOUSE_MOTION)
-                {
-                    scaleMouseMotionEvent(state, event);
-                }
-                else
-                {
-                    scaleMouseButtonEvent(state, event);
-                }
-
-                if (event->type == SDL_EVENT_MOUSE_BUTTON_DOWN || event->type == SDL_EVENT_MOUSE_BUTTON_UP)
-                {
-                    if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
-                    {
-                        updateComponentUnderMouse(state, event->button.x, event->button.y, componentUnderMouseChanged);
-                    }
-
-                    if (state->capturingComponent != nullptr)
-                    {
-                        if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
-                        {
-                            if (!state->capturingComponent->constainsAbsoluteCoordinate(event->button.x, event->button.y))
-                            {
-                                state->capturingComponent->mouseLeave();
-                            }
-                        }
-
-                        state->capturingComponent->handleEvent(*event);
-                        
-                        if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
-                        {
-                            state->capturingComponent = nullptr;
-                        }
-                        break;
-                    }
-                }
-
-                state->rootComponent->handleEvent(*event);
-
-                if (event->type == SDL_EVENT_MOUSE_MOTION && state->capturingComponent == nullptr)
-                {
-                    updateComponentUnderMouse(state, event->motion.x, event->motion.y, componentUnderMouseChanged);
-                }
+                updateComponentUnderMouse(state, event->button.x, event->button.y, componentUnderMouseChanged);
             }
+
+            if (state->capturingComponent != nullptr)
+            {
+                if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
+                {
+                    if (!state->capturingComponent->constainsAbsoluteCoordinate(event->button.x, event->button.y))
+                    {
+                        state->capturingComponent->mouseLeave();
+                    }
+                }
+
+                state->capturingComponent->handleEvent(*event);
+                
+                if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
+                {
+                    state->capturingComponent = nullptr;
+                }
+                break;
+            }
+
+            state->rootComponent->handleEvent(*event);
             break;
     }
 
