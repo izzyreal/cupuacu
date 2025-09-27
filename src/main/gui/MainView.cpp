@@ -69,20 +69,24 @@ void MainView::drawCursorTriangles(SDL_Renderer *r)
     const float innerX = borderWidth;
     const float innerW = static_cast<float>(getWidth()) - borderWidth * 2.0f;
 
-    const double cursorSample = static_cast<double>(state->cursor);
-    const double firstVisible = static_cast<double>(state->sampleOffset);
-    const double samplesPerPx = static_cast<double>(state->samplesPerPixel);
+    const int64_t sampleOffset = state->sampleOffset;
+    const double samplesPerPx  = state->samplesPerPixel;
+    if (samplesPerPx <= 0.0) return;
 
-    const double pxWithinInner = (cursorSample - firstVisible) / samplesPerPx;
-    const float cursorX = innerX + static_cast<float>(pxWithinInner);
+    const float cursorX = (state->cursor - sampleOffset) / samplesPerPx;
+
+    if (cursorX < 0.0f || cursorX > innerW)
+        return;
+
+    const float screenCursorX = innerX + cursorX;
 
     SDL_FColor triColor {188/255.f, 188/255.f, 0.0f, 1.0f};
 
     {
         SDL_FPoint pts[3] = {
-            { cursorX, borderWidth },
-            { cursorX - halfBase, borderWidth - triHeight },
-            { cursorX + halfBase, borderWidth - triHeight }
+            { screenCursorX, borderWidth },
+            { screenCursorX - halfBase, borderWidth - triHeight },
+            { screenCursorX + halfBase, borderWidth - triHeight }
         };
         drawTriangle(r, pts, triColor);
     }
@@ -90,9 +94,9 @@ void MainView::drawCursorTriangles(SDL_Renderer *r)
     {
         const float tipY = winH - borderWidth;
         SDL_FPoint pts[3] = {
-            { cursorX, tipY },
-            { cursorX - halfBase, tipY + triHeight },
-            { cursorX + halfBase, tipY + triHeight }
+            { screenCursorX, tipY },
+            { screenCursorX - halfBase, tipY + triHeight },
+            { screenCursorX + halfBase, tipY + triHeight }
         };
         drawTriangle(r, pts, triColor);
     }
@@ -104,56 +108,57 @@ void MainView::drawSelectionTriangles(SDL_Renderer *r)
     if (borderWidth <= 0.0f) return;
 
     const float triHeight = borderWidth * 0.75f;
-    const float winH = static_cast<float>(getHeight());
-    const float innerX = borderWidth;
+    const float winH      = static_cast<float>(getHeight());
+    const float innerX    = borderWidth;
+    const float innerW    = static_cast<float>(getWidth()) - borderWidth * 2.0f;
 
     const double firstVisible = static_cast<double>(state->sampleOffset);
     const double samplesPerPx = static_cast<double>(state->samplesPerPixel);
     if (samplesPerPx <= 0.0) return;
 
-    const auto sampleToX = [&](int sample) {
+    const auto sampleToScreenX = [&](int sample, float& outX) -> bool {
         const double pxWithinInner = (static_cast<double>(sample) - firstVisible) / samplesPerPx;
-        return innerX + static_cast<float>(pxWithinInner);
+        if (pxWithinInner < 0.0 || pxWithinInner > innerW)
+            return false;
+        outX = innerX + static_cast<float>(pxWithinInner);
+        return true;
     };
 
-    const float startX = sampleToX(state->selection.getStartInt());
-    const float endX   = sampleToX(state->selection.getEndInt());
-
+    float startX, endX;
     SDL_FColor triColor {188/255.f, 188/255.f, 0.0f, 1.0f};
 
-    {
-        SDL_FPoint pts[3] = {
+    if (sampleToScreenX(state->selection.getStartInt(), startX)) {
+        SDL_FPoint topPts[3] = {
             { startX, borderWidth - triHeight },
             { startX, borderWidth },
             { startX + triHeight, borderWidth - triHeight }
         };
-        drawTriangle(r, pts, triColor);
-    }
-    {
+        drawTriangle(r, topPts, triColor);
+
         const float baseY = winH - borderWidth;
-        SDL_FPoint pts[3] = {
+        SDL_FPoint bottomPts[3] = {
             { startX, baseY + triHeight },
             { startX, baseY },
             { startX + triHeight, baseY + triHeight }
         };
-        drawTriangle(r, pts, triColor);
+        drawTriangle(r, bottomPts, triColor);
     }
-    {
-        SDL_FPoint pts[3] = {
+
+    if (sampleToScreenX(state->selection.getEndInt(), endX)) {
+        SDL_FPoint topPts[3] = {
             { endX, borderWidth - triHeight },
             { endX, borderWidth },
             { endX - triHeight, borderWidth - triHeight }
         };
-        drawTriangle(r, pts, triColor);
-    }
-    {
+        drawTriangle(r, topPts, triColor);
+
         const float baseY = winH - borderWidth;
-        SDL_FPoint pts[3] = {
+        SDL_FPoint bottomPts[3] = {
             { endX, baseY + triHeight },
             { endX, baseY },
             { endX - triHeight, baseY + triHeight }
         };
-        drawTriangle(r, pts, triColor);
+        drawTriangle(r, bottomPts, triColor);
     }
 }
 
