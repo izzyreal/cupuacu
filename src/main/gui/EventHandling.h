@@ -47,6 +47,28 @@ static void updateMousePointer(const Component* underMouse) {
     }
 }
 
+static void updateComponentUnderMouse(CupuacuState *state, const int32_t mouseX, const int32_t mouseY, bool &componentUnderMouseChanged)
+{
+    auto oldComponentUnderMouse = state->componentUnderMouse;
+    const auto newComponentUnderMouse = state->rootComponent->findComponentAt(mouseX, mouseY);
+
+    if (state->componentUnderMouse != newComponentUnderMouse)
+    {
+        state->componentUnderMouse = newComponentUnderMouse;
+        componentUnderMouseChanged = true;
+
+        if (oldComponentUnderMouse != nullptr)
+        {
+            oldComponentUnderMouse->mouseLeave();
+        }
+
+        if (newComponentUnderMouse != nullptr)
+        {
+            newComponentUnderMouse->mouseEnter();
+        }
+    }
+}
+
 inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
 {
     bool componentUnderMouseChanged = false;
@@ -134,24 +156,7 @@ inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
                 {
                     if (e.type == SDL_EVENT_MOUSE_BUTTON_UP)
                     {
-                        auto oldComponentUnderMouse = state->componentUnderMouse;
-                        const auto newComponentUnderMouse = state->rootComponent->findComponentAt(e.motion.x, e.motion.y);
-
-                        if (state->componentUnderMouse != newComponentUnderMouse)
-                        {
-                            state->componentUnderMouse = newComponentUnderMouse;
-                            componentUnderMouseChanged = true;
-
-                            if (oldComponentUnderMouse != nullptr)
-                            {
-                                oldComponentUnderMouse->mouseLeave();
-                            }
-
-                            if (newComponentUnderMouse != nullptr)
-                            {
-                                newComponentUnderMouse->mouseEnter();
-                            }
-                        }
+                        updateComponentUnderMouse(state, e.button.x, e.button.y, componentUnderMouseChanged);
                     }
 
                     if (state->capturingComponent != nullptr)
@@ -178,24 +183,7 @@ inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
 
                 if (e.type == SDL_EVENT_MOUSE_MOTION && state->capturingComponent == nullptr)
                 {
-                    auto oldComponentUnderMouse = state->componentUnderMouse;
-                    const auto newComponentUnderMouse = state->rootComponent->findComponentAt(e.motion.x, e.motion.y);
-
-                    if (state->componentUnderMouse != newComponentUnderMouse)
-                    {
-                        state->componentUnderMouse = newComponentUnderMouse;
-                        componentUnderMouseChanged = true;
-
-                        if (oldComponentUnderMouse != nullptr)
-                        {
-                            oldComponentUnderMouse->mouseLeave();
-                        }
-
-                        if (newComponentUnderMouse != nullptr)
-                        {
-                            newComponentUnderMouse->mouseEnter();
-                        }
-                    }
+                    updateComponentUnderMouse(state, e.motion.x, e.motion.y, componentUnderMouseChanged);
                 }
             }
             break;
