@@ -90,7 +90,7 @@ public:
     uint16_t getXPos() const;
     uint16_t getYPos() const;
     const std::pair<int, int> getAbsolutePosition();
-    const bool constainsAbsoluteCoordinate(const int x, const int y);
+    const bool containsAbsoluteCoordinate(const int x, const int y);
     Component* findComponentAt(const int x, const int y);
 
     void timerCallbackRecursive()

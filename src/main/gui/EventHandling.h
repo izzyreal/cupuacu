@@ -155,7 +155,7 @@ static void handleMouseUp(CupuacuState *state, SDL_Event *event)
         return;
     }
 
-    if (!state->capturingComponent->constainsAbsoluteCoordinate(event->button.x, event->button.y))
+    if (!state->capturingComponent->containsAbsoluteCoordinate(event->button.x, event->button.y))
     {
         state->capturingComponent->mouseLeave();
     }

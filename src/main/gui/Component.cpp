@@ -143,12 +143,17 @@ void Component::draw(SDL_Renderer* renderer)
 {
     SDL_Rect viewPortRect;
     SDL_GetRenderViewport(renderer, &viewPortRect);
-    SDL_Rect oldViewPortRect = viewPortRect;
+    SDL_Rect parentViewPortRect = viewPortRect;
+
     viewPortRect.x += getXPos();
     viewPortRect.y += getYPos();
     viewPortRect.w = getWidth();
     viewPortRect.h = getHeight();
-    SDL_SetRenderViewport(renderer, &viewPortRect);
+
+    SDL_Rect viewPortRectToUse;
+    SDL_GetRectIntersection(&parentViewPortRect, &viewPortRect, &viewPortRectToUse);
+    
+    SDL_SetRenderViewport(renderer, &viewPortRectToUse);
 
     if (dirty)
     {
@@ -161,7 +166,7 @@ void Component::draw(SDL_Renderer* renderer)
         c->draw(renderer);
     }
 
-    SDL_SetRenderViewport(renderer, &oldViewPortRect);
+    SDL_SetRenderViewport(renderer, &parentViewPortRect);
 }
 
 bool Component::handleEvent(const SDL_Event& e)
@@ -293,7 +298,7 @@ const std::pair<int, int> Component::getAbsolutePosition()
     return {resultX, resultY};
 }
 
-const bool Component::constainsAbsoluteCoordinate(const int x, const int y)
+const bool Component::containsAbsoluteCoordinate(const int x, const int y)
 {
     const auto absPos = getAbsolutePosition();
     return x >= absPos.first && x <= absPos.first + getWidth() &&
@@ -310,7 +315,7 @@ Component* Component::findComponentAt(const int x, const int y)
         }
     }
 
-    if (constainsAbsoluteCoordinate(x, y))
+    if (containsAbsoluteCoordinate(x, y))
     {
         return this;
     }
