@@ -129,10 +129,11 @@ void MainView::drawSelectionTriangles(SDL_Renderer *r)
     SDL_FColor triColor {188/255.f, 188/255.f, 0.0f, 1.0f};
 
     if (sampleToScreenX(state->selection.getStartInt(), startX)) {
+        startX = std::round(startX);
         SDL_FPoint topPts[3] = {
             { startX, borderWidth - triHeight },
             { startX, borderWidth },
-            { startX + triHeight, borderWidth - triHeight }
+            { startX + triHeight + 1.f, borderWidth - triHeight }
         };
         drawTriangle(r, topPts, triColor);
 
@@ -140,7 +141,7 @@ void MainView::drawSelectionTriangles(SDL_Renderer *r)
         SDL_FPoint bottomPts[3] = {
             { startX, baseY + triHeight },
             { startX, baseY },
-            { startX + triHeight, baseY + triHeight }
+            { startX + triHeight + 1.f, baseY + triHeight }
         };
         drawTriangle(r, bottomPts, triColor);
     }
@@ -168,6 +169,7 @@ void MainView::drawSelectionTriangles(SDL_Renderer *r)
         drawTriangle(r, bottomPts, triColor);
     }
 }
+
 void MainView::timerCallback()
 {
     if (state->cursor != lastDrawnCursor ||
