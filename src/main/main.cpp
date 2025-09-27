@@ -61,6 +61,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
         return SDL_APP_FAILURE;
     }
 
+    initCursors();
+
     if (std::filesystem::exists(state->currentFile))
     {
         loadSampleData(state);

@@ -3,15 +3,58 @@
 #include "../CupuacuState.h"
 #include "Gui.h"
 #include "Component.h"
+#include "Waveform.h"
+#include "Waveforms.h"
+#include "WaveformsUnderlay.h"
 #include "keyboard_handling.h"
 
 static bool wasMaximized = false;
 
+static SDL_Cursor* defaultCursor = nullptr;
+static SDL_Cursor* textCursor = nullptr;
+static SDL_Cursor* pointerCursor = nullptr;
+static SDL_Cursor* currentCursor = nullptr;
+
+void initCursors() {
+    defaultCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_DEFAULT);
+    textCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_TEXT);
+    pointerCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_POINTER);
+    currentCursor = defaultCursor;
+    SDL_SetCursor(currentCursor);
+}
+
+static void cleanupCursors() {
+    if (defaultCursor) SDL_DestroyCursor(defaultCursor);
+    if (textCursor) SDL_DestroyCursor(textCursor);
+    if (pointerCursor) SDL_DestroyCursor(pointerCursor);
+}
+
+static void updateMousePointer(const Component* underMouse) {
+    SDL_Cursor* newCursor = defaultCursor;
+
+    if (dynamic_cast<const Waveform*>(underMouse) ||
+        dynamic_cast<const Waveforms*>(underMouse) ||
+        dynamic_cast<const WaveformsUnderlay*>(underMouse)) {
+        newCursor = textCursor;
+    } else if (dynamic_cast<const SamplePoint*>(underMouse)) {
+        newCursor = pointerCursor;
+    }
+
+    if (newCursor != currentCursor) {
+        SDL_SetCursor(nullptr);
+        SDL_SetCursor(newCursor);
+        currentCursor = newCursor;
+    }
+}
+
 inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
 {
+    bool componentUnderMouseChanged = false;
+
     switch (event->type)
     {
         case SDL_EVENT_QUIT:
+            cleanupCursors();
             return SDL_APP_SUCCESS;
         case SDL_EVENT_WINDOW_MAXIMIZED:
             wasMaximized = true;
@@ -54,6 +97,7 @@ inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
                         waveform->clearHighlight();
                     }
                     state->componentUnderMouse = nullptr;
+                    componentUnderMouseChanged = true;
                 }
                 break;
             }
@@ -96,6 +140,7 @@ inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
                         if (state->componentUnderMouse != newComponentUnderMouse)
                         {
                             state->componentUnderMouse = newComponentUnderMouse;
+                            componentUnderMouseChanged = true;
 
                             if (oldComponentUnderMouse != nullptr)
                             {
@@ -139,6 +184,7 @@ inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
                     if (state->componentUnderMouse != newComponentUnderMouse)
                     {
                         state->componentUnderMouse = newComponentUnderMouse;
+                        componentUnderMouseChanged = true;
 
                         if (oldComponentUnderMouse != nullptr)
                         {
@@ -155,12 +201,15 @@ inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
             break;
     }
 
+    if (componentUnderMouseChanged)
+    {
+        updateMousePointer(state->componentUnderMouse);
+    }
+
     if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
     {
-        //state->rootComponent->printTree();
         state->selection.printInfo();
     }
 
     return SDL_APP_CONTINUE;
 }
-

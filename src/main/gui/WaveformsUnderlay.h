@@ -5,7 +5,6 @@
 struct CupuacuState;
 
 class WaveformsUnderlay : public Component {
-private:
 public:
     WaveformsUnderlay(CupuacuState*);
 
