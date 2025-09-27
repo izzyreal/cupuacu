@@ -92,6 +92,35 @@ static void scaleMouseMotionEvent(const CupuacuState *const state, SDL_Event *e)
     scaleMouseCoordinates(state, e->motion.xrel, e->motion.yrel);
 }
 
+static void handleResize(CupuacuState *state)
+{
+    int winW, winH;
+    SDL_GetWindowSize(state->window, &winW, &winH);
+
+    int hpp = state->pixelScale;
+
+    int newW = (winW / hpp) * hpp;
+    int newH = (winH / hpp) * hpp;
+
+    if (newW != winW || newH != winH)
+    {
+        if (wasMaximized)
+        {
+            wasMaximized = false;
+            SDL_RestoreWindow(state->window);
+            SDL_SetWindowSize(state->window, newW, newH);
+            SDL_SetWindowPosition(state->window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+        }
+        else
+        {
+            SDL_SetWindowSize(state->window, newW, newH);
+        }
+        return;
+    }
+
+    resizeComponents(state);
+}
+
 inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
 {
     bool componentUnderMouseChanged = false;
@@ -105,47 +134,19 @@ inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
             wasMaximized = true;
             break;
         case SDL_EVENT_WINDOW_RESIZED:
-            {
-                int winW, winH;
-                SDL_GetWindowSize(state->window, &winW, &winH);
-
-                int hpp = state->pixelScale;
-
-                int newW = (winW / hpp) * hpp;
-                int newH = (winH / hpp) * hpp;
-
-                if (newW != winW || newH != winH)
-                {
-                    if (wasMaximized)
-                    {
-                        wasMaximized = false;
-                        SDL_RestoreWindow(state->window);
-                        SDL_SetWindowSize(state->window, newW, newH);
-                        SDL_SetWindowPosition(state->window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
-                    }
-                    else
-                    {
-                        SDL_SetWindowSize(state->window, newW, newH);
-                    }
-                    break;
-                }
-
-                resizeComponents(state);
-                break;
-            }
+            handleResize(state);
+            break;
         case SDL_EVENT_WINDOW_MOUSE_LEAVE:
+            if (state->capturingComponent == nullptr && !state->selection.isActive())
             {
-                if (state->capturingComponent == nullptr && !state->selection.isActive())
+                for (auto* waveform : state->waveforms)
                 {
-                    for (auto* waveform : state->waveforms)
-                    {
-                        waveform->clearHighlight();
-                    }
-                    state->componentUnderMouse = nullptr;
-                    componentUnderMouseChanged = true;
+                    waveform->clearHighlight();
                 }
-                break;
+                state->componentUnderMouse = nullptr;
+                componentUnderMouseChanged = true;
             }
+            break;
         case SDL_EVENT_KEY_DOWN:
             handleKeyDown(event, state);
             break;
