@@ -15,7 +15,7 @@ static SDL_Cursor* textCursor = nullptr;
 static SDL_Cursor* pointerCursor = nullptr;
 static SDL_Cursor* currentCursor = nullptr;
 
-void initCursors() {
+static void initCursors() {
     defaultCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_DEFAULT);
     textCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_TEXT);
     pointerCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_POINTER);

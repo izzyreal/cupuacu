@@ -144,7 +144,14 @@ void MainView::drawSelectionTriangles(SDL_Renderer *r)
         drawTriangle(r, bottomPts, triColor);
     }
 
-    if (sampleToScreenX(state->selection.getEndInt(), endX)) {
+    int64_t selectionEnd = state->selection.getEndInt();
+
+    if (state->samplesPerPixel < 1)
+    {
+        selectionEnd++;
+    }
+
+    if (sampleToScreenX(selectionEnd, endX)) {
         SDL_FPoint topPts[3] = {
             { endX, borderWidth - triHeight },
             { endX, borderWidth },
