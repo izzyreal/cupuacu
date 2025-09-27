@@ -153,6 +153,7 @@ void MainView::drawSelectionTriangles(SDL_Renderer *r)
     }
 
     if (sampleToScreenX(selectionEnd, endX)) {
+        endX = std::round(endX);
         SDL_FPoint topPts[3] = {
             { endX, borderWidth - triHeight },
             { endX, borderWidth },
