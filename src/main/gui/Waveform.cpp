@@ -126,8 +126,6 @@ void Waveform::drawHorizontalLines(SDL_Renderer* renderer)
 
 void Waveform::renderSmoothWaveform(SDL_Renderer* renderer)
 {
-    SDL_SetRenderDrawColor(renderer, 0, 185, 0, 255);
-
     const auto samplesPerPixel = state->samplesPerPixel;
     const double halfSampleWidth = 0.5 / samplesPerPixel;
     const int64_t sampleOffset = state->sampleOffset;
@@ -195,7 +193,7 @@ void Waveform::renderSmoothWaveform(SDL_Renderer* renderer)
 
         for (int j = 0; j < 4; ++j)
         {
-            verts[j].color = { 0, 0.5, 0, 1.f };
+            verts[j].color = waveformFColor;
             verts[j].tex_coord = { 0, 0 };
         }
 
@@ -206,7 +204,7 @@ void Waveform::renderSmoothWaveform(SDL_Renderer* renderer)
 
 void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
 {
-    SDL_SetRenderDrawColor(renderer, 0, 185, 0, 255);
+    SDL_SetRenderDrawColor(renderer, waveformColor.r, waveformColor.g, waveformColor.b, waveformColor.a);
 
     const auto samplesPerPixel = state->samplesPerPixel;
     const int64_t sampleOffset = state->sampleOffset;

@@ -64,6 +64,8 @@ public:
     void resetSamplePosUnderCursor();
 
 private:
+    const SDL_Color waveformColor{0, 185, 0, 255};
+    const SDL_FColor waveformFColor{waveformColor.r / 255.f, waveformColor.g / 255.f, waveformColor.b / 255.f, waveformColor.a / 255.f };
     std::optional<int64_t> lastDrawnSamplePosUnderCursor = -1;
     std::optional<int64_t> samplePosUnderCursor;
     const uint8_t channelIndex;
