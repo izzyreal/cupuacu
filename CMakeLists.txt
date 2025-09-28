@@ -40,6 +40,7 @@ add_executable(Cupuacu
     src/main/CupuacuState.cpp
     src/main/gui/Gui.cpp
     src/main/gui/MainView.cpp
+    src/main/gui/TriangleMarker.cpp
     src/main/gui/Component.cpp
     src/main/gui/WaveformsUnderlay.cpp
     src/main/gui/Waveforms.cpp

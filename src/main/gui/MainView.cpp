@@ -1,13 +1,23 @@
 #include "MainView.h"
 
 #include "../CupuacuState.h"
-
 #include "Waveforms.h"
+#include "TriangleMarker.h"   // NEW
+
+#include <cmath>
 
 MainView::MainView(CupuacuState *state) : Component(state, "MainView")
 {
     waveforms = emplaceChildAndSetDirty<Waveforms>(state);
     rebuildWaveforms();
+
+    // NEW: add markers
+    cursorTop = emplaceChildAndSetDirty<TriangleMarker>(state, TriangleMarkerType::CursorTop);
+    cursorBottom = emplaceChildAndSetDirty<TriangleMarker>(state, TriangleMarkerType::CursorBottom);
+    selStartTop    = emplaceChildAndSetDirty<TriangleMarker>(state, TriangleMarkerType::SelectionStartTop);
+    selStartBot    = emplaceChildAndSetDirty<TriangleMarker>(state, TriangleMarkerType::SelectionStartBottom);
+    selEndTop      = emplaceChildAndSetDirty<TriangleMarker>(state, TriangleMarkerType::SelectionEndTop);
+    selEndBot      = emplaceChildAndSetDirty<TriangleMarker>(state, TriangleMarkerType::SelectionEndBottom);
 }
 
 uint8_t MainView::computeBorderWidth() const
@@ -24,7 +34,99 @@ void MainView::rebuildWaveforms()
 void MainView::resized()
 {
     const auto borderWidth = computeBorderWidth();
-    waveforms->setBounds(borderWidth, borderWidth, getWidth() - (borderWidth * 2), getHeight() - (borderWidth * 2));
+    waveforms->setBounds(borderWidth, borderWidth,
+                         getWidth() - (borderWidth * 2),
+                         getHeight() - (borderWidth * 2));
+
+}
+
+void MainView::updateTriangleMarkerBounds()
+{
+    const auto borderWidth = computeBorderWidth();
+    const float bw = static_cast<float>(borderWidth);
+    const float triHeight = bw * 0.75f;
+    const float halfBase = triHeight;
+    const float winH = static_cast<float>(getHeight());
+
+    const float innerX = bw;
+    const float innerW = static_cast<float>(getWidth()) - bw * 2.0f;
+
+    const double samplesPerPx = state->samplesPerPixel;
+    if (samplesPerPx <= 0.0) return;
+    const int64_t sampleOffset = state->sampleOffset;
+
+    if (state->selection.isActive())
+    {
+        cursorTop->setBounds(0, 0, 0, 0);
+        cursorBottom->setBounds(0, 0, 0, 0);
+
+        auto sampleToScreenX = [&](int sample, float& outX) -> bool {
+            const double pxWithinInner = (static_cast<double>(sample) - sampleOffset) / samplesPerPx;
+            const double tolerance = (samplesPerPx < 1.0) ? (1.0 / samplesPerPx) : 0.0;
+            if (pxWithinInner < 0.0 || pxWithinInner > innerW + tolerance)
+                return false;
+            outX = innerX + static_cast<float>(pxWithinInner);
+            return true;
+        };
+
+        float startX;
+        if (sampleToScreenX(state->selection.getStartInt(), startX)) {
+            startX = std::round(startX);
+
+            selStartTop->setBounds(
+                static_cast<int>(startX),
+                0,
+                static_cast<int>(triHeight + 1.f),
+                static_cast<int>(triHeight));
+
+            selStartBot->setBounds(
+                static_cast<int>(startX),
+                static_cast<int>(winH - triHeight),
+                static_cast<int>(triHeight + 1.f),
+                static_cast<int>(triHeight));
+        }
+
+        int64_t selectionEnd = state->selection.getEndInt();
+        if (samplesPerPx < 1.0) {
+            selectionEnd++;
+        }
+
+        float endX;
+        if (sampleToScreenX(selectionEnd, endX)) {
+            endX = std::round(endX);
+
+            selEndTop->setBounds(
+                static_cast<int>(endX - triHeight),
+                0,
+                static_cast<int>(triHeight),
+                static_cast<int>(triHeight));
+
+            selEndBot->setBounds(
+                static_cast<int>(endX - triHeight),
+                static_cast<int>(winH - triHeight),
+                static_cast<int>(triHeight),
+                static_cast<int>(triHeight));
+        }
+    }
+    else
+    {
+        const float cursorX = (state->cursor - sampleOffset) / samplesPerPx;
+        if (cursorX >= 0.0f && cursorX <= innerW) {
+            const float screenX = std::round(innerX + cursorX) + 1.f;
+
+            cursorTop->setBounds(
+                static_cast<int>(screenX - halfBase),
+                0,
+                static_cast<int>(halfBase * 2),
+                static_cast<int>(triHeight));
+
+            cursorBottom->setBounds(
+                static_cast<int>(screenX - halfBase),
+                static_cast<int>(winH - triHeight),
+                static_cast<int>(halfBase * 2),
+                static_cast<int>(triHeight));
+        }
+    }
 }
 
 void MainView::onDraw(SDL_Renderer *r)
@@ -32,143 +134,6 @@ void MainView::onDraw(SDL_Renderer *r)
     SDL_SetRenderDrawColor(r, 28, 28, 28, 255);
     SDL_FRect rectToFill {0.f, 0.f, (float)getWidth(), (float)getHeight()};
     SDL_RenderFillRect(r, &rectToFill);
-
-    if (state->selection.isActive())
-    {
-        drawSelectionTriangles(r);
-    }
-    else
-    {
-        drawCursorTriangles(r);
-    }
-}
-
-void MainView::drawTriangle(SDL_Renderer *r,
-                            const SDL_FPoint (&pts)[3],
-                            const SDL_FColor &color)
-{
-    SDL_Vertex verts[3];
-    for (int i = 0; i < 3; ++i) {
-        verts[i].position  = pts[i];
-        verts[i].color     = color;
-        verts[i].tex_coord = {0.0f, 0.0f};
-    }
-    const int indices[3] = {0, 1, 2};
-    SDL_RenderGeometry(r, nullptr, verts, 3, indices, 3);
-}
-
-void MainView::drawCursorTriangles(SDL_Renderer *r)
-{
-    const float borderWidth = static_cast<float>(computeBorderWidth());
-    if (borderWidth <= 0.0f) return;
-
-    const float triHeight = borderWidth * 0.75f;
-    const float halfBase  = triHeight;
-    const float winH      = static_cast<float>(getHeight());
-
-    const float innerX = borderWidth;
-    const float innerW = static_cast<float>(getWidth()) - borderWidth * 2.0f;
-
-    const int64_t sampleOffset = state->sampleOffset;
-    const double samplesPerPx  = state->samplesPerPixel;
-    if (samplesPerPx <= 0.0) return;
-
-    const float cursorX = (state->cursor - sampleOffset) / samplesPerPx;
-
-    if (cursorX < 0.0f || cursorX > innerW)
-        return;
-
-    const float screenCursorX = std::round(innerX + cursorX) + 1.f;
-
-    SDL_FColor triColor {188/255.f, 188/255.f, 0.0f, 1.0f};
-
-    {
-        SDL_FPoint pts[3] = {
-            { screenCursorX, borderWidth },
-            { screenCursorX - halfBase, borderWidth - triHeight },
-            { screenCursorX + halfBase, borderWidth - triHeight }
-        };
-        drawTriangle(r, pts, triColor);
-    }
-
-    {
-        const float tipY = winH - borderWidth;
-        SDL_FPoint pts[3] = {
-            { screenCursorX, tipY },
-            { screenCursorX - halfBase, tipY + triHeight },
-            { screenCursorX + halfBase, tipY + triHeight }
-        };
-        drawTriangle(r, pts, triColor);
-    }
-}
-
-void MainView::drawSelectionTriangles(SDL_Renderer *r)
-{
-    const float borderWidth = static_cast<float>(computeBorderWidth());
-    if (borderWidth <= 0.0f) return;
-
-    const float triHeight = borderWidth * 0.75f;
-    const float winH      = static_cast<float>(getHeight());
-    const float innerX    = borderWidth;
-    const float innerW    = static_cast<float>(getWidth()) - borderWidth * 2.0f;
-
-    const double firstVisible = static_cast<double>(state->sampleOffset);
-    const double samplesPerPx = static_cast<double>(state->samplesPerPixel);
-    if (samplesPerPx <= 0.0) return;
-
-    const auto sampleToScreenX = [&](int sample, float& outX) -> bool {
-        const double pxWithinInner = (static_cast<double>(sample) - firstVisible) / samplesPerPx;
-        const double tolerance = (samplesPerPx < 1.0) ? (1.0 / samplesPerPx) : 0.0;
-        if (pxWithinInner < 0.0 || pxWithinInner > innerW + tolerance)
-            return false;
-        outX = innerX + static_cast<float>(pxWithinInner);
-        return true;
-    };
-
-    float startX, endX;
-    SDL_FColor triColor {188/255.f, 188/255.f, 0.0f, 1.0f};
-
-    if (sampleToScreenX(state->selection.getStartInt(), startX)) {
-        startX = std::round(startX);
-        SDL_FPoint topPts[3] = {
-            { startX, borderWidth - triHeight },
-            { startX, borderWidth },
-            { startX + triHeight + 1.f, borderWidth - triHeight }
-        };
-        drawTriangle(r, topPts, triColor);
-
-        const float baseY = winH - borderWidth;
-        SDL_FPoint bottomPts[3] = {
-            { startX, baseY + triHeight },
-            { startX, baseY },
-            { startX + triHeight + 1.f, baseY + triHeight }
-        };
-        drawTriangle(r, bottomPts, triColor);
-    }
-
-    int64_t selectionEnd = state->selection.getEndInt();
-    if (state->samplesPerPixel < 1)
-    {
-        selectionEnd++;
-    }
-
-    if (sampleToScreenX(selectionEnd, endX)) {
-        endX = std::round(endX);
-        SDL_FPoint topPts[3] = {
-            { endX, borderWidth - triHeight },
-            { endX, borderWidth },
-            { endX - triHeight, borderWidth - triHeight }
-        };
-        drawTriangle(r, topPts, triColor);
-
-        const float baseY = winH - borderWidth;
-        SDL_FPoint bottomPts[3] = {
-            { endX, baseY + triHeight },
-            { endX, baseY },
-            { endX - triHeight, baseY + triHeight }
-        };
-        drawTriangle(r, bottomPts, triColor);
-    }
 }
 
 void MainView::timerCallback()
@@ -186,7 +151,8 @@ void MainView::timerCallback()
         lastSampleOffset = state->sampleOffset;
         lastSelectionStart = state->selection.getStartInt();
         lastSelectionEnd = state->selection.getEndInt();
-        setDirty();
+        updateTriangleMarkerBounds();
+        setDirtyRecursive();
     }
 }
 
