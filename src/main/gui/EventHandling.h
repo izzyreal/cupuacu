@@ -62,24 +62,21 @@ static void cleanupCursors()
     if (pointerCursor) SDL_DestroyCursor(pointerCursor);
 }
 
-static void updateMousePointer(const CupuacuState *state)
+static void updateMouseCursor(const CupuacuState *state)
 {
     SDL_Cursor* newCursor = defaultCursor;
 
-    if (const auto waveform = dynamic_cast<const Waveform*>(state->componentUnderMouse); waveform != nullptr)
+    if (dynamic_cast<const Waveform*>(state->componentUnderMouse))
     {
-        if (waveform->getMouseRegion() == MouseRegion::ChannelSpecific)
+        if (state->selectedChannels == SelectedChannels::LEFT)
         {
-            if (waveform->getChannelIndex() == 0)
-            {
                 newCursor = selectLCursor;
-            }
-            else if (waveform->getChannelIndex() == 1)
-            {
-                newCursor = selectRCursor;
-            }
         }
-        else
+        else if (state->selectedChannels == SelectedChannels::RIGHT)
+        {
+                newCursor = selectRCursor;
+        }
+        else /* SelectedChannels::BOTH */
         {
             newCursor = textCursor;
         }
@@ -264,7 +261,7 @@ inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
             break;
     }
 
-    updateMousePointer(state);
+    updateMouseCursor(state);
 
     if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
     {

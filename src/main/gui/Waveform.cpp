@@ -18,21 +18,6 @@ uint8_t Waveform::getChannelIndex() const
     return channelIndex;
 }
 
-MouseRegion Waveform::getMouseRegion() const
-{
-    return mouseRegion;
-}
-
-void Waveform::updateMouseRegion(const MouseRegion mouseRegionToUse)
-{
-    if (mouseRegion == mouseRegionToUse)
-    {
-        return;
-    }
-
-    mouseRegion = mouseRegionToUse;
-}
-
 void Waveform::setDirty()
 {
     Component::setDirty();
