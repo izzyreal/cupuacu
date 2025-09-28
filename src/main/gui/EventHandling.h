@@ -254,7 +254,7 @@ inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
             break;
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
             handleMouseDown(state, event);
-            //state->rootComponent->printTree();
+            state->rootComponent->printTree();
             break;
         case SDL_EVENT_MOUSE_BUTTON_UP:
             handleMouseUp(state, event);

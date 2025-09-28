@@ -3,6 +3,7 @@
 #include "Component.h"
 
 class Waveforms;
+class TriangleMarker;
 
 class MainView : public Component {
     public:
@@ -12,11 +13,18 @@ class MainView : public Component {
 
         void resized() override;
 
+
         void onDraw(SDL_Renderer*) override;
 
         void timerCallback() override;
 
     private:
+        TriangleMarker *cursorTop = nullptr;    // NEW
+        TriangleMarker *cursorBottom = nullptr;    // NEW
+        TriangleMarker *selStartTop = nullptr;     // NEW
+        TriangleMarker *selStartBot = nullptr;     // NEW
+        TriangleMarker *selEndTop = nullptr;       // NEW
+        TriangleMarker *selEndBot = nullptr;       // NEW
         int64_t lastDrawnCursor = -1;
         bool lastSelectionIsActive = true;
         int64_t lastSampleOffset = -1;
@@ -28,9 +36,6 @@ class MainView : public Component {
         uint8_t computeBorderWidth() const;
         void resizeWaveforms();
         Waveforms *waveforms = nullptr;
-        void drawTriangle(SDL_Renderer *r,
-                          const SDL_FPoint (&pts)[3],
-                          const SDL_FColor &color);
-        void drawCursorTriangles(SDL_Renderer*);
-        void drawSelectionTriangles(SDL_Renderer*);
+
+        void updateTriangleMarkerBounds();
 };
