@@ -7,6 +7,7 @@
 #include "Waveforms.h"
 #include "WaveformsUnderlay.h"
 #include "keyboard_handling.h"
+#include "../ResourceUtil.hpp"
 
 static bool wasMaximized = false;
 
@@ -14,33 +15,70 @@ static SDL_Cursor* defaultCursor = nullptr;
 static SDL_Cursor* textCursor = nullptr;
 static SDL_Cursor* pointerCursor = nullptr;
 static SDL_Cursor* currentCursor = nullptr;
+static SDL_Cursor* selectLCursor = nullptr;
+static SDL_Cursor* selectRCursor = nullptr;
 
-static void initCursors() {
+static SDL_Cursor* loadCustomCursor(const std::string& filename, int hot_x, int hot_y)
+{
+    const auto data = get_resource_data(filename);
+    if (data.empty()) {
+        SDL_Log("Cursor resource '%s' not found", filename.c_str());
+        return nullptr;
+    }
+
+    SDL_IOStream* io = SDL_IOFromConstMem(data.data(), (int)data.size());
+    SDL_Surface* surface = SDL_LoadBMP_IO(io, 1);
+    if (!surface) {
+        SDL_Log("SDL_LoadBMP_IO failed: %s", SDL_GetError());
+        return nullptr;
+    }
+
+    SDL_Cursor* cursor = SDL_CreateColorCursor(surface, hot_x, hot_y);
+    SDL_DestroySurface(surface);
+
+    if (!cursor) {
+        SDL_Log("SDL_CreateColorCursor failed: %s", SDL_GetError());
+    }
+    return cursor;
+}
+
+static void initCursors()
+{
     defaultCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_DEFAULT);
     textCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_TEXT);
     pointerCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_POINTER);
     currentCursor = defaultCursor;
+
+    selectLCursor = loadCustomCursor("select_l.bmp", 0, 0);
+    selectRCursor = loadCustomCursor("select_r.bmp", 0, 0);
+    
     SDL_SetCursor(currentCursor);
 }
 
-static void cleanupCursors() {
+static void cleanupCursors()
+{
     if (defaultCursor) SDL_DestroyCursor(defaultCursor);
     if (textCursor) SDL_DestroyCursor(textCursor);
     if (pointerCursor) SDL_DestroyCursor(pointerCursor);
 }
 
-static void updateMousePointer(const Component* underMouse) {
+static void updateMousePointer(const Component* underMouse)
+{
     SDL_Cursor* newCursor = defaultCursor;
 
     if (dynamic_cast<const Waveform*>(underMouse) ||
         dynamic_cast<const Waveforms*>(underMouse) ||
-        dynamic_cast<const WaveformsUnderlay*>(underMouse)) {
-        newCursor = textCursor;
-    } else if (dynamic_cast<const SamplePoint*>(underMouse)) {
+        dynamic_cast<const WaveformsUnderlay*>(underMouse))
+    {
+        newCursor = selectLCursor;
+    }
+    else if (dynamic_cast<const SamplePoint*>(underMouse))
+    {
         newCursor = pointerCursor;
     }
 
-    if (newCursor != currentCursor) {
+    if (newCursor != currentCursor)
+    {
         SDL_SetCursor(nullptr);
         SDL_SetCursor(newCursor);
         currentCursor = newCursor;
