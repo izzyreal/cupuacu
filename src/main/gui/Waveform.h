@@ -55,7 +55,6 @@ public:
     void timerCallback() override;
     void resized() override;
     void mouseLeave() override;
-    void setDirty() override;
     void updateSamplePoints();
     void clearHighlight();
     uint8_t getChannelIndex() const;

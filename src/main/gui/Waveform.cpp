@@ -18,12 +18,6 @@ uint8_t Waveform::getChannelIndex() const
     return channelIndex;
 }
 
-void Waveform::setDirty()
-{
-    Component::setDirty();
-    lastDrawnSamplePosUnderCursor = -1;
-}
-
 uint16_t getSamplePointSize(const uint8_t pixelScale)
 {
     return 32 / pixelScale;
