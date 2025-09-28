@@ -13,6 +13,26 @@ Waveform::Waveform(CupuacuState *state, const uint8_t channelIndexToUse)
 {
 }
 
+uint8_t Waveform::getChannelIndex() const
+{
+    return channelIndex;
+}
+
+MouseRegion Waveform::getMouseRegion() const
+{
+    return mouseRegion;
+}
+
+void Waveform::updateMouseRegion(const MouseRegion mouseRegionToUse)
+{
+    if (mouseRegion == mouseRegionToUse)
+    {
+        return;
+    }
+
+    mouseRegion = mouseRegionToUse;
+}
+
 void Waveform::setDirty()
 {
     Component::setDirty();
@@ -295,9 +315,11 @@ void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
 void Waveform::drawSelection(SDL_Renderer *renderer)
 {
     const double samplesPerPixel = state->samplesPerPixel;
-    const auto isSelected = state->selection.isActive() &&
-                            channelIndex >= state->selectionChannelStart &&
-                            channelIndex <= state->selectionChannelEnd;
+
+    const bool isSelected = state->selection.isActive() &&
+        state->selectedChannels == SelectedChannels::BOTH ||
+        (channelIndex == 0 && state->selectedChannels == SelectedChannels::LEFT) ||
+        (channelIndex == 1 && state->selectedChannels == SelectedChannels::RIGHT);
 
     auto firstSample = static_cast<double>(state->selection.getStartInt());
     auto lastSample = static_cast<double>(state->selection.getEndInt() + 1);

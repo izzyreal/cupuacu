@@ -23,6 +23,10 @@ enum class SampleFormat {
     FLOAT32, FLOAT64,
     Unknown
 };
+
+enum SelectedChannels {
+    BOTH, LEFT, RIGHT
+};
  
 struct CupuacuState {
     uint8_t menuFontSize = 60;
@@ -49,9 +53,7 @@ struct CupuacuState {
     double verticalZoom;
     int64_t sampleOffset;
     Selection<double> selection = Selection<double>(0.0);
-    std::optional<uint8_t> selectionChannelStart;
-    std::optional<uint8_t> selectionChannelEnd;
-    std::optional<uint8_t> selectionAnchorChannel;
+    SelectedChannels selectedChannels;
     double samplesToScroll;
     std::optional<float> sampleValueUnderMouseCursor;
 
@@ -92,8 +94,7 @@ static void resetWaveformState(CupuacuState *state)
     state->verticalZoom = 1;
     state->sampleOffset = 0;
     state->selection.reset();
-    state->selectionChannelStart = -1;
-    state->selectionChannelEnd = -1;
+    state->selectedChannels = SelectedChannels::BOTH;
     state->samplesToScroll = 0;
     state->playbackPosition.store(-1);
 }

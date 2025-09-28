@@ -43,12 +43,18 @@ static ma_result custom_data_source_read(ma_data_source* pDataSource,
     int64_t numChannels = ds->channelData.size();
 
     const bool selectionIsActive = ds->state->selection.isActive();
+    const SelectedChannels selectedChannels = ds->state->selectedChannels;
 
-    for (ma_uint64 i = 0; i < framesToRead; ++i) {
-        for (int64_t ch = 0; ch < numChannels; ++ch) {
-            if (!selectionIsActive ||
-                (ds->state->selectionChannelStart <= ch &&
-                 ds->state->selectionChannelEnd >= ch))
+    for (ma_uint64 i = 0; i < framesToRead; ++i)
+    {
+        for (int64_t ch = 0; ch < numChannels; ++ch)
+        {
+            const bool shouldPlayChannel = !selectionIsActive ||
+                selectedChannels == SelectedChannels::BOTH ||
+                (ch == 0 && selectedChannels == SelectedChannels::LEFT) ||
+                (ch == 1 && selectedChannels == SelectedChannels::RIGHT);
+
+            if (shouldPlayChannel)                
             {
                 out[i * numChannels + ch] = ds->channelData[ch][ds->cursor + i];
             }

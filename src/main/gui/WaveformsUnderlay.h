@@ -35,5 +35,7 @@ private:
     void markAllWaveformsDirty();
 
     void handleScroll(const int32_t mouseX, const int32_t mouseY);
+
+    void handleChannelSelection(const int32_t mouseY) const;
 };
 

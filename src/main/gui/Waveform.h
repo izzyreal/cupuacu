@@ -5,6 +5,8 @@
 
 #include "SamplePoint.h"
 
+enum MouseRegion { BothChannels, ChannelSpecific };
+
 class Waveform : public Component {
 
 public:
@@ -58,12 +60,17 @@ public:
     void setDirty() override;
     void updateSamplePoints();
     void clearHighlight();
+    uint8_t getChannelIndex() const;
+    MouseRegion getMouseRegion() const;
 
     std::optional<int64_t> getSamplePosUnderCursor() const;
     void setSamplePosUnderCursor(const int64_t samplePosUnderCursor);
     void resetSamplePosUnderCursor();
+    void updateMouseRegion(const MouseRegion);
 
 private:
+    MouseRegion mouseRegion {BothChannels};
+
     const SDL_Color waveformColor{0, 185, 0, 255};
     const SDL_FColor waveformFColor{waveformColor.r / 255.f, waveformColor.g / 255.f, waveformColor.b / 255.f, waveformColor.a / 255.f };
     std::optional<int64_t> lastDrawnSamplePosUnderCursor = -1;

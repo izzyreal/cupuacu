@@ -62,24 +62,35 @@ static void cleanupCursors()
     if (pointerCursor) SDL_DestroyCursor(pointerCursor);
 }
 
-static void updateMousePointer(const Component* underMouse)
+static void updateMousePointer(const CupuacuState *state)
 {
     SDL_Cursor* newCursor = defaultCursor;
 
-    if (dynamic_cast<const Waveform*>(underMouse) ||
-        dynamic_cast<const Waveforms*>(underMouse) ||
-        dynamic_cast<const WaveformsUnderlay*>(underMouse))
+    if (const auto waveform = dynamic_cast<const Waveform*>(state->componentUnderMouse); waveform != nullptr)
     {
-        newCursor = selectLCursor;
+        if (waveform->getMouseRegion() == MouseRegion::ChannelSpecific)
+        {
+            if (waveform->getChannelIndex() == 0)
+            {
+                newCursor = selectLCursor;
+            }
+            else if (waveform->getChannelIndex() == 1)
+            {
+                newCursor = selectRCursor;
+            }
+        }
+        else
+        {
+            newCursor = textCursor;
+        }
     }
-    else if (dynamic_cast<const SamplePoint*>(underMouse))
+    else if (dynamic_cast<const SamplePoint*>(state->componentUnderMouse))
     {
         newCursor = pointerCursor;
     }
 
     if (newCursor != currentCursor)
     {
-        SDL_SetCursor(nullptr);
         SDL_SetCursor(newCursor);
         currentCursor = newCursor;
     }
@@ -224,8 +235,6 @@ static void handleWindowMouseLeave(CupuacuState *state)
 
 inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
 {
-    const Component *oldComponentUnderMouse = state->componentUnderMouse;
-
     switch (event->type)
     {
         case SDL_EVENT_QUIT:
@@ -248,16 +257,14 @@ inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
             break;
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
             handleMouseDown(state, event);
+            //state->rootComponent->printTree();
             break;
         case SDL_EVENT_MOUSE_BUTTON_UP:
             handleMouseUp(state, event);
             break;
     }
 
-    if (state->componentUnderMouse != oldComponentUnderMouse)
-    {
-        updateMousePointer(state->componentUnderMouse);
-    }
+    updateMousePointer(state);
 
     if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
     {
