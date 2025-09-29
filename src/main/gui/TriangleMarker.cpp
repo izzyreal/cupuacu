@@ -4,7 +4,18 @@
 #include "MainView.h"
 
 TriangleMarker::TriangleMarker(CupuacuState* state, TriangleMarkerType typeIn)
-    : Component(state, "TriangleMarker"), type(typeIn)
+    : Component(state, [typeIn]() {
+          switch (typeIn) {
+              case TriangleMarkerType::CursorTop:            return "TriangleMarker:CursorTop";
+              case TriangleMarkerType::CursorBottom:         return "TriangleMarker:CursorBottom";
+              case TriangleMarkerType::SelectionStartTop:    return "TriangleMarker:SelectionStartTop";
+              case TriangleMarkerType::SelectionStartBottom: return "TriangleMarker:SelectionStartBottom";
+              case TriangleMarkerType::SelectionEndTop:      return "TriangleMarker:SelectionEndTop";
+              case TriangleMarkerType::SelectionEndBottom:   return "TriangleMarker:SelectionEndBottom";
+          }
+          return "TriangleMarker";
+      }()),
+      type(typeIn)
 {
 }
 
