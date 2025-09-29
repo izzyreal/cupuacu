@@ -296,9 +296,9 @@ void Waveform::drawSelection(SDL_Renderer *renderer)
     const double samplesPerPixel = state->samplesPerPixel;
 
     const bool isSelected = state->selection.isActive() &&
-        state->selectedChannels == SelectedChannels::BOTH ||
+        (state->selectedChannels == SelectedChannels::BOTH ||
         (channelIndex == 0 && state->selectedChannels == SelectedChannels::LEFT) ||
-        (channelIndex == 1 && state->selectedChannels == SelectedChannels::RIGHT);
+        (channelIndex == 1 && state->selectedChannels == SelectedChannels::RIGHT));
 
     auto firstSample = static_cast<double>(state->selection.getStartInt());
     auto lastSample = static_cast<double>(state->selection.getEndInt() + 1);
