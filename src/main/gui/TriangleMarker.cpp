@@ -98,6 +98,10 @@ bool TriangleMarker::mouseLeftButtonDown(const uint8_t numClicks, const int32_t 
 
 bool TriangleMarker::mouseLeftButtonUp(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY)
 {
+    if (state->selection.isActive())
+    {
+        state->cursor = state->selection.getStartInt();
+    }
     return true;
 }
 

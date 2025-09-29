@@ -194,6 +194,11 @@ bool WaveformsUnderlay::mouseLeftButtonUp(const uint8_t numClicks,
 {
     state->samplesToScroll = 0.0f;
 
+    if (state->selection.isActive())
+    {
+        state->cursor = state->selection.getStartInt();
+    }
+
     return true;
 }
 
