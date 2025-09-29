@@ -15,11 +15,10 @@ public:
     TriangleMarker(CupuacuState* state, TriangleMarkerType type);
 
     void onDraw(SDL_Renderer* r) override;
-    bool mouseMove(const int32_t mouseX, const int32_t mouseY,
-                   const float mouseRelY, const bool leftButtonIsDown) override;
+    bool mouseMove(const MouseEvent&) override;
 
-    bool mouseLeftButtonDown(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY) override;
-    bool mouseLeftButtonUp(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY) override;
+    bool mouseDown(const MouseEvent&) override;
+    bool mouseUp(const MouseEvent&) override;
 
     TriangleMarkerType getType() const { return type; }
 
@@ -32,3 +31,4 @@ private:
 
     void updateStateFromDrag(int32_t newX);
 };
+

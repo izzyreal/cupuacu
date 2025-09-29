@@ -1,5 +1,7 @@
 #pragma once
 
+#include "MouseEvent.h"
+
 #include <SDL3/SDL.h>
 
 #include <algorithm>
@@ -78,13 +80,13 @@ public:
     virtual void onDraw(SDL_Renderer* renderer) {}
     virtual void mouseLeave() {}
     virtual void mouseEnter() {}
-    virtual bool mouseLeftButtonDown(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY) { return false; }
-    virtual bool mouseLeftButtonUp(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY) { return false; }
-    virtual bool mouseMove(const int32_t mouseX, const int32_t mouseY, const float mouseRelY, const bool leftButtonIsDown) { return false; }
+    virtual bool mouseDown(const MouseEvent&) { return false; }
+    virtual bool mouseUp(const MouseEvent&) { return false; }
+    virtual bool mouseMove(const MouseEvent&) { return false; }
     virtual void timerCallback() {}
     virtual void resized() {}
 
-    bool handleEvent(const SDL_Event& e);
+    bool handleMouseEvent(const MouseEvent&);
     uint16_t getWidth() const;
     uint16_t getHeight() const;
     uint16_t getXPos() const;

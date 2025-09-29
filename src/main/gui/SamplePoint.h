@@ -21,8 +21,9 @@ public:
 
     void mouseEnter() override;
     void mouseLeave() override;
-    bool mouseLeftButtonDown(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY) override;
-    bool mouseLeftButtonUp(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY) override;
-    bool mouseMove(const int32_t mouseX, const int32_t mouseY, const float mouseRelY, const bool leftButtonIsDown) override;
+    bool mouseDown(const MouseEvent&) override;
+    bool mouseUp(const MouseEvent&) override;
+    bool mouseMove(const MouseEvent&) override;
     void onDraw(SDL_Renderer*) override;
 };
+

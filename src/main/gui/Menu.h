@@ -33,8 +33,9 @@ public:
     void hideSubMenus();
     
     void onDraw(SDL_Renderer*) override;
-    bool mouseLeftButtonDown(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY) override;
-    bool mouseLeftButtonUp(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY) override;
+    bool mouseDown(const MouseEvent&) override;
+    bool mouseUp(const MouseEvent&) override;
     void mouseLeave() override;
     void mouseEnter() override;
 };
+

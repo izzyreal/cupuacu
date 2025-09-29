@@ -10,18 +10,11 @@ public:
 
     void mouseLeave() override;
 
-    bool mouseLeftButtonDown(const uint8_t numClicks,
-                             const int32_t mouseX,
-                             const int32_t mouseY) override;
+    bool mouseDown(const MouseEvent&) override;
 
-    bool mouseMove(const int32_t mouseX,
-                   const int32_t mouseY,
-                   const float /*mouseRelY*/,
-                   const bool leftButtonIsDown) override;
+    bool mouseMove(const MouseEvent&) override;
 
-    bool mouseLeftButtonUp(const uint8_t numClicks,
-                           const int32_t mouseX,
-                           const int32_t mouseY) override;
+    bool mouseUp(const MouseEvent&) override;
 
     void timerCallback() override;
 

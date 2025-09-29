@@ -25,16 +25,14 @@ void WaveformsUnderlay::mouseLeave()
     resetSampleValueUnderMouseCursor(state);
 }
 
-bool WaveformsUnderlay::mouseLeftButtonDown(const uint8_t numClicks,
-                         const int32_t mouseX,
-                         const int32_t mouseY) 
+bool WaveformsUnderlay::mouseDown(const MouseEvent &e) 
 {
-    lastNumClicks = numClicks;
+    lastNumClicks = e.numClicks;
     const auto samplesPerPixel = state->samplesPerPixel;
-    const int channel = channelAt(mouseY);
+    const int channel = channelAt(e.mouseYi);
     const double selectionCenter = (state->selection.getStart() + state->selection.getEnd()) * 0.5;
  
-    if (numClicks >= 2)
+    if (e.numClicks >= 2)
     {
         double startSample = state->sampleOffset;
         double endSample   = state->sampleOffset + getWidth() * samplesPerPixel;
@@ -57,7 +55,7 @@ bool WaveformsUnderlay::mouseLeftButtonDown(const uint8_t numClicks,
         state->selection.setValue1(startSample);
         state->selection.setValue2(endSample);
 
-        handleChannelSelection(mouseY, true);
+        handleChannelSelection(e.mouseYi, true);
         
         Waveform::setAllWaveformsDirty(state);
 
@@ -67,7 +65,7 @@ bool WaveformsUnderlay::mouseLeftButtonDown(const uint8_t numClicks,
     const auto *keyboard = SDL_GetKeyboardState(NULL);
     const bool shiftPressed = keyboard[SDL_SCANCODE_LSHIFT] || keyboard[SDL_SCANCODE_RSHIFT];
 
-    const double samplePos = state->sampleOffset + mouseX * samplesPerPixel;
+    const double samplePos = state->sampleOffset + e.mouseXf * samplesPerPixel;
 
     if (shiftPressed)
     {
@@ -139,19 +137,16 @@ void WaveformsUnderlay::handleChannelSelection(const int32_t mouseY, const bool 
     }
 }
 
-bool WaveformsUnderlay::mouseMove(const int32_t mouseX,
-               const int32_t mouseY,
-               const float /*mouseRelY*/,
-               const bool leftButtonIsDown) 
+bool WaveformsUnderlay::mouseMove(const MouseEvent &e) 
 {
     if (Waveform::shouldShowSamplePoints(state->samplesPerPixel, state->pixelScale))
     {
-        const int channel = channelAt(mouseY);
+        const int channel = channelAt(e.mouseYi);
         
         if (channel >= 0 && channel < (int)state->waveforms.size())
         {
             auto* wf = state->waveforms[channel];
-            const int64_t sampleIndex = static_cast<int64_t>(mouseX * state->samplesPerPixel) + state->sampleOffset;
+            const int64_t sampleIndex = static_cast<int64_t>(e.mouseXi * state->samplesPerPixel) + state->sampleOffset;
 
             wf->setSamplePosUnderCursor(sampleIndex);
 
@@ -159,28 +154,28 @@ bool WaveformsUnderlay::mouseMove(const int32_t mouseX,
         }
     }
 
-    const int64_t sampleIndex = getValidSampleIndexUnderMouseCursor(mouseX,
+    const int64_t sampleIndex = getValidSampleIndexUnderMouseCursor(e.mouseXi,
                                                                    state->samplesPerPixel,
                                                                    state->sampleOffset,
                                                                    state->document.getFrameCount());
 
-    const uint8_t channel = channelAt(mouseY);
+    const uint8_t channel = channelAt(e.mouseYi);
     const float sampleValueUnderMouseCursor = state->document.channels[channel][sampleIndex];
 
     updateSampleValueUnderMouseCursor(state, sampleValueUnderMouseCursor);
 
-    handleChannelSelection(mouseY, false);
+    handleChannelSelection(e.mouseYi, false);
 
-    if (state->capturingComponent != this || !leftButtonIsDown)
+    if (state->capturingComponent != this || !e.buttonState.left)
     {
         return false;
     }
 
-    handleScroll(mouseX, mouseY);
+    handleScroll(e.mouseXi, e.mouseYi);
 
     if (lastNumClicks == 1)
     {
-        const double samplePos = state->sampleOffset + mouseX * state->samplesPerPixel;
+        const double samplePos = state->sampleOffset + e.mouseXi * state->samplesPerPixel;
         state->selection.setValue2(samplePos);
     }
 
@@ -188,9 +183,7 @@ bool WaveformsUnderlay::mouseMove(const int32_t mouseX,
     return true;
 }
 
-bool WaveformsUnderlay::mouseLeftButtonUp(const uint8_t numClicks,
-                       const int32_t mouseX,
-                       const int32_t mouseY) 
+bool WaveformsUnderlay::mouseUp(const MouseEvent &e) 
 {
     state->samplesToScroll = 0.0f;
 

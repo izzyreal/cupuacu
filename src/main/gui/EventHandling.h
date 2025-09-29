@@ -3,6 +3,7 @@
 #include "../CupuacuState.h"
 #include "Gui.h"
 #include "Component.h"
+#include "MouseEvent.h"
 #include "Waveform.h"
 #include "TriangleMarker.h"
 #include "WaveformsUnderlay.h"
@@ -115,29 +116,6 @@ static void updateComponentUnderMouse(CupuacuState *state, const int32_t mouseX,
     }
 }
 
-static void scaleMouseCoordinates(const CupuacuState *const state, float &x, float &y)
-{
-    SDL_FPoint canvasDimensions;
-    SDL_GetTextureSize(state->canvas, &canvasDimensions.x, &canvasDimensions.y);
-
-    SDL_Point winDimensions;
-    SDL_GetWindowSize(state->window, &winDimensions.x, &winDimensions.y);
-
-    x *= canvasDimensions.x / winDimensions.x;
-    y *= canvasDimensions.y / winDimensions.y;
-}
-
-static void scaleMouseButtonEvent(const CupuacuState *const state, SDL_Event *e)
-{
-    scaleMouseCoordinates(state, e->button.x, e->button.y);
-}
-
-static void scaleMouseMotionEvent(const CupuacuState *const state, SDL_Event *e)
-{
-    scaleMouseCoordinates(state, e->motion.x, e->motion.y);
-    scaleMouseCoordinates(state, e->motion.xrel, e->motion.yrel);
-}
-
 static void handleResize(CupuacuState *state)
 {
     int winW, winH;
@@ -169,45 +147,47 @@ static void handleResize(CupuacuState *state)
 
 static void handleMouseMotion(CupuacuState *state, SDL_Event *event)
 {
-    scaleMouseMotionEvent(state, event);
-    state->rootComponent->handleEvent(*event);
+    const MouseEvent mouseEvent = convertFromSDL(state, event);
+
+    state->rootComponent->handleMouseEvent(mouseEvent);
 
     if (state->capturingComponent == nullptr)
     {
-        updateComponentUnderMouse(state, event->motion.x, event->motion.y);
+        updateComponentUnderMouse(state, mouseEvent.mouseXi, mouseEvent.mouseYi);
     }
 }
 
 static void handleMouseDown(CupuacuState *state, SDL_Event *event)
 {
-    scaleMouseButtonEvent(state, event);
+    const MouseEvent mouseEvent = convertFromSDL(state, event);
 
     if (state->capturingComponent == nullptr)
     {
-        state->rootComponent->handleEvent(*event);
+        state->rootComponent->handleMouseEvent(mouseEvent);
         return;
     }
 
-    state->capturingComponent->handleEvent(*event);
+    state->capturingComponent->handleMouseEvent(mouseEvent);
 }
 
 static void handleMouseUp(CupuacuState *state, SDL_Event *event)
 {
-    scaleMouseButtonEvent(state, event);
-    updateComponentUnderMouse(state, event->button.x, event->button.y);
+    const MouseEvent mouseEvent = convertFromSDL(state, event);
+
+    updateComponentUnderMouse(state, mouseEvent.mouseXi, mouseEvent.mouseYi);
 
     if (state->capturingComponent == nullptr)
     {
-        state->rootComponent->handleEvent(*event);
+        state->rootComponent->handleMouseEvent(mouseEvent);
         return;
     }
 
-    if (!state->capturingComponent->containsAbsoluteCoordinate(event->button.x, event->button.y))
+    if (!state->capturingComponent->containsAbsoluteCoordinate(mouseEvent.mouseXi, mouseEvent.mouseYi))
     {
         state->capturingComponent->mouseLeave();
     }
 
-    state->capturingComponent->handleEvent(*event);
+    state->capturingComponent->handleMouseEvent(mouseEvent);
     state->capturingComponent = nullptr;
 }
 

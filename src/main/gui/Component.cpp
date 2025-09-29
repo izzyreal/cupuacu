@@ -170,95 +170,78 @@ void Component::draw(SDL_Renderer* renderer)
     SDL_SetRenderViewport(renderer, &parentViewPortRect);
 }
 
-bool Component::handleEvent(const SDL_Event& e)
+bool Component::handleMouseEvent(const MouseEvent &mouseEvent)
 {
-    if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
-        e.type == SDL_EVENT_MOUSE_BUTTON_UP ||
-        e.type == SDL_EVENT_MOUSE_MOTION)
+    float localXf = mouseEvent.mouseXf - xPos;
+    float localYf = mouseEvent.mouseYf - yPos;
+    int localXi   = static_cast<int>(std::floor(localXf));
+    int localYi   = static_cast<int>(std::floor(localYf));
+
+    MouseEvent localMouseEvent = withNewCoordinates(mouseEvent, localXi, localYi, localXf, localYf);
+
+    for (auto& c : std::views::reverse(children))
     {
-        SDL_Event e_rel = e;
-
-        if (e_rel.type == SDL_EVENT_MOUSE_MOTION)
+        if (c->handleMouseEvent(localMouseEvent))
         {
-            e_rel.motion.x -= xPos;
-            e_rel.motion.y -= yPos;
+            return true;
         }
-        else
-        {
-            e_rel.button.x -= xPos;
-            e_rel.button.y -= yPos;
-        }
+    }
 
-        for (auto& c : std::views::reverse(children))
-        {
-            if (c->handleEvent(e_rel))
-            {
-                return true;
-            }
-        }
+    Component *capturingComponent = state->capturingComponent;
 
-        const int x = e_rel.type == SDL_EVENT_MOUSE_MOTION ? e_rel.motion.x : e_rel.button.x;
-        const int y = e_rel.type == SDL_EVENT_MOUSE_MOTION ? e_rel.motion.y : e_rel.button.y;
-
-        Component *capturingComponent = state->capturingComponent;
-
-        if (x < 0 || x >= width || y < 0 || y >= height)
+    if (localXi < 0 || localXi >= width || localYi < 0 || localYi >= height)
+    {
+        if (mouseEvent.type == MOVE)
         {
-            if (e_rel.type == SDL_EVENT_MOUSE_MOTION)
+            if (this == capturingComponent)
             {
-                if (this == capturingComponent)
-                {
-                    if (mouseMove(e_rel.motion.x, e_rel.motion.y, e_rel.motion.yrel, e_rel.motion.state & SDL_BUTTON_LMASK))
-                    {
-                        return true;
-                    }
-                }
-            }
-            else if (e_rel.type == SDL_EVENT_MOUSE_BUTTON_UP &&
-                     e_rel.button.button == SDL_BUTTON_LEFT)
-            {
-                if (this == capturingComponent)
-                {
-                    if (mouseLeftButtonUp(e_rel.button.clicks, e_rel.button.x, e_rel.button.y))
-                    {
-                        state->capturingComponent = nullptr;
-                        return true;
-                    }
-                }
-            }
-        }
-        else
-        {
-            if (e_rel.type == SDL_EVENT_MOUSE_MOTION)
-            {
-                if (mouseMove(e_rel.motion.x, e_rel.motion.y, e_rel.motion.yrel, e_rel.motion.state & SDL_BUTTON_LMASK))
+                if (mouseMove(localMouseEvent))
                 {
                     return true;
                 }
             }
-            else if (e_rel.type == SDL_EVENT_MOUSE_BUTTON_DOWN &&
-                     e_rel.button.button == SDL_BUTTON_LEFT)
+        }
+        else if (mouseEvent.type == UP && mouseEvent.buttonState.left)
+        {
+            if (this == capturingComponent)
             {
-                if (mouseLeftButtonDown(e_rel.button.clicks, e_rel.button.x, e_rel.button.y))
-                {
-                    state->capturingComponent = this;
-
-                    if (componentName.substr(0, 4) != "Menu")
-                    {
-                        state->menuBar->hideSubMenus();
-                    }
-
-                    return true;
-                }
-            }
-            else if (e.type == SDL_EVENT_MOUSE_BUTTON_UP &&
-                     e_rel.button.button == SDL_BUTTON_LEFT)
-            {
-                if (mouseLeftButtonUp(e_rel.button.clicks, e_rel.button.x, e_rel.button.y))
+                if (mouseUp(localMouseEvent))
                 {
                     state->capturingComponent = nullptr;
                     return true;
                 }
+            }
+        }
+    }
+    else
+    {
+        if (mouseEvent.type == MOVE)
+        {
+            if (mouseMove(localMouseEvent))
+            {
+                return true;
+            }
+        }
+        else if (mouseEvent.type == DOWN && mouseEvent.buttonState.left)
+        {
+            if (mouseDown(localMouseEvent))
+            {
+                state->capturingComponent = this;
+
+                if (componentName.substr(0, 4) != "Menu")
+                {
+                    state->menuBar->hideSubMenus();
+                }
+
+                return true;
+            }
+        }
+        else if (mouseEvent.type == UP && mouseEvent.buttonState.left)
+        {
+            if (mouseUp(localMouseEvent))
+            {
+                state->capturingComponent = nullptr;
+                return true;
             }
         }
     }

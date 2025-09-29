@@ -50,7 +50,7 @@ void Menu::onDraw(SDL_Renderer *renderer)
     renderText(renderer, menuName, fontPointSize);
 }
 
-bool Menu::mouseLeftButtonDown(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY)
+bool Menu::mouseDown(const MouseEvent &e)
 {
     const bool wasCurrentlyOpen = currentlyOpen;
 
@@ -80,7 +80,7 @@ bool Menu::mouseLeftButtonDown(const uint8_t numClicks, const int32_t mouseX, co
     return true;
 }
 
-bool Menu::mouseLeftButtonUp(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY)
+bool Menu::mouseUp(const MouseEvent &e)
 {
     return true;
 }

@@ -31,14 +31,17 @@ void SamplePoint::mouseLeave()
     setDirty();
 }
 
-bool SamplePoint::mouseLeftButtonDown(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY)
+bool SamplePoint::mouseDown(const MouseEvent &e)
 {
+    if (!e.buttonState.left)
+        return false;
+
     isDragging = true;
     dragYPos = getYPos();
     return true;
 }
 
-bool SamplePoint::mouseLeftButtonUp(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY)
+bool SamplePoint::mouseUp(const MouseEvent &e)
 {
     if (!isDragging)
     {
@@ -51,7 +54,7 @@ bool SamplePoint::mouseLeftButtonUp(const uint8_t numClicks, const int32_t mouse
     return true;
 }
 
-bool SamplePoint::mouseMove(const int32_t mouseX, const int32_t mouseY, const float mouseRelY, const bool leftButtonIsDown)
+bool SamplePoint::mouseMove(const MouseEvent &e)
 {
     if (!isDragging)
     {
@@ -63,7 +66,7 @@ bool SamplePoint::mouseMove(const int32_t mouseX, const int32_t mouseY, const fl
     const auto verticalZoom = state->verticalZoom;
 
     // Update y-position based on mouse movement
-    dragYPos += mouseRelY;
+    dragYPos += e.mouseRelY;
 
     // Clamp y-position to allow sample point to reach drawable area edges
     const float minY = 0.0f; // Top edge of sample point can reach 0
@@ -92,3 +95,4 @@ void SamplePoint::onDraw(SDL_Renderer *r)
     SDL_FRect rectToFill {0, 0, (float)getWidth(), (float)getHeight()};
     SDL_RenderFillRect(r, &rectToFill);
 }
+

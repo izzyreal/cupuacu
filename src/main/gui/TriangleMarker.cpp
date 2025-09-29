@@ -101,9 +101,9 @@ void TriangleMarker::onDraw(SDL_Renderer* r)
     }
 }
 
-bool TriangleMarker::mouseLeftButtonDown(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY)
+bool TriangleMarker::mouseDown(const MouseEvent &e)
 {
-    dragOffsetX = mouseX;
+    dragOffsetX = e.mouseXi;
     switch (type)
     {
         case TriangleMarkerType::CursorTop:
@@ -122,7 +122,7 @@ bool TriangleMarker::mouseLeftButtonDown(const uint8_t numClicks, const int32_t 
     return true;
 }
 
-bool TriangleMarker::mouseLeftButtonUp(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY)
+bool TriangleMarker::mouseUp(const MouseEvent &e)
 {
     if (state->selection.isActive())
     {
@@ -131,15 +131,14 @@ bool TriangleMarker::mouseLeftButtonUp(const uint8_t numClicks, const int32_t mo
     return true;
 }
 
-bool TriangleMarker::mouseMove(const int32_t mouseX, const int32_t mouseY,
-                               const float mouseRelY, const bool leftButtonIsDown)
+bool TriangleMarker::mouseMove(const MouseEvent &e)
 {
-    if (state->capturingComponent != this || !leftButtonIsDown)
+    if (state->capturingComponent != this || !e.buttonState.left)
     {
         return false;
     }
 
-    updateStateFromDrag(mouseX + getXPos() - dragOffsetX);
+    updateStateFromDrag(e.mouseXi + getXPos() - dragOffsetX);
     return true;
 }
 
