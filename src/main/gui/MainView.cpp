@@ -5,15 +5,13 @@
 #include "Waveform.h"
 #include "TriangleMarker.h"
 
-#include <cmath>
-
 MainView::MainView(CupuacuState *state) : Component(state, "MainView")
 {
     waveforms = emplaceChildAndSetDirty<Waveforms>(state);
     rebuildWaveforms();
 
-    cursorTop = emplaceChildAndSetDirty<TriangleMarker>(state, TriangleMarkerType::CursorTop);
-    cursorBottom = emplaceChildAndSetDirty<TriangleMarker>(state, TriangleMarkerType::CursorBottom);
+    cursorTop      = emplaceChildAndSetDirty<TriangleMarker>(state, TriangleMarkerType::CursorTop);
+    cursorBottom   = emplaceChildAndSetDirty<TriangleMarker>(state, TriangleMarkerType::CursorBottom);
     selStartTop    = emplaceChildAndSetDirty<TriangleMarker>(state, TriangleMarkerType::SelectionStartTop);
     selStartBot    = emplaceChildAndSetDirty<TriangleMarker>(state, TriangleMarkerType::SelectionStartBottom);
     selEndTop      = emplaceChildAndSetDirty<TriangleMarker>(state, TriangleMarkerType::SelectionEndTop);
@@ -163,7 +161,9 @@ void MainView::timerCallback()
         lastSampleOffset = state->sampleOffset;
         lastSelectionStart = state->selection.getStartInt();
         lastSelectionEnd = state->selection.getEndInt();
+
         updateTriangleMarkerBounds();
+        
         setDirtyRecursive();
     }
 }

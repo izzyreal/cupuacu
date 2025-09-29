@@ -23,12 +23,14 @@ public:
     TriangleMarkerType getType() const { return type; }
 
 private:
-    int dragOffsetX = 0;
     TriangleMarkerType type;
+
+    int32_t initialDragXPos = 0;
+
+    double dragStartSample = 0.0;
+    float dragMouseOffsetXf = 0.f;
 
     void drawTriangle(SDL_Renderer* r, const SDL_FPoint (&pts)[3], const SDL_FColor& color);
     SDL_FColor getColor() const;
 
-    void updateStateFromDrag(int32_t newX);
 };
-
