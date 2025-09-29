@@ -25,12 +25,10 @@ public:
 private:
     TriangleMarkerType type;
 
-    int32_t initialDragXPos = 0;
-
     double dragStartSample = 0.0;
-    float dragMouseOffsetXf = 0.f;
+    float dragMouseOffsetParentX = 0.f;
 
     void drawTriangle(SDL_Renderer* r, const SDL_FPoint (&pts)[3], const SDL_FColor& color);
     SDL_FColor getColor() const;
-
 };
+

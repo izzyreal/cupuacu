@@ -2,7 +2,6 @@
 #include "../CupuacuState.h"
 
 #include "MainView.h"
-#include "Waveform.h"
 
 TriangleMarker::TriangleMarker(CupuacuState* state, TriangleMarkerType typeIn)
     : Component(state, "TriangleMarker"), type(typeIn)
@@ -61,8 +60,7 @@ void TriangleMarker::onDraw(SDL_Renderer* r)
 
 bool TriangleMarker::mouseDown(const MouseEvent &e)
 {
-    initialDragXPos = getXPos();
-    dragMouseOffsetXf = e.mouseXf - getXPos();
+    const float mouseParentX = e.mouseXf + getXPos();
 
     if (type == TriangleMarkerType::SelectionStartTop || type == TriangleMarkerType::SelectionStartBottom)
     {
@@ -76,6 +74,9 @@ bool TriangleMarker::mouseDown(const MouseEvent &e)
     {
         dragStartSample = static_cast<double>(state->cursor);
     }
+
+    const double mouseSample = mouseParentX * state->samplesPerPixel;
+    dragMouseOffsetParentX = static_cast<float>(mouseSample - dragStartSample);
 
     if (state->selection.isActive())
     {
@@ -102,10 +103,9 @@ bool TriangleMarker::mouseMove(const MouseEvent &e)
         return false;
     }
 
-    const auto currentXPos = getXPos();
-    const auto xPosDiff = currentXPos - initialDragXPos;
-    const double deltaSample = (e.mouseXf - dragMouseOffsetXf - initialDragXPos + xPosDiff) * state->samplesPerPixel;
-    const double newSamplePos = dragStartSample + deltaSample;
+    const float mouseParentX = e.mouseXf + getXPos();
+    const double mouseSample = mouseParentX * state->samplesPerPixel;
+    const double newSamplePos = mouseSample - dragMouseOffsetParentX;
 
     switch (type) {
         case TriangleMarkerType::CursorTop:
@@ -124,7 +124,7 @@ bool TriangleMarker::mouseMove(const MouseEvent &e)
 
     dynamic_cast<MainView*>(getParent())->updateTriangleMarkerBounds();
     getParent()->setDirtyRecursive();
-    
+
     return true;
 }
 
