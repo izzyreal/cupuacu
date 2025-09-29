@@ -54,6 +54,7 @@ struct CupuacuState {
     int64_t sampleOffset;
     Selection<double> selection = Selection<double>(0.0);
     SelectedChannels selectedChannels;
+    SelectedChannels hoveringOverChannels;
     double samplesToScroll;
     std::optional<float> sampleValueUnderMouseCursor;
 
