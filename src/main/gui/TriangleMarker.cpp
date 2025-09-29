@@ -92,6 +92,7 @@ void TriangleMarker::onDraw(SDL_Renderer* r) {
 bool TriangleMarker::mouseLeftButtonDown(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY)
 {
     dragOffsetX = mouseX;
+    state->selection.fixOrder();
     return true;
 }
 

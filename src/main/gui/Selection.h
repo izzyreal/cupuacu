@@ -71,6 +71,11 @@ public:
         return getEnd() - getStart();
     }
 
+    void fixOrder()
+    {
+        if (value1 > value2) std::swap(value1, value2);
+    }
+
     bool isActive() const
     {
         return value1 != std::numeric_limits<T>::max() &&
