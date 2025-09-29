@@ -57,6 +57,8 @@ bool WaveformsUnderlay::mouseLeftButtonDown(const uint8_t numClicks,
         state->selection.setValue1(startSample);
         state->selection.setValue2(endSample);
 
+        handleChannelSelection(mouseY, true);
+        
         Waveform::setAllWaveformsDirty(state);
 
         return true;
@@ -95,7 +97,7 @@ bool WaveformsUnderlay::mouseLeftButtonDown(const uint8_t numClicks,
     return true;
 }
 
-void WaveformsUnderlay::handleChannelSelection(const int32_t mouseY) const
+void WaveformsUnderlay::handleChannelSelection(const int32_t mouseY, const bool isMouseDownEvent) const
 {
     bool isLeftOnly = false;
     bool isRightOnly = false;
@@ -131,7 +133,7 @@ void WaveformsUnderlay::handleChannelSelection(const int32_t mouseY) const
         state->hoveringOverChannels = SelectedChannels::BOTH;
     }
 
-    if (state->capturingComponent == this)
+    if (state->capturingComponent == this || isMouseDownEvent)
     {
         state->selectedChannels = state->hoveringOverChannels;
     }
@@ -167,7 +169,7 @@ bool WaveformsUnderlay::mouseMove(const int32_t mouseX,
 
     updateSampleValueUnderMouseCursor(state, sampleValueUnderMouseCursor);
 
-    handleChannelSelection(mouseY);
+    handleChannelSelection(mouseY, false);
 
     if (state->capturingComponent != this || !leftButtonIsDown)
     {

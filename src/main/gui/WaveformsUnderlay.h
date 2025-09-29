@@ -36,6 +36,6 @@ private:
 
     void handleScroll(const int32_t mouseX, const int32_t mouseY);
 
-    void handleChannelSelection(const int32_t mouseY) const;
+    void handleChannelSelection(const int32_t mouseY, const bool isMouseDownEvent) const;
 };
 
