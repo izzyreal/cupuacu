@@ -68,11 +68,11 @@ static void updateMouseCursor(const CupuacuState *state)
 
     if (dynamic_cast<const Waveform*>(state->componentUnderMouse))
     {
-        if (state->selectedChannels == SelectedChannels::LEFT)
+        if (state->hoveringOverChannels == SelectedChannels::LEFT)
         {
                 newCursor = selectLCursor;
         }
-        else if (state->selectedChannels == SelectedChannels::RIGHT)
+        else if (state->hoveringOverChannels == SelectedChannels::RIGHT)
         {
                 newCursor = selectRCursor;
         }

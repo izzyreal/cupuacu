@@ -120,15 +120,20 @@ void WaveformsUnderlay::handleChannelSelection(const int32_t mouseY) const
 
     if (isLeftOnly)
     {
-        state->selectedChannels = SelectedChannels::LEFT;
+        state->hoveringOverChannels = SelectedChannels::LEFT;
     }
     else if (isRightOnly)
     {
-        state->selectedChannels = SelectedChannels::RIGHT;
+        state->hoveringOverChannels = SelectedChannels::RIGHT;
     }
     else
     {
-        state->selectedChannels = SelectedChannels::BOTH;
+        state->hoveringOverChannels = SelectedChannels::BOTH;
+    }
+
+    if (state->capturingComponent == this)
+    {
+        state->selectedChannels = state->hoveringOverChannels;
     }
 }
 
