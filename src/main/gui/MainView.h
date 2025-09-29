@@ -13,7 +13,6 @@ class MainView : public Component {
 
         void resized() override;
 
-
         void onDraw(SDL_Renderer*) override;
 
         void timerCallback() override;
@@ -21,12 +20,12 @@ class MainView : public Component {
         void updateTriangleMarkerBounds();
 
     private:
-        TriangleMarker *cursorTop = nullptr;    // NEW
-        TriangleMarker *cursorBottom = nullptr;    // NEW
-        TriangleMarker *selStartTop = nullptr;     // NEW
-        TriangleMarker *selStartBot = nullptr;     // NEW
-        TriangleMarker *selEndTop = nullptr;       // NEW
-        TriangleMarker *selEndBot = nullptr;       // NEW
+        TriangleMarker *cursorTop = nullptr;
+        TriangleMarker *cursorBottom = nullptr;
+        TriangleMarker *selStartTop = nullptr;
+        TriangleMarker *selStartBot = nullptr;
+        TriangleMarker *selEndTop = nullptr;
+        TriangleMarker *selEndBot = nullptr;
         int64_t lastDrawnCursor = -1;
         bool lastSelectionIsActive = true;
         int64_t lastSampleOffset = -1;

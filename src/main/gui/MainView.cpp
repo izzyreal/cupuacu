@@ -2,7 +2,7 @@
 
 #include "../CupuacuState.h"
 #include "Waveforms.h"
-#include "TriangleMarker.h"   // NEW
+#include "TriangleMarker.h"
 
 #include <cmath>
 
@@ -11,7 +11,6 @@ MainView::MainView(CupuacuState *state) : Component(state, "MainView")
     waveforms = emplaceChildAndSetDirty<Waveforms>(state);
     rebuildWaveforms();
 
-    // NEW: add markers
     cursorTop = emplaceChildAndSetDirty<TriangleMarker>(state, TriangleMarkerType::CursorTop);
     cursorBottom = emplaceChildAndSetDirty<TriangleMarker>(state, TriangleMarkerType::CursorBottom);
     selStartTop    = emplaceChildAndSetDirty<TriangleMarker>(state, TriangleMarkerType::SelectionStartTop);
@@ -64,14 +63,21 @@ void MainView::updateTriangleMarkerBounds()
         auto sampleToScreenX = [&](int sample, float& outX) -> bool {
             const double pxWithinInner = (static_cast<double>(sample) - sampleOffset) / samplesPerPx;
             const double tolerance = (samplesPerPx < 1.0) ? (1.0 / samplesPerPx) : 0.0;
+
             if (pxWithinInner < 0.0 || pxWithinInner > innerW + tolerance)
+            {
                 return false;
+            }
+            
             outX = innerX + static_cast<float>(pxWithinInner);
+
             return true;
         };
 
         float startX;
-        if (sampleToScreenX(state->selection.getStartInt(), startX)) {
+
+        if (sampleToScreenX(state->selection.getStartInt(), startX))
+        {
             startX = std::round(startX);
 
             selStartTop->setBounds(
@@ -88,12 +94,16 @@ void MainView::updateTriangleMarkerBounds()
         }
 
         int64_t selectionEnd = state->selection.getEndInt();
-        if (samplesPerPx < 1.0) {
+
+        if (samplesPerPx < 1.0)
+        {
             selectionEnd++;
         }
 
         float endX;
-        if (sampleToScreenX(selectionEnd, endX)) {
+
+        if (sampleToScreenX(selectionEnd, endX))
+        {
             endX = std::round(endX);
 
             selEndTop->setBounds(
@@ -112,7 +122,9 @@ void MainView::updateTriangleMarkerBounds()
     else
     {
         const float cursorX = (state->cursor - sampleOffset) / samplesPerPx;
-        if (cursorX >= 0.0f && cursorX <= innerW) {
+
+        if (cursorX >= 0.0f && cursorX <= innerW)
+        {
             const float screenX = std::round(innerX + cursorX) + 1.f;
 
             cursorTop->setBounds(
