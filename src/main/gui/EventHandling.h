@@ -4,7 +4,7 @@
 #include "Gui.h"
 #include "Component.h"
 #include "Waveform.h"
-#include "Waveforms.h"
+#include "TriangleMarker.h"
 #include "WaveformsUnderlay.h"
 #include "keyboard_handling.h"
 #include "../ResourceUtil.hpp"
@@ -81,7 +81,8 @@ static void updateMouseCursor(const CupuacuState *state)
             newCursor = textCursor;
         }
     }
-    else if (dynamic_cast<const SamplePoint*>(state->componentUnderMouse))
+    else if (dynamic_cast<const SamplePoint*>(state->componentUnderMouse) ||
+             dynamic_cast<const TriangleMarker*>(state->componentUnderMouse))
     {
         newCursor = pointerCursor;
     }
@@ -254,7 +255,7 @@ inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
             break;
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
             handleMouseDown(state, event);
-            state->rootComponent->printTree();
+            //state->rootComponent->printTree();
             break;
         case SDL_EVENT_MOUSE_BUTTON_UP:
             handleMouseUp(state, event);
@@ -265,7 +266,7 @@ inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
 
     if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
     {
-        state->selection.printInfo();
+        //state->selection.printInfo();
     }
 
     return SDL_APP_CONTINUE;

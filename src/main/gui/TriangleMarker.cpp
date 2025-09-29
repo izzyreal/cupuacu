@@ -1,5 +1,8 @@
 #include "TriangleMarker.h"
 #include "../CupuacuState.h"
+
+#include "MainView.h"
+
 #include <cmath>
 
 TriangleMarker::TriangleMarker(CupuacuState* state, TriangleMarkerType typeIn)
@@ -23,6 +26,7 @@ void TriangleMarker::drawTriangle(SDL_Renderer* r,
 }
 
 void TriangleMarker::onDraw(SDL_Renderer* r) {
+
     const float w = static_cast<float>(getWidth());
     const float h = static_cast<float>(getHeight());
     const SDL_FColor color = getColor();
@@ -85,15 +89,24 @@ void TriangleMarker::onDraw(SDL_Renderer* r) {
     }
 }
 
+bool TriangleMarker::mouseLeftButtonDown(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY)
+{
+    dragOffsetX = mouseX;
+    return true;
+}
+
+bool TriangleMarker::mouseLeftButtonUp(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY)
+{
+    return true;
+}
+
 bool TriangleMarker::mouseMove(const int32_t mouseX, const int32_t mouseY,
                                const float mouseRelY, const bool leftButtonIsDown) {
     if (state->capturingComponent != this || !leftButtonIsDown) {
         return false;
     }
 
-    const auto [absX, absY] = getAbsolutePosition();
-    const int newX = absX + mouseX;
-    updateStateFromDrag(newX);
+    updateStateFromDrag(mouseX + getXPos() - dragOffsetX);
     return true;
 }
 
@@ -101,13 +114,26 @@ void TriangleMarker::updateStateFromDrag(int32_t newX) {
     const double samplesPerPx = state->samplesPerPixel;
     if (samplesPerPx <= 0.0) return;
 
+    switch (type) {
+        case TriangleMarkerType::CursorTop:
+        case TriangleMarkerType::CursorBottom:
+            break;
+        case TriangleMarkerType::SelectionStartTop:
+        case TriangleMarkerType::SelectionStartBottom:
+            break;
+        case TriangleMarkerType::SelectionEndTop:
+        case TriangleMarkerType::SelectionEndBottom:
+            break;
+    }
+
     const double sampleOffset = state->sampleOffset;
+
     const int sample = static_cast<int>(std::round(sampleOffset + newX * samplesPerPx));
 
     switch (type) {
         case TriangleMarkerType::CursorTop:
         case TriangleMarkerType::CursorBottom:
-            state->cursor = sample;
+            updateCursorPos(state, sample);
             break;
         case TriangleMarkerType::SelectionStartTop:
         case TriangleMarkerType::SelectionStartBottom:
@@ -118,4 +144,7 @@ void TriangleMarker::updateStateFromDrag(int32_t newX) {
             state->selection.setValue2(sample);
             break;
     }
+
+    dynamic_cast<MainView*>(getParent())->updateTriangleMarkerBounds();
+    getParent()->setDirtyRecursive();
 }

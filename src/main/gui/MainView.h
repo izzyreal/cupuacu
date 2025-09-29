@@ -18,6 +18,8 @@ class MainView : public Component {
 
         void timerCallback() override;
 
+        void updateTriangleMarkerBounds();
+
     private:
         TriangleMarker *cursorTop = nullptr;    // NEW
         TriangleMarker *cursorBottom = nullptr;    // NEW
@@ -37,5 +39,4 @@ class MainView : public Component {
         void resizeWaveforms();
         Waveforms *waveforms = nullptr;
 
-        void updateTriangleMarkerBounds();
 };

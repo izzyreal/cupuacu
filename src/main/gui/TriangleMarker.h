@@ -18,9 +18,13 @@ public:
     bool mouseMove(const int32_t mouseX, const int32_t mouseY,
                    const float mouseRelY, const bool leftButtonIsDown) override;
 
+    bool mouseLeftButtonDown(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY) override;
+    bool mouseLeftButtonUp(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY) override;
+
     TriangleMarkerType getType() const { return type; }
 
 private:
+    int dragOffsetX = 0;
     TriangleMarkerType type;
 
     void drawTriangle(SDL_Renderer* r, const SDL_FPoint (&pts)[3], const SDL_FColor& color);
