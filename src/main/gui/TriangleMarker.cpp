@@ -28,7 +28,6 @@ void TriangleMarker::drawTriangle(SDL_Renderer* r,
     }
 
     const int indices[3] = {0, 1, 2};
-
     SDL_RenderGeometry(r, nullptr, verts, 3, indices, 3);
 }
 
@@ -40,85 +39,49 @@ void TriangleMarker::onDraw(SDL_Renderer* r)
 
     switch (type) {
         case TriangleMarkerType::CursorTop:
-        {
-            SDL_FPoint pts[3] = {
-                {w/2, h},
-                {0, 0},
-                {w, 0}
-            };
-            drawTriangle(r, pts, color);
+            drawTriangle(r, {SDL_FPoint{w/2, h}, {0,0}, {w,0}}, color);
             break;
-        }
         case TriangleMarkerType::CursorBottom:
-        {
-            SDL_FPoint pts[3] = {
-                {w/2, 0},
-                {0, h},
-                {w, h}
-            };
-            drawTriangle(r, pts, color);
+            drawTriangle(r, {SDL_FPoint{w/2,0}, {0,h}, {w,h}}, color);
             break;
-        }                                            
         case TriangleMarkerType::SelectionStartTop:
-        {
-            SDL_FPoint pts[3] = {
-                {0, 0},
-                {0, h},
-                {w, 0}
-            };
-            drawTriangle(r, pts, color);
+            drawTriangle(r, {SDL_FPoint{0,0}, {0,h}, {w,0}}, color);
             break;
-        }
         case TriangleMarkerType::SelectionStartBottom:
-        {
-            SDL_FPoint pts[3] = {
-                {0, h},
-                {0, 0},
-                {w, h}
-            };
-            drawTriangle(r, pts, color);
+            drawTriangle(r, {SDL_FPoint{0,h}, {0,0}, {w,h}}, color);
             break;
-        }
         case TriangleMarkerType::SelectionEndTop:
-        {
-            SDL_FPoint pts[3] = {
-                {w, 0},
-                {w, h},
-                {0, 0}
-            };
-            drawTriangle(r, pts, color);
+            drawTriangle(r, {SDL_FPoint{w,0}, {w,h}, {0,0}}, color);
             break;
-        }
-        case TriangleMarkerType::SelectionEndBottom: {
-            SDL_FPoint pts[3] = {
-                {w, h},
-                {w, 0},
-                {0, h}
-            };
-            drawTriangle(r, pts, color);
+        case TriangleMarkerType::SelectionEndBottom:
+            drawTriangle(r, {SDL_FPoint{w,h}, {w,0}, {0,h}}, color);
             break;
-        }
     }
 }
 
 bool TriangleMarker::mouseDown(const MouseEvent &e)
 {
-    dragOffsetX = e.mouseXi;
-    switch (type)
+    initialDragXPos = getXPos();
+    dragMouseOffsetXf = e.mouseXf - getXPos();
+
+    if (type == TriangleMarkerType::SelectionStartTop || type == TriangleMarkerType::SelectionStartBottom)
     {
-        case TriangleMarkerType::CursorTop:
-        case TriangleMarkerType::CursorBottom:
-            dragOffsetX += getWidth() / 2;
-            break;
-        case TriangleMarkerType::SelectionStartTop:
-        case TriangleMarkerType::SelectionStartBottom:
-            dragOffsetX += getWidth();
-            break;
-        case TriangleMarkerType::SelectionEndTop:
-        case TriangleMarkerType::SelectionEndBottom:
-            break;
+        dragStartSample = state->selection.getStart();
     }
-    state->selection.fixOrder();
+    else if (type == TriangleMarkerType::SelectionEndTop || type == TriangleMarkerType::SelectionEndBottom)
+    {
+        dragStartSample = state->selection.getEndInt();
+    }
+    else
+    {
+        dragStartSample = static_cast<double>(state->cursor);
+    }
+
+    if (state->selection.isActive())
+    {
+        state->selection.fixOrder();
+    }
+
     return true;
 }
 
@@ -128,6 +91,7 @@ bool TriangleMarker::mouseUp(const MouseEvent &e)
     {
         state->cursor = state->selection.getStartInt();
     }
+
     return true;
 }
 
@@ -138,33 +102,29 @@ bool TriangleMarker::mouseMove(const MouseEvent &e)
         return false;
     }
 
-    updateStateFromDrag(e.mouseXi + getXPos() - dragOffsetX);
-    return true;
-}
-
-void TriangleMarker::updateStateFromDrag(int32_t newX)
-{
-    const double samplesPerPx = state->samplesPerPixel;
-    const double sampleOffset = state->sampleOffset;
-
-    const int64_t sample = Waveform::getSampleIndexForXPos(newX, sampleOffset, samplesPerPx);
+    const auto currentXPos = getXPos();
+    const auto xPosDiff = currentXPos - initialDragXPos;
+    double deltaSample = (e.mouseXf - dragMouseOffsetXf - initialDragXPos + xPosDiff) * state->samplesPerPixel;
+    const double newSamplePos = dragStartSample + deltaSample;
 
     switch (type) {
         case TriangleMarkerType::CursorTop:
         case TriangleMarkerType::CursorBottom:
-            updateCursorPos(state, sample);
+            updateCursorPos(state, newSamplePos);
             break;
         case TriangleMarkerType::SelectionStartTop:
         case TriangleMarkerType::SelectionStartBottom:
-            state->selection.setValue1(sample);
+            state->selection.setValue1(newSamplePos);
             break;
         case TriangleMarkerType::SelectionEndTop:
         case TriangleMarkerType::SelectionEndBottom:
-            state->selection.setValue2(sample);
+            state->selection.setValue2(newSamplePos);
             break;
     }
 
     dynamic_cast<MainView*>(getParent())->updateTriangleMarkerBounds();
     getParent()->setDirtyRecursive();
+    
+    return true;
 }
 
