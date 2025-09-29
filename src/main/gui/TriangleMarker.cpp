@@ -104,7 +104,7 @@ bool TriangleMarker::mouseMove(const MouseEvent &e)
 
     const auto currentXPos = getXPos();
     const auto xPosDiff = currentXPos - initialDragXPos;
-    double deltaSample = (e.mouseXf - dragMouseOffsetXf - initialDragXPos + xPosDiff) * state->samplesPerPixel;
+    const double deltaSample = (e.mouseXf - dragMouseOffsetXf - initialDragXPos + xPosDiff) * state->samplesPerPixel;
     const double newSamplePos = dragStartSample + deltaSample;
 
     switch (type) {
