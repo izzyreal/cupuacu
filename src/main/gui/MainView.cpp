@@ -2,6 +2,7 @@
 
 #include "../CupuacuState.h"
 #include "Waveforms.h"
+#include "Waveform.h"
 #include "TriangleMarker.h"
 
 #include <cmath>
@@ -43,107 +44,100 @@ void MainView::resized()
 void MainView::updateTriangleMarkerBounds()
 {
     const auto borderWidth = computeBorderWidth();
-    const float bw = static_cast<float>(borderWidth);
-    const float triHeight = bw * 0.75f;
+    const float triHeight = borderWidth * 0.75f;
     const float halfBase = triHeight;
-    const float winH = static_cast<float>(getHeight());
 
-    const float innerX = bw;
-    const float innerW = static_cast<float>(getWidth()) - bw * 2.0f;
-
-    const double samplesPerPx = state->samplesPerPixel;
-    if (samplesPerPx <= 0.0) return;
-    const int64_t sampleOffset = state->sampleOffset;
+    const auto sampleOffset = state->sampleOffset;
+    const auto samplesPerPixel = state->samplesPerPixel;
 
     if (state->selection.isActive())
     {
         cursorTop->setBounds(0, 0, 0, 0);
         cursorBottom->setBounds(0, 0, 0, 0);
 
-        auto sampleToScreenX = [&](int sample, float& outX) -> bool {
-            const double pxWithinInner = (static_cast<double>(sample) - sampleOffset) / samplesPerPx;
-            const double tolerance = (samplesPerPx < 1.0) ? (1.0 / samplesPerPx) : 0.0;
+        const double tolerance = (samplesPerPixel < 1.0) ? (1.0 / samplesPerPixel) : 0.0;
 
-            if (pxWithinInner < 0.0 || pxWithinInner > innerW + tolerance)
-            {
-                return false;
-            }
-            
-            outX = innerX + static_cast<float>(pxWithinInner);
+        const float startXPosWithinWaveform = Waveform::getXPosForSampleIndex(state->selection.getStartInt(), sampleOffset, samplesPerPixel);
+        const bool isStartMarkerVisible = startXPosWithinWaveform >= 0 && startXPosWithinWaveform <= waveforms->getWidth() + tolerance;
 
-            return true;
-        };
-
-        float startX;
-
-        if (sampleToScreenX(state->selection.getStartInt(), startX))
+        if (isStartMarkerVisible)
         {
-            startX = std::round(startX);
-
             selStartTop->setBounds(
-                static_cast<int>(startX),
+                startXPosWithinWaveform + borderWidth,
                 0,
                 static_cast<int>(triHeight + 1.f),
                 static_cast<int>(triHeight));
 
             selStartBot->setBounds(
-                static_cast<int>(startX),
-                static_cast<int>(winH - triHeight),
+                startXPosWithinWaveform + borderWidth,
+                static_cast<int>(getHeight() - triHeight),
                 static_cast<int>(triHeight + 1.f),
                 static_cast<int>(triHeight));
         }
-
-        int64_t selectionEnd = state->selection.getEndInt();
-
-        if (samplesPerPx < 1.0)
+        else
         {
-            selectionEnd++;
+            selStartTop->setBounds(0, 0, 0, 0);
+            selStartBot->setBounds(0, 0, 0, 0);
         }
 
-        float endX;
+        const int64_t endToUse = state->samplesPerPixel < 1 ? state->selection.getEndInt() + 1 : state->selection.getEndInt();
+        const float endXPosWithinWaveform = Waveform::getXPosForSampleIndex(endToUse, sampleOffset, samplesPerPixel);
 
-        if (sampleToScreenX(selectionEnd, endX))
+        const bool isEndMarkerVisible = endXPosWithinWaveform >= 0 && endXPosWithinWaveform <= waveforms->getWidth() + tolerance; 
+
+        if (isEndMarkerVisible)
         {
-            endX = std::round(endX);
-
             selEndTop->setBounds(
-                static_cast<int>(endX - triHeight),
+                endXPosWithinWaveform + borderWidth - triHeight,
                 0,
                 static_cast<int>(triHeight),
                 static_cast<int>(triHeight));
 
             selEndBot->setBounds(
-                static_cast<int>(endX - triHeight),
-                static_cast<int>(winH - triHeight),
+                endXPosWithinWaveform + borderWidth - triHeight,
+                static_cast<int>(getHeight() - triHeight),
                 static_cast<int>(triHeight),
                 static_cast<int>(triHeight));
+        }
+        else
+        {
+            selEndTop->setBounds(0, 0, 0, 0);
+            selEndBot->setBounds(0, 0, 0, 0);
         }
     }
     else
     {
-        const float cursorX = (state->cursor - sampleOffset) / samplesPerPx;
-
-        if (cursorX >= 0.0f && cursorX <= innerW)
-        {
-            const float screenX = std::round(innerX + cursorX) + 1.f;
-
-            cursorTop->setBounds(
-                static_cast<int>(screenX - halfBase),
-                0,
-                static_cast<int>(halfBase * 2),
-                static_cast<int>(triHeight));
-
-            cursorBottom->setBounds(
-                static_cast<int>(screenX - halfBase),
-                static_cast<int>(winH - triHeight),
-                static_cast<int>(halfBase * 2),
-                static_cast<int>(triHeight));
-        }
-
         selStartTop->setBounds(0,0,0,0);
         selStartBot->setBounds(0,0,0,0);
         selEndTop->setBounds(0,0,0,0);
         selEndBot->setBounds(0,0,0,0);
+
+        const float xPosWithinWaveform = Waveform::getXPosForSampleIndex(state->cursor, state->sampleOffset, state->samplesPerPixel);
+        const bool isVisible = xPosWithinWaveform >= 0 && xPosWithinWaveform <= waveforms->getWidth();
+
+        if (isVisible)
+        {
+            const float cursorX = xPosWithinWaveform + borderWidth;
+
+            cursorTop->setBounds(
+                static_cast<int>(cursorX - halfBase),
+                0,
+                static_cast<int>(halfBase * 2),
+                static_cast<int>(triHeight));
+
+            const int32_t cursorBottomYPos = getHeight() - triHeight;
+
+            cursorBottom->setBounds(
+                static_cast<int>(cursorX - halfBase),
+                cursorBottomYPos,
+                static_cast<int>(halfBase * 2),
+                static_cast<int>(triHeight));
+        }
+        else
+        {
+            cursorTop->setBounds(0, 0, 0, 0);
+            cursorBottom->setBounds(0, 0, 0, 0);
+        }
     }
 }
 

@@ -2,8 +2,7 @@
 #include "../CupuacuState.h"
 
 #include "MainView.h"
-
-#include <cmath>
+#include "Waveform.h"
 
 TriangleMarker::TriangleMarker(CupuacuState* state, TriangleMarkerType typeIn)
     : Component(state, "TriangleMarker"), type(typeIn)
@@ -35,7 +34,6 @@ void TriangleMarker::drawTriangle(SDL_Renderer* r,
 
 void TriangleMarker::onDraw(SDL_Renderer* r)
 {
-
     const float w = static_cast<float>(getWidth());
     const float h = static_cast<float>(getHeight());
     const SDL_FColor color = getColor();
@@ -106,6 +104,20 @@ void TriangleMarker::onDraw(SDL_Renderer* r)
 bool TriangleMarker::mouseLeftButtonDown(const uint8_t numClicks, const int32_t mouseX, const int32_t mouseY)
 {
     dragOffsetX = mouseX;
+    switch (type)
+    {
+        case TriangleMarkerType::CursorTop:
+        case TriangleMarkerType::CursorBottom:
+            dragOffsetX += getWidth() / 2;
+            break;
+        case TriangleMarkerType::SelectionStartTop:
+        case TriangleMarkerType::SelectionStartBottom:
+            dragOffsetX += getWidth();
+            break;
+        case TriangleMarkerType::SelectionEndTop:
+        case TriangleMarkerType::SelectionEndBottom:
+            break;
+    }
     state->selection.fixOrder();
     return true;
 }
@@ -136,7 +148,7 @@ void TriangleMarker::updateStateFromDrag(int32_t newX)
     const double samplesPerPx = state->samplesPerPixel;
     const double sampleOffset = state->sampleOffset;
 
-    const int sample = static_cast<int>(std::round(sampleOffset + newX * samplesPerPx));
+    const int64_t sample = Waveform::getSampleIndexForXPos(newX, sampleOffset, samplesPerPx);
 
     switch (type) {
         case TriangleMarkerType::CursorTop:

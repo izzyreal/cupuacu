@@ -300,15 +300,14 @@ void Waveform::drawSelection(SDL_Renderer *renderer)
         (channelIndex == 0 && state->selectedChannels == SelectedChannels::LEFT) ||
         (channelIndex == 1 && state->selectedChannels == SelectedChannels::RIGHT));
 
-    auto firstSample = static_cast<double>(state->selection.getStartInt());
-    auto lastSample = static_cast<double>(state->selection.getEndInt() + 1);
-
+    const int64_t firstSample = state->selection.getStartInt();
+    const int64_t lastSample = state->selection.getEndInt() + 1;
     const int64_t sampleOffset = state->sampleOffset;
 
     if (isSelected && lastSample >= sampleOffset)
     {
-        const float startX = firstSample <= sampleOffset ? 0 : getXPosForDoubleSampleIndex(firstSample, sampleOffset, samplesPerPixel);
-        const float endX = getXPosForDoubleSampleIndex(lastSample, sampleOffset, samplesPerPixel);
+        const float startX = firstSample <= sampleOffset ? 0 : getXPosForSampleIndex(firstSample, sampleOffset, samplesPerPixel);
+        const float endX = getXPosForSampleIndex(lastSample, sampleOffset, samplesPerPixel);
 
         SDL_SetRenderDrawColor(renderer, 0, 64, 255, 128);
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
