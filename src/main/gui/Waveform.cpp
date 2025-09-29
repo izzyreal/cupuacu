@@ -307,8 +307,8 @@ void Waveform::drawSelection(SDL_Renderer *renderer)
 
     if (isSelected && lastSample >= sampleOffset)
     {
-        const float startX = firstSample <= sampleOffset ? 0 : (firstSample - sampleOffset) / samplesPerPixel;
-        const float endX = (lastSample - sampleOffset) / samplesPerPixel;
+        const float startX = firstSample <= sampleOffset ? 0 : getXPosForDoubleSampleIndex(firstSample, sampleOffset, samplesPerPixel);
+        const float endX = getXPosForDoubleSampleIndex(lastSample, sampleOffset, samplesPerPixel);
 
         SDL_SetRenderDrawColor(renderer, 0, 64, 255, 128);
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
@@ -345,7 +345,7 @@ void Waveform::drawHighlight(SDL_Renderer *renderer)
 
         if (sampleIndex < state->document.getFrameCount())
         {
-            const float xPos = (sampleIndex - sampleOffset) / state->samplesPerPixel;
+            const float xPos = getXPosForSampleIndex(sampleIndex, sampleOffset, samplesPerPixel);
             const float sampleWidth = 1.0f / samplesPerPixel;
 
             SDL_SetRenderDrawColor(renderer, 0, 128, 255, 100);
@@ -368,9 +368,7 @@ void Waveform::onDraw(SDL_Renderer *renderer)
 
     drawHorizontalLines(renderer);
 
-    const float samplesPerPixel = state->samplesPerPixel;
-
-    if (samplesPerPixel < 1)
+    if (state->samplesPerPixel < 1)
     {
         renderSmoothWaveform(renderer);
     }
@@ -390,21 +388,19 @@ void Waveform::onDraw(SDL_Renderer *renderer)
 
 void Waveform::drawPlaybackPosition(SDL_Renderer *renderer)
 {
-    if (state->playbackPosition.load() == -1)
+    const int64_t playbackPos = state->playbackPosition.load();
+
+    if (playbackPos != -1)
     {
         return;
     }
 
+    const float playbackXPos = getXPosForSampleIndex(playbackPos, state->sampleOffset, state->samplesPerPixel);
 
-    const int64_t sampleOffset = state->sampleOffset;
-    const double samplesPerPixel = state->samplesPerPixel;
-
-    const float lineX = (state->playbackPosition.load() - sampleOffset) / samplesPerPixel;
-
-    if (lineX >= 0 && lineX <= getWidth())
+    if (playbackXPos >= 0 && playbackXPos <= getWidth())
     {
         SDL_SetRenderDrawColor(renderer, 0, 200, 200, 255);
-        SDL_RenderLine(renderer, (int)lineX, 0, (int)lineX, getHeight());
+        SDL_RenderLine(renderer, (int)playbackXPos, 0, (int)playbackXPos, getHeight());
     }
 }
 
@@ -415,12 +411,9 @@ void Waveform::drawCursor(SDL_Renderer *renderer)
         return;
     }
 
-    const int64_t sampleOffset = state->sampleOffset;
-    const double samplesPerPixel = state->samplesPerPixel;
+    const auto cursorXPos = getXPosForSampleIndex(state->cursor, state->sampleOffset, state->samplesPerPixel);
 
-    const float lineX = (state->cursor - sampleOffset) / samplesPerPixel;
-
-    if (lineX >= 0 && lineX <= getWidth())
+    if (cursorXPos >= 0 && cursorXPos <= getWidth())
     {
         SDL_SetRenderDrawColor(renderer, 188, 188, 0, 255);
 
@@ -428,7 +421,7 @@ void Waveform::drawCursor(SDL_Renderer *renderer)
 
         for (int i = yInterval; i < getHeight(); i += yInterval)
         {
-            SDL_RenderPoint(renderer, lineX, i);
+            SDL_RenderPoint(renderer, cursorXPos, i);
         }
     }
 }

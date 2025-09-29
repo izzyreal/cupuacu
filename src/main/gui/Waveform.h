@@ -49,6 +49,26 @@ public:
         }
     }
 
+    static float getXPosForDoubleSampleIndex(const double sampleIndex, const int64_t sampleOffset, const double samplesPerPixel)
+    {
+        return (sampleIndex - sampleOffset) / samplesPerPixel;
+    }
+
+    static float getXPosForSampleIndex(const int64_t sampleIndex, const int64_t sampleOffset, const double samplesPerPixel)
+    {
+        return getXPosForDoubleSampleIndex(static_cast<double>(sampleIndex), sampleOffset, samplesPerPixel);
+    }
+
+    static double getDoubleSampleIndexForXPos(const int32_t xPos, const int64_t sampleOffset, const double samplesPerPixel)
+    {
+        return static_cast<double>(xPos) * samplesPerPixel + static_cast<double>(sampleOffset);
+    }
+
+    static int64_t getSampleIndexForXPos(const int32_t xPos, const int64_t sampleOffset, const double samplesPerPixel)
+    {
+        return static_cast<int64_t>(std::llround(getDoubleSampleIndexForXPos(xPos, sampleOffset, samplesPerPixel)));
+    }
+
     Waveform(CupuacuState*, const uint8_t channelIndex);
 
     void onDraw(SDL_Renderer*) override;
