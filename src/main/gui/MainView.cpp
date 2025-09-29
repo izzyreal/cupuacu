@@ -38,6 +38,7 @@ void MainView::resized()
                          getWidth() - (borderWidth * 2),
                          getHeight() - (borderWidth * 2));
 
+    updateTriangleMarkerBounds();
 }
 
 void MainView::updateTriangleMarkerBounds()
@@ -126,6 +127,11 @@ void MainView::updateTriangleMarkerBounds()
                 static_cast<int>(halfBase * 2),
                 static_cast<int>(triHeight));
         }
+
+        selStartTop->setBounds(0,0,0,0);
+        selStartBot->setBounds(0,0,0,0);
+        selEndTop->setBounds(0,0,0,0);
+        selEndBot->setBounds(0,0,0,0);
     }
 }
 

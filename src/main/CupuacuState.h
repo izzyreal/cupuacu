@@ -106,3 +106,10 @@ static void updateSampleOffset(CupuacuState *state, const int64_t sampleOffset)
     state->sampleOffset = std::clamp(sampleOffset, int64_t{0}, getMaxSampleOffset(state));
 }
 
+static bool updateCursorPos(CupuacuState *state, const int64_t cursorPos)
+{
+    const int64_t oldCursor = state->cursor;
+    state->cursor = std::clamp(cursorPos, int64_t{0}, state->document.getFrameCount());
+    return state->cursor != oldCursor;
+}
+
