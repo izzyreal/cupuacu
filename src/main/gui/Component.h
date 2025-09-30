@@ -76,6 +76,7 @@ public:
 
     const std::string getComponentName() const;
 
+    void sendToBack();
     void bringToFront();
     void setBounds(const uint16_t xPosToUse, const uint16_t yPosToUse, const uint16_t widthToUse, const uint16_t heightToUse);
     void setSize(const uint16_t widthToUse, const uint16_t heightToUse);

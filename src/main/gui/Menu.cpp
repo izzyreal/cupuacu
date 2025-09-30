@@ -39,25 +39,52 @@ void Menu::showSubMenus()
         subMenuYPos += h;
     }
 
+    // compute bounding rect
+    int x = subMenus.front()->getXPos();
+    int y = subMenus.front()->getYPos();
+    int w = 0;
+    int h = 0;
+    for (auto* sub : subMenus)
+    {
+        if (sub->getWidth() > w) w = sub->getWidth();
+        h = sub->getYPos() + sub->getHeight() - y;
+    }
+
+    // create background panel behind submenus
+    submenuPanel = emplaceChildAndSetDirty<SubMenuPanel>(state, "submenuPanel");
+    submenuPanel->setBounds(x, y, w, h);
+    submenuPanel->sendToBack();
+
     currentlyOpen = true;
+    setDirtyRecursive();
 }
 
 void Menu::hideSubMenus()
 {
+    if (submenuPanel)
+    {
+        removeChild(submenuPanel);
+        submenuPanel = nullptr;
+    }
+
     for (auto &subMenu : subMenus)
     {
         subMenu->setBounds(0, 0, 0, 0);
     }
 
     currentlyOpen = false;
+    setDirtyRecursive();
 }
 
 void Menu::onDraw(SDL_Renderer *renderer)
 {
-    const uint8_t bg = isMouseOver() ? 80 : 40;
-    SDL_SetRenderDrawColor(renderer, bg, bg, bg, 255);
-    auto rect = getBounds();
-    SDL_RenderFillRect(renderer, &rect);
+    if (depthIs0)
+    {
+        const uint8_t bg = isMouseOver() ? 80 : 40;
+        SDL_SetRenderDrawColor(renderer, bg, bg, bg, 255);
+        auto rect = getBounds();
+        SDL_RenderFillRect(renderer, &rect);
+    }
 }
 
 bool Menu::mouseDown(const MouseEvent &e)
