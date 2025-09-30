@@ -31,11 +31,11 @@ public:
     StatusBar(CupuacuState* stateToUse)
         : Component(stateToUse, "StatusBar")
     {
-        posField = emplaceChildAndSetDirty<LabeledField>(state, "Pos", "");
-        startField = emplaceChildAndSetDirty<LabeledField>(state, "St", "");
-        endField = emplaceChildAndSetDirty<LabeledField>(state, "End", "");
-        lengthField = emplaceChildAndSetDirty<LabeledField>(state, "Len", "");
-        valueField = emplaceChildAndSetDirty<LabeledField>(state, "Val", "");
+        posField = emplaceChild<LabeledField>(state, "Pos", "");
+        startField = emplaceChild<LabeledField>(state, "St", "");
+        endField = emplaceChild<LabeledField>(state, "End", "");
+        lengthField = emplaceChild<LabeledField>(state, "Len", "");
+        valueField = emplaceChild<LabeledField>(state, "Val", "");
     }
 
     void resized() override

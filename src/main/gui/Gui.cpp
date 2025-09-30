@@ -88,16 +88,16 @@ void buildComponents(CupuacuState *state)
     state->capturingComponent = nullptr;
     state->rootComponent = std::make_unique<Component>(state, "RootComponent");
     auto backgroundComponent = std::make_unique<OpaqueRect>(state);
-    state->backgroundComponent = state->rootComponent->addChildAndSetDirty(backgroundComponent);
+    state->backgroundComponent = state->rootComponent->addChild(backgroundComponent);
 
     auto mainView = std::make_unique<MainView>(state);
-    state->mainView = state->rootComponent->addChildAndSetDirty(mainView);
+    state->mainView = state->rootComponent->addChild(mainView);
 
     auto menuBar = std::make_unique<MenuBar>(state);
-    state->menuBar = state->rootComponent->addChildAndSetDirty(menuBar);
+    state->menuBar = state->rootComponent->addChild(menuBar);
 
     auto statusBar = std::make_unique<StatusBar>(state);
-    state->statusBar = state->rootComponent->addChildAndSetDirty(statusBar);
+    state->statusBar = state->rootComponent->addChild(statusBar);
 
     resizeComponents(state);
 }

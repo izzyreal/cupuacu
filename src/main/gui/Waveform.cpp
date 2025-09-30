@@ -38,7 +38,7 @@ void Waveform::updateSamplePoints()
 
         for (auto &sp : samplePoints)
         {
-            addChildAndSetDirty(sp);
+            addChild(sp);
         }
     }
 }

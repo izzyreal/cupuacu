@@ -15,10 +15,10 @@ public:
     {
         SDL_Color panelBg     = { 50, 50, 50, 255 };
         SDL_Color panelBorder = { 90, 90, 90, 255 };
-        SDL_FRect rect = getLocalBounds();
+        SDL_FRect rect = getLocalBoundsF();
 
-        drawRoundedRect(renderer, rect, 12.0f, panelBg);
-        drawRoundedRectOutline(renderer, rect, 12.0f, panelBorder);
+        drawRoundedRect(renderer, rect, 12.0f / state->pixelScale, panelBg);
+        drawRoundedRectOutline(renderer, rect, 12.0f / state->pixelScale, panelBorder);
     }
 };
 

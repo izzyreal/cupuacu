@@ -8,26 +8,24 @@
 #include <vector>
 #include <memory>
 #include <string>
+#include <cstdint>
 
 struct CupuacuState;
 
-static SDL_Rect FRectToRect(const SDL_FRect& fr)
+static SDL_FRect RectToFRect(const SDL_Rect& r)
 {
-    return SDL_Rect{
-        static_cast<int>(fr.x),
-        static_cast<int>(fr.y),
-        static_cast<int>(fr.w),
-        static_cast<int>(fr.h)
-    };
+    return SDL_FRect{ (float)r.x, (float)r.y, (float)r.w, (float)r.h };
 }
 
 class Component {
 private:
+    bool visible = true;
     bool parentClippingEnabled = true;
     bool interceptMouseEnabled = true;
+    bool isExplicitlyDirty = false; // Added flag
     std::string componentName;
-    uint16_t xPos = 0, yPos = 0;
-    uint16_t width = 0, height = 0;
+    int32_t xPos = 0, yPos = 0;
+    int32_t width = 0, height = 0;
     Component *parent = nullptr;
     std::vector<std::unique_ptr<Component>> children;
 
@@ -35,29 +33,37 @@ private:
 
 protected:
     CupuacuState *state;
-    const std::vector<std::unique_ptr<Component>>& getChildren() const;
-    void removeChild(Component*);
     void removeAllChildren();
     Component* getParent() const;
 
 public:
     Component(CupuacuState*, const std::string componentName);
+    void setVisible(bool shouldBeVisible);
+    bool isVisible() const { return visible; }
+    const std::vector<std::unique_ptr<Component>>& getChildren() const;
+
+    void removeChild(Component*);
 
     void setInterceptMouseEnabled(const bool shouldInterceptMouse);
 
     const bool isMouseOver() const;
 
-    SDL_FRect getBounds()
+    SDL_Rect getBounds()
     {
-        return { (float)xPos, (float)yPos, (float) getWidth(), (float) getHeight() };
+        return { xPos, yPos, width, height };
     }
 
-    SDL_FRect getLocalBounds()
+    SDL_Rect getLocalBounds()
     {
-        return { 0, 0, (float) getWidth(), (float) getHeight() };
+        return { 0, 0, width, height };
     }
 
-    SDL_FRect getAbsoluteBounds()
+    SDL_FRect getLocalBoundsF()
+    {
+        return { 0.0f, 0.0f, (float)width, (float)height };
+    }
+
+    SDL_Rect getAbsoluteBounds()
     {
         auto rect = getLocalBounds();
         const auto [absX, absY] = getAbsolutePosition();
@@ -67,6 +73,7 @@ public:
     }
 
     void disableParentClipping() { parentClippingEnabled = false; }
+    bool isParentClippingEnabled() { return parentClippingEnabled; }
 
     template <typename T>
     void removeChildrenOfType()
@@ -83,21 +90,19 @@ public:
     }
 
     template <typename T>
-    T* addChildAndSetDirty(std::unique_ptr<T> &childToAdd)
+    T* addChild(std::unique_ptr<T> &childToAdd)
     {
         children.push_back(std::move(childToAdd));
         children.back()->setParent(this);
-        children.back()->setDirty();
         return dynamic_cast<T*>(children.back().get());
     }
 
     template <typename T, typename... Args>
-    T* emplaceChildAndSetDirty(Args&&... args)
+    T* emplaceChild(Args&&... args)
     {
         auto child = std::make_unique<T>(std::forward<Args>(args)...);
         children.push_back(std::move(child));
         children.back()->setParent(this);
-        children.back()->setDirty();
         return static_cast<T*>(children.back().get());
     }
 
@@ -105,9 +110,9 @@ public:
 
     void sendToBack();
     void bringToFront();
-    void setBounds(const uint16_t xPosToUse, const uint16_t yPosToUse, const uint16_t widthToUse, const uint16_t heightToUse);
-    void setSize(const uint16_t widthToUse, const uint16_t heightToUse);
-    void setYPos(const uint16_t yPosToUse);
+    void setBounds(int32_t xPosToUse, int32_t yPosToUse, int32_t widthToUse, int32_t heightToUse);
+    void setSize(int32_t widthToUse, int32_t heightToUse);
+    void setYPos(int32_t yPosToUse);
     void setDirty();
     void draw(SDL_Renderer* renderer);
 
@@ -121,13 +126,13 @@ public:
     virtual void resized() {}
 
     bool handleMouseEvent(const MouseEvent&);
-    uint16_t getWidth() const;
-    uint16_t getHeight() const;
-    uint16_t getXPos() const;
-    uint16_t getYPos() const;
+    int32_t getWidth() const;
+    int32_t getHeight() const;
+    int32_t getXPos() const;
+    int32_t getYPos() const;
     std::pair<int, int> getAbsolutePosition();
-    bool containsAbsoluteCoordinate(const int x, const int y);
-    Component* findComponentAt(const int x, const int y);
+    bool containsAbsoluteCoordinate(int x, int y);
+    Component* findComponentAt(int x, int y);
 
     void timerCallbackRecursive()
     {

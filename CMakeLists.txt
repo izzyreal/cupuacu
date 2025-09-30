@@ -53,14 +53,34 @@ add_executable(Cupuacu
 )
 
 add_executable(cupuacu-tests
+    src/main/CupuacuState.cpp
+    src/main/gui/Gui.cpp
+    src/main/gui/MainView.cpp
+    src/main/gui/TriangleMarker.cpp
+    src/main/gui/Component.cpp
+    src/main/gui/Label.cpp
+    src/main/gui/WaveformsUnderlay.cpp
+    src/main/gui/Waveforms.cpp
+    src/main/gui/Waveform.cpp
+    src/main/gui/SamplePoint.cpp
+    src/main/gui/Menu.cpp
+    src/main/gui/MenuBar.cpp
+    src/main/actions/Play.cpp
     src/test/test.cpp
+    src/test/dummy_menu_bar_test.cpp
+    src/test/test_component_redraws.cpp
 )
 
 target_link_libraries(Cupuacu PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf)
 target_link_libraries(Cupuacu PRIVATE SndFile::sndfile)
-target_link_libraries(cupuacu-tests PRIVATE Catch2::Catch2)
+target_link_libraries(cupuacu-tests PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf)
+target_link_libraries(cupuacu-tests PRIVATE SndFile::sndfile)
+target_link_libraries(cupuacu-tests PRIVATE Catch2::Catch2WithMain)
+
+target_include_directories(cupuacu-tests PRIVATE src/main/)
 
 _bundle_resources(Cupuacu)
+target_link_libraries(cupuacu-tests PUBLIC cupuacu::rc)
 
 if (PROJECT_IS_TOP_LEVEL)
     execute_process(

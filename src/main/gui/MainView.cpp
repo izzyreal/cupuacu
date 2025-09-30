@@ -7,15 +7,15 @@
 
 MainView::MainView(CupuacuState *state) : Component(state, "MainView")
 {
-    waveforms = emplaceChildAndSetDirty<Waveforms>(state);
+    waveforms = emplaceChild<Waveforms>(state);
     rebuildWaveforms();
 
-    cursorTop      = emplaceChildAndSetDirty<TriangleMarker>(state, TriangleMarkerType::CursorTop);
-    cursorBottom   = emplaceChildAndSetDirty<TriangleMarker>(state, TriangleMarkerType::CursorBottom);
-    selStartTop    = emplaceChildAndSetDirty<TriangleMarker>(state, TriangleMarkerType::SelectionStartTop);
-    selStartBot    = emplaceChildAndSetDirty<TriangleMarker>(state, TriangleMarkerType::SelectionStartBottom);
-    selEndTop      = emplaceChildAndSetDirty<TriangleMarker>(state, TriangleMarkerType::SelectionEndTop);
-    selEndBot      = emplaceChildAndSetDirty<TriangleMarker>(state, TriangleMarkerType::SelectionEndBottom);
+    cursorTop      = emplaceChild<TriangleMarker>(state, TriangleMarkerType::CursorTop);
+    cursorBottom   = emplaceChild<TriangleMarker>(state, TriangleMarkerType::CursorBottom);
+    selStartTop    = emplaceChild<TriangleMarker>(state, TriangleMarkerType::SelectionStartTop);
+    selStartBot    = emplaceChild<TriangleMarker>(state, TriangleMarkerType::SelectionStartBottom);
+    selEndTop      = emplaceChild<TriangleMarker>(state, TriangleMarkerType::SelectionEndTop);
+    selEndBot      = emplaceChild<TriangleMarker>(state, TriangleMarkerType::SelectionEndBottom);
 }
 
 uint8_t MainView::computeBorderWidth() const
@@ -50,8 +50,8 @@ void MainView::updateTriangleMarkerBounds()
 
     if (state->selection.isActive())
     {
-        cursorTop->setBounds(0, 0, 0, 0);
-        cursorBottom->setBounds(0, 0, 0, 0);
+        cursorTop->setVisible(false);
+        cursorBottom->setVisible(false);
 
         {
             const int32_t startX = Waveform::getXPosForSampleIndex(
@@ -74,8 +74,8 @@ void MainView::updateTriangleMarkerBounds()
             }
             else
             {
-                selStartTop->setBounds(0, 0, 0, 0);
-                selStartBot->setBounds(0, 0, 0, 0);
+                selStartTop->setVisible(false);
+                selStartBot->setVisible(false);
             }
         }
 
@@ -102,17 +102,17 @@ void MainView::updateTriangleMarkerBounds()
             }
             else
             {
-                selEndTop->setBounds(0, 0, 0, 0);
-                selEndBot->setBounds(0, 0, 0, 0);
+                selEndTop->setVisible(false);
+                selEndBot->setVisible(false);
             }
         }
     }
     else
     {
-        selStartTop->setBounds(0, 0, 0, 0);
-        selStartBot->setBounds(0, 0, 0, 0);
-        selEndTop->setBounds(0, 0, 0, 0);
-        selEndBot->setBounds(0, 0, 0, 0);
+        selStartTop->setVisible(false);
+        selStartBot->setVisible(false);
+        selEndTop->setVisible(false);
+        selEndBot->setVisible(false);
 
         const int32_t xPos = Waveform::getXPosForSampleIndex(
             state->cursor, sampleOffset, samplesPerPixel);
@@ -135,8 +135,8 @@ void MainView::updateTriangleMarkerBounds()
         }
         else
         {
-            cursorTop->setBounds(0, 0, 0, 0);
-            cursorBottom->setBounds(0, 0, 0, 0);
+            cursorTop->setVisible(false);
+            cursorBottom->setVisible(false);
         }
     }
 }

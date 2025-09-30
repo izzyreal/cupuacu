@@ -7,7 +7,7 @@ Menu::Menu(CupuacuState *state, const std::string menuNameToUse, const std::func
     Component(state, "Menu for " + menuNameToUse), menuName(menuNameToUse), action(actionToUse)
 {
     disableParentClipping();
-    label = emplaceChildAndSetDirty<Label>(state, menuName);
+    label = emplaceChild<Label>(state, menuName);
     label->setInterceptMouseEnabled(false);
 }
 
@@ -29,8 +29,8 @@ void Menu::showSubMenus()
 
     int subMenuYPos = getHeight();
 
-    const int baseH = int(state->menuFontSize * state->pixelScale * 2.0f);
-    const int baseW = int(state->menuFontSize * state->pixelScale * 10.0f);
+    const int baseH = int(((float)state->menuFontSize / state->pixelScale) * 2.0f);
+    const int baseW = int(((float)state->menuFontSize / state->pixelScale) * 12.0f);
 
     for (auto &subMenu : subMenus)
     {
@@ -51,7 +51,7 @@ void Menu::showSubMenus()
         h = sub->getYPos() + sub->getHeight() - y;
     }
 
-    subMenuPanel = emplaceChildAndSetDirty<SubMenuPanel>(state, "submenuPanel");
+    subMenuPanel = emplaceChild<SubMenuPanel>(state, "submenuPanel");
     subMenuPanel->setBounds(x, y, w, h);
     subMenuPanel->sendToBack();
 
@@ -69,7 +69,7 @@ void Menu::hideSubMenus()
 
     for (auto &subMenu : subMenus)
     {
-        subMenu->setBounds(0, 0, 0, 0);
+        subMenu->setVisible(false);
     }
 
     currentlyOpen = false;
@@ -84,7 +84,7 @@ void Menu::onDraw(SDL_Renderer *renderer)
     {
         const uint8_t bg = bright ? 80 : 40;
         SDL_SetRenderDrawColor(renderer, bg, bg, bg, 255);
-        auto rect = getBounds();
+        auto rect = getLocalBoundsF();
         SDL_RenderFillRect(renderer, &rect);
     }
 }

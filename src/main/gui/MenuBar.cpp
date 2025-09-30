@@ -9,8 +9,8 @@
 MenuBar::MenuBar(CupuacuState *stateToUse) : Component(stateToUse, "MenuBar")
 {
     disableParentClipping();
-    fileMenu = emplaceChildAndSetDirty<Menu>(state, "File");
-    viewMenu = emplaceChildAndSetDirty<Menu>(state, "View");
+    fileMenu = emplaceChild<Menu>(state, "File");
+    viewMenu = emplaceChild<Menu>(state, "View");
     fileMenu->enableDepthIs0();
     viewMenu->enableDepthIs0();
 
