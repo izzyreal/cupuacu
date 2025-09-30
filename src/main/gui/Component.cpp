@@ -201,7 +201,7 @@ void Component::draw(SDL_Renderer* renderer)
         Uint8 b = rand() % 256;
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
         SDL_SetRenderDrawColor(renderer, r, g, b, 128); // 50% alpha
-        SDL_FRect overlayRect = getBounds();
+        SDL_FRect overlayRect = getLocalBounds();
         SDL_RenderFillRect(renderer, &overlayRect);
 #endif
         dirty = false;

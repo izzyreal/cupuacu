@@ -40,6 +40,11 @@ public:
 
     SDL_FRect getBounds()
     {
+        return { (float)xPos, (float)yPos, (float) getWidth(), (float) getHeight() };
+    }
+
+    SDL_FRect getLocalBounds()
+    {
         return { 0, 0, (float) getWidth(), (float) getHeight() };
     }
 
