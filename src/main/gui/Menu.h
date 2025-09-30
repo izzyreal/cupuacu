@@ -10,6 +10,7 @@
 #include <utility>
 
 struct CupuacuState;
+class Label;
 
 class Menu : public Component {
 private:
@@ -19,10 +20,12 @@ private:
     std::vector<Menu*> subMenus;
     const std::function<void()> action;
 
+    Label *label = nullptr;
+
 public:
     Menu(CupuacuState*, const std::string menuNameToUse, const std::function<void()> actionToUse = {});
 
-    void enableDepthIs0() { depthIs0 = true; }
+    void enableDepthIs0();
 
     template <typename... Args>
     void addSubMenu(Args&&... args)
@@ -34,7 +37,8 @@ public:
     
     void showSubMenus();
     void hideSubMenus();
-    
+
+    void resized() override;
     void onDraw(SDL_Renderer*) override;
     bool mouseDown(const MouseEvent&) override;
     bool mouseUp(const MouseEvent&) override;

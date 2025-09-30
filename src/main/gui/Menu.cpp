@@ -1,15 +1,24 @@
 #include "Menu.h"
 
 #include "MenuBar.h"
-
-#include "../CupuacuState.h"
-
-#include "text.h"
+#include "Label.h"
 
 Menu::Menu(CupuacuState *state, const std::string menuNameToUse, const std::function<void()> actionToUse) :
     Component(state, "Menu for " + menuNameToUse), menuName(menuNameToUse), action(actionToUse)
 {
     disableParentClipping();
+    label = emplaceChildAndSetDirty<Label>(state, menuName);
+}
+
+void Menu::enableDepthIs0()
+{
+    depthIs0 = true;
+    label->setCenterHorizontally(true);
+}
+
+void Menu::resized()
+{
+    label->setBounds(0, 0, getWidth(), getHeight());
 }
 
 void Menu::showSubMenus()
@@ -19,7 +28,7 @@ void Menu::showSubMenus()
 
     int subMenuYPos = getHeight();
 
-    const int baseH = int(state->menuFontSize * state->pixelScale * 1.2f);
+    const int baseH = int(state->menuFontSize * state->pixelScale * 2.0f);
     const int baseW = int(state->menuFontSize * state->pixelScale * 10.0f);
 
     for (auto &subMenu : subMenus)
@@ -49,8 +58,6 @@ void Menu::onDraw(SDL_Renderer *renderer)
     SDL_SetRenderDrawColor(renderer, bg, bg, bg, 255);
     auto rect = getBounds();
     SDL_RenderFillRect(renderer, &rect);
-    const uint8_t fontPointSize = state->menuFontSize / state->pixelScale;
-    renderText(renderer, menuName, fontPointSize, rect, depthIs0);
 }
 
 bool Menu::mouseDown(const MouseEvent &e)
@@ -90,11 +97,11 @@ bool Menu::mouseUp(const MouseEvent &e)
 
 void Menu::mouseLeave()
 {
-    setDirty();
+    setDirtyRecursive();
 }
 
 void Menu::mouseEnter()
 {
-    setDirty();
+    setDirtyRecursive();
 }
 
