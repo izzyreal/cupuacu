@@ -22,7 +22,7 @@ private:
     const std::function<void()> action;
 
     Label *label = nullptr;
-    SubMenuPanel *submenuPanel;
+    SubMenuPanel *subMenuPanel;
 
 public:
     Menu(CupuacuState*, const std::string menuNameToUse, const std::function<void()> actionToUse = {});

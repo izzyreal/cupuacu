@@ -14,6 +14,7 @@ struct CupuacuState;
 class Component {
 private:
     bool parentClippingEnabled = true;
+    bool interceptMouseEnabled = true;
     std::string componentName;
     bool dirty = false;
     uint16_t xPos = 0, yPos = 0;
@@ -28,11 +29,14 @@ protected:
     const std::vector<std::unique_ptr<Component>>& getChildren() const;
     void removeChild(Component*);
     void removeAllChildren();
-    const bool isMouseOver() const;
     Component* getParent() const;
 
 public:
     Component(CupuacuState*, const std::string componentName);
+
+    void setInterceptMouseEnabled(const bool shouldInterceptMouse);
+
+    const bool isMouseOver() const;
 
     SDL_FRect getBounds()
     {

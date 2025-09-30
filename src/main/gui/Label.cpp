@@ -21,25 +21,7 @@ void Label::onDraw(SDL_Renderer* renderer)
     rect.w -= margin * 2;
     rect.h -= margin * 2;
 
-    // Measure text
-    auto fontData = get_resource_data("Inter_18pt-Regular.ttf");
-    auto fontIo = SDL_IOFromMem(fontData.data(), fontData.size());
-    TTF_Font* font = TTF_OpenFontIO(fontIo, false, fontPointSize);
-    if (!font)
-    {
-        printf("Problem opening TTF font\n");
-        return;
-    }
-
-    int textW = 0, textH = 0;
-    if (!TTF_GetStringSize(font, text.c_str(), text.size(), &textW, &textH))
-    {
-        printf("Problem sizing text: %s\n", SDL_GetError());
-        TTF_CloseFont(font);
-        return;
-    }
-
-    TTF_CloseFont(font);
+    auto [textW, textH] = measureText(text, fontPointSize);
 
     // Adjust rect.y for vertical centering
     if (centerVertically)
@@ -50,3 +32,4 @@ void Label::onDraw(SDL_Renderer* renderer)
 
     renderText(renderer, text, fontPointSize, rect, centerHorizontally);
 }
+

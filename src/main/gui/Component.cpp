@@ -10,6 +10,11 @@ Component::Component(CupuacuState *stateToUse, const std::string componentNameTo
 {
 }
 
+void Component::setInterceptMouseEnabled(const bool shouldInterceptMouse)
+{
+    interceptMouseEnabled = shouldInterceptMouse;
+}
+
 void Component::setParent(Component *parentToUse)
 {
     parent = parentToUse;
@@ -346,7 +351,7 @@ Component* Component::findComponentAt(const int x, const int y)
         }
     }
 
-    if (containsAbsoluteCoordinate(x, y))
+    if (interceptMouseEnabled && containsAbsoluteCoordinate(x, y))
     {
         return this;
     }

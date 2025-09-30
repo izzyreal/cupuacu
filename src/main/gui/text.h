@@ -6,6 +6,37 @@
 
 #include <functional>
 
+static TTF_Font* getFont(const uint8_t pointSize)
+{
+    auto fontData = get_resource_data("Inter_18pt-Regular.ttf");
+    auto fontIo = SDL_IOFromMem(fontData.data(), fontData.size());
+    TTF_Font* font = TTF_OpenFontIO(fontIo, false, pointSize);
+
+    if (!font)
+    {
+        printf("Problem opening TTF font\n");
+        return nullptr;
+    }
+
+    return font;
+}
+
+static std::pair<int, int> measureText(const std::string text, const uint8_t pointSize)
+{
+    auto font = getFont(pointSize);
+    int textW = 0, textH = 0;
+    if (!TTF_GetStringSize(font, text.c_str(), text.size(), &textW, &textH))
+    {
+        printf("Problem sizing text: %s\n", SDL_GetError());
+        TTF_CloseFont(font);
+        return {0,0};
+    }
+
+    TTF_CloseFont(font);
+
+    return {textW, textH};
+}
+
 const std::function<void(
         SDL_Renderer*,
         const std::string&,
@@ -21,27 +52,11 @@ const std::function<void(
 {
     SDL_Color textColor = {255, 255, 255, 255};
 
-    auto fontData = get_resource_data("Inter_18pt-Regular.ttf");
-    auto fontIo = SDL_IOFromMem(fontData.data(), fontData.size());
-    TTF_Font* font = TTF_OpenFontIO(fontIo, false, pointSize);
-
-    if (!font)
-    {
-        printf("Problem opening TTF font\n");
-        return;
-    }
-
-    // Measure string
-    int textW = 0, textH = 0;
-    if (!TTF_GetStringSize(font, text.c_str(), text.size(), &textW, &textH))
-    {
-        printf("Problem sizing text: %s\n", SDL_GetError());
-        TTF_CloseFont(font);
-        return;
-    }
-
     SDL_Texture *canvas = SDL_GetRenderTarget(renderer);
     SDL_SetRenderTarget(renderer, nullptr);
+
+    auto font = getFont(pointSize);
+    auto [textW, textH] = measureText(text, pointSize);
 
     SDL_Surface* textSurface = TTF_RenderText_Blended(font, text.c_str(), text.size(), textColor);
     SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);

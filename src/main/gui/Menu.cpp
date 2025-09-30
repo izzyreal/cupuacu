@@ -8,6 +8,7 @@ Menu::Menu(CupuacuState *state, const std::string menuNameToUse, const std::func
 {
     disableParentClipping();
     label = emplaceChildAndSetDirty<Label>(state, menuName);
+    label->setInterceptMouseEnabled(false);
 }
 
 void Menu::enableDepthIs0()
@@ -50,10 +51,9 @@ void Menu::showSubMenus()
         h = sub->getYPos() + sub->getHeight() - y;
     }
 
-    // create background panel behind submenus
-    submenuPanel = emplaceChildAndSetDirty<SubMenuPanel>(state, "submenuPanel");
-    submenuPanel->setBounds(x, y, w, h);
-    submenuPanel->sendToBack();
+    subMenuPanel = emplaceChildAndSetDirty<SubMenuPanel>(state, "submenuPanel");
+    subMenuPanel->setBounds(x, y, w, h);
+    subMenuPanel->sendToBack();
 
     currentlyOpen = true;
     setDirtyRecursive();
@@ -61,10 +61,10 @@ void Menu::showSubMenus()
 
 void Menu::hideSubMenus()
 {
-    if (submenuPanel)
+    if (subMenuPanel)
     {
-        removeChild(submenuPanel);
-        submenuPanel = nullptr;
+        removeChild(subMenuPanel);
+        subMenuPanel = nullptr;
     }
 
     for (auto &subMenu : subMenus)
@@ -78,9 +78,11 @@ void Menu::hideSubMenus()
 
 void Menu::onDraw(SDL_Renderer *renderer)
 {
+    const bool bright = isMouseOver() | currentlyOpen;
+
     if (depthIs0)
     {
-        const uint8_t bg = isMouseOver() ? 80 : 40;
+        const uint8_t bg = bright ? 80 : 40;
         SDL_SetRenderDrawColor(renderer, bg, bg, bg, 255);
         auto rect = getBounds();
         SDL_RenderFillRect(renderer, &rect);
