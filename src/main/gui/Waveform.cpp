@@ -389,7 +389,7 @@ void Waveform::drawPlaybackPosition(SDL_Renderer *renderer)
 {
     const int64_t playbackPos = state->playbackPosition.load();
 
-    if (playbackPos != -1)
+    if (playbackPos == -1)
     {
         return;
     }
