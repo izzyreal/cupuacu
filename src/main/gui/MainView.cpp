@@ -41,95 +41,116 @@ void MainView::resized()
 
 void MainView::updateTriangleMarkerBounds()
 {
-    const auto borderWidth = computeBorderWidth();
-    const float triHeight = borderWidth * 0.75f;
-    const float halfBase = triHeight;
+    const auto borderWidth    = computeBorderWidth();
+    const float triHeight     = borderWidth * 0.75f;
+    const float halfBase      = triHeight;
 
-    const auto sampleOffset = state->sampleOffset;
+    const auto sampleOffset   = state->sampleOffset;
     const auto samplesPerPixel = state->samplesPerPixel;
+
+    const double tolerance = (samplesPerPixel < 1.0) ? (1.0 / samplesPerPixel) : 0.0;
 
     if (state->selection.isActive())
     {
         cursorTop->setBounds(0, 0, 0, 0);
         cursorBottom->setBounds(0, 0, 0, 0);
 
-        const double tolerance = (samplesPerPixel < 1.0) ? (1.0 / samplesPerPixel) : 0.0;
-
-        const float startXPosWithinWaveform = Waveform::getXPosForSampleIndex(state->selection.getStartInt(), sampleOffset, samplesPerPixel);
-        const bool isStartMarkerVisible = startXPosWithinWaveform >= 0 && startXPosWithinWaveform <= waveforms->getWidth() + tolerance;
-
-        if (isStartMarkerVisible)
         {
-            selStartTop->setBounds(
-                startXPosWithinWaveform + borderWidth,
-                0,
-                static_cast<int>(triHeight + 1.f),
-                static_cast<int>(triHeight));
+            const float startX = Waveform::getXPosForSampleIndex(
+                state->selection.getStartInt(),
+                sampleOffset, samplesPerPixel);
 
-            selStartBot->setBounds(
-                startXPosWithinWaveform + borderWidth,
-                static_cast<int>(getHeight() - triHeight),
-                static_cast<int>(triHeight + 1.f),
-                static_cast<int>(triHeight));
+            const bool visible =
+                startX >= -tolerance &&
+                startX <= waveforms->getWidth() + tolerance;
+
+            if (visible)
+            {
+                const float clampedX = std::clamp(startX, 0.f, (float)waveforms->getWidth());
+
+                selStartTop->setBounds(
+                    clampedX + borderWidth,
+                    0,
+                    (int)(triHeight + 1.f),
+                    (int)triHeight);
+
+                selStartBot->setBounds(
+                    clampedX + borderWidth,
+                    getHeight() - (int)triHeight,
+                    (int)(triHeight + 1.f),
+                    (int)triHeight);
+            }
+            else
+            {
+                selStartTop->setBounds(0, 0, 0, 0);
+                selStartBot->setBounds(0, 0, 0, 0);
+            }
         }
-        else
+
         {
-            selStartTop->setBounds(0, 0, 0, 0);
-            selStartBot->setBounds(0, 0, 0, 0);
-        }
+            const int64_t endInclusive = state->selection.getEndInt();
+            const int64_t endToUse = endInclusive + 1;
 
-        const int64_t endToUse = state->samplesPerPixel < 1 ? state->selection.getEndInt() + 1 : state->selection.getEndInt();
-        const float endXPosWithinWaveform = Waveform::getXPosForSampleIndex(endToUse, sampleOffset, samplesPerPixel);
+            const float endX = Waveform::getXPosForSampleIndex(
+                endToUse, sampleOffset, samplesPerPixel);
 
-        const bool isEndMarkerVisible = endXPosWithinWaveform >= 0 && endXPosWithinWaveform <= waveforms->getWidth() + tolerance; 
+            const bool visible =
+                endX >= -tolerance &&
+                endX <= waveforms->getWidth() + tolerance;
 
-        if (isEndMarkerVisible)
-        {
-            selEndTop->setBounds(
-                endXPosWithinWaveform + borderWidth - triHeight,
-                0,
-                static_cast<int>(triHeight),
-                static_cast<int>(triHeight));
+            if (visible)
+            {
+                const float clampedX = std::clamp(endX, 0.f, (float)waveforms->getWidth());
 
-            selEndBot->setBounds(
-                endXPosWithinWaveform + borderWidth - triHeight,
-                static_cast<int>(getHeight() - triHeight),
-                static_cast<int>(triHeight),
-                static_cast<int>(triHeight));
-        }
-        else
-        {
-            selEndTop->setBounds(0, 0, 0, 0);
-            selEndBot->setBounds(0, 0, 0, 0);
+                selEndTop->setBounds(
+                    clampedX + borderWidth - triHeight,
+                    0,
+                    (int)triHeight,
+                    (int)triHeight);
+
+                selEndBot->setBounds(
+                    clampedX + borderWidth - triHeight,
+                    getHeight() - (int)triHeight,
+                    (int)triHeight,
+                    (int)triHeight);
+            }
+            else
+            {
+                selEndTop->setBounds(0, 0, 0, 0);
+                selEndBot->setBounds(0, 0, 0, 0);
+            }
         }
     }
     else
     {
-        selStartTop->setBounds(0,0,0,0);
-        selStartBot->setBounds(0,0,0,0);
-        selEndTop->setBounds(0,0,0,0);
-        selEndBot->setBounds(0,0,0,0);
+        selStartTop->setBounds(0, 0, 0, 0);
+        selStartBot->setBounds(0, 0, 0, 0);
+        selEndTop->setBounds(0, 0, 0, 0);
+        selEndBot->setBounds(0, 0, 0, 0);
 
-        const float xPosWithinWaveform = Waveform::getXPosForSampleIndex(state->cursor, state->sampleOffset, state->samplesPerPixel);
-        const bool isVisible = xPosWithinWaveform >= 0 && xPosWithinWaveform <= waveforms->getWidth();
+        const float xPos = Waveform::getXPosForSampleIndex(
+            state->cursor, sampleOffset, samplesPerPixel);
 
-        if (isVisible)
+        const bool visible =
+            xPos >= -tolerance &&
+            xPos <= waveforms->getWidth() + tolerance;
+
+        if (visible)
         {
-            const float cursorX = xPosWithinWaveform + borderWidth;
+            const float clampedX = std::clamp(xPos, 0.f, (float)waveforms->getWidth());
+            const float cursorX  = clampedX + borderWidth;
 
             cursorTop->setBounds(
-                static_cast<int>(cursorX - halfBase),
+                (int)(cursorX - halfBase),
                 0,
-                static_cast<int>(halfBase * 2),
-                static_cast<int>(triHeight));
-
-            const int32_t cursorBottomYPos = getHeight() - triHeight;
+                (int)(halfBase * 2),
+                (int)triHeight);
 
             cursorBottom->setBounds(
-                static_cast<int>(cursorX - halfBase),
-                cursorBottomYPos,
-                static_cast<int>(halfBase * 2),
-                static_cast<int>(triHeight));
+                (int)(cursorX - halfBase),
+                getHeight() - (int)triHeight,
+                (int)(halfBase * 2),
+                (int)triHeight);
         }
         else
         {
@@ -138,7 +159,6 @@ void MainView::updateTriangleMarkerBounds()
         }
     }
 }
-
 void MainView::onDraw(SDL_Renderer *r)
 {
     SDL_SetRenderDrawColor(r, 28, 28, 28, 255);
@@ -163,7 +183,6 @@ void MainView::timerCallback()
         lastSelectionEnd = state->selection.getEndInt();
 
         updateTriangleMarkerBounds();
-        
         setDirtyRecursive();
     }
 }
