@@ -5,7 +5,7 @@
 
 #include <ranges>
 
-#define DEBUG_DRAW 1
+#define DEBUG_DRAW 0
 
 #if DEBUG_DRAW
 #include <cstdlib>
@@ -33,14 +33,16 @@ const std::vector<std::unique_ptr<Component>>& Component::getChildren() const
 
 void Component::removeChild(Component *child)
 {
+    auto oldBounds = child->getAbsoluteBounds();
     for (auto it = children.begin(); it != children.end(); ++it)
     {
         if (it->get() == child)
         {
             children.erase(it);
-            return;
+            break;
         }
     }
+    state->dirtyRects.push_back(oldBounds);
 }
 
 void Component::sendToBack()
@@ -58,7 +60,7 @@ void Component::sendToBack()
         auto ptr = std::move(*thisIter);
         parentChildren.erase(thisIter);
         parentChildren.insert(parentChildren.begin(), std::move(ptr));
-        parent->setDirtyRecursive();
+        parent->setDirty();
     }
 }
 
@@ -78,7 +80,7 @@ void Component::bringToFront()
     {
         parentChildren.push_back(std::move(*thisIter));
         parentChildren.erase(thisIter);
-        parent->setDirtyRecursive();
+        parent->setDirty();
     }
 }
 
@@ -117,6 +119,10 @@ const std::string Component::getComponentName() const
 
 void Component::setBounds(const uint16_t xPosToUse, const uint16_t yPosToUse, const uint16_t widthToUse, const uint16_t heightToUse)
 {
+    if (xPosToUse != xPos || yPosToUse != yPos || widthToUse != width || heightToUse != height)
+    {
+        setDirty();  // Mark old bounds
+    }
     xPos = xPosToUse;
     yPos = yPosToUse;
     width = widthToUse;
@@ -127,6 +133,10 @@ void Component::setBounds(const uint16_t xPosToUse, const uint16_t yPosToUse, co
 
 void Component::setSize(const uint16_t widthToUse, const uint16_t heightToUse)
 {
+    if (widthToUse != width || heightToUse != height)
+    {
+        setDirty();  // Mark old bounds
+    }
     width = widthToUse;
     height = heightToUse;
     setDirty();
@@ -135,6 +145,10 @@ void Component::setSize(const uint16_t widthToUse, const uint16_t heightToUse)
 
 void Component::setYPos(const uint16_t yPosToUse)
 {
+    if (yPosToUse != yPos)
+    {
+        setDirty();  // Mark old bounds
+    }
     yPos = yPosToUse;
     setDirty();
     resized();
@@ -142,71 +156,78 @@ void Component::setYPos(const uint16_t yPosToUse)
 
 void Component::setDirty()
 {
-    dirty = true;
-}
-
-void Component::setDirtyRecursive()
-{
-    setDirty();
-    for (auto &c : children) c->setDirtyRecursive();
-}
-
-bool Component::isDirtyRecursive()
-{
-    if (dirty)
-    {
-        //printf("%s is dirty\n", getComponentName().c_str());
-        return true;
-    }
-
+    state->dirtyRects.push_back(getAbsoluteBounds());
+    
     for (auto &c : children)
     {
-        if (c->isDirtyRecursive())
-        {
-            return true;
-        }
+        c->setDirty();
     }
-
-    return false;
 }
 
 void Component::draw(SDL_Renderer* renderer)
 {
+#if DEBUG_DRAW
+    if (!state->dirtyRects.empty() && componentName == "RootComponent")
+    {
+        printf("======\n");
+        printf("==== componentUnderMouse: %s\n", (state->componentUnderMouse == nullptr ? "<none>" : state->componentUnderMouse->getComponentName().c_str()));
+    }
+#endif
+    SDL_FRect absFRect = getAbsoluteBounds();
+    SDL_Rect absRect = FRectToRect(absFRect);
+
+    bool intersects = false;
+
+    for (const auto& drF : state->dirtyRects)
+    {
+        SDL_Rect dr = FRectToRect(drF);
+        if (SDL_HasRectIntersection(&absRect, &dr))
+        {
+            intersects = true;
+            setDirty();
+            break;
+        }
+    }
+
+    if (!intersects)
+    {
+        return;
+    }
+
     SDL_Rect viewPortRect;
     SDL_GetRenderViewport(renderer, &viewPortRect);
     SDL_Rect parentViewPortRect = viewPortRect;
 
-    viewPortRect.x += getXPos();
-    viewPortRect.y += getYPos();
-    viewPortRect.w = getWidth();
-    viewPortRect.h = getHeight();
+    viewPortRect.x = static_cast<int>(absFRect.x);
+    viewPortRect.y = static_cast<int>(absFRect.y);
+    viewPortRect.w = static_cast<int>(absFRect.w);
+    viewPortRect.h = static_cast<int>(absFRect.h);
 
     if (parentClippingEnabled)
     {
         SDL_Rect viewPortRectToUse;
-        SDL_GetRectIntersection(&parentViewPortRect, &viewPortRect, &viewPortRectToUse);
-        SDL_SetRenderViewport(renderer, &viewPortRectToUse);
+        if (SDL_GetRectIntersection(&parentViewPortRect, &viewPortRect, &viewPortRectToUse))
+            SDL_SetRenderViewport(renderer, &viewPortRectToUse);
     }
     else
     {
         SDL_SetRenderViewport(renderer, &viewPortRect);
     }
 
-    if (dirty)
-    {
-        onDraw(renderer);
-#if DEBUG_DRAW
-        Uint8 r = rand() % 256;
-        Uint8 g = rand() % 256;
-        Uint8 b = rand() % 256;
-        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-        SDL_SetRenderDrawColor(renderer, r, g, b, 128); // 50% alpha
-        SDL_FRect overlayRect = getLocalBounds();
-        SDL_RenderFillRect(renderer, &overlayRect);
-#endif
-        dirty = false;
-    }
+    onDraw(renderer);
 
+#if DEBUG_DRAW
+    printf("drawing %s\n", componentName.c_str());
+    Uint8 r = rand() % 256;
+    Uint8 g = rand() % 256;
+    Uint8 b = rand() % 256;
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(renderer, r, g, b, 128);
+    auto localBounds = getLocalBounds();
+    SDL_RenderFillRect(renderer, &localBounds);
+#endif
+
+    // Draw all children if this component is drawn, ensuring they appear over the parent's drawing
     for (auto& c : children)
     {
         c->draw(renderer);
@@ -373,4 +394,3 @@ Component* Component::findComponentAt(const int x, const int y)
 
     return nullptr;
 }
-

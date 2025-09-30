@@ -20,8 +20,15 @@ const uint16_t initialDimensions[] = { 1280, 720 };
 
 void renderCanvasToWindow(CupuacuState *state)
 {
+    if (state->dirtyRects.empty()) return;
+
     SDL_SetRenderTarget(state->renderer, NULL);
-    SDL_RenderTexture(state->renderer, state->canvas, NULL, NULL);
+
+    for (size_t i = 0; i < state->dirtyRects.size(); ++i)
+    {
+        SDL_RenderTexture(state->renderer, state->canvas, &state->dirtyRects[i], &state->dirtyRects[i]);
+    }
+
     SDL_RenderPresent(state->renderer);
 }
 
@@ -89,14 +96,9 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     state->rootComponent->timerCallbackRecursive();
 
     SDL_SetRenderTarget(state->renderer, state->canvas);
-
-    const bool somethingIsDirty = state->rootComponent->isDirtyRecursive();
-
-    if (somethingIsDirty)
-    {
-        state->rootComponent->draw(state->renderer);
-        renderCanvasToWindow(state);
-    }
+    state->rootComponent->draw(state->renderer);
+    renderCanvasToWindow(state);
+    state->dirtyRects.clear();
 
     SDL_Delay(16);
     return SDL_APP_CONTINUE;

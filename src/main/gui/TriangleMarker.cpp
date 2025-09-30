@@ -134,7 +134,6 @@ bool TriangleMarker::mouseMove(const MouseEvent &e)
     }
 
     dynamic_cast<MainView*>(getParent())->updateTriangleMarkerBounds();
-    getParent()->setDirtyRecursive();
 
     return true;
 }

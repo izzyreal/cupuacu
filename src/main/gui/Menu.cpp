@@ -56,7 +56,7 @@ void Menu::showSubMenus()
     subMenuPanel->sendToBack();
 
     currentlyOpen = true;
-    setDirtyRecursive();
+    setDirty();
 }
 
 void Menu::hideSubMenus()
@@ -73,7 +73,7 @@ void Menu::hideSubMenus()
     }
 
     currentlyOpen = false;
-    setDirtyRecursive();
+    setDirty();
 }
 
 void Menu::onDraw(SDL_Renderer *renderer)
@@ -100,7 +100,7 @@ bool Menu::mouseDown(const MouseEvent &e)
             action();
         }
         state->menuBar->hideSubMenus();
-        state->rootComponent->setDirtyRecursive();
+        state->rootComponent->setDirty();
         return true;
     }
 
@@ -108,12 +108,12 @@ bool Menu::mouseDown(const MouseEvent &e)
     {
         hideSubMenus();
         state->menuBar->hideSubMenus();
-        state->rootComponent->setDirtyRecursive();
+        state->rootComponent->setDirty();
         return true;
     }
 
     state->menuBar->hideSubMenus();
-    state->rootComponent->setDirtyRecursive();
+    state->rootComponent->setDirty();
     showSubMenus();
 
     return true;
@@ -126,11 +126,11 @@ bool Menu::mouseUp(const MouseEvent &e)
 
 void Menu::mouseLeave()
 {
-    setDirtyRecursive();
+    setDirty();
 }
 
 void Menu::mouseEnter()
 {
-    setDirtyRecursive();
+    setDirty();
 }
 

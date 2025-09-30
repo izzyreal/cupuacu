@@ -11,12 +11,21 @@
 
 struct CupuacuState;
 
+static SDL_Rect FRectToRect(const SDL_FRect& fr)
+{
+    return SDL_Rect{
+        static_cast<int>(fr.x),
+        static_cast<int>(fr.y),
+        static_cast<int>(fr.w),
+        static_cast<int>(fr.h)
+    };
+}
+
 class Component {
 private:
     bool parentClippingEnabled = true;
     bool interceptMouseEnabled = true;
     std::string componentName;
-    bool dirty = false;
     uint16_t xPos = 0, yPos = 0;
     uint16_t width = 0, height = 0;
     Component *parent = nullptr;
@@ -48,6 +57,15 @@ public:
         return { 0, 0, (float) getWidth(), (float) getHeight() };
     }
 
+    SDL_FRect getAbsoluteBounds()
+    {
+        auto rect = getLocalBounds();
+        const auto [absX, absY] = getAbsolutePosition();
+        rect.x = absX;
+        rect.y = absY;
+        return rect;
+    }
+
     void disableParentClipping() { parentClippingEnabled = false; }
 
     template <typename T>
@@ -61,7 +79,7 @@ public:
             children.end()
         );
 
-        setDirtyRecursive();
+        setDirty();
     }
 
     template <typename T>
@@ -91,8 +109,6 @@ public:
     void setSize(const uint16_t widthToUse, const uint16_t heightToUse);
     void setYPos(const uint16_t yPosToUse);
     void setDirty();
-    void setDirtyRecursive();
-    bool isDirtyRecursive();
     void draw(SDL_Renderer* renderer);
 
     virtual void onDraw(SDL_Renderer* renderer) {}

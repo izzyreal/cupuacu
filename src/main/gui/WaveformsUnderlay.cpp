@@ -235,7 +235,7 @@ void WaveformsUnderlay::markAllWaveformsDirty()
 {
     for (auto* wf : state->waveforms)
     {
-        wf->setDirtyRecursive();
+        wf->setDirty();
     }
 }
 

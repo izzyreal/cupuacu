@@ -42,7 +42,7 @@ public:
     {
         const float scale = 4.0f / state->pixelScale;
         const int fieldWidth = int(120 * scale);
-        const int fieldHeight = int(getHeight() * scale);
+        const int fieldHeight = int(getHeight());
 
         posField->setBounds(0, 0, fieldWidth, fieldHeight);
         startField->setBounds(fieldWidth, 0, fieldWidth, fieldHeight);

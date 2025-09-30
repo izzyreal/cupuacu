@@ -148,7 +148,7 @@ static void handleKeyDown(
             
             for (auto &w : state->waveforms)
             {
-                w->setDirtyRecursive();
+                w->setDirty();
             }
         }
     }
@@ -167,7 +167,7 @@ static void handleKeyDown(
 
             for (auto &w : state->waveforms)
             {
-                w->setDirtyRecursive();
+                w->setDirty();
             }
         }
     }

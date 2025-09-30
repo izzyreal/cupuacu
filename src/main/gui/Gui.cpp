@@ -150,6 +150,6 @@ void resizeComponents(CupuacuState *state)
 
     state->statusBar->setBounds(statusBarRect.x, statusBarRect.y, statusBarRect.w, statusBarRect.h);
 
-    state->rootComponent->setDirtyRecursive();
+    state->rootComponent->setDirty();
 }
 
