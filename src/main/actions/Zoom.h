@@ -108,9 +108,9 @@ static bool tryZoomSelection(CupuacuState *state)
     state->verticalZoom = INITIAL_VERTICAL_ZOOM;
 
     const auto waveformWidth = Waveform::getWaveformWidth(state);
-    const auto selectionLength = state->selection.getLength();
+    const auto selectionLength = state->selection.getLengthInt();
 
-    state->samplesPerPixel = selectionLength / waveformWidth;
+    state->samplesPerPixel = selectionLength / static_cast<double>(waveformWidth);
     state->sampleOffset = state->selection.getStartInt();
     return true;
 }
