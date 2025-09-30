@@ -37,11 +37,12 @@ public:
     const bool isMouseOver() const;
 
     SDL_FRect getLocalBounds() {
-        return { 0.f, 0.f, (float)width, (float)height };
+        return { 0, 0, (float)width, (float)height };
     }
 
     SDL_FRect getBounds() {
-        return { (float)xPos, (float)yPos, (float)width, (float)height };
+        auto [absX, absY] = getAbsolutePosition();
+        return { (float)absX, (float)absY, (float)width, (float)height };
     }
 
     void disableParentClipping() { parentClippingEnabled = false; }

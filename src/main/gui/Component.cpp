@@ -103,11 +103,16 @@ void Component::setYPos(const uint16_t yPosToUse) {
 void Component::setDirty() {
     dirty = true;
     SDL_FRect bounds = getBounds();
-    auto [absX, absY] = getAbsolutePosition();
-    bounds.x = (float)absX;
-    bounds.y = (float)absY;
-    state->dirtyRects.push_back(bounds);
-    if (parent) parent->setDirty();
+    // Clip dirty rectangle to parent's bounds if parent clipping is enabled
+    if (parent && parentClippingEnabled) {
+        SDL_FRect parentBounds = parent->getBounds();
+        SDL_FRect clippedBounds;
+        if (SDL_GetRectIntersectionFloat(&bounds, &parentBounds, &clippedBounds)) {
+            state->dirtyRects.push_back(clippedBounds);
+        }
+    } else {
+        state->dirtyRects.push_back(bounds);
+    }
 }
 
 bool Component::isDirty() {
@@ -132,13 +137,9 @@ void Component::draw(SDL_Renderer* renderer) {
         SDL_SetRenderViewport(renderer, &viewPortRect);
     }
 
-    SDL_FRect bounds = getBounds();
-    auto [absX, absY] = getAbsolutePosition();
-    bounds.x = (float)absX;
-    bounds.y = (float)absY;
-
     bool shouldDraw = dirty;
     if (!shouldDraw) {
+        SDL_FRect bounds = getBounds();
         for (const auto& dirtyRect : state->dirtyRects) {
             if (SDL_HasRectIntersectionFloat(&bounds, &dirtyRect)) {
                 shouldDraw = true;
@@ -190,7 +191,10 @@ bool Component::handleMouseEvent(const MouseEvent &mouseEvent) {
         }
     } else {
         if (mouseEvent.type == MOVE) {
-            if (mouseMove(localMouseEvent)) return true;
+            if (mouseMove(localMouseEvent)) {
+                setDirty();
+                return true;
+            }
         } else if (mouseEvent.type == DOWN && mouseEvent.buttonState.left) {
             if (mouseDown(localMouseEvent)) {
                 state->capturingComponent = this;
