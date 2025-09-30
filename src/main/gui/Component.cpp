@@ -1,92 +1,64 @@
 #include "Component.h"
-
 #include "MenuBar.h"
 #include "../CupuacuState.h"
-
 #include <ranges>
 
 Component::Component(CupuacuState *stateToUse, const std::string componentNameToUse) :
-    state(stateToUse), componentName(componentNameToUse)
-{
-}
+    state(stateToUse), componentName(componentNameToUse) {}
 
-void Component::setInterceptMouseEnabled(const bool shouldInterceptMouse)
-{
+void Component::setInterceptMouseEnabled(const bool shouldInterceptMouse) {
     interceptMouseEnabled = shouldInterceptMouse;
 }
 
-void Component::setParent(Component *parentToUse)
-{
+void Component::setParent(Component *parentToUse) {
     parent = parentToUse;
 }
 
-const std::vector<std::unique_ptr<Component>>& Component::getChildren() const
-{
+const std::vector<std::unique_ptr<Component>>& Component::getChildren() const {
     return children;
 }
 
-void Component::removeChild(Component *child)
-{
-    for (auto it = children.begin(); it != children.end(); ++it)
-    {
-        if (it->get() == child)
-        {
+void Component::removeChild(Component *child) {
+    for (auto it = children.begin(); it != children.end(); ++it) {
+        if (it->get() == child) {
             children.erase(it);
+            setDirty();
             return;
         }
     }
 }
 
-void Component::sendToBack()
-{
-    if (parent == nullptr)
-        return;
-
+void Component::sendToBack() {
+    if (parent == nullptr) return;
     auto& parentChildren = parent->children;
-
     auto thisIter = std::find_if(parentChildren.begin(), parentChildren.end(),
         [this](const std::unique_ptr<Component>& child) { return child.get() == this; });
-
-    if (thisIter != parentChildren.end() && thisIter != parentChildren.begin())
-    {
+    if (thisIter != parentChildren.end() && thisIter != parentChildren.begin()) {
         auto ptr = std::move(*thisIter);
         parentChildren.erase(thisIter);
         parentChildren.insert(parentChildren.begin(), std::move(ptr));
-        parent->setDirtyRecursive();
+        parent->setDirty();
     }
 }
 
-void Component::bringToFront()
-{
-    if (parent == nullptr)
-    {
-        return;
-    }
-
+void Component::bringToFront() {
+    if (parent == nullptr) return;
     auto& parentChildren = parent->children;
-
     auto thisIter = std::find_if(parentChildren.begin(), parentChildren.end(),
         [this](const std::unique_ptr<Component>& child) { return child.get() == this; });
-
-    if (thisIter != parentChildren.end() && thisIter != parentChildren.end() - 1)
-    {
+    if (thisIter != parentChildren.end() && thisIter != parentChildren.end() - 1) {
         parentChildren.push_back(std::move(*thisIter));
         parentChildren.erase(thisIter);
-        parent->setDirtyRecursive();
+        parent->setDirty();
     }
 }
 
-void Component::removeAllChildren()
-{
-    for (auto &c : children)
-    {
-        if (state->componentUnderMouse == c.get())
-        {
+void Component::removeAllChildren() {
+    for (auto &c : children) {
+        if (state->componentUnderMouse == c.get()) {
             state->componentUnderMouse = nullptr;
         }
-
-        if (state->capturingComponent == c.get())
-        {
+        if (state->capturingComponent == c.get()) {
             state->capturingComponent = nullptr;
         }
     }
@@ -94,23 +66,19 @@ void Component::removeAllChildren()
     setDirty();
 }
 
-const bool Component::isMouseOver() const
-{
+const bool Component::isMouseOver() const {
     return state->componentUnderMouse == this;
 }
 
-Component* Component::getParent() const
-{
+Component* Component::getParent() const {
     return parent;
 }
 
-const std::string Component::getComponentName() const
-{
+const std::string Component::getComponentName() const {
     return componentName;
 }
 
-void Component::setBounds(const uint16_t xPosToUse, const uint16_t yPosToUse, const uint16_t widthToUse, const uint16_t heightToUse)
-{
+void Component::setBounds(const uint16_t xPosToUse, const uint16_t yPosToUse, const uint16_t widthToUse, const uint16_t heightToUse) {
     xPos = xPosToUse;
     yPos = yPosToUse;
     width = widthToUse;
@@ -119,53 +87,34 @@ void Component::setBounds(const uint16_t xPosToUse, const uint16_t yPosToUse, co
     resized();
 }
 
-void Component::setSize(const uint16_t widthToUse, const uint16_t heightToUse)
-{
+void Component::setSize(const uint16_t widthToUse, const uint16_t heightToUse) {
     width = widthToUse;
     height = heightToUse;
     setDirty();
     resized();
 }
 
-void Component::setYPos(const uint16_t yPosToUse)
-{
+void Component::setYPos(const uint16_t yPosToUse) {
     yPos = yPosToUse;
     setDirty();
     resized();
 }
 
-void Component::setDirty()
-{
+void Component::setDirty() {
     dirty = true;
+    SDL_FRect bounds = getBounds();
+    auto [absX, absY] = getAbsolutePosition();
+    bounds.x = (float)absX;
+    bounds.y = (float)absY;
+    state->dirtyRects.push_back(bounds);
+    if (parent) parent->setDirty();
 }
 
-void Component::setDirtyRecursive()
-{
-    setDirty();
-    for (auto &c : children) c->setDirtyRecursive();
+bool Component::isDirty() {
+    return dirty;
 }
 
-bool Component::isDirtyRecursive()
-{
-    if (dirty)
-    {
-        //printf("%s is dirty\n", getComponentName().c_str());
-        return true;
-    }
-
-    for (auto &c : children)
-    {
-        if (c->isDirtyRecursive())
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-void Component::draw(SDL_Renderer* renderer)
-{
+void Component::draw(SDL_Renderer* renderer) {
     SDL_Rect viewPortRect;
     SDL_GetRenderViewport(renderer, &viewPortRect);
     SDL_Rect parentViewPortRect = viewPortRect;
@@ -175,136 +124,101 @@ void Component::draw(SDL_Renderer* renderer)
     viewPortRect.w = getWidth();
     viewPortRect.h = getHeight();
 
-    if (parentClippingEnabled)
-    {
+    if (parentClippingEnabled) {
         SDL_Rect viewPortRectToUse;
         SDL_GetRectIntersection(&parentViewPortRect, &viewPortRect, &viewPortRectToUse);
         SDL_SetRenderViewport(renderer, &viewPortRectToUse);
-    }
-    else
-    {
+    } else {
         SDL_SetRenderViewport(renderer, &viewPortRect);
     }
 
-    if (dirty)
-    {
+    SDL_FRect bounds = getBounds();
+    auto [absX, absY] = getAbsolutePosition();
+    bounds.x = (float)absX;
+    bounds.y = (float)absY;
+
+    bool shouldDraw = dirty;
+    if (!shouldDraw) {
+        for (const auto& dirtyRect : state->dirtyRects) {
+            if (SDL_HasRectIntersectionFloat(&bounds, &dirtyRect)) {
+                shouldDraw = true;
+                break;
+            }
+        }
+    }
+
+    if (shouldDraw) {
         onDraw(renderer);
         dirty = false;
     }
 
-    for (auto& c : children)
-    {
+    for (auto& c : children) {
         c->draw(renderer);
     }
 
     SDL_SetRenderViewport(renderer, &parentViewPortRect);
 }
 
-bool Component::handleMouseEvent(const MouseEvent &mouseEvent)
-{
+bool Component::handleMouseEvent(const MouseEvent &mouseEvent) {
     float localXf = mouseEvent.mouseXf - xPos;
     float localYf = mouseEvent.mouseYf - yPos;
-    int localXi   = static_cast<int>(std::floor(localXf));
-    int localYi   = static_cast<int>(std::floor(localYf));
+    int localXi = static_cast<int>(std::floor(localXf));
+    int localYi = static_cast<int>(std::floor(localYf));
 
     MouseEvent localMouseEvent = withNewCoordinates(mouseEvent, localXi, localYi, localXf, localYf);
 
-    for (auto& c : std::views::reverse(children))
-    {
-        if (c->handleMouseEvent(localMouseEvent))
-        {
+    for (auto& c : std::views::reverse(children)) {
+        if (c->handleMouseEvent(localMouseEvent)) {
             return true;
         }
     }
 
     Component *capturingComponent = state->capturingComponent;
 
-    if (localXi < 0 || localXi >= width || localYi < 0 || localYi >= height)
-    {
-        if (mouseEvent.type == MOVE)
-        {
-            if (this == capturingComponent)
-            {
-                if (mouseMove(localMouseEvent))
-                {
-                    return true;
-                }
+    if (localXi < 0 || localXi >= width || localYi < 0 || localYi >= height) {
+        if (mouseEvent.type == MOVE) {
+            if (this == capturingComponent) {
+                if (mouseMove(localMouseEvent)) return true;
             }
-        }
-        else if (mouseEvent.type == UP && mouseEvent.buttonState.left)
-        {
-            if (this == capturingComponent)
-            {
-                if (mouseUp(localMouseEvent))
-                {
+        } else if (mouseEvent.type == UP && mouseEvent.buttonState.left) {
+            if (this == capturingComponent) {
+                if (mouseUp(localMouseEvent)) {
                     state->capturingComponent = nullptr;
                     return true;
                 }
             }
         }
-    }
-    else
-    {
-        if (mouseEvent.type == MOVE)
-        {
-            if (mouseMove(localMouseEvent))
-            {
-                return true;
-            }
-        }
-        else if (mouseEvent.type == DOWN && mouseEvent.buttonState.left)
-        {
-            if (mouseDown(localMouseEvent))
-            {
+    } else {
+        if (mouseEvent.type == MOVE) {
+            if (mouseMove(localMouseEvent)) return true;
+        } else if (mouseEvent.type == DOWN && mouseEvent.buttonState.left) {
+            if (mouseDown(localMouseEvent)) {
                 state->capturingComponent = this;
-
-                if (componentName.substr(0, 4) != "Menu")
-                {
+                if (componentName.substr(0, 4) != "Menu") {
                     state->menuBar->hideSubMenus();
                 }
-
                 return true;
             }
-        }
-        else if (mouseEvent.type == UP && mouseEvent.buttonState.left)
-        {
-            if (mouseUp(localMouseEvent))
-            {
+        } else if (mouseEvent.type == UP && mouseEvent.buttonState.left) {
+            if (mouseUp(localMouseEvent)) {
                 state->capturingComponent = nullptr;
                 return true;
             }
         }
     }
-
     return false;
 }
 
-uint16_t Component::getWidth() const
-{
-    return width;
-}
+uint16_t Component::getWidth() const { return width; }
+uint16_t Component::getHeight() const { return height; }
+uint16_t Component::getXPos() const { return xPos; }
+uint16_t Component::getYPos() const { return yPos; }
 
-uint16_t Component::getHeight() const
-{
-    return height;
-}
-
-uint16_t Component::getXPos() const
-{
-    return xPos;
-}
-
-uint16_t Component::getYPos() const
-{
-    return yPos;
-}
-
-std::pair<int, int> Component::getAbsolutePosition()
-{
-    int resultX = getXPos(), resultY = getYPos();
+std::pair<int, int> Component::getAbsolutePosition() {
+    int resultX = getXPos();
+    int resultY = getYPos();
     Component *parent = getParent();
-    while (parent != nullptr)
-    {
+    while (parent != nullptr) {
         resultX += parent->getXPos();
         resultY += parent->getYPos();
         parent = parent->getParent();
@@ -312,50 +226,34 @@ std::pair<int, int> Component::getAbsolutePosition()
     return {resultX, resultY};
 }
 
-bool Component::containsAbsoluteCoordinate(const int x, const int y)
-{
+bool Component::containsAbsoluteCoordinate(const int x, const int y) {
     auto [absX, absY] = getAbsolutePosition();
     SDL_Rect rect { absX, absY, (int)getWidth(), (int)getHeight() };
-
-    if (parentClippingEnabled)
-    {
+    if (parentClippingEnabled) {
         Component* p = parent;
-        while (p != nullptr)
-        {
+        while (p != nullptr) {
             auto [px, py] = p->getAbsolutePosition();
             SDL_Rect parentRect { px, py, (int)p->getWidth(), (int)p->getHeight() };
-
             SDL_Rect intersection;
-            if (!SDL_GetRectIntersection(&rect, &parentRect, &intersection))
-            {
+            if (!SDL_GetRectIntersection(&rect, &parentRect, &intersection)) {
                 return false;
             }
             rect = intersection;
-
             p = p->getParent();
         }
     }
-
     const SDL_Point pointToUse{x, y};
-
     return SDL_PointInRect(&pointToUse, &rect);
 }
 
-Component* Component::findComponentAt(const int x, const int y)
-{
-    for (auto &c : std::views::reverse(children))
-    {
-        if (auto foundComponent = c->findComponentAt(x, y); foundComponent != nullptr)
-        {
+Component* Component::findComponentAt(const int x, const int y) {
+    for (auto &c : std::views::reverse(children)) {
+        if (auto foundComponent = c->findComponentAt(x, y)) {
             return foundComponent;
         }
     }
-
-    if (interceptMouseEnabled && containsAbsoluteCoordinate(x, y))
-    {
+    if (interceptMouseEnabled && containsAbsoluteCoordinate(x, y)) {
         return this;
     }
-
     return nullptr;
 }
-

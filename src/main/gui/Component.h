@@ -3,7 +3,6 @@
 #include "MouseEvent.h"
 
 #include <SDL3/SDL.h>
-
 #include <algorithm>
 #include <vector>
 #include <memory>
@@ -35,19 +34,20 @@ public:
     Component(CupuacuState*, const std::string componentName);
 
     void setInterceptMouseEnabled(const bool shouldInterceptMouse);
-
     const bool isMouseOver() const;
 
-    SDL_FRect getBounds()
-    {
-        return { 0, 0, (float) getWidth(), (float) getHeight() };
+    SDL_FRect getLocalBounds() {
+        return { 0.f, 0.f, (float)width, (float)height };
+    }
+
+    SDL_FRect getBounds() {
+        return { (float)xPos, (float)yPos, (float)width, (float)height };
     }
 
     void disableParentClipping() { parentClippingEnabled = false; }
 
     template <typename T>
-    void removeChildrenOfType()
-    {
+    void removeChildrenOfType() {
         children.erase(
             std::remove_if(children.begin(), children.end(),
                 [](const std::unique_ptr<Component>& child) {
@@ -55,13 +55,11 @@ public:
                 }),
             children.end()
         );
-
-        setDirtyRecursive();
+        setDirty();
     }
 
     template <typename T>
-    T* addChildAndSetDirty(std::unique_ptr<T> &childToAdd)
-    {
+    T* addChildAndSetDirty(std::unique_ptr<T> &childToAdd) {
         children.push_back(std::move(childToAdd));
         children.back()->setParent(this);
         children.back()->setDirty();
@@ -69,8 +67,7 @@ public:
     }
 
     template <typename T, typename... Args>
-    T* emplaceChildAndSetDirty(Args&&... args)
-    {
+    T* emplaceChildAndSetDirty(Args&&... args) {
         auto child = std::make_unique<T>(std::forward<Args>(args)...);
         children.push_back(std::move(child));
         children.back()->setParent(this);
@@ -79,15 +76,13 @@ public:
     }
 
     const std::string getComponentName() const;
-
     void sendToBack();
     void bringToFront();
     void setBounds(const uint16_t xPosToUse, const uint16_t yPosToUse, const uint16_t widthToUse, const uint16_t heightToUse);
     void setSize(const uint16_t widthToUse, const uint16_t heightToUse);
     void setYPos(const uint16_t yPosToUse);
     void setDirty();
-    void setDirtyRecursive();
-    bool isDirtyRecursive();
+    bool isDirty();
     void draw(SDL_Renderer* renderer);
 
     virtual void onDraw(SDL_Renderer* renderer) {}
@@ -108,28 +103,21 @@ public:
     bool containsAbsoluteCoordinate(const int x, const int y);
     Component* findComponentAt(const int x, const int y);
 
-    void timerCallbackRecursive()
-    {
+    void timerCallbackRecursive() {
         timerCallback();
-        for (auto &c : children)
-        {
+        for (auto &c : children) {
             c->timerCallbackRecursive();
         }
     }
 
-    void printTree(int depth = 0) const
-    {
-        for (int i = 0; i < depth; ++i)
-        {
+    void printTree(int depth = 0) const {
+        for (int i = 0; i < depth; ++i) {
             printf("  ");
         }
-
         printf("%s (%dx%d at %d,%d)\n",
                componentName.c_str(),
                width, height, xPos, yPos);
-
-        for (const auto& child : children)
-        {
+        for (const auto& child : children) {
             child->printTree(depth + 1);
         }
     }

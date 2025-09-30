@@ -14,7 +14,7 @@ void Label::onDraw(SDL_Renderer* renderer)
 {
     const uint8_t fontPointSize = state->menuFontSize / state->pixelScale;
 
-    SDL_FRect rect = getBounds();
+    SDL_FRect rect = getLocalBounds();
 
     rect.x += margin;
     rect.y += margin;

@@ -45,7 +45,7 @@ public:
     {
         for (auto &waveform : state->waveforms)
         {
-            waveform->setDirtyRecursive();
+            waveform->setDirty();
         }
     }
 

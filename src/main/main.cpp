@@ -18,15 +18,32 @@ const uint16_t initialDimensions[] = { 1280, 720 };
 
 #include "gui/MenuBar.h"
 
-void renderCanvasToWindow(CupuacuState *state)
-{
+void mergeDirtyRects(std::vector<SDL_FRect>& dirtyRects) {
+    std::vector<SDL_FRect> merged;
+    for (const auto& rect : dirtyRects) {
+        bool mergedWithExisting = false;
+        for (auto& mergedRect : merged) {
+            SDL_FRect unionRect;
+            if (SDL_GetRectUnionFloat(&rect, &mergedRect, &unionRect)) {
+                mergedRect = unionRect;
+                mergedWithExisting = true;
+                break;
+            }
+        }
+        if (!mergedWithExisting) {
+            merged.push_back(rect);
+        }
+    }
+    dirtyRects = std::move(merged);
+}
+
+void renderCanvasToWindow(CupuacuState *state) {
     SDL_SetRenderTarget(state->renderer, NULL);
     SDL_RenderTexture(state->renderer, state->canvas, NULL, NULL);
     SDL_RenderPresent(state->renderer);
 }
 
-SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
-{
+SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     CupuacuState *state = new CupuacuState();
 
     resetWaveformState(state);
@@ -36,14 +53,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     SDL_SetAppMetadata("Cupuacu -- A minimalist audio editor by Izmar", "0.1", "nl.izmar.cupuacu");
 
-    if (!SDL_Init(SDL_INIT_VIDEO))
-    {
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("SDL_Init(SDL_INIT_VIDEO) failed: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
 
-    if (!TTF_Init())
-    {
+    if (!TTF_Init()) {
         SDL_Log("TTF_Init failed: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
@@ -55,21 +70,17 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
                 SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY,
                 &state->window,
                 &state->renderer)
-            )
-    {
+            ) {
         SDL_Log("SDL_CreateWindowAndRenderer() failed: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
 
     initCursors();
 
-    if (std::filesystem::exists(state->currentFile))
-    {
+    if (std::filesystem::exists(state->currentFile)) {
         loadSampleData(state);
         SDL_SetWindowTitle(state->window, state->currentFile.c_str());
-    }
-    else
-    {
+    } else {
         state->currentFile = "";
     }
 
@@ -82,37 +93,32 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     return SDL_APP_CONTINUE;
 }
 
-SDL_AppResult SDL_AppIterate(void *appstate)
-{
-    CupuacuState *state = (CupuacuState*) appstate;
+SDL_AppResult SDL_AppIterate(void *appstate) {
+    CupuacuState *state = (CupuacuState*)appstate;
 
     state->rootComponent->timerCallbackRecursive();
 
     SDL_SetRenderTarget(state->renderer, state->canvas);
 
-    const bool somethingIsDirty = state->rootComponent->isDirtyRecursive();
-
-    if (somethingIsDirty)
-    {
+    if (!state->dirtyRects.empty()) {
+        mergeDirtyRects(state->dirtyRects);
         state->rootComponent->draw(state->renderer);
         renderCanvasToWindow(state);
+        state->dirtyRects.clear();
     }
 
     SDL_Delay(16);
     return SDL_APP_CONTINUE;
 }
 
-SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
-{
+SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     return handleAppEvent((CupuacuState*)appstate, event);
 }
 
-void SDL_AppQuit(void *appstate, SDL_AppResult result)
-{
+void SDL_AppQuit(void *appstate, SDL_AppResult result) {
     TTF_Quit();
     CupuacuState *state = (CupuacuState*)appstate;
     SDL_DestroyRenderer(state->renderer);
     SDL_DestroyWindow(state->window);
     SDL_Quit();
 }
-
