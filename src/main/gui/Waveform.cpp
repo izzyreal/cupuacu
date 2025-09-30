@@ -394,12 +394,12 @@ void Waveform::drawPlaybackPosition(SDL_Renderer *renderer)
         return;
     }
 
-    const float playbackXPos = getXPosForSampleIndex(playbackPos, state->sampleOffset, state->samplesPerPixel);
+    const int32_t playbackXPos = getXPosForSampleIndex(playbackPos, state->sampleOffset, state->samplesPerPixel);
 
     if (playbackXPos >= 0 && playbackXPos <= getWidth())
     {
         SDL_SetRenderDrawColor(renderer, 0, 200, 200, 255);
-        SDL_RenderLine(renderer, (int)playbackXPos, 0, (int)playbackXPos, getHeight());
+        SDL_RenderLine(renderer, playbackXPos, 0, playbackXPos, getHeight());
     }
 }
 
@@ -410,7 +410,7 @@ void Waveform::drawCursor(SDL_Renderer *renderer)
         return;
     }
 
-    const auto cursorXPos = getXPosForSampleIndex(state->cursor, state->sampleOffset, state->samplesPerPixel);
+    const int32_t cursorXPos = getXPosForSampleIndex(state->cursor, state->sampleOffset, state->samplesPerPixel);
 
     if (cursorXPos >= 0 && cursorXPos <= getWidth())
     {

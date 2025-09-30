@@ -48,37 +48,29 @@ void MainView::updateTriangleMarkerBounds()
     const auto sampleOffset   = state->sampleOffset;
     const auto samplesPerPixel = state->samplesPerPixel;
 
-    const double tolerance = (samplesPerPixel < 1.0) ? (1.0 / samplesPerPixel) : 0.0;
-
     if (state->selection.isActive())
     {
         cursorTop->setBounds(0, 0, 0, 0);
         cursorBottom->setBounds(0, 0, 0, 0);
 
         {
-            const float startX = Waveform::getXPosForSampleIndex(
+            const int32_t startX = Waveform::getXPosForSampleIndex(
                 state->selection.getStartInt(),
                 sampleOffset, samplesPerPixel);
 
-            const bool visible =
-                startX >= -tolerance &&
-                startX <= waveforms->getWidth() + tolerance;
-
-            if (visible)
+            if (startX >= 0 && startX <= waveforms->getWidth())
             {
-                const float clampedX = std::clamp(startX, 0.f, (float)waveforms->getWidth());
-
                 selStartTop->setBounds(
-                    clampedX + borderWidth,
+                    startX + borderWidth,
                     0,
-                    (int)(triHeight + 1.f),
-                    (int)triHeight);
+                    static_cast<int>(triHeight + 1.f),
+                    static_cast<int>(triHeight));
 
                 selStartBot->setBounds(
-                    clampedX + borderWidth,
-                    getHeight() - (int)triHeight,
-                    (int)(triHeight + 1.f),
-                    (int)triHeight);
+                    startX + borderWidth,
+                    getHeight() - static_cast<int>(triHeight),
+                    static_cast<int>(triHeight + 1.f),
+                    static_cast<int>(triHeight));
             }
             else
             {
@@ -91,28 +83,22 @@ void MainView::updateTriangleMarkerBounds()
             const int64_t endInclusive = state->selection.getEndInt();
             const int64_t endToUse = endInclusive + 1;
 
-            const float endX = Waveform::getXPosForSampleIndex(
+            const int32_t endX = Waveform::getXPosForSampleIndex(
                 endToUse, sampleOffset, samplesPerPixel);
 
-            const bool visible =
-                endX >= -tolerance &&
-                endX <= waveforms->getWidth() + tolerance;
-
-            if (visible)
+            if (endX >= 0 && endX <= waveforms->getWidth())
             {
-                const float clampedX = std::clamp(endX, 0.f, (float)waveforms->getWidth());
-
                 selEndTop->setBounds(
-                    clampedX + borderWidth - triHeight,
+                    endX + borderWidth - static_cast<int>(triHeight),
                     0,
-                    (int)triHeight,
-                    (int)triHeight);
+                    static_cast<int>(triHeight),
+                    static_cast<int>(triHeight));
 
                 selEndBot->setBounds(
-                    clampedX + borderWidth - triHeight,
-                    getHeight() - (int)triHeight,
-                    (int)triHeight,
-                    (int)triHeight);
+                    endX + borderWidth - static_cast<int>(triHeight),
+                    getHeight() - static_cast<int>(triHeight),
+                    static_cast<int>(triHeight),
+                    static_cast<int>(triHeight));
             }
             else
             {
@@ -128,29 +114,24 @@ void MainView::updateTriangleMarkerBounds()
         selEndTop->setBounds(0, 0, 0, 0);
         selEndBot->setBounds(0, 0, 0, 0);
 
-        const float xPos = Waveform::getXPosForSampleIndex(
+        const int32_t xPos = Waveform::getXPosForSampleIndex(
             state->cursor, sampleOffset, samplesPerPixel);
 
-        const bool visible =
-            xPos >= -tolerance &&
-            xPos <= waveforms->getWidth() + tolerance;
-
-        if (visible)
+        if (xPos >= 0 && xPos <= waveforms->getWidth())
         {
-            const float clampedX = std::clamp(xPos, 0.f, (float)waveforms->getWidth());
-            const float cursorX  = clampedX + borderWidth;
+            const int cursorX = xPos + borderWidth;
 
             cursorTop->setBounds(
-                (int)(cursorX - halfBase),
+                cursorX - static_cast<int>(halfBase) + 1,
                 0,
-                (int)(halfBase * 2),
-                (int)triHeight);
+                static_cast<int>(halfBase * 2),
+                static_cast<int>(triHeight));
 
             cursorBottom->setBounds(
-                (int)(cursorX - halfBase),
-                getHeight() - (int)triHeight,
-                (int)(halfBase * 2),
-                (int)triHeight);
+                cursorX - static_cast<int>(halfBase) + 1,
+                getHeight() - static_cast<int>(triHeight),
+                static_cast<int>(halfBase * 2),
+                static_cast<int>(triHeight));
         }
         else
         {
@@ -159,6 +140,7 @@ void MainView::updateTriangleMarkerBounds()
         }
     }
 }
+
 void MainView::onDraw(SDL_Renderer *r)
 {
     SDL_SetRenderDrawColor(r, 28, 28, 28, 255);
