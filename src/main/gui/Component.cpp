@@ -39,10 +39,11 @@ void Component::removeChild(Component *child)
         if (it->get() == child)
         {
             children.erase(it);
+            state->dirtyRects.push_back(oldBounds);
+            setDirty();
             break;
         }
     }
-    state->dirtyRects.push_back(oldBounds);
 }
 
 void Component::sendToBack()
@@ -67,19 +68,25 @@ void Component::sendToBack()
 void Component::bringToFront()
 {
     if (parent == nullptr)
-    {
         return;
-    }
 
     auto& parentChildren = parent->children;
 
-    auto thisIter = std::find_if(parentChildren.begin(), parentChildren.end(),
+    auto thisIter = std::find_if(
+        parentChildren.begin(), parentChildren.end(),
         [this](const std::unique_ptr<Component>& child) { return child.get() == this; });
 
     if (thisIter != parentChildren.end() && thisIter != parentChildren.end() - 1)
     {
-        parentChildren.push_back(std::move(*thisIter));
-        parentChildren.erase(thisIter);
+        // Move the unique_ptr out
+        auto tmp = std::move(*thisIter);
+
+        // Erase leaves a hole and shifts left
+        thisIter = parentChildren.erase(thisIter);
+
+        // Insert at end
+        parentChildren.push_back(std::move(tmp));
+
         parent->setDirty();
     }
 }
@@ -173,14 +180,12 @@ void Component::draw(SDL_Renderer* renderer)
         printf("==== componentUnderMouse: %s\n", (state->componentUnderMouse == nullptr ? "<none>" : state->componentUnderMouse->getComponentName().c_str()));
     }
 #endif
-    SDL_FRect absFRect = getAbsoluteBounds();
-    SDL_Rect absRect = FRectToRect(absFRect);
+    SDL_Rect absRect = getAbsoluteBounds();
 
     bool intersects = false;
 
-    for (const auto& drF : state->dirtyRects)
+    for (const auto& dr : state->dirtyRects)
     {
-        SDL_Rect dr = FRectToRect(drF);
         if (SDL_HasRectIntersection(&absRect, &dr))
         {
             intersects = true;
@@ -198,10 +203,10 @@ void Component::draw(SDL_Renderer* renderer)
     SDL_GetRenderViewport(renderer, &viewPortRect);
     SDL_Rect parentViewPortRect = viewPortRect;
 
-    viewPortRect.x = static_cast<int>(absFRect.x);
-    viewPortRect.y = static_cast<int>(absFRect.y);
-    viewPortRect.w = static_cast<int>(absFRect.w);
-    viewPortRect.h = static_cast<int>(absFRect.h);
+    viewPortRect.x = absRect.x;
+    viewPortRect.y = absRect.y;
+    viewPortRect.w = absRect.w;
+    viewPortRect.h = absRect.h;
 
     if (parentClippingEnabled)
     {
@@ -223,7 +228,7 @@ void Component::draw(SDL_Renderer* renderer)
     Uint8 b = rand() % 256;
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
     SDL_SetRenderDrawColor(renderer, r, g, b, 128);
-    auto localBounds = getLocalBounds();
+    auto localBounds = getLocalBoundsF();
     SDL_RenderFillRect(renderer, &localBounds);
 #endif
 
@@ -351,19 +356,16 @@ std::pair<int, int> Component::getAbsolutePosition()
 bool Component::containsAbsoluteCoordinate(const int x, const int y)
 {
     auto [absX, absY] = getAbsolutePosition();
-    SDL_Rect rect { absX, absY, (int)getWidth(), (int)getHeight() };
+    SDL_Rect rect{ absX, absY, (int)getWidth(), (int)getHeight() };
 
-    if (parentClippingEnabled)
-    {
+    if (parentClippingEnabled) {
         Component* p = parent;
-        while (p != nullptr)
-        {
+        while (p != nullptr) {
             auto [px, py] = p->getAbsolutePosition();
-            SDL_Rect parentRect { px, py, (int)p->getWidth(), (int)p->getHeight() };
+            SDL_Rect parentRect{ px, py, (int)p->getWidth(), (int)p->getHeight() };
 
             SDL_Rect intersection;
-            if (!SDL_GetRectIntersection(&rect, &parentRect, &intersection))
-            {
+            if (!SDL_GetRectIntersection(&rect, &parentRect, &intersection)) {
                 return false;
             }
             rect = intersection;
@@ -372,9 +374,8 @@ bool Component::containsAbsoluteCoordinate(const int x, const int y)
         }
     }
 
-    const SDL_Point pointToUse{x, y};
-
-    return SDL_PointInRect(&pointToUse, &rect);
+    const SDL_Point pt{x, y};
+    return SDL_PointInRect(&pt, &rect);
 }
 
 Component* Component::findComponentAt(const int x, const int y)

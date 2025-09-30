@@ -8,17 +8,7 @@ class OpaqueRect : public Component {
         void onDraw(SDL_Renderer* renderer)
         {
             SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-
-            auto absBounds = getAbsoluteBounds();
-            for (const auto& dirty : state->dirtyRects)
-            {
-                SDL_FRect intersection;
-                if (SDL_GetRectIntersectionFloat(&dirty, &absBounds, &intersection))
-                {
-                    intersection.x -= absBounds.x;
-                    intersection.y -= absBounds.y;
-                    SDL_RenderFillRect(renderer, &intersection);
-                }
-            }
+            auto rect = getLocalBoundsF();
+            SDL_RenderFillRect(renderer, &rect);
         }
 };

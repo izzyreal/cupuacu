@@ -11,14 +11,9 @@
 
 struct CupuacuState;
 
-static SDL_Rect FRectToRect(const SDL_FRect& fr)
+static SDL_FRect RectToFRect(const SDL_Rect& r)
 {
-    return SDL_Rect{
-        static_cast<int>(fr.x),
-        static_cast<int>(fr.y),
-        static_cast<int>(fr.w),
-        static_cast<int>(fr.h)
-    };
+    return SDL_FRect{ (float)r.x, (float)r.y, (float)r.w, (float)r.h };
 }
 
 class Component {
@@ -35,29 +30,36 @@ private:
 
 protected:
     CupuacuState *state;
-    const std::vector<std::unique_ptr<Component>>& getChildren() const;
-    void removeChild(Component*);
     void removeAllChildren();
     Component* getParent() const;
 
 public:
     Component(CupuacuState*, const std::string componentName);
 
+    const std::vector<std::unique_ptr<Component>>& getChildren() const;
+
+    void removeChild(Component*);
+
     void setInterceptMouseEnabled(const bool shouldInterceptMouse);
 
     const bool isMouseOver() const;
 
-    SDL_FRect getBounds()
+    SDL_Rect getBounds()
     {
-        return { (float)xPos, (float)yPos, (float) getWidth(), (float) getHeight() };
+        return { xPos, yPos, getWidth(), getHeight() };
     }
 
-    SDL_FRect getLocalBounds()
+    SDL_Rect getLocalBounds()
     {
-        return { 0, 0, (float) getWidth(), (float) getHeight() };
+        return { 0, 0, getWidth(), getHeight() };
     }
 
-    SDL_FRect getAbsoluteBounds()
+    SDL_FRect getLocalBoundsF()
+    {
+        return { (float)0, (float)0, (float)getWidth(), (float)getHeight() };
+    }
+
+    SDL_Rect getAbsoluteBounds()
     {
         auto rect = getLocalBounds();
         const auto [absX, absY] = getAbsolutePosition();

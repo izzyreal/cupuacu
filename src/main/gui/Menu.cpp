@@ -84,7 +84,7 @@ void Menu::onDraw(SDL_Renderer *renderer)
     {
         const uint8_t bg = bright ? 80 : 40;
         SDL_SetRenderDrawColor(renderer, bg, bg, bg, 255);
-        auto rect = getBounds();
+        auto rect = getLocalBoundsF();
         SDL_RenderFillRect(renderer, &rect);
     }
 }

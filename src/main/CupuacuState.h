@@ -33,7 +33,7 @@ struct CupuacuState {
     uint8_t pixelScale = 1;
     std::string currentFile = "/Users/izmar/Downloads/ams_chill.wav";
 
-    std::vector<SDL_FRect> dirtyRects;
+    std::vector<SDL_Rect> dirtyRects;
 
     struct Document {
         int sampleRate = 0;
