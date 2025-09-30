@@ -89,14 +89,9 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     state->rootComponent->timerCallbackRecursive();
 
     SDL_SetRenderTarget(state->renderer, state->canvas);
-
-    const bool somethingIsDirty = state->rootComponent->isDirtyRecursive();
-
-    if (somethingIsDirty)
-    {
-        state->rootComponent->draw(state->renderer);
-        renderCanvasToWindow(state);
-    }
+    state->rootComponent->draw(state->renderer);
+    renderCanvasToWindow(state);
+    state->dirtyRects.clear();
 
     SDL_Delay(16);
     return SDL_APP_CONTINUE;

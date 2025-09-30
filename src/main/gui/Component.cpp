@@ -58,7 +58,7 @@ void Component::sendToBack()
         auto ptr = std::move(*thisIter);
         parentChildren.erase(thisIter);
         parentChildren.insert(parentChildren.begin(), std::move(ptr));
-        parent->setDirtyRecursive();
+        parent->setDirty();
     }
 }
 
@@ -78,7 +78,7 @@ void Component::bringToFront()
     {
         parentChildren.push_back(std::move(*thisIter));
         parentChildren.erase(thisIter);
-        parent->setDirtyRecursive();
+        parent->setDirty();
     }
 }
 
@@ -142,75 +142,64 @@ void Component::setYPos(const uint16_t yPosToUse)
 
 void Component::setDirty()
 {
-    dirty = true;
-}
-
-void Component::setDirtyRecursive()
-{
-    setDirty();
-    for (auto &c : children) c->setDirtyRecursive();
-}
-
-bool Component::isDirtyRecursive()
-{
-    if (dirty)
-    {
-        //printf("%s is dirty\n", getComponentName().c_str());
-        return true;
-    }
-
-    for (auto &c : children)
-    {
-        if (c->isDirtyRecursive())
-        {
-            return true;
-        }
-    }
-
-    return false;
+    state->dirtyRects.push_back(getAbsoluteBounds());
 }
 
 void Component::draw(SDL_Renderer* renderer)
 {
+    SDL_FRect absFRect = getAbsoluteBounds();
+    SDL_Rect absRect = FRectToRect(absFRect);
+
+    bool intersects = false;
+
+    for (const auto& drF : state->dirtyRects)
+    {
+        SDL_Rect dr = FRectToRect(drF);
+        if (SDL_HasRectIntersection(&absRect, &dr))
+        {
+            intersects = true;
+            break;
+        }
+    }
+
+    if (!intersects)
+    {
+        return;
+    }
+
     SDL_Rect viewPortRect;
     SDL_GetRenderViewport(renderer, &viewPortRect);
     SDL_Rect parentViewPortRect = viewPortRect;
 
-    viewPortRect.x += getXPos();
-    viewPortRect.y += getYPos();
-    viewPortRect.w = getWidth();
-    viewPortRect.h = getHeight();
+    viewPortRect.x = static_cast<int>(absFRect.x);
+    viewPortRect.y = static_cast<int>(absFRect.y);
+    viewPortRect.w = static_cast<int>(absFRect.w);
+    viewPortRect.h = static_cast<int>(absFRect.h);
 
     if (parentClippingEnabled)
     {
         SDL_Rect viewPortRectToUse;
-        SDL_GetRectIntersection(&parentViewPortRect, &viewPortRect, &viewPortRectToUse);
-        SDL_SetRenderViewport(renderer, &viewPortRectToUse);
+        if (SDL_GetRectIntersection(&parentViewPortRect, &viewPortRect, &viewPortRectToUse))
+            SDL_SetRenderViewport(renderer, &viewPortRectToUse);
     }
     else
     {
         SDL_SetRenderViewport(renderer, &viewPortRect);
     }
 
-    if (dirty)
-    {
-        onDraw(renderer);
+    onDraw(renderer);
+
 #if DEBUG_DRAW
-        Uint8 r = rand() % 256;
-        Uint8 g = rand() % 256;
-        Uint8 b = rand() % 256;
-        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-        SDL_SetRenderDrawColor(renderer, r, g, b, 128); // 50% alpha
-        SDL_FRect overlayRect = getLocalBounds();
-        SDL_RenderFillRect(renderer, &overlayRect);
+    Uint8 r = rand() % 256;
+    Uint8 g = rand() % 256;
+    Uint8 b = rand() % 256;
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(renderer, r, g, b, 128);
+    SDL_RenderFillRect(renderer, &absFRect);
 #endif
-        dirty = false;
-    }
 
     for (auto& c : children)
-    {
         c->draw(renderer);
-    }
 
     SDL_SetRenderViewport(renderer, &parentViewPortRect);
 }

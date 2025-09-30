@@ -165,7 +165,7 @@ void MainView::timerCallback()
         lastSelectionEnd = state->selection.getEndInt();
 
         updateTriangleMarkerBounds();
-        setDirtyRecursive();
+        setDirty();
     }
 }
 

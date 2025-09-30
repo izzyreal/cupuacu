@@ -431,14 +431,14 @@ void Waveform::timerCallback()
         lastDrawnSamplePosUnderCursor != samplePosUnderCursor)
     {
         lastDrawnSamplePosUnderCursor = samplePosUnderCursor;
-        setDirtyRecursive();
+        setDirty();
     }
 
     if (const auto newPlaybackPosition = state->playbackPosition.load();
         newPlaybackPosition != playbackPosition)
     {
         playbackPosition = newPlaybackPosition;
-        setDirtyRecursive();
+        setDirty();
     }
 }
 
@@ -462,7 +462,7 @@ void Waveform::clearHighlight()
     if (samplePosUnderCursor.has_value())
     {
         resetSamplePosUnderCursor();
-        setDirtyRecursive();
+        setDirty();
     }
 }
 
@@ -474,7 +474,7 @@ void Waveform::setSamplePosUnderCursor(const int64_t samplePosUnderCursorToUse)
     }
 
     samplePosUnderCursor.emplace(samplePosUnderCursorToUse);
-    setDirtyRecursive();
+    setDirty();
 }
 
 void Waveform::resetSamplePosUnderCursor()
