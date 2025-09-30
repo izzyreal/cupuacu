@@ -28,6 +28,9 @@ void WaveformsUnderlay::mouseLeave()
 bool WaveformsUnderlay::mouseDown(const MouseEvent &e) 
 {
     lastNumClicks = e.numClicks;
+
+    handleChannelSelection(e.mouseYi, true);
+        
     const auto samplesPerPixel = state->samplesPerPixel;
     const int channel = channelAt(e.mouseYi);
     const double selectionCenter = (state->selection.getStart() + state->selection.getEnd()) * 0.5;
@@ -55,8 +58,6 @@ bool WaveformsUnderlay::mouseDown(const MouseEvent &e)
         state->selection.setValue1(startSample);
         state->selection.setValue2(endSample);
 
-        handleChannelSelection(e.mouseYi, true);
-        
         Waveform::setAllWaveformsDirty(state);
 
         return true;
