@@ -121,9 +121,8 @@ void Component::setBounds(const uint16_t xPosToUse, const uint16_t yPosToUse, co
 {
     if (xPosToUse != xPos || yPosToUse != yPos || widthToUse != width || heightToUse != height)
     {
-        setDirty();
+        setDirty();  // Mark old bounds
     }
-
     xPos = xPosToUse;
     yPos = yPosToUse;
     width = widthToUse;
@@ -136,7 +135,7 @@ void Component::setSize(const uint16_t widthToUse, const uint16_t heightToUse)
 {
     if (widthToUse != width || heightToUse != height)
     {
-        setDirty();
+        setDirty();  // Mark old bounds
     }
     width = widthToUse;
     height = heightToUse;
@@ -148,7 +147,7 @@ void Component::setYPos(const uint16_t yPosToUse)
 {
     if (yPosToUse != yPos)
     {
-        setDirty();
+        setDirty();  // Mark old bounds
     }
     yPos = yPosToUse;
     setDirty();
@@ -158,6 +157,11 @@ void Component::setYPos(const uint16_t yPosToUse)
 void Component::setDirty()
 {
     state->dirtyRects.push_back(getAbsoluteBounds());
+    
+    for (auto &c : children)
+    {
+        c->setDirty();
+    }
 }
 
 void Component::draw(SDL_Renderer* renderer)
@@ -180,6 +184,7 @@ void Component::draw(SDL_Renderer* renderer)
         if (SDL_HasRectIntersection(&absRect, &dr))
         {
             intersects = true;
+            setDirty();
             break;
         }
     }
@@ -221,8 +226,11 @@ void Component::draw(SDL_Renderer* renderer)
     SDL_RenderFillRect(renderer, &absFRect);
 #endif
 
+    // Draw all children if this component is drawn, ensuring they appear over the parent's drawing
     for (auto& c : children)
+    {
         c->draw(renderer);
+    }
 
     SDL_SetRenderViewport(renderer, &parentViewPortRect);
 }
@@ -385,4 +393,3 @@ Component* Component::findComponentAt(const int x, const int y)
 
     return nullptr;
 }
-
