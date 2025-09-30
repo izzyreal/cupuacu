@@ -3,6 +3,7 @@
 #include <SDL3/SDL.h>
 
 #include "Component.h"
+#include "SubMenuPanel.h"
 
 #include <string>
 #include <vector>
@@ -21,6 +22,7 @@ private:
     const std::function<void()> action;
 
     Label *label = nullptr;
+    SubMenuPanel *submenuPanel;
 
 public:
     Menu(CupuacuState*, const std::string menuNameToUse, const std::function<void()> actionToUse = {});

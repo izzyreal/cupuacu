@@ -32,6 +32,25 @@ void Component::removeChild(Component *child)
     }
 }
 
+void Component::sendToBack()
+{
+    if (parent == nullptr)
+        return;
+
+    auto& parentChildren = parent->children;
+
+    auto thisIter = std::find_if(parentChildren.begin(), parentChildren.end(),
+        [this](const std::unique_ptr<Component>& child) { return child.get() == this; });
+
+    if (thisIter != parentChildren.end() && thisIter != parentChildren.begin())
+    {
+        auto ptr = std::move(*thisIter);
+        parentChildren.erase(thisIter);
+        parentChildren.insert(parentChildren.begin(), std::move(ptr));
+        parent->setDirtyRecursive();
+    }
+}
+
 void Component::bringToFront()
 {
     if (parent == nullptr)
