@@ -5,6 +5,12 @@
 
 #include <ranges>
 
+#define DEBUG_DRAW 1
+
+#if DEBUG_DRAW
+#include <cstdlib>
+#endif
+
 Component::Component(CupuacuState *stateToUse, const std::string componentNameToUse) :
     state(stateToUse), componentName(componentNameToUse)
 {
@@ -189,6 +195,15 @@ void Component::draw(SDL_Renderer* renderer)
     if (dirty)
     {
         onDraw(renderer);
+#if DEBUG_DRAW
+        Uint8 r = rand() % 256;
+        Uint8 g = rand() % 256;
+        Uint8 b = rand() % 256;
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(renderer, r, g, b, 128); // 50% alpha
+        SDL_FRect overlayRect = getBounds();
+        SDL_RenderFillRect(renderer, &overlayRect);
+#endif
         dirty = false;
     }
 
