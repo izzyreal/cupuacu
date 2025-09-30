@@ -34,6 +34,7 @@ public:
 
         const uint8_t fontPointSize = state->menuFontSize / state->pixelScale;
         std::string displayText = label + ": " + value;
-        renderText(renderer, displayText, fontPointSize);
+        auto rect = getBounds();
+        renderText(renderer, displayText, fontPointSize, rect, false);
     }
 };

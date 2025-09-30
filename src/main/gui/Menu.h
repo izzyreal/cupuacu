@@ -13,6 +13,7 @@ struct CupuacuState;
 
 class Menu : public Component {
 private:
+    bool depthIs0 = false;
     bool currentlyOpen = false;
     const std::string menuName;
     std::vector<Menu*> subMenus;
@@ -20,6 +21,8 @@ private:
 
 public:
     Menu(CupuacuState*, const std::string menuNameToUse, const std::function<void()> actionToUse = {});
+
+    void enableDepthIs0() { depthIs0 = true; }
 
     template <typename... Args>
     void addSubMenu(Args&&... args)

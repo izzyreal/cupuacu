@@ -58,7 +58,7 @@ SDL_Rect getMenuBarRect(const uint16_t canvasWidth,
                         const uint8_t menuFontSize)
 {
     SDL_Rect result {
-        3,
+        0,
         0,
         canvasWidth,
         static_cast<int>((menuFontSize * 1.33) / pixelScale)

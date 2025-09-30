@@ -29,7 +29,7 @@ enum SelectedChannels {
 };
  
 struct CupuacuState {
-    uint8_t menuFontSize = 60;
+    uint8_t menuFontSize = 40;
     uint8_t pixelScale = 1;
     std::string currentFile = "/Users/izmar/Downloads/ams_chill.wav";
 

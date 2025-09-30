@@ -11,6 +11,8 @@ MenuBar::MenuBar(CupuacuState *stateToUse) : Component(stateToUse, "MenuBar")
     disableParentClipping();
     fileMenu = emplaceChildAndSetDirty<Menu>(state, "File");
     viewMenu = emplaceChildAndSetDirty<Menu>(state, "View");
+    fileMenu->enableDepthIs0();
+    viewMenu->enableDepthIs0();
 
 #ifdef __APPLE__
     const std::string openText{"Open (Cmd + O)"};

@@ -34,6 +34,11 @@ protected:
 public:
     Component(CupuacuState*, const std::string componentName);
 
+    SDL_FRect getBounds()
+    {
+        return { 0, 0, (float) getWidth(), (float) getHeight() };
+    }
+
     void disableParentClipping() { parentClippingEnabled = false; }
 
     template <typename T>

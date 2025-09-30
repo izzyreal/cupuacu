@@ -17,14 +17,16 @@ void Menu::showSubMenus()
     if (subMenus.empty())
         return;
 
-    float scale = 4.0f / state->pixelScale;
     int subMenuYPos = getHeight();
+
+    const int baseH = int(state->menuFontSize * state->pixelScale * 1.2f);
+    const int baseW = int(state->menuFontSize * state->pixelScale * 10.0f);
 
     for (auto &subMenu : subMenus)
     {
-        int w = int(150 * scale);
-        int h = int(20 * scale);
-        subMenu->setBounds(int(5 * scale), subMenuYPos, w, h);
+        int w = baseW;
+        int h = baseH;
+        subMenu->setBounds(0, subMenuYPos, w, h);
         subMenuYPos += h;
     }
 
@@ -45,10 +47,10 @@ void Menu::onDraw(SDL_Renderer *renderer)
 {
     const uint8_t bg = isMouseOver() ? 80 : 40;
     SDL_SetRenderDrawColor(renderer, bg, bg, bg, 255);
-    SDL_FRect r{0, 0, (float)getWidth(), (float)getHeight() };
-    SDL_RenderFillRect(renderer, &r);
+    auto rect = getBounds();
+    SDL_RenderFillRect(renderer, &rect);
     const uint8_t fontPointSize = state->menuFontSize / state->pixelScale;
-    renderText(renderer, menuName, fontPointSize);
+    renderText(renderer, menuName, fontPointSize, rect, depthIs0);
 }
 
 bool Menu::mouseDown(const MouseEvent &e)
