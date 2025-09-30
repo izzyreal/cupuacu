@@ -151,10 +151,16 @@ void Component::draw(SDL_Renderer* renderer)
     viewPortRect.w = getWidth();
     viewPortRect.h = getHeight();
 
-    SDL_Rect viewPortRectToUse;
-    SDL_GetRectIntersection(&parentViewPortRect, &viewPortRect, &viewPortRectToUse);
-    
-    SDL_SetRenderViewport(renderer, &viewPortRectToUse);
+    if (parentClippingEnabled)
+    {
+        SDL_Rect viewPortRectToUse;
+        SDL_GetRectIntersection(&parentViewPortRect, &viewPortRect, &viewPortRectToUse);
+        SDL_SetRenderViewport(renderer, &viewPortRectToUse);
+    }
+    else
+    {
+        SDL_SetRenderViewport(renderer, &viewPortRect);
+    }
 
     if (dirty)
     {
@@ -287,20 +293,23 @@ bool Component::containsAbsoluteCoordinate(const int x, const int y)
     auto [absX, absY] = getAbsolutePosition();
     SDL_Rect rect { absX, absY, (int)getWidth(), (int)getHeight() };
 
-    Component* p = parent;
-    while (p != nullptr)
+    if (parentClippingEnabled)
     {
-        auto [px, py] = p->getAbsolutePosition();
-        SDL_Rect parentRect { px, py, (int)p->getWidth(), (int)p->getHeight() };
-
-        SDL_Rect intersection;
-        if (!SDL_GetRectIntersection(&rect, &parentRect, &intersection))
+        Component* p = parent;
+        while (p != nullptr)
         {
-            return false;
-        }
-        rect = intersection;
+            auto [px, py] = p->getAbsolutePosition();
+            SDL_Rect parentRect { px, py, (int)p->getWidth(), (int)p->getHeight() };
 
-        p = p->getParent();
+            SDL_Rect intersection;
+            if (!SDL_GetRectIntersection(&rect, &parentRect, &intersection))
+            {
+                return false;
+            }
+            rect = intersection;
+
+            p = p->getParent();
+        }
     }
 
     const SDL_Point pointToUse{x, y};

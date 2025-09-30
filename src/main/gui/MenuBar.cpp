@@ -8,6 +8,7 @@
 
 MenuBar::MenuBar(CupuacuState *stateToUse) : Component(stateToUse, "MenuBar")
 {
+    disableParentClipping();
     fileMenu = emplaceChildAndSetDirty<Menu>(state, "File");
     viewMenu = emplaceChildAndSetDirty<Menu>(state, "View");
 

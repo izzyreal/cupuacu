@@ -13,6 +13,7 @@ struct CupuacuState;
 
 class Component {
 private:
+    bool parentClippingEnabled = true;
     std::string componentName;
     bool dirty = false;
     uint16_t xPos = 0, yPos = 0;
@@ -32,6 +33,8 @@ protected:
 
 public:
     Component(CupuacuState*, const std::string componentName);
+
+    void disableParentClipping() { parentClippingEnabled = false; }
 
     template <typename T>
     void removeChildrenOfType()
