@@ -223,7 +223,8 @@ void Component::draw(SDL_Renderer* renderer)
     Uint8 b = rand() % 256;
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
     SDL_SetRenderDrawColor(renderer, r, g, b, 128);
-    SDL_RenderFillRect(renderer, &absFRect);
+    auto localBounds = getLocalBounds();
+    SDL_RenderFillRect(renderer, &localBounds);
 #endif
 
     // Draw all children if this component is drawn, ensuring they appear over the parent's drawing
