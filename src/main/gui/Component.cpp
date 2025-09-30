@@ -5,7 +5,7 @@
 
 #include <ranges>
 
-#define DEBUG_DRAW 1
+#define DEBUG_DRAW 0
 
 #if DEBUG_DRAW
 #include <cstdlib>
@@ -33,14 +33,16 @@ const std::vector<std::unique_ptr<Component>>& Component::getChildren() const
 
 void Component::removeChild(Component *child)
 {
+    auto oldBounds = child->getAbsoluteBounds();
     for (auto it = children.begin(); it != children.end(); ++it)
     {
         if (it->get() == child)
         {
             children.erase(it);
-            return;
+            break;
         }
     }
+    state->dirtyRects.push_back(oldBounds);
 }
 
 void Component::sendToBack()
@@ -117,6 +119,11 @@ const std::string Component::getComponentName() const
 
 void Component::setBounds(const uint16_t xPosToUse, const uint16_t yPosToUse, const uint16_t widthToUse, const uint16_t heightToUse)
 {
+    if (xPosToUse != xPos || yPosToUse != yPos || widthToUse != width || heightToUse != height)
+    {
+        setDirty();
+    }
+
     xPos = xPosToUse;
     yPos = yPosToUse;
     width = widthToUse;
@@ -127,6 +134,10 @@ void Component::setBounds(const uint16_t xPosToUse, const uint16_t yPosToUse, co
 
 void Component::setSize(const uint16_t widthToUse, const uint16_t heightToUse)
 {
+    if (widthToUse != width || heightToUse != height)
+    {
+        setDirty();
+    }
     width = widthToUse;
     height = heightToUse;
     setDirty();
@@ -135,6 +146,10 @@ void Component::setSize(const uint16_t widthToUse, const uint16_t heightToUse)
 
 void Component::setYPos(const uint16_t yPosToUse)
 {
+    if (yPosToUse != yPos)
+    {
+        setDirty();
+    }
     yPos = yPosToUse;
     setDirty();
     resized();
@@ -147,6 +162,13 @@ void Component::setDirty()
 
 void Component::draw(SDL_Renderer* renderer)
 {
+#if DEBUG_DRAW
+    if (!state->dirtyRects.empty() && componentName == "RootComponent")
+    {
+        printf("======\n");
+        printf("==== componentUnderMouse: %s\n", (state->componentUnderMouse == nullptr ? "<none>" : state->componentUnderMouse->getComponentName().c_str()));
+    }
+#endif
     SDL_FRect absFRect = getAbsoluteBounds();
     SDL_Rect absRect = FRectToRect(absFRect);
 
@@ -190,6 +212,7 @@ void Component::draw(SDL_Renderer* renderer)
     onDraw(renderer);
 
 #if DEBUG_DRAW
+    printf("drawing %s\n", componentName.c_str());
     Uint8 r = rand() % 256;
     Uint8 g = rand() % 256;
     Uint8 b = rand() % 256;

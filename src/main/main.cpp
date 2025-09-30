@@ -18,11 +18,46 @@ const uint16_t initialDimensions[] = { 1280, 720 };
 
 #include "gui/MenuBar.h"
 
-void renderCanvasToWindow(CupuacuState *state)
+void renderCanvasToWindow3(CupuacuState *state)
 {
     SDL_SetRenderTarget(state->renderer, NULL);
     SDL_RenderTexture(state->renderer, state->canvas, NULL, NULL);
     SDL_RenderPresent(state->renderer);
+}
+
+void renderCanvasToWindow(CupuacuState *state)
+{
+    if (state->dirtyRects.empty()) return;
+
+    SDL_SetRenderTarget(state->renderer, NULL);
+
+    SDL_FRect mergedRect = state->dirtyRects[0];
+    for (size_t i = 1; i < state->dirtyRects.size(); ++i)
+    {
+        SDL_GetRectUnionFloat(&mergedRect, &state->dirtyRects[i], &mergedRect);
+    }
+
+    float canvasW, canvasH;
+    SDL_GetTextureSize(state->canvas, &canvasW, &canvasH);
+
+    int windowW, windowH;
+    SDL_GetCurrentRenderOutputSize(state->renderer, &windowW, &windowH);
+
+    float scaleX = static_cast<float>(windowW) / canvasW;
+    float scaleY = static_cast<float>(windowH) / canvasH;
+
+    SDL_FRect srcRect = mergedRect;
+    SDL_FRect dstRect {
+        mergedRect.x * scaleX,
+        mergedRect.y * scaleY,
+        mergedRect.w * scaleX,
+        mergedRect.h * scaleY
+    };
+
+    SDL_RenderTexture(state->renderer, state->canvas, &srcRect, &dstRect);
+    SDL_RenderPresent(state->renderer);
+
+    state->dirtyRects.clear();
 }
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
@@ -90,7 +125,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 
     SDL_SetRenderTarget(state->renderer, state->canvas);
     state->rootComponent->draw(state->renderer);
-    renderCanvasToWindow(state);
+    renderCanvasToWindow3(state);
     state->dirtyRects.clear();
 
     SDL_Delay(16);
