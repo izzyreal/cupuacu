@@ -132,36 +132,37 @@ void Component::setBounds(int32_t xPosToUse, int32_t yPosToUse, int32_t widthToU
     {
         return;
     }
-    setDirty();
+
+    auto oldBounds = getLocalBounds();
+    SDL_Rect newBounds = { xPosToUse, yPosToUse, widthToUse, heightToUse };
+
     xPos = xPosToUse;
     yPos = yPosToUse;
     width = widthToUse;
     height = heightToUse;
+
     setDirty();
+
+    SDL_Rect unionBounds;
+    SDL_GetRectUnion(&oldBounds, &newBounds, &unionBounds);
+    bool occludesOldBounds = SDL_RectsEqual(&unionBounds, &newBounds);
+
+    if (!occludesOldBounds && parent != nullptr)
+    {
+        parent->setDirty();
+    }
+
     resized();
 }
 
 void Component::setSize(int32_t widthToUse, int32_t heightToUse)
 {
-    if (widthToUse != width || heightToUse != height)
-    {
-        setDirty();
-    }
-    width = widthToUse;
-    height = heightToUse;
-    setDirty();
-    resized();
+    setBounds(xPos, yPos, widthToUse, heightToUse);
 }
 
 void Component::setYPos(int32_t yPosToUse)
 {
-    if (yPosToUse != yPos)
-    {
-        setDirty();
-    }
-    yPos = yPosToUse;
-    setDirty();
-    resized();
+    setBounds(xPos, yPosToUse, width, height);
 }
 
 void Component::setDirty()
