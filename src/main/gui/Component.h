@@ -22,6 +22,7 @@ private:
     bool visible = true;
     bool parentClippingEnabled = true;
     bool interceptMouseEnabled = true;
+    bool isExplicitlyDirty = false; // Added flag
     std::string componentName;
     int32_t xPos = 0, yPos = 0;
     int32_t width = 0, height = 0;
@@ -159,4 +160,3 @@ public:
         }
     }
 };
-

@@ -1,7 +1,7 @@
 #include "Component.h"
 
-#include "MenuBar.h"
 #include "../CupuacuState.h"
+#include "MenuBar.h"
 
 #include <ranges>
 #include <cmath>
@@ -179,6 +179,7 @@ void Component::setDirty()
     if (!visible)
         return;
 
+    isExplicitlyDirty = true; // Set flag
     SDL_Rect r = getAbsoluteBounds();
     if (r.w > 0 && r.h > 0) {
         SDL_Log("[DIRTY] %s -> rect {%d,%d %dx%d}", componentName.c_str(), r.x, r.y, r.w, r.h);
@@ -197,6 +198,7 @@ void Component::draw(SDL_Renderer* renderer)
 {
     if (!visible)
         return;
+
 #if DEBUG_DRAW
     if (!state->dirtyRects.empty() && componentName == "RootComponent")
     {
@@ -212,7 +214,6 @@ void Component::draw(SDL_Renderer* renderer)
         if (SDL_HasRectIntersection(&absRect, &dr))
         {
             intersects = true;
-            setDirty();
             break;
         }
     }
@@ -240,18 +241,20 @@ void Component::draw(SDL_Renderer* renderer)
         SDL_SetRenderViewport(renderer, &viewPortRect);
     }
 
-    onDraw(renderer);
-
+    if (isExplicitlyDirty) // Only call onDraw if explicitly dirty
+    {
+        onDraw(renderer);
 #if DEBUG_DRAW
-    printf("drawing %s\n", componentName.c_str());
-    Uint8 r = rand() % 256;
-    Uint8 g = rand() % 256;
-    Uint8 b = rand() % 256;
-    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-    SDL_SetRenderDrawColor(renderer, r, g, b, 128);
-    auto localBounds = getLocalBoundsF();
-    SDL_RenderFillRect(renderer, &localBounds);
+        printf("drawing %s\n", componentName.c_str());
+        Uint8 r = rand() % 256;
+        Uint8 g = rand() % 256;
+        Uint8 b = rand() % 256;
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(renderer, r, g, b, 128);
+        auto localBounds = getLocalBoundsF();
+        SDL_RenderFillRect(renderer, &localBounds);
 #endif
+    }
 
     for (auto& c : children)
     {
@@ -259,6 +262,7 @@ void Component::draw(SDL_Renderer* renderer)
     }
 
     SDL_SetRenderViewport(renderer, &parentViewPortRect);
+    isExplicitlyDirty = false; // Reset after drawing
 }
 
 bool Component::handleMouseEvent(const MouseEvent &mouseEvent)
@@ -401,4 +405,3 @@ Component* Component::findComponentAt(int x, int y)
 
     return nullptr;
 }
-
