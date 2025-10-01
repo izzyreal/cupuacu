@@ -1,8 +1,6 @@
 #include "TriangleMarker.h"
 #include "../CupuacuState.h"
 
-#include "MainView.h"
-
 TriangleMarker::TriangleMarker(CupuacuState* state, TriangleMarkerType typeIn)
     : Component(state, [typeIn]() {
           switch (typeIn) {
@@ -132,8 +130,6 @@ bool TriangleMarker::mouseMove(const MouseEvent &e)
             state->selection.setValue2(newSamplePos);
             break;
     }
-
-    dynamic_cast<MainView*>(getParent())->updateTriangleMarkerBounds();
 
     return true;
 }

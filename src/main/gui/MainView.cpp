@@ -1,21 +1,27 @@
 #include "MainView.h"
-
 #include "../CupuacuState.h"
 #include "Waveforms.h"
 #include "Waveform.h"
 #include "TriangleMarker.h"
+#include "OpaqueRect.h"
 
 MainView::MainView(CupuacuState *state) : Component(state, "MainView")
 {
+    for (int i = 0; i < 4; ++i)
+    {
+        borders[i] = emplaceChild<OpaqueRect>(state, Colors::border);
+    }
+
     waveforms = emplaceChild<Waveforms>(state);
     rebuildWaveforms();
 
-    cursorTop      = emplaceChild<TriangleMarker>(state, TriangleMarkerType::CursorTop);
-    cursorBottom   = emplaceChild<TriangleMarker>(state, TriangleMarkerType::CursorBottom);
-    selStartTop    = emplaceChild<TriangleMarker>(state, TriangleMarkerType::SelectionStartTop);
-    selStartBot    = emplaceChild<TriangleMarker>(state, TriangleMarkerType::SelectionStartBottom);
-    selEndTop      = emplaceChild<TriangleMarker>(state, TriangleMarkerType::SelectionEndTop);
-    selEndBot      = emplaceChild<TriangleMarker>(state, TriangleMarkerType::SelectionEndBottom);
+    cursorTop      = borders[0]->emplaceChild<TriangleMarker>(state, TriangleMarkerType::CursorTop);
+    selStartTop    = borders[0]->emplaceChild<TriangleMarker>(state, TriangleMarkerType::SelectionStartTop);
+    selEndTop      = borders[0]->emplaceChild<TriangleMarker>(state, TriangleMarkerType::SelectionEndTop);
+
+    cursorBottom   = borders[1]->emplaceChild<TriangleMarker>(state, TriangleMarkerType::CursorBottom);
+    selStartBot    = borders[1]->emplaceChild<TriangleMarker>(state, TriangleMarkerType::SelectionStartBottom);
+    selEndBot      = borders[1]->emplaceChild<TriangleMarker>(state, TriangleMarkerType::SelectionEndBottom);
 }
 
 uint8_t MainView::computeBorderWidth() const
@@ -32,9 +38,17 @@ void MainView::rebuildWaveforms()
 void MainView::resized()
 {
     const auto borderWidth = computeBorderWidth();
+    const int width  = getWidth();
+    const int height = getHeight();
+
     waveforms->setBounds(borderWidth, borderWidth,
-                         getWidth() - (borderWidth * 2),
-                         getHeight() - (borderWidth * 2));
+                         width - 2 * borderWidth,
+                         height - 2 * borderWidth);
+
+    borders[0]->setBounds(0, 0, width, borderWidth);
+    borders[1]->setBounds(0, height - borderWidth, width, borderWidth);
+    borders[2]->setBounds(0, borderWidth, borderWidth, height - 2 * borderWidth);
+    borders[3]->setBounds(width - borderWidth, borderWidth, borderWidth, height - 2 * borderWidth);
 
     updateTriangleMarkerBounds();
 }
@@ -53,64 +67,40 @@ void MainView::updateTriangleMarkerBounds()
         cursorTop->setVisible(false);
         cursorBottom->setVisible(false);
 
+        const int32_t startX = Waveform::getXPosForSampleIndex(state->selection.getStartInt(),
+                                                              sampleOffset, samplesPerPixel);
+        if (startX >= 0 && startX <= waveforms->getWidth())
         {
-            const int32_t startX = Waveform::getXPosForSampleIndex(
-                state->selection.getStartInt(),
-                sampleOffset, samplesPerPixel);
-
-            if (startX >= 0 && startX <= waveforms->getWidth())
-            {
-                selStartTop->setVisible(true);
-                selStartBot->setVisible(true);
-
-                selStartTop->setBounds(
-                    startX + borderWidth,
-                    0,
-                    static_cast<int>(triHeight + 1.f),
-                    static_cast<int>(triHeight));
-
-                selStartBot->setBounds(
-                    startX + borderWidth,
-                    getHeight() - static_cast<int>(triHeight),
-                    static_cast<int>(triHeight + 1.f),
-                    static_cast<int>(triHeight));
-            }
-            else
-            {
-                selStartTop->setVisible(false);
-                selStartBot->setVisible(false);
-            }
+            selStartTop->setVisible(true);
+            selStartBot->setVisible(true);
+            selStartTop->setBounds(startX + borderWidth, 0,
+                                  static_cast<int>(triHeight + 1.f), static_cast<int>(triHeight));
+            selStartBot->setBounds(startX + borderWidth, 0,
+                                  static_cast<int>(triHeight + 1.f), static_cast<int>(triHeight));
+        }
+        else
+        {
+            selStartTop->setVisible(false);
+            selStartBot->setVisible(false);
         }
 
+        const int64_t endInclusive = state->selection.getEndInt();
+        const int64_t endToUse = endInclusive + 1;
+        const int32_t endX = Waveform::getXPosForSampleIndex(endToUse, sampleOffset, samplesPerPixel);
+
+        if (endX >= 0 && endX <= waveforms->getWidth())
         {
-            const int64_t endInclusive = state->selection.getEndInt();
-            const int64_t endToUse = endInclusive + 1;
-
-            const int32_t endX = Waveform::getXPosForSampleIndex(
-                endToUse, sampleOffset, samplesPerPixel);
-
-            if (endX >= 0 && endX <= waveforms->getWidth())
-            {
-                selEndTop->setVisible(true);
-                selEndBot->setVisible(true);
-
-                selEndTop->setBounds(
-                    endX + borderWidth - static_cast<int>(triHeight),
-                    0,
-                    static_cast<int>(triHeight),
-                    static_cast<int>(triHeight));
-
-                selEndBot->setBounds(
-                    endX + borderWidth - static_cast<int>(triHeight),
-                    getHeight() - static_cast<int>(triHeight),
-                    static_cast<int>(triHeight),
-                    static_cast<int>(triHeight));
-            }
-            else
-            {
-                selEndTop->setVisible(false);
-                selEndBot->setVisible(false);
-            }
+            selEndTop->setVisible(true);
+            selEndBot->setVisible(true);
+            selEndTop->setBounds(endX + borderWidth - static_cast<int>(triHeight), 0,
+                                static_cast<int>(triHeight), static_cast<int>(triHeight));
+            selEndBot->setBounds(endX + borderWidth - static_cast<int>(triHeight), 0,
+                                static_cast<int>(triHeight), static_cast<int>(triHeight));
+        }
+        else
+        {
+            selEndTop->setVisible(false);
+            selEndBot->setVisible(false);
         }
     }
     else
@@ -120,27 +110,16 @@ void MainView::updateTriangleMarkerBounds()
         selEndTop->setVisible(false);
         selEndBot->setVisible(false);
 
-        const int32_t xPos = Waveform::getXPosForSampleIndex(
-            state->cursor, sampleOffset, samplesPerPixel);
-
+        const int32_t xPos = Waveform::getXPosForSampleIndex(state->cursor, sampleOffset, samplesPerPixel);
         if (xPos >= 0 && xPos <= waveforms->getWidth())
         {
             const int cursorX = xPos + borderWidth;
-
             cursorTop->setVisible(true);
             cursorBottom->setVisible(true);
-
-            cursorTop->setBounds(
-                cursorX - static_cast<int>(halfBase) + 1,
-                0,
-                static_cast<int>(halfBase * 2),
-                static_cast<int>(triHeight));
-
-            cursorBottom->setBounds(
-                cursorX - static_cast<int>(halfBase) + 1,
-                getHeight() - static_cast<int>(triHeight),
-                static_cast<int>(halfBase * 2),
-                static_cast<int>(triHeight));
+            cursorTop->setBounds(cursorX - static_cast<int>(halfBase) + 1, 0,
+                                static_cast<int>(halfBase * 2), static_cast<int>(triHeight));
+            cursorBottom->setBounds(cursorX - static_cast<int>(halfBase) + 1, 0,
+                                   static_cast<int>(halfBase * 2), static_cast<int>(triHeight));
         }
         else
         {
@@ -148,13 +127,6 @@ void MainView::updateTriangleMarkerBounds()
             cursorBottom->setVisible(false);
         }
     }
-}
-
-void MainView::onDraw(SDL_Renderer *r)
-{
-    SDL_SetRenderDrawColor(r, 28, 28, 28, 255);
-    SDL_FRect rectToFill {0.f, 0.f, (float)getWidth(), (float)getHeight()};
-    SDL_RenderFillRect(r, &rectToFill);
 }
 
 void MainView::timerCallback()
@@ -177,4 +149,3 @@ void MainView::timerCallback()
         setDirty();
     }
 }
-
