@@ -6,7 +6,7 @@
 #include <ranges>
 #include <cmath>
 
-#define DEBUG_DRAW 1
+#define DEBUG_DRAW 0
 
 #if DEBUG_DRAW
 #include <cstdlib>
@@ -141,7 +141,6 @@ void Component::setBounds(int32_t xPosToUse, int32_t yPosToUse, int32_t widthToU
     width = widthToUse;
     height = heightToUse;
     if (!visible) {
-        // Only auto-show for nonzero bounds, or log a warning
         if (widthToUse > 0 && heightToUse > 0) {
             SDL_Log("Auto-unhiding %s due to setBounds", componentName.c_str());
             setVisible(true);
@@ -182,7 +181,7 @@ void Component::setDirty()
     isExplicitlyDirty = true; // Set flag
     SDL_Rect r = getAbsoluteBounds();
     if (r.w > 0 && r.h > 0) {
-        SDL_Log("[DIRTY] %s -> rect {%d,%d %dx%d}", componentName.c_str(), r.x, r.y, r.w, r.h);
+        //SDL_Log("[DIRTY] %s -> rect {%d,%d %dx%d}", componentName.c_str(), r.x, r.y, r.w, r.h);
         state->dirtyRects.push_back(r);
     }
 

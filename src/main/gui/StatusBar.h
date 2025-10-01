@@ -60,7 +60,6 @@ public:
 
     void timerCallback() override
     {
-        return;
         const bool isPlaying = state->isPlaying.load();
 
         const int64_t currentPos = isPlaying ? state->playbackPosition.load() : state->cursor;

@@ -29,8 +29,8 @@ void Menu::showSubMenus()
 
     int subMenuYPos = getHeight();
 
-    const int baseH = int(state->menuFontSize * state->pixelScale * 2.0f);
-    const int baseW = int(state->menuFontSize * state->pixelScale * 10.0f);
+    const int baseH = int(((float)state->menuFontSize / state->pixelScale) * 2.0f);
+    const int baseW = int(((float)state->menuFontSize / state->pixelScale) * 12.0f);
 
     for (auto &subMenu : subMenus)
     {
