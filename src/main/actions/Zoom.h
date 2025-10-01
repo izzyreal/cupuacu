@@ -13,7 +13,14 @@ static double getMinSamplesPerPixel(const CupuacuState *state)
 static void resetZoom(CupuacuState *state)
 {
     const auto waveformWidth = Waveform::getWaveformWidth(state);
-    state->samplesPerPixel = state->document.getFrameCount() / (float) waveformWidth;
+    if (waveformWidth == 0)
+    {
+        state->samplesPerPixel = 0;
+    }
+    else
+    {
+        state->samplesPerPixel = state->document.getFrameCount() / (float) waveformWidth;
+    }
 
     state->verticalZoom = INITIAL_VERTICAL_ZOOM;
 

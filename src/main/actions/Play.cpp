@@ -1,6 +1,7 @@
 #include "Play.h"
 
 #include "../CupuacuState.h"
+#include "../gui/VuMeter.h"
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "../miniaudio.h"
@@ -47,6 +48,8 @@ static ma_result custom_data_source_read(ma_data_source* pDataSource,
 
     for (ma_uint64 i = 0; i < framesToRead; ++i)
     {
+        float framePeak = 0.f;
+
         for (int64_t ch = 0; ch < numChannels; ++ch)
         {
             const bool shouldPlayChannel = !selectionIsActive ||
@@ -54,14 +57,9 @@ static ma_result custom_data_source_read(ma_data_source* pDataSource,
                 (ch == 0 && selectedChannels == SelectedChannels::LEFT) ||
                 (ch == 1 && selectedChannels == SelectedChannels::RIGHT);
 
-            if (shouldPlayChannel)                
-            {
-                out[i * numChannels + ch] = ds->channelData[ch][ds->cursor + i];
-            }
-            else
-            {
-                out[i * numChannels + ch] = 0.f;
-            }
+            float sample = shouldPlayChannel ? ds->channelData[ch][ds->cursor + i] : 0.f;
+            out[i * numChannels + ch] = sample;
+            ds->state->vuMeter->pushSampleForChannel(sample, ch);
         }
     }
 

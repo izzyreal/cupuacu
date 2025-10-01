@@ -17,6 +17,7 @@ class MenuBar;
 class Component;
 class Waveform;
 class MainView;
+class VuMeter;
 
 enum class SampleFormat {
     PCM_S8, PCM_S16, PCM_S24, PCM_S32,
@@ -77,8 +78,9 @@ struct CupuacuState {
     std::vector<Waveform*> waveforms;
     std::unique_ptr<Component> rootComponent;
     MenuBar *menuBar;
-    Component *statusBar;
     MainView *mainView;
+    Component *statusBar;
+    VuMeter *vuMeter;
 };
 
 static void resetSampleValueUnderMouseCursor(CupuacuState *state)
