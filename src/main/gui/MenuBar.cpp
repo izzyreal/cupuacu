@@ -3,6 +3,7 @@
 #include "../CupuacuState.h"
 #include "OpaqueRect.h"
 #include "Menu.h"
+#include "../ResourceUtil.hpp"
 
 #include "../actions/ShowOpenFileDialog.h"
 #include "../actions/Save.h"
@@ -46,6 +47,42 @@ MenuBar::MenuBar(CupuacuState *stateToUse) : Component(stateToUse, "MenuBar")
     viewMenu->addSubMenu(state, "Zoom in vert. (R)", [&]{
                 zoomInVertically(state, 1);
             });
+
+    logoData = get_resource_data("cupuacu-logo1.bmp");
+}
+
+void MenuBar::onDraw(SDL_Renderer* renderer)
+{
+    if (!logoTexture && !logoData.empty())
+    {
+        SDL_IOStream* io = SDL_IOFromConstMem(logoData.data(),
+                                              static_cast<int>(logoData.size()));
+        if (io)
+        {
+            SDL_Surface* surf = SDL_LoadBMP_IO(io, true);
+            if (surf)
+            {
+                logoTexture = SDL_CreateTextureFromSurface(renderer, surf);
+                logoW = surf->w;
+                logoH = surf->h;
+                SDL_SetTextureScaleMode(logoTexture, SDL_SCALEMODE_NEAREST);
+                SDL_DestroySurface(surf);
+                resized();
+            }
+        }
+    }
+
+    SDL_FRect dst;
+    dst.x = 0.0f;
+    dst.y = 0.0f;
+    dst.w = float(logoW);
+    dst.h = float(getHeight());
+
+    float scale = float(getHeight()) / float(logoH);
+    dst.w = logoW * scale;
+
+    Helpers::fillRect(renderer, dst, Colors::background);
+    SDL_RenderTexture(renderer, logoTexture, nullptr, &dst);
 }
 
 void MenuBar::hideSubMenus()
@@ -64,16 +101,22 @@ void MenuBar::resized()
     int viewW = int(100 * scale);
     int h = getHeight();
 
-    fileMenu->setBounds(0, 0, fileW, h);
-    viewMenu->setBounds(fileW, 0, viewW, h);
+    int logoSpace = 0;
+    if (!logoData.empty())
+    {
+        float aspect = logoH ? (float)logoW / (float)logoH : 1.0f;
+        logoSpace = int(h * aspect);
+    }
+
+    fileMenu->setBounds(logoSpace, 0, fileW, h);
+    viewMenu->setBounds(logoSpace + fileW, 0, viewW, h);
 
     SDL_Rect backgroundBounds = getLocalBounds();
-    backgroundBounds = Helpers::subtractRect(backgroundBounds, fileMenu->getBounds());
-    backgroundBounds = Helpers::subtractRect(backgroundBounds, viewMenu->getBounds());
+    backgroundBounds.x = viewMenu->getBounds().x + viewW;
+    backgroundBounds.w = getWidth() - backgroundBounds.x;
 
     background->setBounds(backgroundBounds);
 }
-
 void MenuBar::mouseEnter()
 {
     setDirty();

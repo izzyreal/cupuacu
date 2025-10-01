@@ -21,6 +21,12 @@ struct Helpers
         SDL_SetRenderDrawColor(r, c.r, c.g, c.b, c.a);
     }
 
+    static void fillRect(SDL_Renderer *r, SDL_FRect rect, SDL_Color c)
+    {
+        setRenderDrawColor(r, c);
+        SDL_RenderFillRect(r, &rect);
+    }
+
     static void fillRect(SDL_Renderer *r, SDL_Rect rect, SDL_Color c)
     {
         setRenderDrawColor(r, c);

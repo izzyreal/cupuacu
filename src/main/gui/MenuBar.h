@@ -12,6 +12,9 @@ private:
     Menu *fileMenu = nullptr;
     Menu *viewMenu = nullptr;
     bool openSubMenuOnMouseOver = false;
+    std::string logoData;
+    SDL_Texture* logoTexture = nullptr;
+    int logoW = 0, logoH = 0;
 
 public:
     void setOpenSubMenuOnMouseOver(const bool openSubMenuOnMouseOverEnabled) { openSubMenuOnMouseOver = openSubMenuOnMouseOverEnabled; }
@@ -21,4 +24,5 @@ public:
     void hideSubMenus();
     void resized() override;
     void mouseEnter() override;
+    void onDraw(SDL_Renderer*) override;
 };
