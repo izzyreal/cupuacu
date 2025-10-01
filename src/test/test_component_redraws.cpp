@@ -3,7 +3,6 @@
 #include "gui/Component.h"
 
 #include <algorithm>
-#include <iostream>
 
 // helper to check if a rect exists in a vector
 static bool contains_rect(const std::vector<SDL_Rect> &vec, const SDL_Rect &r)
