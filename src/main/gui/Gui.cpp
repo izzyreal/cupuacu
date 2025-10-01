@@ -5,7 +5,6 @@
 #include "MenuBar.h"
 #include "StatusBar.h"
 #include "MainView.h"
-#include "OpaqueRect.h"
 
 #include <cmath>
 
