@@ -132,7 +132,7 @@ void Component::setBounds(int32_t xPosToUse, int32_t yPosToUse, int32_t widthToU
 {
     if (xPosToUse != xPos || yPosToUse != yPos || widthToUse != width || heightToUse != height)
     {
-        setDirty();  // Mark old bounds
+        setDirty();
     }
     xPos = xPosToUse;
     yPos = yPosToUse;
@@ -176,14 +176,13 @@ void Component::setDirty()
     if (!visible)
         return;
 
-    isExplicitlyDirty = true; // Set flag
+    dirty = true;
     SDL_Rect r = getAbsoluteBounds();
     if (r.w > 0 && r.h > 0) {
         //SDL_Log("[DIRTY] %s -> rect {%d,%d %dx%d}", componentName.c_str(), r.x, r.y, r.w, r.h);
         state->dirtyRects.push_back(r);
     }
 
-    // Only recurse if child is visible
     for (auto &c : children) {
         if (c->isVisible()) {
             c->setDirty();
@@ -200,7 +199,6 @@ void Component::draw(SDL_Renderer* renderer)
     if (!state->dirtyRects.empty() && componentName == "RootComponent")
     {
         printf("======\n");
-        printf("==== componentUnderMouse: %s\n", (state->componentUnderMouse == nullptr ? "<none>" : state->componentUnderMouse->getComponentName().c_str()));
     }
 #endif
     SDL_Rect absRect = getAbsoluteBounds();
@@ -242,7 +240,7 @@ void Component::draw(SDL_Renderer* renderer)
         SDL_SetRenderViewport(renderer, &viewPortRect);
     }
 
-    if (isExplicitlyDirty) // Only call onDraw if explicitly dirty
+    if (dirty)
     {
         onDraw(renderer);
 #if DEBUG_DRAW
@@ -263,7 +261,7 @@ void Component::draw(SDL_Renderer* renderer)
     }
 
     SDL_SetRenderViewport(renderer, &parentViewPortRect);
-    isExplicitlyDirty = false; // Reset after drawing
+    dirty = false;
 }
 
 bool Component::handleMouseEvent(const MouseEvent &mouseEvent)
