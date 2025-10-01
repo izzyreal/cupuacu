@@ -182,17 +182,27 @@ bool Menu::mouseUp(const MouseEvent &e)
 void Menu::mouseLeave()
 {
     setDirty();
+
+    if (dynamic_cast<Menu*>(state->componentUnderMouse) == nullptr)
+    {
+        if (state->componentUnderMouse == state->menuBar || state->menuBar->hasChild(state->componentUnderMouse))
+        {
+            state->menuBar->hideSubMenus();
+            state->menuBar->setOpenSubMenuOnMouseOver(true);
+        }
+    }
 }
 
 void Menu::mouseEnter()
 {
     if (!subMenus.empty() &&
-        state->menuBar->getOpenMenu() != nullptr &&
-        state->menuBar->getOpenMenu() != this) 
+        ((state->menuBar->getOpenMenu() != nullptr &&
+        state->menuBar->getOpenMenu() != this) || state->menuBar->shouldOpenSubMenuOnMouseOver())) 
     {
         state->menuBar->hideSubMenus();
         showSubMenus();
     }
+
     setDirty();
 }
 

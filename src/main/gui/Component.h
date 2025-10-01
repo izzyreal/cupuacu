@@ -40,6 +40,15 @@ public:
     bool isVisible() const { return visible; }
     const std::vector<std::unique_ptr<Component>>& getChildren() const;
 
+    bool hasChild(Component *component)
+    {
+        for (auto &c : children)
+        {
+            if (c.get() == component) return true;
+        }
+        return false;
+    }
+
     void removeChild(Component*);
 
     void setInterceptMouseEnabled(const bool shouldInterceptMouse);

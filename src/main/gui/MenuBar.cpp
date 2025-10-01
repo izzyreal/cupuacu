@@ -53,6 +53,7 @@ void MenuBar::hideSubMenus()
     fileMenu->hideSubMenus();
     viewMenu->hideSubMenus();
     state->rootComponent->setDirty();
+    openSubMenuOnMouseOver = false;
 }
 
 void MenuBar::resized()

@@ -11,8 +11,11 @@ private:
     OpaqueRect *background = nullptr;
     Menu *fileMenu = nullptr;
     Menu *viewMenu = nullptr;
+    bool openSubMenuOnMouseOver = false;
 
 public:
+    void setOpenSubMenuOnMouseOver(const bool openSubMenuOnMouseOverEnabled) { openSubMenuOnMouseOver = openSubMenuOnMouseOverEnabled; }
+    bool shouldOpenSubMenuOnMouseOver() const { return openSubMenuOnMouseOver; } 
     MenuBar(CupuacuState*);
     Menu* getOpenMenu();
     void hideSubMenus();
