@@ -3,12 +3,14 @@
 #include "Component.h"
 
 class Menu;
+class OpaqueRect;
 struct CupuacuState;
 
 class MenuBar : public Component {
 private:
-    Menu* fileMenu = nullptr;
-    Menu* viewMenu = nullptr;
+    OpaqueRect *background = nullptr;
+    Menu *fileMenu = nullptr;
+    Menu *viewMenu = nullptr;
 
 public:
     MenuBar(CupuacuState*);

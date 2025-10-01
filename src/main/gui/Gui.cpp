@@ -89,9 +89,6 @@ void buildComponents(CupuacuState *state)
     state->rootComponent = std::make_unique<Component>(state, "RootComponent");
     state->rootComponent->setVisible(true);
 
-    auto backgroundComponent = std::make_unique<OpaqueRect>(state);
-    state->backgroundComponent = state->rootComponent->addChild(backgroundComponent);
-
     auto mainView = std::make_unique<MainView>(state);
     state->mainView = state->rootComponent->addChild(mainView);
 
@@ -121,7 +118,6 @@ void resizeComponents(CupuacuState *state)
 
     const int newCanvasW = requiredCanvasDimensions.x, newCanvasH = requiredCanvasDimensions.y;
     state->rootComponent->setSize(newCanvasW, newCanvasH);
-    state->backgroundComponent->setSize(newCanvasW, newCanvasH);
 
     const SDL_Rect menuBarRect = getMenuBarRect(
         newCanvasW,

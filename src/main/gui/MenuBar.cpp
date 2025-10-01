@@ -1,6 +1,7 @@
 #include "MenuBar.h"
 
 #include "../CupuacuState.h"
+#include "OpaqueRect.h"
 #include "Menu.h"
 
 #include "../actions/ShowOpenFileDialog.h"
@@ -8,11 +9,10 @@
 
 MenuBar::MenuBar(CupuacuState *stateToUse) : Component(stateToUse, "MenuBar")
 {
+    background = emplaceChild<OpaqueRect>(state, Colors::background);
     disableParentClipping();
     fileMenu = emplaceChild<Menu>(state, "File");
     viewMenu = emplaceChild<Menu>(state, "View");
-    fileMenu->enableDepthIs0();
-    viewMenu->enableDepthIs0();
 
 #ifdef __APPLE__
     const std::string openText{"Open (Cmd + O)"};
@@ -65,6 +65,12 @@ void MenuBar::resized()
 
     fileMenu->setBounds(0, 0, fileW, h);
     viewMenu->setBounds(fileW, 0, viewW, h);
+
+    SDL_Rect backgroundBounds = getLocalBounds();
+    backgroundBounds = Helpers::subtractRect(backgroundBounds, fileMenu->getBounds());
+    backgroundBounds = Helpers::subtractRect(backgroundBounds, viewMenu->getBounds());
+
+    background->setBounds(backgroundBounds);
 }
 
 void MenuBar::mouseEnter()

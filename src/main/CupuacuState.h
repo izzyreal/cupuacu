@@ -76,7 +76,6 @@ struct CupuacuState {
 
     std::vector<Waveform*> waveforms;
     std::unique_ptr<Component> rootComponent;
-    Component *backgroundComponent;
     MenuBar *menuBar;
     Component *statusBar;
     MainView *mainView;

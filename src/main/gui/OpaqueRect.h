@@ -3,12 +3,19 @@
 #include "Component.h"
 
 class OpaqueRect : public Component {
-    public:
-        OpaqueRect(CupuacuState *state) : Component(state, "OpaqueRect") {}
-        void onDraw(SDL_Renderer* renderer)
-        {
-            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-            auto rect = getLocalBoundsF();
-            SDL_RenderFillRect(renderer, &rect);
-        }
+private:
+    const SDL_Color color;
+
+public:
+    OpaqueRect(CupuacuState *state, const SDL_Color colorToUse) :
+        Component(state, "OpaqueRect"), color(colorToUse)
+    {
+    }
+
+    void onDraw(SDL_Renderer* renderer)
+    {
+        SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+        auto rect = getLocalBoundsF();
+        SDL_RenderFillRect(renderer, &rect);
+    }
 };

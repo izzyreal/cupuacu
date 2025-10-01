@@ -2,6 +2,9 @@
 
 #include "MouseEvent.h"
 
+#include "Helpers.h"
+#include "Colors.h"
+
 #include <SDL3/SDL.h>
 
 #include <algorithm>
@@ -11,11 +14,6 @@
 #include <cstdint>
 
 struct CupuacuState;
-
-static SDL_FRect RectToFRect(const SDL_Rect& r)
-{
-    return SDL_FRect{ (float)r.x, (float)r.y, (float)r.w, (float)r.h };
-}
 
 class Component {
 private:
@@ -112,6 +110,7 @@ public:
 
     void sendToBack();
     void bringToFront();
+    void setBounds(const SDL_Rect);
     void setBounds(int32_t xPosToUse, int32_t yPosToUse, int32_t widthToUse, int32_t heightToUse);
     void setSize(int32_t widthToUse, int32_t heightToUse);
     void setYPos(int32_t yPosToUse);

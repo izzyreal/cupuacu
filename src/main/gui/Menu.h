@@ -14,13 +14,14 @@ class Label;
 
 class Menu : public Component {
 private:
-    bool depthIs0 = false;
     bool currentlyOpen = false;
     const std::string menuName;
     std::vector<Menu*> subMenus;
     const std::function<void()> action;
 
     Label *label = nullptr;
+
+    bool isFirstLevel() const;
 
 public:
     Menu(CupuacuState*, const std::string menuNameToUse, const std::function<void()> actionToUse = {});

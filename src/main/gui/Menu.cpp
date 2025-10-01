@@ -13,21 +13,27 @@ Menu::Menu(CupuacuState *state, const std::string menuNameToUse, const std::func
     label->setInterceptMouseEnabled(false);
 }
 
-void Menu::enableDepthIs0()
+bool Menu::isFirstLevel() const
 {
-    depthIs0 = true;
-    label->setCenterHorizontally(true);
+    return dynamic_cast<MenuBar*>(getParent()) != nullptr;
 }
 
 void Menu::resized()
 {
     label->setBounds(0, 0, getWidth(), getHeight());
+
+    if (isFirstLevel())
+    {
+        label->setCenterHorizontally(true);
+    }
 }
 
 void Menu::showSubMenus()
 {
     if (subMenus.empty())
+    {
         return;
+    }
 
     int subMenuYPos = getHeight();
 
@@ -75,17 +81,21 @@ void Menu::onDraw(SDL_Renderer* renderer)
     auto radius = 14.f/state->pixelScale;
     auto rect = getLocalBoundsF();
 
-    if (depthIs0)
+    if (isFirstLevel())
     {
-        const uint8_t bg = 40;
-        SDL_SetRenderDrawColor(renderer, bg, bg, bg, 255);
+        SDL_Color bg = Colors::background;
+        Helpers::setRenderDrawColor(renderer, bg);
+
         auto rect = getLocalBoundsF();
+        
         SDL_RenderFillRect(renderer, &rect);
+        
         if (currentlyOpen)
         {
             SDL_Color col1 = { 70, 70, 70, 255 };
             drawRoundedRect(renderer, rect, radius, col1);
         }
+        
         return;
     }
 
@@ -107,7 +117,6 @@ void Menu::onDraw(SDL_Renderer* renderer)
 
     if (isFirst && isLast)
     {
-        // only one item: round both top and bottom
         drawRoundedRect(renderer, rect, radius, col1);
         drawRoundedRectOutline(renderer, rect, radius, outline);
     }

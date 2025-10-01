@@ -11,11 +11,11 @@
 
 class StatusBar : public Component {
 private:
-    LabeledField* posField = nullptr;
-    LabeledField* startField = nullptr;
-    LabeledField* endField = nullptr;
-    LabeledField* lengthField = nullptr;
-    LabeledField* valueField = nullptr;
+    LabeledField* posField;
+    LabeledField* startField;
+    LabeledField* endField;
+    LabeledField* lengthField;
+    LabeledField* valueField;
 
     int64_t lastDrawnPos = std::numeric_limits<int64_t>::max();
     int64_t lastSelectionStart = std::numeric_limits<int64_t>::max();
@@ -31,11 +31,11 @@ public:
     StatusBar(CupuacuState* stateToUse)
         : Component(stateToUse, "StatusBar")
     {
-        posField = emplaceChild<LabeledField>(state, "Pos", "");
-        startField = emplaceChild<LabeledField>(state, "St", "");
-        endField = emplaceChild<LabeledField>(state, "End", "");
-        lengthField = emplaceChild<LabeledField>(state, "Len", "");
-        valueField = emplaceChild<LabeledField>(state, "Val", "");
+        posField = emplaceChild<LabeledField>(state, "Pos", Colors::background);
+        startField = emplaceChild<LabeledField>(state, "St", Colors::background);
+        endField = emplaceChild<LabeledField>(state, "End", Colors::background);
+        lengthField = emplaceChild<LabeledField>(state, "Len", Colors::background);
+        valueField = emplaceChild<LabeledField>(state, "Val", Colors::background);
     }
 
     void resized() override
@@ -53,9 +53,7 @@ public:
 
     void onDraw(SDL_Renderer* renderer) override
     {
-        SDL_SetRenderDrawColor(renderer, 30, 30, 30, 255);
-        SDL_FRect r{ 0, 0, (float)getWidth(), (float)getHeight() };
-        SDL_RenderFillRect(renderer, &r);
+        Helpers::fillRect(renderer, getLocalBounds(), Colors::background);
     }
 
     void timerCallback() override

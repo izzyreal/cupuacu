@@ -20,12 +20,12 @@ class MainView : public Component {
         void updateTriangleMarkerBounds();
 
     private:
-        TriangleMarker *cursorTop = nullptr;
-        TriangleMarker *cursorBottom = nullptr;
-        TriangleMarker *selStartTop = nullptr;
-        TriangleMarker *selStartBot = nullptr;
-        TriangleMarker *selEndTop = nullptr;
-        TriangleMarker *selEndBot = nullptr;
+        TriangleMarker *cursorTop;
+        TriangleMarker *cursorBottom;
+        TriangleMarker *selStartTop;
+        TriangleMarker *selStartBot;
+        TriangleMarker *selEndTop;
+        TriangleMarker *selEndBot;
         int64_t lastDrawnCursor = -1;
         bool lastSelectionIsActive = true;
         int64_t lastSampleOffset = -1;

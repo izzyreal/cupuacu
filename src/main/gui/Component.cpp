@@ -128,6 +128,11 @@ const std::string Component::getComponentName() const
     return componentName;
 }
 
+void Component::setBounds(const SDL_Rect b)
+{
+    setBounds(b.x, b.y, b.w, b.h);
+}
+
 void Component::setBounds(int32_t xPosToUse, int32_t yPosToUse, int32_t widthToUse, int32_t heightToUse)
 {
     if (xPosToUse == xPos && yPosToUse == yPos && widthToUse == width && heightToUse == height)
