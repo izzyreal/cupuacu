@@ -93,6 +93,7 @@ public:
         children.push_back(std::move(childToAdd));
         children.back()->setParent(this);
         children.back()->setVisible(true);
+        children.back()->setDirty();
         return dynamic_cast<T*>(children.back().get());
     }
 
@@ -103,6 +104,7 @@ public:
         children.push_back(std::move(child));
         children.back()->setParent(this);
         children.back()->setVisible(true);
+        children.back()->setDirty();
         return static_cast<T*>(children.back().get());
     }
 

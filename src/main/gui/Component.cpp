@@ -216,7 +216,12 @@ void Component::draw(SDL_Renderer* renderer)
     }
 
     if (!intersects)
+    {
+#if DEBUG_DRAW
+        printf("Not drawing %s because it doesn't intersect\n", componentName.c_str());
+#endif
         return;
+    }
 
     SDL_Rect viewPortRect;
     SDL_GetRenderViewport(renderer, &viewPortRect);
@@ -237,6 +242,9 @@ void Component::draw(SDL_Renderer* renderer)
         }
         else
         {
+#if DEBUG_DRAW
+        printf("Not drawing %s because it doesn't intersect\n", componentName.c_str());
+#endif
             return;
         }
     }
@@ -259,6 +267,12 @@ void Component::draw(SDL_Renderer* renderer)
         SDL_RenderFillRect(renderer, &localBounds);
 #endif
     }
+#if DEBUG_DRAW
+    else
+    {
+        printf("Not drawing %s because it's not dirty\n", componentName.c_str());
+    }
+#endif
 
     for (auto& c : children)
     {
