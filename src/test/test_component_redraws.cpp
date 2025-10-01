@@ -3,6 +3,7 @@
 #include "gui/Component.h"
 
 #include <algorithm>
+#include <iostream>
 
 // helper to check if a rect exists in a vector
 static bool contains_rect(const std::vector<SDL_Rect> &vec, const SDL_Rect &r)
@@ -189,6 +190,7 @@ TEST_CASE("containsAbsoluteCoordinate respects parent clipping and disableParent
     REQUIRE(!child->containsAbsoluteCoordinate(testX, testY));
 
     child->disableParentClipping();
+
     REQUIRE(child->containsAbsoluteCoordinate(testX, testY));
 }
 
