@@ -6,7 +6,7 @@
 #include "MenuBar.h"
 #include "StatusBar.h"
 #include "MainView.h"
-#include "VuMeter.h"
+#include "VuMeterContainer.h"
 
 #include <cmath>
 
@@ -83,16 +83,16 @@ SDL_Rect computeStatusBarBounds(const uint16_t canvasWidth,
     return result;
 }
 
-SDL_Rect computeVuMeterBounds(const uint16_t canvasWidth,
+SDL_Rect computeVuMeterContainerBounds(const uint16_t canvasWidth,
                               const uint16_t canvasHeight,
-                              const uint8_t vuMeterHeight,
+                              const uint8_t vuMeterContainerHeight,
                               const SDL_Rect &statusBarRect)
 {
     SDL_Rect result {
         0,
-        statusBarRect.y - vuMeterHeight,
+        statusBarRect.y - vuMeterContainerHeight,
         canvasWidth,
-        vuMeterHeight
+        vuMeterContainerHeight
     };
     return result;
 }
@@ -110,8 +110,8 @@ void buildComponents(CupuacuState *state)
     auto mainView = std::make_unique<MainView>(state);
     state->mainView = state->rootComponent->addChild(mainView);
 
-    auto vuMeter = std::make_unique<VuMeter>(state);
-    state->vuMeter = state->rootComponent->addChild(vuMeter);
+    auto vuMeterContainer = std::make_unique<VuMeterContainer>(state);
+    state->vuMeterContainer = state->rootComponent->addChild(vuMeterContainer);
 
     auto statusBar = std::make_unique<StatusBar>(state);
     state->statusBar = state->rootComponent->addChild(statusBar);
@@ -149,8 +149,8 @@ void resizeComponents(CupuacuState *state)
         state->pixelScale,
         state->menuFontSize);
 
-    const int vuMeterHeight = 40 / state->pixelScale;
-    const SDL_Rect vuMeterRect = computeVuMeterBounds(newCanvasW, newCanvasH, vuMeterHeight, statusBarRect);
+    const int vuMeterContainerHeight = 80 / state->pixelScale;
+    const SDL_Rect vuMeterContainerRect = computeVuMeterContainerBounds(newCanvasW, newCanvasH, vuMeterContainerHeight, statusBarRect);
 
     state->menuBar->setBounds(menuBarRect.x, menuBarRect.y, menuBarRect.w, menuBarRect.h);
 
@@ -158,7 +158,7 @@ void resizeComponents(CupuacuState *state)
         0,
         menuBarRect.h,
         newCanvasW,
-        newCanvasH - menuBarRect.h - vuMeterRect.h - statusBarRect.h
+        newCanvasH - menuBarRect.h - vuMeterContainerRect.h - statusBarRect.h
     };
 
     state->mainView->setBounds(
@@ -168,7 +168,7 @@ void resizeComponents(CupuacuState *state)
         mainViewBounds.h
     );
 
-    state->vuMeter->setBounds(vuMeterRect.x, vuMeterRect.y, vuMeterRect.w, vuMeterRect.h);
+    state->vuMeterContainer->setBounds(vuMeterContainerRect.x, vuMeterContainerRect.y, vuMeterContainerRect.w, vuMeterContainerRect.h);
 
     state->statusBar->setBounds(statusBarRect.x, statusBarRect.y, statusBarRect.w, statusBarRect.h);
 

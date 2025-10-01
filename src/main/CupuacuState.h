@@ -18,6 +18,7 @@ class Component;
 class Waveform;
 class MainView;
 class VuMeter;
+class VuMeterContainer;
 
 enum class SampleFormat {
     PCM_S8, PCM_S16, PCM_S24, PCM_S32,
@@ -80,6 +81,7 @@ struct CupuacuState {
     MenuBar *menuBar;
     MainView *mainView;
     Component *statusBar;
+    VuMeterContainer *vuMeterContainer;
     VuMeter *vuMeter;
 };
 

@@ -11,6 +11,7 @@ Menu::Menu(CupuacuState *state, const std::string menuNameToUse, const std::func
     disableParentClipping();
     label = emplaceChild<Label>(state, menuName);
     label->setInterceptMouseEnabled(false);
+    label->setFontSize(state->menuFontSize);
 }
 
 bool Menu::isFirstLevel() const
