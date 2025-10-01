@@ -73,7 +73,7 @@ SDL_Rect getStatusBarRect(const uint16_t canvasWidth,
     const auto statusBarHeight = static_cast<int>((menuFontSize * 1.33) / pixelScale);
 
     SDL_Rect result {
-        3,
+        0,
         canvasHeight - statusBarHeight,
         canvasWidth,
         statusBarHeight
