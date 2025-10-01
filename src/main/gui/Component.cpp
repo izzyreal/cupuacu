@@ -130,20 +130,18 @@ const std::string Component::getComponentName() const
 
 void Component::setBounds(int32_t xPosToUse, int32_t yPosToUse, int32_t widthToUse, int32_t heightToUse)
 {
-    if (xPosToUse != xPos || yPosToUse != yPos || widthToUse != width || heightToUse != height)
+    if (xPosToUse == xPos && yPosToUse == yPos && widthToUse == width && heightToUse == height)
     {
-        setDirty();
+        return;
     }
+
+    setDirty();
+
     xPos = xPosToUse;
     yPos = yPosToUse;
     width = widthToUse;
     height = heightToUse;
-    if (!visible) {
-        if (widthToUse > 0 && heightToUse > 0) {
-            SDL_Log("Auto-unhiding %s due to setBounds", componentName.c_str());
-            setVisible(true);
-        }
-    }
+    
     setDirty();
     resized();
 }

@@ -60,6 +60,9 @@ void MainView::updateTriangleMarkerBounds()
 
             if (startX >= 0 && startX <= waveforms->getWidth())
             {
+                selStartTop->setVisible(true);
+                selStartBot->setVisible(true);
+
                 selStartTop->setBounds(
                     startX + borderWidth,
                     0,
@@ -88,6 +91,9 @@ void MainView::updateTriangleMarkerBounds()
 
             if (endX >= 0 && endX <= waveforms->getWidth())
             {
+                selEndTop->setVisible(true);
+                selEndBot->setVisible(true);
+
                 selEndTop->setBounds(
                     endX + borderWidth - static_cast<int>(triHeight),
                     0,
@@ -120,6 +126,9 @@ void MainView::updateTriangleMarkerBounds()
         if (xPos >= 0 && xPos <= waveforms->getWidth())
         {
             const int cursorX = xPos + borderWidth;
+
+            cursorTop->setVisible(true);
+            cursorBottom->setVisible(true);
 
             cursorTop->setBounds(
                 cursorX - static_cast<int>(halfBase) + 1,

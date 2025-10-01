@@ -19,7 +19,7 @@ static SDL_FRect RectToFRect(const SDL_Rect& r)
 
 class Component {
 private:
-    bool visible = true;
+    bool visible = false;
     bool parentClippingEnabled = true;
     bool interceptMouseEnabled = true;
     bool dirty = false;
@@ -94,6 +94,7 @@ public:
     {
         children.push_back(std::move(childToAdd));
         children.back()->setParent(this);
+        children.back()->setVisible(true);
         return dynamic_cast<T*>(children.back().get());
     }
 
@@ -103,6 +104,7 @@ public:
         auto child = std::make_unique<T>(std::forward<Args>(args)...);
         children.push_back(std::move(child));
         children.back()->setParent(this);
+        children.back()->setVisible(true);
         return static_cast<T*>(children.back().get());
     }
 

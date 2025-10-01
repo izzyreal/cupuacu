@@ -39,6 +39,7 @@ void Menu::showSubMenus()
         int w = baseW;
         int h = baseH;
         subMenu->setBounds(0, subMenuYPos, w, h);
+        subMenu->setVisible(true);
         subMenuYPos += h;
     }
 
