@@ -67,6 +67,7 @@ add_executable(cupuacu-tests
     src/main/gui/MenuBar.cpp
     src/main/actions/Play.cpp
     src/test/test.cpp
+    src/test/dummy_menu_bar_test.cpp
     src/test/test_component_redraws.cpp
 )
 

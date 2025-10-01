@@ -41,16 +41,16 @@ TEST_CASE("parent setDirty marks itself and children only (no ancestors or sibli
     Component root(&state, "root");
     root.setBounds(0,0,200,200);
 
-    Component* a  = root.emplaceChildAndSetDirty<Component>(&state, "A");
+    Component* a  = root.emplaceChild<Component>(&state, "A");
     a->setBounds(10,10,100,100);
 
-    Component* a1 = a->emplaceChildAndSetDirty<Component>(&state, "A1");
+    Component* a1 = a->emplaceChild<Component>(&state, "A1");
     a1->setBounds(5,5,30,30);
 
-    Component* a2 = a->emplaceChildAndSetDirty<Component>(&state, "A2");
+    Component* a2 = a->emplaceChild<Component>(&state, "A2");
     a2->setBounds(40,40,30,30);
 
-    Component* b  = root.emplaceChildAndSetDirty<Component>(&state, "B");
+    Component* b  = root.emplaceChild<Component>(&state, "B");
     b->setBounds(120,10,50,50);
 
     state.dirtyRects.clear();
@@ -96,7 +96,7 @@ TEST_CASE("removeChild pushes old child's bounds into dirtyRects", "[removeChild
     Component root(&state, "root");
     root.setBounds(0,0,300,300);
 
-    Component* child = root.emplaceChildAndSetDirty<Component>(&state, "child");
+    Component* child = root.emplaceChild<Component>(&state, "child");
     child->setBounds(10, 20, 50, 40);
 
     state.dirtyRects.clear();
@@ -117,10 +117,10 @@ TEST_CASE("sendToBack and bringToFront mark parent dirty and reorder children", 
     Component root(&state, "root");
     root.setBounds(0,0,500,500);
 
-    Component* c1 = root.emplaceChildAndSetDirty<Component>(&state, "c1");
+    Component* c1 = root.emplaceChild<Component>(&state, "c1");
     c1->setBounds(0,0,10,10);
 
-    Component* c2 = root.emplaceChildAndSetDirty<Component>(&state, "c2");
+    Component* c2 = root.emplaceChild<Component>(&state, "c2");
     c2->setBounds(20,0,10,10);
 
     state.dirtyRects.clear();
@@ -146,13 +146,13 @@ TEST_CASE("removeChildrenOfType removes matching children and sets dirty", "[rem
     Component root(&state, "root");
     root.setBounds(0,0,200,200);
 
-    DummyA* a1 = root.emplaceChildAndSetDirty<DummyA>(&state, "a1");
+    DummyA* a1 = root.emplaceChild<DummyA>(&state, "a1");
     a1->setBounds(0,0,10,10);
 
-    DummyA* a2 = root.emplaceChildAndSetDirty<DummyA>(&state, "a2");
+    DummyA* a2 = root.emplaceChild<DummyA>(&state, "a2");
     a2->setBounds(15,0,10,10);
 
-    DummyB* b1 = root.emplaceChildAndSetDirty<DummyB>(&state, "b1");
+    DummyB* b1 = root.emplaceChild<DummyB>(&state, "b1");
     b1->setBounds(30,0,10,10);
 
     state.dirtyRects.clear();
@@ -176,10 +176,10 @@ TEST_CASE("containsAbsoluteCoordinate respects parent clipping and disableParent
     Component root(&state, "root");
     root.setBounds(0,0,50,50);
 
-    Component* parent = root.emplaceChildAndSetDirty<Component>(&state, "parent");
+    Component* parent = root.emplaceChild<Component>(&state, "parent");
     parent->setBounds(10,10,20,20);
 
-    Component* child = parent->emplaceChildAndSetDirty<Component>(&state, "child");
+    Component* child = parent->emplaceChild<Component>(&state, "child");
     child->setBounds(-5,-5,40,40);
 
     state.dirtyRects.clear();

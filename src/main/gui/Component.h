@@ -19,6 +19,7 @@ static SDL_FRect RectToFRect(const SDL_Rect& r)
 
 class Component {
 private:
+    bool visible = true;
     bool parentClippingEnabled = true;
     bool interceptMouseEnabled = true;
     std::string componentName;
@@ -36,7 +37,8 @@ protected:
 
 public:
     Component(CupuacuState*, const std::string componentName);
-
+    void setVisible(bool shouldBeVisible);
+    bool isVisible() const { return visible; }
     const std::vector<std::unique_ptr<Component>>& getChildren() const;
 
     void removeChild(Component*);
@@ -87,21 +89,19 @@ public:
     }
 
     template <typename T>
-    T* addChildAndSetDirty(std::unique_ptr<T> &childToAdd)
+    T* addChild(std::unique_ptr<T> &childToAdd)
     {
         children.push_back(std::move(childToAdd));
         children.back()->setParent(this);
-        children.back()->setDirty();
         return dynamic_cast<T*>(children.back().get());
     }
 
     template <typename T, typename... Args>
-    T* emplaceChildAndSetDirty(Args&&... args)
+    T* emplaceChild(Args&&... args)
     {
         auto child = std::make_unique<T>(std::forward<Args>(args)...);
         children.push_back(std::move(child));
         children.back()->setParent(this);
-        children.back()->setDirty();
         return static_cast<T*>(children.back().get());
     }
 

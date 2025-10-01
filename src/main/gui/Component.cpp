@@ -6,7 +6,7 @@
 #include <ranges>
 #include <cmath>
 
-#define DEBUG_DRAW 0
+#define DEBUG_DRAW 1
 
 #if DEBUG_DRAW
 #include <cstdlib>
@@ -15,6 +15,21 @@
 Component::Component(CupuacuState *stateToUse, const std::string componentNameToUse) :
     state(stateToUse), componentName(componentNameToUse)
 {
+}
+
+void Component::setVisible(bool shouldBeVisible)
+{
+    if (visible != shouldBeVisible)
+    {
+        visible = shouldBeVisible;
+
+        SDL_Rect r = getAbsoluteBounds();
+        if (r.w > 0 && r.h > 0) {
+            state->dirtyRects.push_back(r);
+        }
+
+        setDirty();
+    }
 }
 
 void Component::setInterceptMouseEnabled(const bool shouldInterceptMouse)
@@ -125,6 +140,13 @@ void Component::setBounds(int32_t xPosToUse, int32_t yPosToUse, int32_t widthToU
     yPos = yPosToUse;
     width = widthToUse;
     height = heightToUse;
+    if (!visible) {
+        // Only auto-show for nonzero bounds, or log a warning
+        if (widthToUse > 0 && heightToUse > 0) {
+            SDL_Log("Auto-unhiding %s due to setBounds", componentName.c_str());
+            setVisible(true);
+        }
+    }
     setDirty();
     resized();
 }
@@ -154,16 +176,27 @@ void Component::setYPos(int32_t yPosToUse)
 
 void Component::setDirty()
 {
-    state->dirtyRects.push_back(getAbsoluteBounds());
+    if (!visible)
+        return;
 
-    for (auto &c : children)
-    {
-        c->setDirty();
+    SDL_Rect r = getAbsoluteBounds();
+    if (r.w > 0 && r.h > 0) {
+        SDL_Log("[DIRTY] %s -> rect {%d,%d %dx%d}", componentName.c_str(), r.x, r.y, r.w, r.h);
+        state->dirtyRects.push_back(r);
+    }
+
+    // Only recurse if child is visible
+    for (auto &c : children) {
+        if (c->isVisible()) {
+            c->setDirty();
+        }
     }
 }
 
 void Component::draw(SDL_Renderer* renderer)
 {
+    if (!visible)
+        return;
 #if DEBUG_DRAW
     if (!state->dirtyRects.empty() && componentName == "RootComponent")
     {
@@ -230,6 +263,11 @@ void Component::draw(SDL_Renderer* renderer)
 
 bool Component::handleMouseEvent(const MouseEvent &mouseEvent)
 {
+    if (!visible)
+    {
+        return false;
+    }
+
     float localXf = mouseEvent.mouseXf - xPos;
     float localYf = mouseEvent.mouseYf - yPos;
     int localXi   = static_cast<int>(std::floor(localXf));
@@ -319,6 +357,8 @@ std::pair<int, int> Component::getAbsolutePosition()
 
 bool Component::containsAbsoluteCoordinate(int x, int y)
 {
+    if (!visible)
+        return false;
     auto [absX, absY] = getAbsolutePosition();
     SDL_Rect rect{ absX, absY, width, height };
 
@@ -345,6 +385,11 @@ bool Component::containsAbsoluteCoordinate(int x, int y)
 
 Component* Component::findComponentAt(int x, int y)
 {
+    if (!visible)
+    {
+        return nullptr;
+    }
+
     for (auto &c : std::views::reverse(children))
     {
         if (auto found = c->findComponentAt(x, y); found != nullptr)

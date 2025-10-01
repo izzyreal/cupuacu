@@ -32,8 +32,8 @@ public:
     template <typename... Args>
     void addSubMenu(Args&&... args)
     {
-        auto subMenu = emplaceChildAndSetDirty<Menu>(std::forward<Args>(args)...);
-        subMenu->setBounds(0, 0, 0, 0);
+        auto subMenu = emplaceChild<Menu>(std::forward<Args>(args)...);
+        subMenu->setVisible(false);
         subMenus.push_back(subMenu);
     }
     

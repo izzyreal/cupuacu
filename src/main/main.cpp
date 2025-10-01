@@ -27,8 +27,9 @@ void renderCanvasToWindow(CupuacuState *state)
     for (size_t i = 0; i < state->dirtyRects.size(); ++i)
     {
         auto rect = RectToFRect(state->dirtyRects[i]);
-        SDL_RenderTexture(state->renderer, state->canvas, &rect, &rect);
+        //SDL_RenderTexture(state->renderer, state->canvas, &rect, &rect);
     }
+    SDL_RenderTexture(state->renderer, state->canvas, NULL, NULL);
 
     SDL_RenderPresent(state->renderer);
 }

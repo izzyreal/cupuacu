@@ -8,7 +8,7 @@
 Waveforms::Waveforms(CupuacuState *state) :
     Component(state, "Waveforms")
 {
-    waveformsUnderlay = emplaceChildAndSetDirty<WaveformsUnderlay>(state);
+    waveformsUnderlay = emplaceChild<WaveformsUnderlay>(state);
 }
 
 void Waveforms::rebuildWaveforms()
@@ -27,7 +27,7 @@ void Waveforms::rebuildWaveforms()
         for (int ch = 0; ch < numChannels; ++ch)
         {
             auto waveform = std::make_unique<Waveform>(state, ch);
-            auto *handle = addChildAndSetDirty(waveform);
+            auto *handle = addChild(waveform);
             state->waveforms.push_back(static_cast<Waveform*>(handle));
         }
     }
