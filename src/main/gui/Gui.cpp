@@ -104,9 +104,6 @@ void buildComponents(CupuacuState *state)
     state->rootComponent = std::make_unique<Component>(state, "RootComponent");
     state->rootComponent->setVisible(true);
 
-    auto menuBar = std::make_unique<MenuBar>(state);
-    state->menuBar = state->rootComponent->addChild(menuBar);
-
     auto mainView = std::make_unique<MainView>(state);
     state->mainView = state->rootComponent->addChild(mainView);
 
@@ -115,6 +112,9 @@ void buildComponents(CupuacuState *state)
 
     auto statusBar = std::make_unique<StatusBar>(state);
     state->statusBar = state->rootComponent->addChild(statusBar);
+
+    auto menuBar = std::make_unique<MenuBar>(state);
+    state->menuBar = state->rootComponent->addChild(menuBar);
 
     resizeComponents(state);
 }
