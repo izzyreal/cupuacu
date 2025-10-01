@@ -41,7 +41,7 @@ public:
     void resized() override
     {
         const float scale = 4.0f / state->pixelScale;
-        const int fieldWidth = int(120 * scale);
+        const int fieldWidth = int(80 * scale);
         const int fieldHeight = int(getHeight());
 
         posField->setBounds(0, 0, fieldWidth, fieldHeight);
