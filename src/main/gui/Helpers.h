@@ -6,6 +6,11 @@
 
 struct Helpers
 {
+    static void printRect(const SDL_Rect r)
+    {
+        printf("x: %i, y: %i, w: %i, h: %i\n", r.x, r.y, r.w, r.h);
+    }
+
     static SDL_FRect rectToFRect(const SDL_Rect r)
     {
         return SDL_FRect{ (float)r.x, (float)r.y, (float)r.w, (float)r.h };
@@ -25,10 +30,13 @@ struct Helpers
 
     static SDL_Rect subtractRect(const SDL_Rect& rect, const SDL_Rect& clip)
     {
-        assert(
+        if (!(
             (clip.h == rect.h && clip.w <= rect.w) ||
             (clip.w == rect.w && clip.h <= rect.h)
-        );
+        ))
+        {
+            return rect;
+        }
 
         SDL_Rect result = rect;
 
