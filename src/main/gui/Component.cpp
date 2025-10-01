@@ -1,13 +1,10 @@
 #include "Component.h"
-
 #include "../CupuacuState.h"
 #include "MenuBar.h"
-
 #include <ranges>
 #include <cmath>
 
 #define DEBUG_DRAW 0
-
 #if DEBUG_DRAW
 #include <cstdlib>
 #endif
@@ -22,7 +19,6 @@ void Component::setVisible(bool shouldBeVisible)
     if (visible != shouldBeVisible)
     {
         visible = shouldBeVisible;
-
         SDL_Rect r = getAbsoluteBounds();
         if (r.w > 0 && r.h > 0) {
             state->dirtyRects.push_back(r);
@@ -66,7 +62,6 @@ void Component::sendToBack()
         return;
 
     auto& parentChildren = parent->children;
-
     auto thisIter = std::find_if(parentChildren.begin(), parentChildren.end(),
         [this](const std::unique_ptr<Component>& child) { return child.get() == this; });
 
@@ -85,7 +80,6 @@ void Component::bringToFront()
         return;
 
     auto& parentChildren = parent->children;
-
     auto thisIter = std::find_if(
         parentChildren.begin(), parentChildren.end(),
         [this](const std::unique_ptr<Component>& child) { return child.get() == this; });
@@ -105,7 +99,6 @@ void Component::removeAllChildren()
     {
         if (state->componentUnderMouse == c.get())
             state->componentUnderMouse = nullptr;
-
         if (state->capturingComponent == c.get())
             state->capturingComponent = nullptr;
     }
@@ -139,14 +132,11 @@ void Component::setBounds(int32_t xPosToUse, int32_t yPosToUse, int32_t widthToU
     {
         return;
     }
-
     setDirty();
-
     xPos = xPosToUse;
     yPos = yPosToUse;
     width = widthToUse;
     height = heightToUse;
-    
     setDirty();
     resized();
 }
@@ -178,14 +168,11 @@ void Component::setDirty()
 {
     if (!visible)
         return;
-
     dirty = true;
     SDL_Rect r = getAbsoluteBounds();
     if (r.w > 0 && r.h > 0) {
-        //SDL_Log("[DIRTY] %s -> rect {%d,%d %dx%d}", componentName.c_str(), r.x, r.y, r.w, r.h);
         state->dirtyRects.push_back(r);
     }
-
     for (auto &c : children) {
         if (c->isVisible()) {
             c->setDirty();
@@ -198,22 +185,30 @@ void Component::draw(SDL_Renderer* renderer)
     if (!visible)
         return;
 
-#if DEBUG_DRAW
-    if (!state->dirtyRects.empty() && componentName == "RootComponent")
-    {
-        printf("======\n");
-    }
-#endif
     SDL_Rect absRect = getAbsoluteBounds();
-
     bool intersects = true;
+
     if (parentClippingEnabled)
     {
         intersects = false;
-        for (const auto& dr : state->dirtyRects)
-        {
-            if (SDL_HasRectIntersection(&absRect, &dr))
-            {
+        SDL_Rect parentRect;
+        if (parent) {
+            parentRect = parent->getAbsoluteBounds();
+        } else {
+            SDL_GetRenderViewport(renderer, &parentRect);
+        }
+        SDL_Rect intersection;
+        if (SDL_GetRectIntersection(&absRect, &parentRect, &intersection)) {
+            for (const auto& dr : state->dirtyRects) {
+                if (SDL_HasRectIntersection(&intersection, &dr)) {
+                    intersects = true;
+                    break;
+                }
+            }
+        }
+    } else {
+        for (const auto& dr : state->dirtyRects) {
+            if (SDL_HasRectIntersection(&absRect, &dr)) {
                 intersects = true;
                 break;
             }
@@ -236,7 +231,14 @@ void Component::draw(SDL_Renderer* renderer)
     {
         SDL_Rect viewPortRectToUse;
         if (SDL_GetRectIntersection(&parentViewPortRect, &viewPortRect, &viewPortRectToUse))
+
+        {
             SDL_SetRenderViewport(renderer, &viewPortRectToUse);
+        }
+        else
+        {
+            return;
+        }
     }
     else
     {
@@ -270,14 +272,12 @@ void Component::draw(SDL_Renderer* renderer)
 bool Component::handleMouseEvent(const MouseEvent &mouseEvent)
 {
     if (!visible)
-    {
         return false;
-    }
 
     float localXf = mouseEvent.mouseXf - xPos;
     float localYf = mouseEvent.mouseYf - yPos;
-    int localXi   = static_cast<int>(std::floor(localXf));
-    int localYi   = static_cast<int>(std::floor(localYf));
+    int localXi = static_cast<int>(std::floor(localXf));
+    int localYi = static_cast<int>(std::floor(localYf));
 
     MouseEvent localMouseEvent = withNewCoordinates(mouseEvent, localXi, localYi, localXf, localYf);
 
@@ -323,7 +323,6 @@ bool Component::handleMouseEvent(const MouseEvent &mouseEvent)
             if (mouseDown(localMouseEvent))
             {
                 state->capturingComponent = this;
-
                 if (componentName.substr(0, 4) != "Menu")
                 {
                     state->menuBar->hideSubMenus();
@@ -374,7 +373,6 @@ bool Component::containsAbsoluteCoordinate(int x, int y)
             if (p->parentClippingEnabled) {
                 auto [px, py] = p->getAbsolutePosition();
                 SDL_Rect parentRect{ px, py, p->getWidth(), p->getHeight() };
-
                 SDL_Rect intersection;
                 if (!SDL_GetRectIntersection(&rect, &parentRect, &intersection)) {
                     return false;
@@ -392,9 +390,7 @@ bool Component::containsAbsoluteCoordinate(int x, int y)
 Component* Component::findComponentAt(int x, int y)
 {
     if (!visible)
-    {
         return nullptr;
-    }
 
     for (auto &c : std::views::reverse(children))
     {
