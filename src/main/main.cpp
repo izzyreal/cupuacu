@@ -96,6 +96,8 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     renderCanvasToWindow(state);
     state->dirtyRects.clear();
 
+    //state->rootComponent->printDirtyTree();
+
     SDL_Delay(16);
     return SDL_APP_CONTINUE;
 }

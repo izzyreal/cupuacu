@@ -3,6 +3,8 @@
 #include "MenuBar.h"
 #include "Label.h"
 
+#include "RoundedRect.h"
+
 Menu::Menu(CupuacuState *state, const std::string menuNameToUse, const std::function<void()> actionToUse) :
     Component(state, "Menu for " + menuNameToUse), menuName(menuNameToUse), action(actionToUse)
 {
@@ -45,15 +47,12 @@ void Menu::showSubMenus()
     int y = subMenus.front()->getYPos();
     int w = 0;
     int h = 0;
+
     for (auto* sub : subMenus)
     {
         if (sub->getWidth() > w) w = sub->getWidth();
         h = sub->getYPos() + sub->getHeight() - y;
     }
-
-    subMenuPanel = emplaceChild<SubMenuPanel>(state, "submenuPanel");
-    subMenuPanel->setBounds(x, y, w, h);
-    subMenuPanel->sendToBack();
 
     currentlyOpen = true;
     setDirty();
@@ -61,12 +60,6 @@ void Menu::showSubMenus()
 
 void Menu::hideSubMenus()
 {
-    if (subMenuPanel)
-    {
-        removeChild(subMenuPanel);
-        subMenuPanel = nullptr;
-    }
-
     for (auto &subMenu : subMenus)
     {
         subMenu->setVisible(false);
@@ -76,16 +69,67 @@ void Menu::hideSubMenus()
     setDirty();
 }
 
-void Menu::onDraw(SDL_Renderer *renderer)
+void Menu::onDraw(SDL_Renderer* renderer)
 {
-    const bool bright = isMouseOver() | currentlyOpen;
+    auto radius = 14.f/state->pixelScale;
+    auto rect = getLocalBoundsF();
 
     if (depthIs0)
     {
-        const uint8_t bg = bright ? 80 : 40;
+        const uint8_t bg = 40;
         SDL_SetRenderDrawColor(renderer, bg, bg, bg, 255);
         auto rect = getLocalBoundsF();
         SDL_RenderFillRect(renderer, &rect);
+        if (currentlyOpen)
+        {
+            SDL_Color col1 = { 70, 70, 70, 255 };
+            drawRoundedRect(renderer, rect, radius, col1);
+        }
+        return;
+    }
+
+    SDL_Color col1 = { 50, 50, 50, 255 };
+    SDL_Color col2 = { 60, 60, 200, 255 }; 
+    SDL_Color outline { 180, 180, 180, 255 };
+
+    auto parentMenu = dynamic_cast<Menu*>(getParent());
+    bool isFirst = parentMenu->subMenus.front() == this;
+    bool isLast  = parentMenu->subMenus.back()  == this;
+
+    auto rectShrunk = rect;
+
+    float shrink = 6.f / state->pixelScale;
+    rectShrunk.x += shrink;
+    rectShrunk.y += shrink;
+    rectShrunk.w -= shrink*2;
+    rectShrunk.h -= shrink*2;
+
+    if (isFirst && isLast)
+    {
+        // only one item: round both top and bottom
+        drawRoundedRect(renderer, rect, radius, col1);
+        drawRoundedRectOutline(renderer, rect, radius, outline);
+    }
+    else if (isFirst)
+    {
+        drawTopRoundedRect(renderer, rect, radius, col1);
+        drawTopRoundedRectOutline(renderer, rect, radius, outline);
+    }
+    else if (isLast)
+    {
+        drawBottomRoundedRect(renderer, rect, radius, col1);
+        drawBottomRoundedRectOutline(renderer, rect, radius, outline);
+    }
+    else
+    {
+        SDL_SetRenderDrawColor(renderer, col1.r, col1.g, col1.b, col1.a);
+        SDL_RenderFillRect(renderer, &rect);
+        drawVerticalEdges(renderer, rect, outline);
+    }
+
+    if (isMouseOver())
+    {
+        drawRoundedRect(renderer, rectShrunk, radius, col2);
     }
 }
 
@@ -131,6 +175,13 @@ void Menu::mouseLeave()
 
 void Menu::mouseEnter()
 {
+    if (!subMenus.empty() &&
+        state->menuBar->getOpenMenu() != nullptr &&
+        state->menuBar->getOpenMenu() != this) 
+    {
+        state->menuBar->hideSubMenus();
+        showSubMenus();
+    }
     setDirty();
 }
 

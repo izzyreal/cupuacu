@@ -12,6 +12,7 @@ private:
 
 public:
     MenuBar(CupuacuState*);
+    Menu* getOpenMenu();
     void hideSubMenus();
     void resized() override;
     void mouseEnter() override;

@@ -37,6 +37,21 @@ protected:
     Component* getParent() const;
 
 public:
+    void printDirtyTree(int depth = 0) const
+    {
+        if (isExplicitlyDirty)
+        {
+            for (int i = 0; i < depth; ++i)
+                printf("  ");
+            printf("[DIRTY] %s (%dx%d at %d,%d)\n",
+                   componentName.c_str(),
+                   width, height, xPos, yPos);
+        }
+
+        for (const auto& child : children)
+            child->printDirtyTree(depth + 1);
+    }    
+
     Component(CupuacuState*, const std::string componentName);
     void setVisible(bool shouldBeVisible);
     bool isVisible() const { return visible; }

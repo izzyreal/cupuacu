@@ -10,7 +10,7 @@ private:
     std::string text;
     bool centerHorizontally = false;
     bool centerVertically = true;
-    int margin = 15;
+    float margin = 15;
 
 public:
     Label(CupuacuState* state,

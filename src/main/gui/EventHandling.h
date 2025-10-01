@@ -112,6 +112,7 @@ static void updateComponentUnderMouse(CupuacuState *state, const int32_t mouseX,
         if (newComponentUnderMouse != nullptr)
         {
             newComponentUnderMouse->mouseEnter();
+            //printf("New component under mouse: %s\n", newComponentUnderMouse->getComponentName().c_str());
         }
     }
 }

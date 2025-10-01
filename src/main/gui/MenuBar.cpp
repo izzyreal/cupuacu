@@ -52,6 +52,7 @@ void MenuBar::hideSubMenus()
 {
     fileMenu->hideSubMenus();
     viewMenu->hideSubMenus();
+    state->rootComponent->setDirty();
 }
 
 void MenuBar::resized()
@@ -69,5 +70,12 @@ void MenuBar::resized()
 void MenuBar::mouseEnter()
 {
     setDirty();
+}
+
+Menu* MenuBar::getOpenMenu()
+{
+    if (fileMenu->isOpen()) return fileMenu;
+    if (viewMenu->isOpen()) return viewMenu;
+    return nullptr;
 }
 

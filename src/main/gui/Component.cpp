@@ -27,8 +27,6 @@ void Component::setVisible(bool shouldBeVisible)
         if (r.w > 0 && r.h > 0) {
             state->dirtyRects.push_back(r);
         }
-
-        setDirty();
     }
 }
 
@@ -207,13 +205,17 @@ void Component::draw(SDL_Renderer* renderer)
 #endif
     SDL_Rect absRect = getAbsoluteBounds();
 
-    bool intersects = false;
-    for (const auto& dr : state->dirtyRects)
+    bool intersects = true;
+    if (parentClippingEnabled)
     {
-        if (SDL_HasRectIntersection(&absRect, &dr))
+        intersects = false;
+        for (const auto& dr : state->dirtyRects)
         {
-            intersects = true;
-            break;
+            if (SDL_HasRectIntersection(&absRect, &dr))
+            {
+                intersects = true;
+                break;
+            }
         }
     }
 

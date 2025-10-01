@@ -16,10 +16,12 @@ void Label::onDraw(SDL_Renderer* renderer)
 
     SDL_FRect rect = getLocalBoundsF();
 
-    rect.x += margin;
-    rect.y += margin;
-    rect.w -= margin * 2;
-    rect.h -= margin * 2;
+    float marginScaled = margin / state->pixelScale;
+
+    rect.x += marginScaled;
+    rect.y += marginScaled;
+    rect.w -= marginScaled * 2;
+    rect.h -= marginScaled * 2;
 
     auto [textW, textH] = measureText(text, fontPointSize);
 
