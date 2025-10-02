@@ -59,9 +59,15 @@ static ma_result custom_data_source_read(ma_data_source* pDataSource,
 
             float sample = shouldPlayChannel ? ds->channelData[ch][ds->cursor + i] : 0.f;
             out[i * numChannels + ch] = sample;
-            ds->state->vuMeter->pushSampleForChannel(sample, ch);
         }
     }
+
+    for (int64_t ch = 0; ch < numChannels; ++ch)
+    {
+        ds->state->vuMeter->pushSamplesForChannelChunk(out, framesToRead, numChannels, ch);
+    }
+
+    ds->state->vuMeter->setSamplesPushed();
 
     ds->cursor += framesToRead;
     *pFramesRead = framesToRead;
