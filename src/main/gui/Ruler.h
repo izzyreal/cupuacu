@@ -144,6 +144,7 @@ public:
             }
 
             labels[i]->setBounds(labelRect);
+            labels[i]->setVisible(true);
         }
 
         if (!centerFirstLabel && labels.size() > 1)
