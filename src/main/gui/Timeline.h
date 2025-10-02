@@ -18,7 +18,6 @@ public:
     {
         ruler = emplaceChild<Ruler>(state, getComponentName());
         ruler->setCenterFirstLabel(false);
-        ruler->setLongTickSubdivisions(5);
         setMode(Mode::Samples);
 
         lastSamplesPerPixel = state->samplesPerPixel;
@@ -52,25 +51,6 @@ public:
         }
     }
 
-    int computeSamplesPerTick(double samplesPerPixel, int waveformWidth)
-    {
-        double widthFactor = 2000.0 / waveformWidth;
-        double targetPxPerTick = 320.0 * std::pow(widthFactor, 2.5 + 1.0 * (waveformWidth / 2000.0));
-        double rawSamples = targetPxPerTick * samplesPerPixel;
-
-        double basePower = std::pow(10.0, std::floor(std::log10(rawSamples)));
-
-        int multiplier;
-        if (rawSamples / basePower <= 1.5)
-            multiplier = 1;
-        else if (rawSamples / basePower <= 3.5)
-            multiplier = 2;
-        else
-            multiplier = 5;
-
-        return std::max(1, int(basePower * multiplier));
-    }
-
     void updateLabels()
     {
         if (getWidth() <= 0)
@@ -78,19 +58,40 @@ public:
 
         const int waveformWidth = Waveform::getWaveformWidth(state);
 
+        double maxTicks = (waveformWidth * state->pixelScale) / 85.f;
+        maxTicks = std::max(1.0, maxTicks);
+
+        int totalVisibleSamples = Waveform::getSampleIndexForXPos(
+            waveformWidth - 1, state->sampleOffset, state->samplesPerPixel
+        ) - state->sampleOffset;
+
+        int rawSamplesPerTick = std::max(1, int(std::ceil(double(totalVisibleSamples) / maxTicks)));
+
+        static const std::vector<int> niceSteps = {
+            1, 2, 5, 10, 20, 50, 100, 200, 500,
+            1000, 2000, 5000, 10000, 20000, 50000, 100000
+        };
+
+        int samplesPerTick = niceSteps.back();
+        for (int step : niceSteps)
+        {
+            if (step >= rawSamplesPerTick)
+            {
+                samplesPerTick = step;
+                break;
+            }
+        }
+
         bool highZoom = Waveform::shouldShowSamplePoints(state->samplesPerPixel, state->pixelScale);
 
-        int samplesPerTick = highZoom ? 1 : computeSamplesPerTick(state->samplesPerPixel, waveformWidth);
-
-        int firstSampleWithTick = highZoom ? state->sampleOffset
-                                                 : ((state->sampleOffset + samplesPerTick - 1) / samplesPerTick) * samplesPerTick;
-
+        int firstSampleWithTick = ((state->sampleOffset + samplesPerTick - 1) / samplesPerTick) * samplesPerTick;
         firstSampleWithTick = std::max(0, firstSampleWithTick - samplesPerTick);
 
-        const int lastVisibleSample = Waveform::getSampleIndexForXPos(waveformWidth - 1, state->sampleOffset, state->samplesPerPixel);
+        const int lastVisibleSample = Waveform::getSampleIndexForXPos(
+            waveformWidth - 1, state->sampleOffset, state->samplesPerPixel
+        );
 
-        int lastSampleWithTick = highZoom ? lastVisibleSample
-                                                : ((lastVisibleSample + samplesPerTick - 1) / samplesPerTick) * samplesPerTick;
+        int lastSampleWithTick = ((lastVisibleSample + samplesPerTick - 1) / samplesPerTick) * samplesPerTick;
 
         const float firstTickX = highZoom
             ? Waveform::getXPosForSampleIndex(firstSampleWithTick, state->sampleOffset, state->samplesPerPixel)
@@ -128,6 +129,19 @@ public:
             labels.push_back(text);
         }
 
+        int subdivisions;
+        if (state->samplesPerPixel < 1/200.0f)
+        {
+            subdivisions = 1;
+        }
+        else
+        {
+            int temp = samplesPerTick;
+            while (temp >= 10) temp /= 10;
+            subdivisions = (temp == 2) ? 2 : 5;
+        }
+
+        ruler->setLongTickSubdivisions(subdivisions);
         ruler->setLabels(labels);
         ruler->setScrollOffsetPx(firstTickX);
         ruler->resized();
