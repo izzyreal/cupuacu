@@ -40,6 +40,12 @@ public:
     bool isVisible() const { return visible; }
     const std::vector<std::unique_ptr<Component>>& getChildren() const;
 
+    int32_t getCenterX()
+    {
+        const auto bounds = getBounds();
+        return bounds.x + std::round(bounds.w / 2.f);
+    }
+
     bool hasChild(Component *component)
     {
         for (auto &c : children)

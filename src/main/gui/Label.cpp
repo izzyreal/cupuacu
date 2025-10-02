@@ -41,7 +41,6 @@ void Label::updateTexture(SDL_Renderer* renderer) {
 
 void Label::onDraw(SDL_Renderer* renderer)
 {
-    Helpers::fillRect(renderer, getLocalBounds(), Colors::background);
     const uint8_t fontPointSize = (float) pointSize / state->pixelScale;
 
     // Rebuild texture if needed

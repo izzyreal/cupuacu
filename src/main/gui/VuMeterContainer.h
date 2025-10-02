@@ -23,7 +23,8 @@ public:
 
         ruler = emplaceChild<Ruler>(state, getComponentName());
         ruler->setLabels(dbLabels);
-        ruler->setLongTickInterval(3);
+        ruler->setLongTickSubdivisions(3.f);
+        ruler->setNoTicksAfterLastLabel(true);
     }
 
     void resized() override
@@ -35,6 +36,7 @@ public:
         int meterHeight = bounds.h - (labelAreaHeight + tickAreaHeight);
 
         int margin = static_cast<int>(20 / state->pixelScale);
+        ruler->setHorizontalMargin(20);
 
         vuMeter->setBounds(bounds.x + margin, bounds.y,
                            bounds.w - 2 * margin, meterHeight);
@@ -46,6 +48,7 @@ public:
             (int)(labelAreaHeight + tickAreaHeight)
         };
 
+        ruler->setLongTickSpacingPx(getWidth() / 26.f);
         ruler->setBounds(rulerBounds);
     }
 

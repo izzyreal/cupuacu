@@ -49,6 +49,11 @@ public:
         }
     }
 
+    static double getDoubleXPosForSampleIndex(const int64_t sampleIndex, const int64_t sampleOffset, const double samplesPerPixel)
+    {
+        return (static_cast<double>(sampleIndex) - sampleOffset) / samplesPerPixel;
+    }
+
     static int32_t getXPosForSampleIndex(const int64_t sampleIndex, const int64_t sampleOffset, const double samplesPerPixel)
     {
         return static_cast<int32_t>(std::roundf((static_cast<double>(sampleIndex) - sampleOffset) / samplesPerPixel));

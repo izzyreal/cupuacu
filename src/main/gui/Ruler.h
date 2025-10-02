@@ -14,6 +14,12 @@ public:
     {
     }
 
+    void setMandatoryEndLabel(const std::string mandatoryEndLabelToUse)
+    {
+        mandatoryEndLabel = mandatoryEndLabelToUse;
+        setDirty();
+    }
+
     void setLabels(const std::vector<std::string>& labelTextsToUse)
     {
         if (labelTexts == labelTextsToUse)
@@ -38,11 +44,20 @@ public:
             label->setCenterHorizontally(true);
             labels.push_back(label);
         }
+
+        if (!mandatoryEndLabel.empty())
+        {
+            auto * label = emplaceChild<Label>(state, mandatoryEndLabel);
+            label->setMargin(0);
+            label->setFontSize(18);
+            label->setCenterHorizontally(true);
+            labels.push_back(label);
+        }
     }
 
-    void setLongTickInterval(const int interval)
+    void setLongTickSubdivisions(const float subdivisions)
     {
-        longTickInterval = interval;
+        longTickSubdivisions = subdivisions;
         setDirty();
     }
 
@@ -51,9 +66,9 @@ public:
         centerFirstLabel = shouldCenter;
     }
     
-    void setBaseMargin(float margin)
+    void setHorizontalMargin(float margin)
     {
-        baseMargin = margin;
+        baseHorizontalMargin = margin;
     }
     
     void setScrollOffsetPx(int px)
@@ -71,10 +86,13 @@ public:
         return baseTickAreaHeight / state->pixelScale;
     }
 
+    float getHorizontalMargin() const
+    {
+        return baseHorizontalMargin / state->pixelScale;
+    }
+
     void resized() override
     {
-        SDL_Rect bounds = getLocalBounds();
-
         int numLabels = static_cast<int>(labelTexts.size());
 
         if (numLabels == 0)
@@ -82,69 +100,32 @@ public:
             return;
         }
 
-        int margin  = static_cast<int>(baseMargin / state->pixelScale);
-        int spacing = (bounds.w - 2 * margin) / (numLabels - 1);
+        if (!mandatoryEndLabel.empty()) numLabels++;
 
-        int baseLabelHeight = static_cast<int>(baseLabelAreaHeight / state->pixelScale);
-        int fixedLabelWidth = static_cast<int>(30 / state->pixelScale);
-        int labelOffset     = static_cast<int>(15 / state->pixelScale);
+        int labelHeight = static_cast<int>(baseLabelAreaHeight / state->pixelScale);
+        int labelY = getTickAreaHeight();
 
         for (int i = 0; i < numLabels; ++i)
         {
-            SDL_Rect labelRect;
+            const auto labelText = mandatoryEndLabel.empty() ? labelTexts[i] : (i == numLabels - 1 ? mandatoryEndLabel : labelTexts[i]);
+            auto [labelWidth, th] = measureText(labelText, labels[i]->getEffectiveFontSize());
+            int labelX = ((longTickSpacingPx * i) + scrollOffsetPx) - (labelWidth * 0.5f);
+
+            if (baseHorizontalMargin != 0.f)
+            {
+                labelX += getHorizontalMargin();
+            }
+
+            SDL_Rect labelRect {labelX, labelY, labelWidth, labelHeight};
 
             if (i == 0 && !centerFirstLabel)
             {
-                int baseY = (int)(bounds.y + baseTickAreaHeight / state->pixelScale);
-                auto [tw, th] = measureText(labelTexts[i], labels[i]->getEffectiveFontSize());
-
-                labelRect = {
-                    0,
-                    baseY,
-                    tw,
-                    baseLabelHeight
-                };
-            }
-            else if (i == 0)
-            {
-                int tickX = bounds.x + margin + i * spacing - scrollOffsetPx;
-
-                if (i == 0 && !centerFirstLabel)
-                {
-                    labelRect = {
-                        tickX,
-                        (int)(bounds.y + baseTickAreaHeight / state->pixelScale),
-                        fixedLabelWidth,
-                        baseLabelHeight
-                    };
-                }
-                else
-                {
-                    labelRect = {
-                        tickX - labelOffset,
-                        (int)(bounds.y + baseTickAreaHeight / state->pixelScale),
-                        fixedLabelWidth,
-                        baseLabelHeight
-                    };
-                }
-            }
-            else
-            {
-                int tickX = bounds.x + margin + i * spacing - scrollOffsetPx;
-
-                auto [tw, th] = measureText(labelTexts[i], labels[i]->getEffectiveFontSize());
-                if (tw <= 0) tw = spacing;
-
-                labelRect = {
-                    tickX - tw / 2,
-                    (int)(bounds.y + baseTickAreaHeight / state->pixelScale),
-                    tw,
-                    baseLabelHeight
-                };
+                labelRect.x = 0;
             }
 
             labels[i]->setBounds(labelRect);
-            labels[i]->setVisible(true);
+            const bool labelIsVisible = labelRect.x >= 0 && labelRect.x + labelRect.w < getWidth();
+            labels[i]->setVisible(labelIsVisible);
         }
 
         if (!centerFirstLabel && labels.size() > 1)
@@ -153,10 +134,42 @@ public:
             {
                 labels[1]->setVisible(false);
             }
+        }
 
-            auto lastLabel = labels[labels.size() - 1];
-            const auto lastLabelBounds = lastLabel->getBounds();
-            lastLabel->setBounds(getWidth() - lastLabel->getWidth(), lastLabel->getYPos(), lastLabel->getWidth(), lastLabel->getHeight());
+        if (!mandatoryEndLabel.empty())
+        {
+            auto mandatoryLabel = labels.back();
+            const auto labelBounds = mandatoryLabel->getBounds();
+            mandatoryLabel->setBounds(getWidth() - mandatoryLabel->getWidth(), mandatoryLabel->getYPos(), mandatoryLabel->getWidth(), mandatoryLabel->getHeight());
+            mandatoryLabel->setVisible(true);
+
+            int lastVisibleNonEndLabelIndex = -1;
+
+            for (int labelIndex = labels.size() - 2; labelIndex >= 0; --labelIndex)
+            {
+                if (!labels[labelIndex]->isVisible())
+                {
+                    lastVisibleNonEndLabelIndex = labelIndex;
+                    break;
+                }
+            }
+
+            if (lastVisibleNonEndLabelIndex != -1 && lastVisibleNonEndLabelIndex > 1)
+            {
+                auto lastVisibleNonEndLabel = labels[lastVisibleNonEndLabelIndex];
+                if (Helpers::intersects(lastVisibleNonEndLabel->getBounds(), mandatoryLabel->getBounds()))
+                {
+                    lastVisibleNonEndLabel->setVisible(false);
+                }
+            }
+            if (lastVisibleNonEndLabelIndex != -1 && lastVisibleNonEndLabelIndex > 1 && labels.size() > 3)
+            {
+                auto lastVisibleNonEndLabel = labels[lastVisibleNonEndLabelIndex - 1];
+                if (Helpers::intersects(lastVisibleNonEndLabel->getBounds(), mandatoryLabel->getBounds()))
+                {
+                    lastVisibleNonEndLabel->setVisible(false);
+                }
+            }
         }
     }
 
@@ -164,42 +177,66 @@ public:
     {
         SDL_Rect bounds = getLocalBounds();
 
-        int numLabels = static_cast<int>(labelTexts.size());
-        if (numLabels == 0) return;
-
-        int margin  = static_cast<int>(baseMargin / state->pixelScale);
-        int spacing = (bounds.w - 2 * margin) / (numLabels - 1);
-
         int tickHeightLong  = std::max(1.f, 14.f / state->pixelScale);
         int tickHeightShort = std::max(1.f, 3.f / state->pixelScale);
 
-        for (int i = 0; i <= numLabels; ++i)
+        bool logFirstTick = true;
+
+        int numLongTicks = static_cast<int>(bounds.w / longTickSpacingPx) + 2;
+
+        int noTicksAfterXPos = noTicksAfterLastLabel ? labels.back()->getCenterX() : bounds.w;
+
+        for (int i = -1; i < numLongTicks; ++i)
         {
-            int tickStartX = bounds.x + margin + i * spacing - scrollOffsetPx;
-            int numTicks   = (i < numLabels) ? longTickInterval : 1;
+            int tickStartX = bounds.x + static_cast<int>(i * longTickSpacingPx) + scrollOffsetPx;
 
-            for (int t = 0; t < numTicks; ++t)
+            if (baseHorizontalMargin != 0.f)
             {
-                int tickX   = tickStartX + t * (spacing / numTicks);
-                int tickY   = bounds.y;
-                int height  = (t == 0 && i < numLabels) ? tickHeightLong : tickHeightShort;
+                tickStartX += getHorizontalMargin();
+            }
 
-                SDL_Rect tickRect { tickX, tickY, 1, height };
+            for (int t = 0; t < longTickSubdivisions; ++t)
+            {
+                int tickX = std::floor(tickStartX + t * (longTickSpacingPx / longTickSubdivisions));
+                if (tickX < 0 || tickX > bounds.x + bounds.w || tickX > noTicksAfterXPos)
+                {
+                    continue;
+                }
+
+                int height = (t == 0) ? tickHeightLong : tickHeightShort;
+
+                SDL_Rect tickRect { tickX, bounds.y, 1, height };
                 Helpers::fillRect(renderer, tickRect, Colors::white);
             }
         }
     }
 
+    void setLongTickSpacingPx(float spacing)
+    {
+        longTickSpacingPx = spacing;
+        setDirty();
+    }
+
+    void setNoTicksAfterLastLabel(const bool noTicksAfterLastLabelToUse)
+    {
+        noTicksAfterLastLabel = noTicksAfterLastLabelToUse;
+        setDirty();
+    }
+
 private:
     std::vector<std::string> labelTexts;
     std::vector<Label*> labels;
-    int longTickInterval = 1;
+    std::string mandatoryEndLabel;
+    bool noTicksAfterLastLabel = false;
+    float longTickSubdivisions = 1.f;
     bool centerFirstLabel = true;
 
     float baseLabelAreaHeight = 30;
-    float baseTickAreaHeight  = 8;
-    float baseMargin          = 20;
+    float baseTickAreaHeight = 8;
+    float baseHorizontalMargin = 0.f;
 
-    int scrollOffsetPx = 0;
+    float scrollOffsetPx = 0;
+    float longTickSpacingPx = 0.f;
+
 };
 

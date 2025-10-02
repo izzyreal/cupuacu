@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Component.h"
+#include "Waveform.h"
+
 #include "Ruler.h"
 #include <vector>
 #include <string>
@@ -16,7 +18,7 @@ public:
     {
         ruler = emplaceChild<Ruler>(state, getComponentName());
         ruler->setCenterFirstLabel(false);
-        ruler->setBaseMargin(0);
+        ruler->setLongTickSubdivisions(5);
         setMode(Mode::Samples);
 
         lastSamplesPerPixel = state->samplesPerPixel;
@@ -25,6 +27,7 @@ public:
     void setMode(Mode m)
     {
         mode = m;
+        ruler->setMandatoryEndLabel("smpl");
         updateLabels();
     }
 
@@ -49,59 +52,83 @@ public:
         }
     }
 
+    int computeSamplesPerTick(double samplesPerPixel, int waveformWidth)
+    {
+        double targetPxPerTick = waveformWidth / 20.0;
+        double rawSamples = targetPxPerTick * samplesPerPixel;
+
+        double basePower = std::pow(10.0, std::floor(std::log10(rawSamples)));
+
+        int multiplier;
+        if (rawSamples / basePower <= 1.5)
+            multiplier = 1;
+        else if (rawSamples / basePower <= 3.5)
+            multiplier = 2;
+        else
+            multiplier = 5;
+
+        return std::max(1, int(basePower * multiplier));
+    }
+
     void updateLabels()
     {
-        int width = getLocalBounds().w;
-        if (width <= 0) return;
+        if (getWidth() <= 0)
+            return;
 
-        double samplesPerPixel = state->samplesPerPixel;
-        int64_t sampleOffset   = state->sampleOffset;
-        double sampleRate      = state->document.sampleRate;
+        const int waveformWidth = Waveform::getWaveformWidth(state);
 
-        int targetPixelsPerTick = 100;
-        int64_t samplesPerTick = static_cast<int64_t>(samplesPerPixel * targetPixelsPerTick);
-        if (samplesPerTick <= 0) samplesPerTick = 1;
+        bool highZoom = Waveform::shouldShowSamplePoints(state->samplesPerPixel, state->pixelScale);
 
-        std::vector<std::string> labels;
+        int samplesPerTick = highZoom ? 1 : computeSamplesPerTick(state->samplesPerPixel, waveformWidth);
 
-        int numTicks = width / targetPixelsPerTick + 2;
-        int64_t startSample = (sampleOffset / samplesPerTick) * samplesPerTick;
+        int firstSampleWithTick = highZoom ? state->sampleOffset
+                                                 : ((state->sampleOffset + samplesPerTick - 1) / samplesPerTick) * samplesPerTick;
 
-        for (int i = 0; i < numTicks; ++i)
+        firstSampleWithTick = std::max(0, firstSampleWithTick - samplesPerTick);
+
+        const int lastVisibleSample = Waveform::getSampleIndexForXPos(waveformWidth - 1, state->sampleOffset, state->samplesPerPixel);
+
+        int lastSampleWithTick = highZoom ? lastVisibleSample
+                                                : ((lastVisibleSample + samplesPerTick - 1) / samplesPerTick) * samplesPerTick;
+
+        const float firstTickX = highZoom
+            ? Waveform::getXPosForSampleIndex(firstSampleWithTick, state->sampleOffset, state->samplesPerPixel)
+            : Waveform::getDoubleXPosForSampleIndex(firstSampleWithTick, state->sampleOffset, state->samplesPerPixel);
+
+        const float lastTickX = highZoom
+            ? Waveform::getXPosForSampleIndex(lastSampleWithTick, state->sampleOffset, state->samplesPerPixel)
+            : Waveform::getDoubleXPosForSampleIndex(lastSampleWithTick, state->sampleOffset, state->samplesPerPixel);
+
+        const int visibleTickCount = (lastSampleWithTick - firstSampleWithTick) / samplesPerTick;
+        float tickSpacingPx = visibleTickCount > 0 ? (lastTickX - firstTickX) / visibleTickCount : samplesPerTick;
+
+        ruler->setLongTickSpacingPx(tickSpacingPx);
+
+        std::vector<std::string> labels {"smpl"};
+
+        for (int samplePos = firstSampleWithTick + samplesPerTick; samplePos <= lastSampleWithTick; samplePos += samplesPerTick)
         {
-            int64_t samplePos = startSample + i * samplesPerTick;
             std::string text;
 
             if (mode == Mode::Samples)
             {
-                if (i == 0 || i == numTicks - 1)
-                {
-                    text = "smpl";
-                }
-                else
-                {
-                    text = std::to_string(samplePos);
-                }
+                text = std::to_string(samplePos);
             }
             else
             {
-                double seconds = double(samplePos) / sampleRate;
+                double seconds = double(samplePos) / state->document.sampleRate;
                 int mm = int(seconds / 60);
                 double ss = seconds - mm * 60;
                 std::ostringstream oss;
                 oss << mm << ":" << std::fixed << std::setprecision(3) << ss;
                 text = oss.str();
             }
-            
+
             labels.push_back(text);
         }
 
         ruler->setLabels(labels);
-        ruler->setLongTickInterval(5);
-        int64_t sampleRemainder = sampleOffset % samplesPerTick;
-        int scrollOffsetPx = static_cast<int>(sampleRemainder / samplesPerPixel);
-
-        ruler->setScrollOffsetPx(scrollOffsetPx);
+        ruler->setScrollOffsetPx(firstTickX);
         ruler->resized();
     }
 

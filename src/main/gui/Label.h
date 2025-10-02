@@ -28,6 +28,7 @@ public:
 
     ~Label();
 
+    std::string getText() { return text; }
     void setText(const std::string& newText) { text = newText; setDirty(); }
     void setMargin(int m) { margin = m; setDirty(); }
     void setFontSize(int p) { pointSize = p; setDirty(); }
