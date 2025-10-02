@@ -4,6 +4,7 @@
 #include "Waveform.h"
 #include "TriangleMarker.h"
 #include "OpaqueRect.h"
+#include "Timeline.h"
 
 MainView::MainView(CupuacuState *state) : Component(state, "MainView")
 {
@@ -13,6 +14,7 @@ MainView::MainView(CupuacuState *state) : Component(state, "MainView")
     }
 
     waveforms = emplaceChild<Waveforms>(state);
+    timeline  = emplaceChild<Timeline>(state);
     rebuildWaveforms();
 
     cursorTop      = borders[0]->emplaceChild<TriangleMarker>(state, TriangleMarkerType::CursorTop);
@@ -41,19 +43,28 @@ void MainView::resized()
     const int width  = getWidth();
     const int height = getHeight();
 
-    waveforms->setBounds(borderWidth, borderWidth,
+    int timelineHeight = static_cast<int>(60 / state->pixelScale);
+
+    waveforms->setBounds(borderWidth,
+                         borderWidth,
                          width - 2 * borderWidth,
-                         height - 2 * borderWidth);
+                         height - 2 * borderWidth - timelineHeight);
 
     borders[0]->setBounds(0, 0, width, borderWidth);
     borders[1]->setBounds(0, height - borderWidth, width, borderWidth);
     borders[2]->setBounds(0, borderWidth, borderWidth, height - 2 * borderWidth);
     borders[3]->setBounds(width - borderWidth, borderWidth, borderWidth, height - 2 * borderWidth);
 
+    timeline->setBounds(borderWidth,
+                        height - borderWidth - timelineHeight,
+                        width - 2 * borderWidth,
+                        timelineHeight);
+
     updateTriangleMarkerBounds();
 }
 
 void MainView::updateTriangleMarkerBounds()
+
 {
     const auto borderWidth    = computeBorderWidth();
     const float triHeight     = borderWidth * 0.75f;

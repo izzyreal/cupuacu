@@ -12,6 +12,7 @@ Label::Label(CupuacuState* state,
 
 void Label::onDraw(SDL_Renderer* renderer)
 {
+    Helpers::fillRect(renderer, getLocalBounds(), Colors::background);
     const uint8_t fontPointSize = (float) pointSize / state->pixelScale;
 
     SDL_FRect rect = getLocalBoundsF();

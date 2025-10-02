@@ -5,6 +5,7 @@
 class Waveforms;
 class TriangleMarker;
 class OpaqueRect;
+class Timeline;
 
 class MainView : public Component {
 public:
@@ -32,8 +33,8 @@ private:
     const uint8_t baseBorderWidth = 16;
     uint8_t computeBorderWidth() const;
     void resizeWaveforms();
+
     Waveforms *waveforms = nullptr;
-
     OpaqueRect *borders[4];
+    Timeline *timeline = nullptr;
 };
-
