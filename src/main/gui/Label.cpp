@@ -22,7 +22,7 @@ void Label::updateTexture(SDL_Renderer* renderer) {
         cachedTexture = nullptr;
     }
 
-    const uint8_t fontPointSize = (float) pointSize / state->pixelScale;
+    const uint8_t fontPointSize = getEffectiveFontSize();
     auto font = getFont(fontPointSize);
     if (!font) return;
 

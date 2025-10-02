@@ -6,6 +6,12 @@
 
 struct Helpers
 {
+    static bool intersects(const SDL_Rect r1, const SDL_Rect r2)
+    {
+        SDL_Rect result;
+        return SDL_GetRectIntersection(&r1, &r2, &result);
+    }
+
     static void printRect(const SDL_Rect r)
     {
         printf("x: %i, y: %i, w: %i, h: %i\n", r.x, r.y, r.w, r.h);

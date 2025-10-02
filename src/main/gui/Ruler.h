@@ -5,16 +5,27 @@
 #include <vector>
 #include <string>
 
+#include "text.h"
+
 class Ruler : public Component {
 public:
     explicit Ruler(CupuacuState* state)
         : Component(state, "Ruler")
     {}
 
-    void setLabels(const std::vector<std::string>& newLabels) {
+    void setLabels(const std::vector<std::string>& newLabels)
+    {
         labelsText = newLabels;
+
+        for (auto* lbl : labels)
+        {
+            removeChild(lbl);
+        }
+
         labels.clear();
-        for (const auto& txt : labelsText) {
+
+        for (const auto& txt : labelsText)
+        {
             auto* lbl = emplaceChild<Label>(state, txt);
             lbl->setMargin(0);
             lbl->setFontSize(18);
@@ -48,15 +59,13 @@ public:
             SDL_Rect labelRect;
 
             if (i == 0 && !centerFirstLabel) {
-                int tickX = bounds.x + margin + i * spacing - scrollOffsetPx;
                 int baseY = (int)(bounds.y + baseTickAreaHeight / state->pixelScale);
-                int secondTickX     = bounds.x + margin + 1 * spacing - scrollOffsetPx;
-                int secondLeftBound = secondTickX - spacing / 2;
+                auto [tw, th] = measureText(labelsText[i], labels[i]->getEffectiveFontSize());
 
                 labelRect = {
-                    tickX,
+                    0,
                     baseY,
-                    secondLeftBound - tickX,
+                    tw,
                     baseLabelHeight
                 };
             }
@@ -79,19 +88,32 @@ public:
                     };
                 }
             } else {
-                int tickX      = bounds.x + margin + i * spacing - scrollOffsetPx;
-                int leftBound  = tickX - spacing / 2;
-                int rightBound = tickX + spacing / 2;
+                int tickX = bounds.x + margin + i * spacing - scrollOffsetPx;
+
+                auto [tw, th] = measureText(labelsText[i], labels[i]->getEffectiveFontSize());
+                if (tw <= 0) tw = spacing;
 
                 labelRect = {
-                    leftBound,
+                    tickX - tw / 2,
                     (int)(bounds.y + baseTickAreaHeight / state->pixelScale),
-                    rightBound - leftBound,
+                    tw,
                     baseLabelHeight
                 };
             }
 
             labels[i]->setBounds(labelRect);
+        }
+
+        if (!centerFirstLabel)
+        {
+            if (Helpers::intersects(labels[0]->getBounds(), labels[1]->getBounds()))
+            {
+                labels[1]->setVisible(false);
+            }
+
+            auto lastLabel = labels[labels.size() - 1];
+            auto lastLabelBounds = lastLabel->getBounds();
+            lastLabel->setBounds(getWidth() - lastLabel->getWidth(), lastLabel->getYPos(), lastLabel->getWidth(), lastLabel->getHeight());
         }
     }
 
@@ -108,9 +130,9 @@ public:
         int tickHeightLong  = std::max(1.f, 14.f / state->pixelScale);
         int tickHeightShort = std::max(1.f, 3.f / state->pixelScale);
 
-        for (int i = 0; i < numLabels; ++i) {
+        for (int i = 0; i <= numLabels; ++i) {
             int tickStartX = bounds.x + margin + i * spacing - scrollOffsetPx;
-            int numTicks   = (i < numLabels - 1) ? longTickInterval : 1;
+            int numTicks   = (i < numLabels) ? longTickInterval : 1;
 
             for (int t = 0; t < numTicks; ++t) {
                 int tickX   = tickStartX + t * (spacing / numTicks);

@@ -31,6 +31,7 @@ public:
     void setText(const std::string& newText) { text = newText; setDirty(); }
     void setMargin(int m) { margin = m; setDirty(); }
     void setFontSize(int p) { pointSize = p; setDirty(); }
+    uint8_t getEffectiveFontSize() { return (float) pointSize / state->pixelScale; }
     void setCenterHorizontally(const bool centerHorizontallyToUse) { centerHorizontally = centerHorizontallyToUse; setDirty(); }
 
     void onDraw(SDL_Renderer* renderer) override;
