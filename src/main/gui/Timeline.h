@@ -14,7 +14,7 @@ public:
     explicit Timeline(CupuacuState* state)
         : Component(state, "Timeline")
     {
-        ruler = emplaceChild<Ruler>(state);
+        ruler = emplaceChild<Ruler>(state, getComponentName());
         ruler->setCenterFirstLabel(false);
         ruler->setBaseMargin(0);
         setMode(Mode::Samples);
@@ -58,7 +58,6 @@ public:
         int64_t sampleOffset   = state->sampleOffset;
         double sampleRate      = state->document.sampleRate;
 
-        // heuristic: aim for ~100px between major ticks
         int targetPixelsPerTick = 100;
         int64_t samplesPerTick = static_cast<int64_t>(samplesPerPixel * targetPixelsPerTick);
         if (samplesPerTick <= 0) samplesPerTick = 1;
@@ -68,17 +67,24 @@ public:
         int numTicks = width / targetPixelsPerTick + 2;
         int64_t startSample = (sampleOffset / samplesPerTick) * samplesPerTick;
 
-        for (int i = 0; i < numTicks; ++i) {
+        for (int i = 0; i < numTicks; ++i)
+        {
             int64_t samplePos = startSample + i * samplesPerTick;
             std::string text;
 
-            if (mode == Mode::Samples) {
-                if (i == 0 || i == numTicks - 1) {
+            if (mode == Mode::Samples)
+            {
+                if (i == 0 || i == numTicks - 1)
+                {
                     text = "smpl";
-                } else {
+                }
+                else
+                {
                     text = std::to_string(samplePos);
                 }
-            } else {
+            }
+            else
+            {
                 double seconds = double(samplePos) / sampleRate;
                 int mm = int(seconds / 60);
                 double ss = seconds - mm * 60;
@@ -86,6 +92,7 @@ public:
                 oss << mm << ":" << std::fixed << std::setprecision(3) << ss;
                 text = oss.str();
             }
+            
             labels.push_back(text);
         }
 

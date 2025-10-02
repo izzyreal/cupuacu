@@ -21,7 +21,7 @@ public:
             dbLabels.push_back(std::to_string(db));
         }
 
-        ruler = emplaceChild<Ruler>(state);
+        ruler = emplaceChild<Ruler>(state, getComponentName());
         ruler->setLabels(dbLabels);
         ruler->setLongTickInterval(3);
     }
