@@ -1,6 +1,5 @@
 #include "Label.h"
 #include "../CupuacuState.h"
-
 #include "text.h"
 
 Label::Label(CupuacuState* state,
@@ -10,29 +9,69 @@ Label::Label(CupuacuState* state,
 {
 }
 
+Label::~Label() {
+    if (cachedTexture) {
+        SDL_DestroyTexture(cachedTexture);
+        cachedTexture = nullptr;
+    }
+}
+
+void Label::updateTexture(SDL_Renderer* renderer) {
+    if (cachedTexture) {
+        SDL_DestroyTexture(cachedTexture);
+        cachedTexture = nullptr;
+    }
+
+    const uint8_t fontPointSize = (float) pointSize / state->pixelScale;
+    auto font = getFont(fontPointSize);
+    if (!font) return;
+
+    SDL_Color textColor = {255, 255, 255, 255};
+    SDL_Surface* surf = TTF_RenderText_Blended(font, text.c_str(), text.size(), textColor);
+    if (!surf) return;
+
+    cachedW = surf->w;
+    cachedH = surf->h;
+    cachedTexture = SDL_CreateTextureFromSurface(renderer, surf);
+    SDL_DestroySurface(surf);
+
+    cachedText = text;
+    cachedPointSize = fontPointSize;
+}
+
 void Label::onDraw(SDL_Renderer* renderer)
 {
     Helpers::fillRect(renderer, getLocalBounds(), Colors::background);
     const uint8_t fontPointSize = (float) pointSize / state->pixelScale;
 
+    // Rebuild texture if needed
+    if (!cachedTexture || cachedText != text || cachedPointSize != fontPointSize) {
+        updateTexture(renderer);
+    }
+
+    if (!cachedTexture) return;
+
     SDL_FRect rect = getLocalBoundsF();
 
     float marginScaled = margin / state->pixelScale;
-
     rect.x += marginScaled;
     rect.y += marginScaled;
     rect.w -= marginScaled * 2;
     rect.h -= marginScaled * 2;
 
-    auto [textW, textH] = measureText(text, fontPointSize);
-
-    // Adjust rect.y for vertical centering
-    if (centerVertically)
-    {
-        rect.y = rect.y + (rect.h - textH) * 0.5f;
-        rect.h = (float)textH; // shrink to text height
+    // Vertical centering
+    if (centerVertically) {
+        rect.y = rect.y + (rect.h - cachedH) * 0.5f;
+        rect.h = (float)cachedH;
     }
 
-    renderText(renderer, text, fontPointSize, rect, centerHorizontally);
+    float x = rect.x;
+    if (centerHorizontally) {
+        float centeredX = rect.x + (rect.w - cachedW) * 0.5f;
+        x = std::max(centeredX, rect.x);
+    }
+
+    SDL_FRect destRect = { x, rect.y, (float)cachedW, (float)cachedH };
+    SDL_RenderTexture(renderer, cachedTexture, nullptr, &destRect);
 }
 
