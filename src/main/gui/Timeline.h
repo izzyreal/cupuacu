@@ -54,7 +54,8 @@ public:
 
     int computeSamplesPerTick(double samplesPerPixel, int waveformWidth)
     {
-        double targetPxPerTick = waveformWidth / 20.0;
+        double widthFactor = 2000.0 / waveformWidth;
+        double targetPxPerTick = 320.0 * std::pow(widthFactor, 2.5 + 1.0 * (waveformWidth / 2000.0));
         double rawSamples = targetPxPerTick * samplesPerPixel;
 
         double basePower = std::pow(10.0, std::floor(std::log10(rawSamples)));
