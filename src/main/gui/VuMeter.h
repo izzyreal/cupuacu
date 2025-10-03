@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Component.h"
-#include "../readerwriterqueue.h"
+#include "../third_party/readerwriterqueue/readerwriterqueue.h"
 #include "Helpers.h"
 #include <cmath>
 #include <algorithm>

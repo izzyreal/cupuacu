@@ -4,7 +4,7 @@
 #include "../gui/VuMeter.h"
 
 #define MINIAUDIO_IMPLEMENTATION
-#include "../miniaudio.h"
+#include "../third_party/miniaudio.h"
 
 #include <cstring>
 #include <thread>

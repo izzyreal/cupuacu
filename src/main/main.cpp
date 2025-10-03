@@ -14,7 +14,7 @@ const uint16_t initialDimensions[] = { 1280, 720 };
 #include <string>
 #include <filesystem>
 
-#include "file_loading.h"
+#include "file/file_loading.h"
 
 #include "gui/MenuBar.h"
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CupuacuState.h"
+#include "../CupuacuState.h"
 
 #include <sndfile.hh>
 
