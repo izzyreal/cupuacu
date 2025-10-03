@@ -4,6 +4,7 @@
 #include "../actions/ShowOpenFileDialog.h"
 #include "../actions/Play.h"
 #include "../actions/Zoom.h"
+#include "../actions/Save.h"
 
 static void updateWaveforms(CupuacuState *state)
 {
@@ -121,6 +122,17 @@ static void handleKeyDown(
 #endif
         {
             showOpenFileDialog(state);
+        }
+    }
+    else if (event->key.scancode == SDL_SCANCODE_S)
+    {
+#if __APPLE__
+        if (event->key.mod & SDL_KMOD_GUI)
+#else
+        if (event->key.mod & SDL_KMOD_CTRL)
+#endif
+        {
+            overwrite(state);
         }
     }
     else if (event->key.scancode == SDL_SCANCODE_SPACE)

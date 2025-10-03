@@ -9,16 +9,17 @@
 
 static void loadSampleData(CupuacuState *state)
 {
-    // Open file
-    SndfileHandle snd(state->currentFile);
-    if (snd.error()) {
+    // Prepare SF_INFO
+    SF_INFO sfinfo{};
+    SNDFILE *snd = sf_open(state->currentFile.c_str(), SFM_READ, &sfinfo);
+    if (!snd) {
         throw std::runtime_error("Failed to open file: " + state->currentFile);
     }
 
     // Fill metadata
-    state->document.sampleRate = snd.samplerate();
+    state->document.sampleRate = sfinfo.samplerate;
 
-    int subtype = snd.format() & SF_FORMAT_SUBMASK;
+    int subtype = sfinfo.format & SF_FORMAT_SUBMASK;
     switch (subtype) {
         case SF_FORMAT_PCM_S8:   state->document.format = SampleFormat::PCM_S8; break;
         case SF_FORMAT_PCM_16:   state->document.format = SampleFormat::PCM_S16; break;
@@ -29,8 +30,8 @@ static void loadSampleData(CupuacuState *state)
         default:                 state->document.format = SampleFormat::Unknown; break;
     }
 
-    int channels = snd.channels();
-    sf_count_t frames = snd.frames();
+    int channels = sfinfo.channels;
+    sf_count_t frames = sfinfo.frames;
 
     // Allocate per-channel storage
     state->document.channels.clear();
@@ -38,8 +39,9 @@ static void loadSampleData(CupuacuState *state)
 
     // Read into interleaved float buffer
     std::vector<float> interleaved(frames * channels);
-    sf_count_t framesRead = snd.readf(interleaved.data(), frames);
+    sf_count_t framesRead = sf_readf_float(snd, interleaved.data(), frames);
     if (framesRead <= 0) {
+        sf_close(snd);
         throw std::runtime_error("Failed to read samples from file: " + state->currentFile);
     }
 
@@ -49,6 +51,9 @@ static void loadSampleData(CupuacuState *state)
             state->document.channels[ch][i] = interleaved[i * channels + ch];
         }
     }
+
+    // Done with file
+    sf_close(snd);
 
     state->selection.setHighest(state->document.getFrameCount());
 }

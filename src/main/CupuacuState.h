@@ -11,6 +11,8 @@
 #include <memory>
 #include <optional>
 
+#include <sndfile.h>
+
 struct CustomDataSource;
 
 class MenuBar;
