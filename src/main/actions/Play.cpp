@@ -174,7 +174,6 @@ static void ma_playback_callback(ma_device *pDevice, void *pOutput, const void *
 
 void performStop(CupuacuState *state)
 {
-    state->playbackPosition.store(-1);
     std::shared_ptr<CustomDataSource> ds;
 
     {
@@ -242,7 +241,7 @@ void play(CupuacuState *state)
 
     ds = std::make_shared<CustomDataSource>();
 
-    state->playbackPosition = start;
+    state->playbackPosition.store(start);
 
     if (custom_data_source_init(ds.get(),
                                 state->document.channels,
