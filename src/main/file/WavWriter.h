@@ -5,6 +5,7 @@
 #include <ios>
 #include <filesystem>
 #include <istream>
+#include <memory>
 #include <ostream>
 #include <fstream>
 #include <stdexcept>
@@ -121,19 +122,29 @@ class WavWriter {
             size_t frames   = state->document.getFrameCount();
             size_t channels = state->document.getChannelCount();
 
-            // Interleave and convert float [-1,1] → exact original int16
             std::vector<int16_t> interleaved(frames * channels);
-            auto &buf = state->document.getAudioBuffer();
-            for (size_t f = 0; f < frames; ++f) {
-                for (size_t c = 0; c < channels; ++c) {
+            
+            auto buf = state->document.getAudioBuffer();
+
+            const bool shouldCheckForDirtiness = std::dynamic_pointer_cast<cupuacu::DirtyTrackingAudioBuffer>(buf) != nullptr; 
+
+            for (size_t f = 0; f < frames; ++f)
+            {
+                for (size_t c = 0; c < channels; ++c)
+                {
                     float s = buf->getSample(c, f);
                     if (s > 1.0f) s = 1.0f;
                     if (s < -1.0f) s = -1.0f;
 
-                    // Recover exact int16 value that was originally read
-                    int16_t original = static_cast<int16_t>(std::lrint(s * 32768.0f));
-
-                    interleaved[f * channels + c] = original;
+                    if (!shouldCheckForDirtiness || buf->isDirty(c, f))
+                    {
+                        interleaved[f * channels + c] = static_cast<int16_t>(std::lrint(s * 32767.0f));
+                    }
+                    else
+                    {
+                        // Preserve original 16 bit int value if it wasn't modified after loading
+                        interleaved[f * channels + c] = static_cast<int16_t>(std::lrint(s * 32768.0f));
+                    }
                 }
             }
 

@@ -10,7 +10,7 @@ class DirtyTrackingAudioBuffer : public AudioBuffer {
 private:
     std::vector<uint8_t> dirtyFlags;
 
-    bool isDirty(int64_t channel, int64_t frame) const
+    bool isDirty(int64_t channel, int64_t frame) const override
     {
         int64_t idx = frame * channels.size() + channel;
         return (dirtyFlags[idx / 8] >> (idx % 8)) & 1;

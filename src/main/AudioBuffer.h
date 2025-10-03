@@ -9,6 +9,11 @@ protected:
     std::vector<std::vector<float>> channels;
 
 public:
+    virtual bool isDirty(int64_t channel, int64_t frame) const
+    {
+        return true;
+    }
+
     virtual void resize(int64_t numChannels, int64_t numFrames)
     {
         channels.resize(numChannels);
