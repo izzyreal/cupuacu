@@ -1,9 +1,10 @@
 #pragma once
 
 #include "../CupuacuState.h"
+#include "../file/WavWriter.h"
 
 static void overwrite(CupuacuState *state)
 {
-    const auto &sampleDataL = state->document.channels[0];
+    WavWriter::rewriteWavFile(state);
 }
 

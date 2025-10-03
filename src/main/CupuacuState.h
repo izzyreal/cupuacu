@@ -11,6 +11,8 @@
 #include <memory>
 #include <optional>
 
+#include <sndfile.h>
+
 struct CustomDataSource;
 
 class MenuBar;
@@ -41,6 +43,8 @@ struct CupuacuState {
         int sampleRate = 0;
         SampleFormat format = SampleFormat::Unknown;
         std::vector<std::vector<float>> channels;
+
+        SF_INFO sfinfo;
 
         int64_t getFrameCount() const
         {
