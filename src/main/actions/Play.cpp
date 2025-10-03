@@ -164,10 +164,15 @@ static void ma_playback_callback(ma_device *pDevice, void *pOutput, const void *
 {
     CustomDataSource *ds = (CustomDataSource*)pDevice->pUserData;
     ma_uint64 framesRead;
-    ds->base.vtable->onRead((ma_data_source*)ds, pOutput, frameCount, &framesRead);
+    ma_result result = ds->base.vtable->onRead((ma_data_source*)ds, pOutput, frameCount, &framesRead);
+
+    if (result == MA_AT_END)
+    {
+        ds->state->isPlaying.store(false);
+    }
 }
 
-void stop(CupuacuState *state)
+void performStop(CupuacuState *state)
 {
     state->playbackPosition.store(-1);
     std::shared_ptr<CustomDataSource> ds;
@@ -271,7 +276,12 @@ void play(CupuacuState *state)
         while (state->isPlaying.load()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
-        stop(state);
+        performStop(state);
     }).detach();
+}
+
+void requestStop(CupuacuState *state)
+{
+    state->isPlaying.store(false);
 }
 
