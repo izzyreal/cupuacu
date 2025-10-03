@@ -20,7 +20,7 @@ void Waveforms::rebuildWaveforms()
 
     state->waveforms.clear();
     
-    int numChannels = static_cast<int>(state->document.channels.size());
+    int numChannels = state->document.getChannelCount();
 
     if (numChannels > 0)
     {

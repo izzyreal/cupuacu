@@ -161,7 +161,7 @@ bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
                                                                    state->document.getFrameCount());
 
     const uint8_t channel = channelAt(e.mouseYi);
-    const float sampleValueUnderMouseCursor = state->document.channels[channel][sampleIndex];
+    const float sampleValueUnderMouseCursor = state->document.getSample(channel, sampleIndex);
 
     updateSampleValueUnderMouseCursor(state, sampleValueUnderMouseCursor);
 

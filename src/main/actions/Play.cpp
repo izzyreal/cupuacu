@@ -111,7 +111,7 @@ static ma_result custom_data_source_get_data_format(ma_data_source* pDataSource,
     CustomDataSource* ds = (CustomDataSource*)pDataSource;
     *pFormat = ma_format_f32;
     *pChannels = (ma_uint32)ds->channelData.size();
-    *pSampleRate = (ma_uint32)ds->state->document.sampleRate;
+    *pSampleRate = (ma_uint32)ds->state->document.getSampleRate();
 
     if (pChannelMap && channelMapSize >= *pChannels) {
         if (*pChannels == 1) {
@@ -134,7 +134,6 @@ static ma_data_source_vtable custom_data_source_vtable = {
 };
 
 static ma_result custom_data_source_init(CustomDataSource* ds,
-                                         const std::vector<std::vector<float>>& channels,
                                          ma_uint64 start,
                                          ma_uint64 end,
                                          CupuacuState* state)
@@ -145,11 +144,13 @@ static ma_result custom_data_source_init(CustomDataSource* ds,
     if (result != MA_SUCCESS) return result;
 
     ds->channelData.clear();
-    for (const auto& ch : channels) {
-        ds->channelData.push_back(ch.data());
+
+    for (int ch = 0; ch < state->document.getChannelCount(); ++ch)
+    {
+        ds->channelData.push_back(state->document.getAudioBuffer()->getImmutableChannelData(ch).data());
     }
 
-    ds->frameCount = channels.empty() ? 0 : channels[0].size();
+    ds->frameCount = state->document.getFrameCount();
     ds->cursor = start;
     ds->start = start;
     ds->end   = end;
@@ -223,12 +224,11 @@ void play(CupuacuState *state)
         }
     }
 
-    uint32_t channelCount = static_cast<uint32_t>(state->document.channels.size());
+    uint32_t channelCount = state->document.getChannelCount();
     if (channelCount == 0) return;
     if (channelCount > 2) channelCount = 2;
 
-    const auto& sampleData = state->document.channels[0];
-    ma_uint64 totalSamples = sampleData.size();
+    ma_uint64 totalSamples = state->document.getFrameCount();
     ma_uint64 start = 0;
     ma_uint64 end = totalSamples;
 
@@ -244,7 +244,6 @@ void play(CupuacuState *state)
     state->playbackPosition.store(start);
 
     if (custom_data_source_init(ds.get(),
-                                state->document.channels,
                                 start,
                                 end,
                                 state) != MA_SUCCESS)
@@ -255,7 +254,7 @@ void play(CupuacuState *state)
     ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
     deviceConfig.playback.format   = ma_format_f32;
     deviceConfig.playback.channels = channelCount;
-    deviceConfig.sampleRate        = state->document.sampleRate;
+    deviceConfig.sampleRate        = state->document.getSampleRate();
     deviceConfig.dataCallback      = ma_playback_callback;
     deviceConfig.pUserData         = ds.get();
 

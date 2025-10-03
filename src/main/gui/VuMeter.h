@@ -119,9 +119,9 @@ public:
 
     void timerCallback() override
     {
-        if (state->document.channels.size() > 0 && numChannels != state->document.channels.size())
+        if (state->document.getChannelCount() > 0 && numChannels != state->document.getChannelCount())
         {
-            setNumChannels(state->document.channels.size());
+            setNumChannels(state->document.getChannelCount());
         }
 
         if (isDecaying.load(std::memory_order_relaxed))

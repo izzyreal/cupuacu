@@ -18,7 +18,7 @@ uint64_t SamplePoint::getSampleIndex() const
 
 float SamplePoint::getSampleValue() const
 {
-    return state->document.channels[channelIndex][sampleIndex];
+    return state->document.getSample(channelIndex, sampleIndex);
 }
 
 void SamplePoint::mouseEnter()
@@ -82,7 +82,7 @@ bool SamplePoint::mouseMove(const MouseEvent &e)
 
     // Update the sample point's position and sample value
     setYPos(dragYPos);
-    state->document.channels[channelIndex][sampleIndex] = newSampleValue;
+    state->document.setSample(channelIndex, sampleIndex, newSampleValue);
     updateSampleValueUnderMouseCursor(state, newSampleValue);
 
     return true;

@@ -118,7 +118,7 @@ public:
             }
             else
             {
-                double seconds = double(samplePos) / state->document.sampleRate;
+                double seconds = double(samplePos) / state->document.getSampleRate();
                 int mm = int(seconds / 60);
                 double ss = seconds - mm * 60;
                 std::ostringstream oss;

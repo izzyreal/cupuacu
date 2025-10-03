@@ -3,6 +3,7 @@
 #include <SDL3/SDL.h>
 
 #include "gui/Selection.h"
+#include "Document.h"
 
 #include <cstdint>
 #include <vector>
@@ -10,8 +11,6 @@
 #include <atomic>
 #include <memory>
 #include <optional>
-
-#include <sndfile.h>
 
 struct CustomDataSource;
 
@@ -22,12 +21,6 @@ class MainView;
 class VuMeter;
 class VuMeterContainer;
 
-enum class SampleFormat {
-    PCM_S8, PCM_S16, PCM_S24, PCM_S32,
-    FLOAT32, FLOAT64,
-    Unknown
-};
-
 enum SelectedChannels {
     BOTH, LEFT, RIGHT
 };
@@ -36,24 +29,9 @@ struct CupuacuState {
     uint8_t menuFontSize = 40;
     uint8_t pixelScale = 1;
     std::string currentFile = "/Users/izmar/Downloads/ams_chill.wav";
+    Document document;
 
     std::vector<SDL_Rect> dirtyRects;
-
-    struct Document {
-        int sampleRate = 0;
-        SampleFormat format = SampleFormat::Unknown;
-        std::vector<std::vector<float>> channels;
-
-        int64_t getFrameCount() const
-        {
-            if (channels.empty())
-            {
-                return 0;
-            }
-
-            return channels[0].size();
-        }
-    } document;
 
     double samplesPerPixel = 1;
     double verticalZoom;

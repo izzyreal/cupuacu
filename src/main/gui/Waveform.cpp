@@ -85,7 +85,7 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
     std::vector<std::unique_ptr<SamplePoint>> result;
     const uint16_t samplePointSize = getSamplePointSize(pixelScale);
 
-    const auto &sampleData = state->document.channels[channelIndex];
+    auto sampleData = state->document.getAudioBuffer()->getImmutableChannelData(channelIndex);
 
     for (int i = 0; i < actualInputSamples; ++i)
     {
@@ -128,7 +128,7 @@ void Waveform::renderSmoothWaveform(SDL_Renderer* renderer)
     const auto samplesPerPixel = state->samplesPerPixel;
     const double halfSampleWidth = 0.5 / samplesPerPixel;
     const int64_t sampleOffset = state->sampleOffset;
-    const auto &sampleData = state->document.channels[channelIndex];
+    auto sampleData = state->document.getAudioBuffer()->getImmutableChannelData(channelIndex);
     const auto frameCount = state->document.getFrameCount();
     const auto verticalZoom = state->verticalZoom;
     const auto widthToUse = getWidth();
@@ -229,7 +229,7 @@ void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
     int prevY = 0;
     bool hasPrev = false;
 
-    const auto &sampleData = state->document.channels[channelIndex];
+    auto sampleData = state->document.getAudioBuffer()->getImmutableChannelData(channelIndex);
 
     for (int x = 0; x < std::min(static_cast<int64_t>(widthToUse), static_cast<int64_t>(maxPixel)); ++x)
     {

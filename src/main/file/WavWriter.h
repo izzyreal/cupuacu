@@ -119,13 +119,14 @@ class WavWriter {
             os.write("data", 4);
 
             size_t frames   = state->document.getFrameCount();
-            size_t channels = state->document.channels.size();
+            size_t channels = state->document.getChannelCount();
 
             // Interleave and convert float [-1,1] → exact original int16
             std::vector<int16_t> interleaved(frames * channels);
+            auto &buf = state->document.getAudioBuffer();
             for (size_t f = 0; f < frames; ++f) {
                 for (size_t c = 0; c < channels; ++c) {
-                    float s = state->document.channels[c][f];
+                    float s = buf->getSample(c, f);
                     if (s > 1.0f) s = 1.0f;
                     if (s < -1.0f) s = -1.0f;
 
