@@ -4,5 +4,5 @@ struct CupuacuState;
 
 void play(CupuacuState*);
 
-void stop(CupuacuState*);
+void requestStop(CupuacuState*);
 

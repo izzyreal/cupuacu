@@ -30,7 +30,7 @@ static ma_result custom_data_source_read(ma_data_source* pDataSource,
                                          ma_uint64* pFramesRead)
 {
     CustomDataSource* ds = (CustomDataSource*)pDataSource;
-    ma_uint64 framesAvailable = ds->end - ds->cursor;
+    ma_uint64 framesAvailable = ds->end - ds->start - ds->cursor;
     ma_uint64 framesToRead = (frameCount < framesAvailable) ? frameCount : framesAvailable;
 
     if (framesToRead == 0)
@@ -48,8 +48,6 @@ static ma_result custom_data_source_read(ma_data_source* pDataSource,
 
     for (ma_uint64 i = 0; i < framesToRead; ++i)
     {
-        float framePeak = 0.f;
-
         for (int64_t ch = 0; ch < numChannels; ++ch)
         {
             const bool shouldPlayChannel = !selectionIsActive ||
@@ -57,7 +55,7 @@ static ma_result custom_data_source_read(ma_data_source* pDataSource,
                 (ch == 0 && selectedChannels == SelectedChannels::LEFT) ||
                 (ch == 1 && selectedChannels == SelectedChannels::RIGHT);
 
-            float sample = shouldPlayChannel ? ds->channelData[ch][ds->cursor + i] : 0.f;
+            float sample = shouldPlayChannel ? ds->channelData[ch][ds->start + ds->cursor + i] : 0.f;
             out[i * numChannels + ch] = sample;
         }
     }
@@ -74,7 +72,7 @@ static ma_result custom_data_source_read(ma_data_source* pDataSource,
 
     if (ds->state)
     {
-        ds->state->playbackPosition.store((double)ds->cursor);
+        ds->state->playbackPosition.store(static_cast<int64_t>(ds->start + ds->cursor));
     }
 
     return MA_SUCCESS;
@@ -84,7 +82,7 @@ static ma_result custom_data_source_seek(ma_data_source *pDataSource, ma_uint64 
 {
     CustomDataSource *ds = (CustomDataSource*)pDataSource;
 
-    if (frameIndex < ds->start || frameIndex >= ds->end)
+    if (frameIndex >= ds->end - ds->start)
     {
         return MA_INVALID_ARGS;
     }
@@ -149,10 +147,10 @@ static ma_result custom_data_source_init(CustomDataSource* ds,
         ds->channelData.push_back(ch.data());
     }
 
-    ds->frameCount = channels.empty() ? 0 : channels[0].size();
-    ds->cursor = start;
+    ds->frameCount = end - start;
+    ds->cursor = 0;
     ds->start = start;
-    ds->end   = end;
+    ds->end = end;
     ds->state = state;
 
     return MA_SUCCESS;
@@ -164,10 +162,22 @@ static void ma_playback_callback(ma_device *pDevice, void *pOutput, const void *
 {
     CustomDataSource *ds = (CustomDataSource*)pDevice->pUserData;
     ma_uint64 framesRead;
-    ds->base.vtable->onRead((ma_data_source*)ds, pOutput, frameCount, &framesRead);
+    ma_result result = ds->base.vtable->onRead((ma_data_source*)ds, pOutput, frameCount, &framesRead);
+
+    if (result == MA_AT_END) {
+        ds->state->isPlaying.store(false);
+    }
 }
 
-void stop(CupuacuState *state)
+// Call this from the main thread to request a stop (e.g., when user presses Space to pause/stop).
+void requestStop(CupuacuState *state)
+{
+    state->isPlaying.store(false);
+}
+
+// Internal function to perform the actual stop and cleanup.
+// This is called only from the monitoring thread.
+void performStop(CupuacuState *state)
 {
     state->playbackPosition.store(-1);
     std::shared_ptr<CustomDataSource> ds;
@@ -176,7 +186,7 @@ void stop(CupuacuState *state)
         std::lock_guard<std::mutex> lock(playbackMutex);
         ds = state->activePlayback;
         state->activePlayback.reset();
-        state->isPlaying.store(false);
+        state->isPlaying.store(false); // Ensure it's false
     }
 
     if (!ds)
@@ -191,6 +201,11 @@ void stop(CupuacuState *state)
 
     ma_device_uninit(&ds->device);
     ma_data_source_uninit(&ds->base);
+
+    if (state->vuMeter)
+    {
+        //state->vuMeter->startDecay();
+    }
 }
 
 void play(CupuacuState *state)
@@ -218,6 +233,8 @@ void play(CupuacuState *state)
     if (channelCount == 0) return;
     if (channelCount > 2) channelCount = 2;
 
+    std::vector<std::vector<float>> passedChannels(state->document.channels.begin(), state->document.channels.begin() + channelCount);
+
     const auto& sampleData = state->document.channels[0];
     ma_uint64 totalSamples = sampleData.size();
     ma_uint64 start = 0;
@@ -228,14 +245,15 @@ void play(CupuacuState *state)
         end   = (ma_uint64)state->selection.getEndInt();
     } else {
         start = (ma_uint64)state->cursor;
+        end = totalSamples;
     }
 
     ds = std::make_shared<CustomDataSource>();
 
-    state->playbackPosition = start;
+    state->playbackPosition.store(static_cast<int64_t>(start));
 
     if (custom_data_source_init(ds.get(),
-                                state->document.channels,
+                                passedChannels,
                                 start,
                                 end,
                                 state) != MA_SUCCESS)
@@ -267,11 +285,11 @@ void play(CupuacuState *state)
         state->isPlaying.store(true);
     }
 
+    // Monitoring thread to detect when isPlaying becomes false and perform cleanup
     std::thread([state, ds]() {
         while (state->isPlaying.load()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
-        stop(state);
+        performStop(state);
     }).detach();
 }
-

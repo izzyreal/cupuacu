@@ -127,7 +127,7 @@ static void handleKeyDown(
     {
         if (state->isPlaying.load())
         {
-            stop(state);
+            requestStop(state);
             return;
         }
 
