@@ -113,17 +113,38 @@ public:
             setNumChannels(state->document.channels.size());
         }
 
-        if (!samplesPushed.load(std::memory_order_relaxed))
+        if (isDecaying.load(std::memory_order_relaxed))
         {
-            return;
+            bool allZero = true;
+            for (const auto& p : previousPeaks)
+            {
+                if (p > 1e-6f)
+                {
+                    allZero = false;
+                    break;
+                }
+            }
+            if (allZero)
+            {
+                isDecaying.store(false, std::memory_order_relaxed);
+            }
         }
 
-        samplesPushed.store(false, std::memory_order_relaxed);
-        setDirty();
+        if (samplesPushed.load(std::memory_order_relaxed) || isDecaying.load(std::memory_order_relaxed))
+        {
+            samplesPushed.store(false, std::memory_order_relaxed);
+            setDirty();
+        }
+    }
+
+    void startDecay()
+    {
+        isDecaying.store(true, std::memory_order_relaxed);
     }
 
 private:
     std::atomic<bool> samplesPushed {false};
+    std::atomic<bool> isDecaying {false};
     int numChannels;
     std::vector<ReaderWriterQueue<float>> sampleQueues;
     std::vector<float> previousPeaks;

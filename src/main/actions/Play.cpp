@@ -30,7 +30,7 @@ static ma_result custom_data_source_read(ma_data_source* pDataSource,
                                          ma_uint64* pFramesRead)
 {
     CustomDataSource* ds = (CustomDataSource*)pDataSource;
-    ma_uint64 framesAvailable = ds->end - ds->start - ds->cursor;
+    ma_uint64 framesAvailable = ds->end - ds->cursor;
     ma_uint64 framesToRead = (frameCount < framesAvailable) ? frameCount : framesAvailable;
 
     if (framesToRead == 0)
@@ -55,7 +55,7 @@ static ma_result custom_data_source_read(ma_data_source* pDataSource,
                 (ch == 0 && selectedChannels == SelectedChannels::LEFT) ||
                 (ch == 1 && selectedChannels == SelectedChannels::RIGHT);
 
-            float sample = shouldPlayChannel ? ds->channelData[ch][ds->start + ds->cursor + i] : 0.f;
+            float sample = shouldPlayChannel ? ds->channelData[ch][ds->cursor + i] : 0.f;
             out[i * numChannels + ch] = sample;
         }
     }
@@ -72,7 +72,7 @@ static ma_result custom_data_source_read(ma_data_source* pDataSource,
 
     if (ds->state)
     {
-        ds->state->playbackPosition.store(static_cast<int64_t>(ds->start + ds->cursor));
+        ds->state->playbackPosition.store(static_cast<int64_t>(ds->cursor));
     }
 
     return MA_SUCCESS;
@@ -82,7 +82,7 @@ static ma_result custom_data_source_seek(ma_data_source *pDataSource, ma_uint64 
 {
     CustomDataSource *ds = (CustomDataSource*)pDataSource;
 
-    if (frameIndex >= ds->end - ds->start)
+    if (frameIndex < ds->start || frameIndex >= ds->end)
     {
         return MA_INVALID_ARGS;
     }
@@ -147,8 +147,8 @@ static ma_result custom_data_source_init(CustomDataSource* ds,
         ds->channelData.push_back(ch.data());
     }
 
-    ds->frameCount = end - start;
-    ds->cursor = 0;
+    ds->frameCount = channels.empty() ? 0 : channels[0].size();
+    ds->cursor = start;
     ds->start = start;
     ds->end = end;
     ds->state = state;
@@ -204,7 +204,7 @@ void performStop(CupuacuState *state)
 
     if (state->vuMeter)
     {
-        //state->vuMeter->startDecay();
+        state->vuMeter->startDecay();
     }
 }
 
