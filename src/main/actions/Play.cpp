@@ -196,6 +196,11 @@ void performStop(CupuacuState *state)
 
     ma_device_uninit(&ds->device);
     ma_data_source_uninit(&ds->base);
+
+    if (state->vuMeter)
+    {
+        state->vuMeter->startDecay();
+    }
 }
 
 void play(CupuacuState *state)

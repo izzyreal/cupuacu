@@ -18,10 +18,21 @@ public:
         previousPeaks.resize(numChannels, 0.f);
     }
 
+    void startDecay()
+    {
+        isDecaying.store(true, std::memory_order_relaxed);
+    }
+
     void setNumChannels(int n)
     {
         numChannels = n;
         sampleQueues.resize(numChannels);
+
+        for (int i = 0; i < numChannels; i++)
+        {
+            sampleQueues[i] = ReaderWriterQueue<float>(24000);
+        }
+
         previousPeaks.resize(numChannels, 0.f);
     }
 
@@ -113,17 +124,33 @@ public:
             setNumChannels(state->document.channels.size());
         }
 
-        if (!samplesPushed.load(std::memory_order_relaxed))
+        if (isDecaying.load(std::memory_order_relaxed))
         {
-            return;
+            bool allZero = true;
+            for (const auto& p : previousPeaks)
+            {
+                if (p > 1e-6f)
+                {
+                    allZero = false;
+                    break;
+                }
+            }
+            if (allZero)
+            {
+                isDecaying.store(false, std::memory_order_relaxed);
+            }
         }
 
-        samplesPushed.store(false, std::memory_order_relaxed);
-        setDirty();
+        if (samplesPushed.load(std::memory_order_relaxed) || isDecaying.load(std::memory_order_relaxed))
+        {
+            samplesPushed.store(false, std::memory_order_relaxed);
+            setDirty();
+        }
     }
 
 private:
     std::atomic<bool> samplesPushed {false};
+    std::atomic<bool> isDecaying{false};
     int numChannels;
     std::vector<ReaderWriterQueue<float>> sampleQueues;
     std::vector<float> previousPeaks;
