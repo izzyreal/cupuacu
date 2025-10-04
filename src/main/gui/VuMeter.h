@@ -61,7 +61,7 @@ public:
         int border = std::max(1, 2 / state->pixelScale);
         int barSpacing = fullBounds.h / numChannels;
 
-        constexpr float attackTimeSec = 0.02f;
+        constexpr float attackTimeSec = 0.015f;
         constexpr float releaseTimeSec = 0.02f;
         float dt = 1.0f / 60.0f;
         float alphaAttack = 1.0f - std::exp(-dt / attackTimeSec);
@@ -74,11 +74,16 @@ public:
 
             while (sampleQueues[ch].try_dequeue(val))
             {
-                float db = 20.f * log10f(std::max(val, 1e-5f));
+                peak = std::max(peak, val);
+            }
+
+            if (peak > 0.f)
+            {
+                float db = 20.f * log10f(std::max(peak, 1e-5f));
                 float normalized = (db + 72.f) / 72.f;
                 normalized = std::clamp(normalized, 0.f, 1.f);
-                normalized = std::pow(normalized, 0.5f);
-                peak = std::max(peak, normalized);
+                normalized = std::pow(normalized, 0.70f);
+                peak = normalized;
             }
 
             if (peak > previousPeaks[ch])
@@ -158,3 +163,4 @@ private:
     std::vector<float> previousPeaks;
 };
 }
+

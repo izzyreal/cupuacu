@@ -50,8 +50,6 @@ ma_result custom_data_source_read(ma_data_source* pDataSource,
 
     for (ma_uint64 i = 0; i < framesToRead; ++i)
     {
-        float framePeak = 0.f;
-
         for (int64_t ch = 0; ch < numChannels; ++ch)
         {
             const bool shouldPlayChannel = !selectionIsActive ||
