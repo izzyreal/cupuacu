@@ -232,10 +232,15 @@ void Menu::mouseLeave()
 
     if (dynamic_cast<Menu*>(state->componentUnderMouse) == nullptr)
     {
-        if (state->componentUnderMouse == state->menuBar || state->menuBar->hasChild(state->componentUnderMouse))
+        const bool componentUnderMouseIsMenuBar = state->componentUnderMouse == state->menuBar;
+        const bool componentUnderMouseIsMenuBarChild = state->menuBar->hasChild(state->componentUnderMouse);
+        if (componentUnderMouseIsMenuBar || componentUnderMouseIsMenuBarChild)
         {
-            state->menuBar->hideSubMenus();
-            state->menuBar->setOpenSubMenuOnMouseOver(true);
+            if (state->menuBar->hasMenuOpen())
+            {
+                state->menuBar->hideSubMenus();
+                state->menuBar->setOpenSubMenuOnMouseOver(true);
+            }
         }
     }
 }

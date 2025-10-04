@@ -19,13 +19,14 @@ private:
     int logoW = 0, logoH = 0;
 
 public:
-    void setOpenSubMenuOnMouseOver(const bool openSubMenuOnMouseOverEnabled) { openSubMenuOnMouseOver = openSubMenuOnMouseOverEnabled; }
-    bool shouldOpenSubMenuOnMouseOver() const { return openSubMenuOnMouseOver; } 
+    void setOpenSubMenuOnMouseOver(const bool openSubMenuOnMouseOverEnabled);
+    bool shouldOpenSubMenuOnMouseOver() const;
     MenuBar(cupuacu::State*);
     bool hasMenuOpen();
     Menu* getOpenMenu();
     void hideSubMenus();
     void resized() override;
+    bool mouseDown(const MouseEvent&) override;
     void mouseEnter() override;
     void onDraw(SDL_Renderer*) override;
 };

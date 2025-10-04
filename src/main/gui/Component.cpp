@@ -332,12 +332,13 @@ bool Component::handleMouseEvent(const MouseEvent &mouseEvent)
     }
     else
     {
-        if (state->menuBar->hasMenuOpen())
+        if (state->menuBar->hasMenuOpen() || state->menuBar->shouldOpenSubMenuOnMouseOver())
         {
             if (!isComponentOrChildOf(this, state->menuBar))
             {
                 if (mouseEvent.type == DOWN)
                 {
+                    state->menuBar->setOpenSubMenuOnMouseOver(false);
                     state->menuBar->hideSubMenus();
                     return true;
                 }

@@ -163,3 +163,19 @@ bool MenuBar::hasMenuOpen()
     return getOpenMenu() != nullptr;
 }
 
+bool MenuBar::mouseDown(const MouseEvent&)
+{
+    setOpenSubMenuOnMouseOver(false);
+    return true;
+}
+
+void MenuBar::setOpenSubMenuOnMouseOver(const bool openSubMenuOnMouseOverEnabled)
+{
+    openSubMenuOnMouseOver = openSubMenuOnMouseOverEnabled;
+}
+
+bool MenuBar::shouldOpenSubMenuOnMouseOver() const
+{
+    return openSubMenuOnMouseOver;
+}
+
