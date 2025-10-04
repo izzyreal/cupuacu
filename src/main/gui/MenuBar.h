@@ -13,7 +13,7 @@ private:
     Menu *fileMenu;
     Menu *viewMenu;
     Menu *editMenu;
-    bool openSubMenuOnMouseOver;
+    bool openSubMenuOnMouseOver = false;
     std::string logoData;
     SDL_Texture* logoTexture;
     int logoW = 0, logoH = 0;
