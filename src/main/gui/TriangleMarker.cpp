@@ -99,11 +99,6 @@ bool TriangleMarker::mouseDown(const MouseEvent &e)
 
 bool TriangleMarker::mouseUp(const MouseEvent &e)
 {
-    if (state->selection.isActive())
-    {
-        state->cursor = state->selection.getStartInt();
-    }
-
     return true;
 }
 
@@ -118,6 +113,8 @@ bool TriangleMarker::mouseMove(const MouseEvent &e)
     const double mouseSample = mouseParentX * state->samplesPerPixel;
     const double newSamplePos = mouseSample - dragMouseOffsetParentX;
 
+    const bool selectionWasActive = state->selection.isActive();
+
     switch (type) {
         case TriangleMarkerType::CursorTop:
         case TriangleMarkerType::CursorBottom:
@@ -126,10 +123,19 @@ bool TriangleMarker::mouseMove(const MouseEvent &e)
         case TriangleMarkerType::SelectionStartTop:
         case TriangleMarkerType::SelectionStartBottom:
             state->selection.setValue1(newSamplePos);
+            if (selectionWasActive && !state->selection.isActive())
+            {
+                state->selection.setValue1(newSamplePos + 1);
+            }
+
             break;
         case TriangleMarkerType::SelectionEndTop:
         case TriangleMarkerType::SelectionEndBottom:
-            state->selection.setValue2(newSamplePos);
+            state->selection.setValue2(newSamplePos + 1);
+            if (selectionWasActive && !state->selection.isActive())
+            {
+                state->selection.setValue2(newSamplePos);
+            }
             break;
     }
 

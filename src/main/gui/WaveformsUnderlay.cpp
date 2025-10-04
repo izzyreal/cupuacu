@@ -179,11 +179,13 @@ bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
     if (lastNumClicks == 1)
     {
         const double samplePos = state->sampleOffset + e.mouseXi * state->samplesPerPixel;
+        const bool selectionWasActive = state->selection.isActive();
+
         state->selection.setValue2(samplePos);
 
-        if (state->selection.isActive())
+        if (selectionWasActive && !state->selection.isActive())
         {
-            state->cursor = state->selection.getStartInt();
+            state->selection.setValue2(samplePos + 1);
         }
     }
 
