@@ -199,7 +199,6 @@ bool Menu::mouseDown(const MouseEvent &e)
             action();
         }
         state->menuBar->hideSubMenus();
-        state->rootComponent->setDirty();
         return true;
     }
 
