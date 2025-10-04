@@ -180,6 +180,11 @@ bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
     {
         const double samplePos = state->sampleOffset + e.mouseXi * state->samplesPerPixel;
         state->selection.setValue2(samplePos);
+
+        if (state->selection.isActive())
+        {
+            state->cursor = state->selection.getStartInt();
+        }
     }
 
     markAllWaveformsDirty();
@@ -189,11 +194,6 @@ bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
 bool WaveformsUnderlay::mouseUp(const MouseEvent &e) 
 {
     state->samplesToScroll = 0.0f;
-
-    if (state->selection.isActive())
-    {
-        state->cursor = state->selection.getStartInt();
-    }
 
     return true;
 }
