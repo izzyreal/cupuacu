@@ -17,14 +17,16 @@ public:
 
         std::vector<std::string> dbLabels{"dB"};
 
-        for (int db = -72; db <= 0; db += 3)
+        for (int db = -72; db < 0; db += 3)
         {
             dbLabels.push_back(std::to_string(db));
         }
 
         ruler = emplaceChild<Ruler>(state, getComponentName());
+        ruler->setMandatoryEndLabel("0");
         ruler->setLabels(dbLabels);
         ruler->setLongTickSubdivisions(3.f);
+        ruler->setCenterFirstLabel(false);
         ruler->setNoTicksAfterLastLabel(true);
     }
 
@@ -37,19 +39,18 @@ public:
         int meterHeight = bounds.h - (labelAreaHeight + tickAreaHeight);
 
         int margin = static_cast<int>(20 / state->pixelScale);
-        ruler->setHorizontalMargin(20);
 
         vuMeter->setBounds(bounds.x + margin, bounds.y,
                            bounds.w - 2 * margin, meterHeight);
 
         SDL_Rect rulerBounds {
-            bounds.x,
+            bounds.x + margin,
             (int)(bounds.y + meterHeight),
-            bounds.w,
+            bounds.w - 2 * margin,
             (int)(labelAreaHeight + tickAreaHeight)
         };
 
-        ruler->setLongTickSpacingPx(getWidth() / 26.f);
+        ruler->setLongTickSpacingPx(rulerBounds.w / 25.f);
         ruler->setBounds(rulerBounds);
     }
 

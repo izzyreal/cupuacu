@@ -185,7 +185,7 @@ public:
 
         int noTicksAfterXPos = noTicksAfterLastLabel ? labels.back()->getCenterX() : bounds.w;
 
-        for (int i = -1; i < numLongTicks; ++i)
+        for (int i = -1; i < numLongTicks + 1; ++i)
         {
             int tickStartX = bounds.x + static_cast<int>(i * longTickSpacingPx) + scrollOffsetPx;
 
@@ -196,10 +196,18 @@ public:
 
             for (int t = 0; t < longTickSubdivisions; ++t)
             {
+                if (i == numLongTicks -1 && t > 0 && noTicksAfterLastLabel) break;
                 int tickX = std::floor(tickStartX + t * (longTickSpacingPx / longTickSubdivisions));
                 if (tickX < 0 || tickX > bounds.x + bounds.w || tickX > noTicksAfterXPos)
                 {
-                    continue;
+                    if (i == numLongTicks -2 && t == 0 && noTicksAfterLastLabel)
+                    {
+                        tickX -= 1;
+                    }
+                    else
+                    {
+                        continue;
+                    }
                 }
 
                 int height = (t == 0) ? tickHeightLong : tickHeightShort;
