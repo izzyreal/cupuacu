@@ -196,9 +196,13 @@ bool Menu::mouseDown(const MouseEvent &e)
         }
         if (action)
         {
+            state->menuBar->hideSubMenus();
             action();
         }
-        state->menuBar->hideSubMenus();
+        else
+        {
+            state->menuBar->hideSubMenus();
+        }
         return true;
     }
 

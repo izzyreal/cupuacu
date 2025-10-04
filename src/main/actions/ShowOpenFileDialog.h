@@ -51,8 +51,19 @@ static void fileDialogCallback(void *userdata, const char * const *filelist, int
     SDL_SetWindowTitle(state->window, state->currentFile.c_str()); 
 }
 
+static void ShowDialogMainThreadCallback(void *userdata)
+{
+    SDL_ShowOpenFileDialog(fileDialogCallback, (State*)userdata, NULL, filters, 1, NULL, false);
+}
+
+static Uint32 ShowDialogTimerCallback(void *userdata, SDL_TimerID, Uint32 interval)
+{
+    SDL_RunOnMainThread(ShowDialogMainThreadCallback, userdata, false);
+    return 0;
+}
+
 static void showOpenFileDialog(cupuacu::State *state)
 {
-    SDL_ShowOpenFileDialog(fileDialogCallback, state, NULL, filters, 1, NULL, false);
+    SDL_AddTimer(0, ShowDialogTimerCallback, (void*)state);
 }
 }
