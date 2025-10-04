@@ -1,7 +1,7 @@
 #pragma once
 #include <SDL3/SDL.h>
 
-#include "../CupuacuState.h"
+#include "../State.h"
 #include "../file/file_loading.h"
 #include "../gui/MainView.h"
 #include "../gui/Gui.h"
@@ -10,6 +10,7 @@
 
 #include <string>
 
+namespace cupuacu::actions {
 const SDL_DialogFileFilter filters[] = {
     { "WAV audio", "wav" }
 };
@@ -36,22 +37,22 @@ static void fileDialogCallback(void *userdata, const char * const *filelist, int
         filelist++;
     }
 
-    auto state = (CupuacuState*)userdata;
+    auto state = (cupuacu::State*)userdata;
 
     state->currentFile = absoluteFilePath;
 
-    loadSampleData(state);
+    file::loadSampleData(state);
     state->mainView->rebuildWaveforms();
     resetWaveformState(state);
     resetZoom(state);
-    Waveform::updateAllSamplePoints(state);
-    Waveform::setAllWaveformsDirty(state);
+    gui::Waveform::updateAllSamplePoints(state);
+    gui::Waveform::setAllWaveformsDirty(state);
 
     SDL_SetWindowTitle(state->window, state->currentFile.c_str()); 
 }
 
-static void showOpenFileDialog(CupuacuState *state)
+static void showOpenFileDialog(cupuacu::State *state)
 {
     SDL_ShowOpenFileDialog(fileDialogCallback, state, NULL, filters, 1, NULL, false);
 }
-
+}

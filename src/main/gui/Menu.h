@@ -9,7 +9,8 @@
 #include <functional>
 #include <utility>
 
-struct CupuacuState;
+namespace cupuacu::gui {
+
 class Label;
 
 class Menu : public Component {
@@ -24,7 +25,7 @@ private:
     bool isFirstLevel() const;
 
 public:
-    Menu(CupuacuState*, const std::string menuNameToUse, const std::function<void()> actionToUse = {});
+    Menu(cupuacu::State*, const std::string menuNameToUse, const std::function<void()> actionToUse = {});
 
     void enableDepthIs0();
 
@@ -48,4 +49,4 @@ public:
     void mouseLeave() override;
     void mouseEnter() override;
 };
-
+}

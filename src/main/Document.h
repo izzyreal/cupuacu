@@ -6,6 +6,7 @@
 
 #include <memory>
 
+namespace cupuacu {
 class Document {
 private:
     std::shared_ptr<cupuacu::AudioBuffer> buffer;
@@ -34,4 +35,4 @@ public:
 
     const std::shared_ptr<cupuacu::AudioBuffer> getAudioBuffer() const { return buffer; }
 };
-
+}

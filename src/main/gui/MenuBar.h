@@ -2,9 +2,10 @@
 
 #include "Component.h"
 
+namespace cupuacu::gui {
+
 class Menu;
 class OpaqueRect;
-struct CupuacuState;
 
 class MenuBar : public Component {
 private:
@@ -19,10 +20,11 @@ private:
 public:
     void setOpenSubMenuOnMouseOver(const bool openSubMenuOnMouseOverEnabled) { openSubMenuOnMouseOver = openSubMenuOnMouseOverEnabled; }
     bool shouldOpenSubMenuOnMouseOver() const { return openSubMenuOnMouseOver; } 
-    MenuBar(CupuacuState*);
+    MenuBar(cupuacu::State*);
     Menu* getOpenMenu();
     void hideSubMenus();
     void resized() override;
     void mouseEnter() override;
     void onDraw(SDL_Renderer*) override;
 };
+}

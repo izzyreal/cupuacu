@@ -1,6 +1,13 @@
 #include "SamplePoint.h"
 
-SamplePoint::SamplePoint(CupuacuState *state, const uint8_t channelIndexToUse, const int64_t sampleIndexToUse) :
+#include "../actions/audio/SetSampleValue.h"
+#include "MainView.h"
+#include "Waveform.h"
+
+using namespace cupuacu::gui;
+using namespace cupuacu::actions::audio;
+
+SamplePoint::SamplePoint(cupuacu::State *state, const uint8_t channelIndexToUse, const int64_t sampleIndexToUse) :
     Component(state, "Sample point idx " + std::to_string(sampleIndexToUse)), sampleIndex(sampleIndexToUse), channelIndex(channelIndexToUse)
 {
 }
@@ -38,6 +45,9 @@ bool SamplePoint::mouseDown(const MouseEvent &e)
 
     isDragging = true;
     dragYPos = getYPos();
+
+    undoable = std::make_shared<SetSampleValue>(state, channelIndex, sampleIndex, getSampleValue());
+
     return true;
 }
 
@@ -47,6 +57,13 @@ bool SamplePoint::mouseUp(const MouseEvent &e)
     {
         return false;
     }
+
+    undoable->setNewValue(getSampleValue());
+    undoable->updateGui = [state = state, channelIndex = channelIndex]{ state->mainView->setDirty(); state->waveforms[channelIndex]->updateSamplePoints(); };
+
+    state->addUndoable(undoable);
+
+    undoable.reset();
 
     isDragging = false;
     setDirty();

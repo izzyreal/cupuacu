@@ -1,6 +1,6 @@
 #include "MenuBar.h"
 
-#include "../CupuacuState.h"
+#include "../State.h"
 #include "OpaqueRect.h"
 #include "Menu.h"
 #include "../ResourceUtil.hpp"
@@ -8,7 +8,9 @@
 #include "../actions/ShowOpenFileDialog.h"
 #include "../actions/Save.h"
 
-MenuBar::MenuBar(CupuacuState *stateToUse) : Component(stateToUse, "MenuBar")
+using namespace cupuacu::gui;
+
+MenuBar::MenuBar(cupuacu::State *stateToUse) : Component(stateToUse, "MenuBar")
 {
     background = emplaceChild<OpaqueRect>(state, Colors::background);
     disableParentClipping();
@@ -21,7 +23,7 @@ MenuBar::MenuBar(CupuacuState *stateToUse) : Component(stateToUse, "MenuBar")
     const std::string openText{"Open (Ctrl + O)"};
 #endif
     fileMenu->addSubMenu(state, openText, [&]{
-                showOpenFileDialog(state);
+                actions::showOpenFileDialog(state);
             });
 #ifdef __APPLE__
     const std::string overwriteText{"Overwrite (Cmd + S)"};
@@ -29,23 +31,23 @@ MenuBar::MenuBar(CupuacuState *stateToUse) : Component(stateToUse, "MenuBar")
     const std::string overwriteText{"Overwrite (Ctrl + S)"};
 #endif
     fileMenu->addSubMenu(state, overwriteText, [&]{
-                overwrite(state);
+                actions::overwrite(state);
             });
 
     viewMenu->addSubMenu(state, "Reset zoom (Esc)", [&]{
-                resetZoom(state);
+                actions::resetZoom(state);
             });
     viewMenu->addSubMenu(state, "Zoom out horiz. (Q)", [&]{
-                tryZoomOutHorizontally(state);
+                actions::tryZoomOutHorizontally(state);
             });
     viewMenu->addSubMenu(state, "Zoom in horiz. (W)", [&]{
-                tryZoomInHorizontally(state);
+                actions::tryZoomInHorizontally(state);
             });
     viewMenu->addSubMenu(state, "Zoom out vert. (E)", [&]{
-                tryZoomOutVertically(state, 1);
+                actions::tryZoomOutVertically(state, 1);
             });
     viewMenu->addSubMenu(state, "Zoom in vert. (R)", [&]{
-                zoomInVertically(state, 1);
+                actions::zoomInVertically(state, 1);
             });
 
     logoData = get_resource_data("cupuacu-logo1.bmp");

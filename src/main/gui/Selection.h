@@ -3,6 +3,8 @@
 #include <limits>
 #include <algorithm>
 
+namespace cupuacu::gui {
+
 template <typename T>
 class Selection {
 private:
@@ -88,3 +90,5 @@ public:
         printf("active: %i, value1: %d, value2: %d, startInt: %i, endInt: %i, lengthInt: %i\n", isActive(), value1, value2, getStartInt(), getEndInt(), getLengthInt());
     }
 };
+}
+

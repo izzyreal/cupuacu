@@ -1,12 +1,13 @@
 #pragma once
 
-#include "../CupuacuState.h"
+#include "../State.h"
 
 #include <cstdint>
 #include <cmath>
 
 #include <SDL3/SDL.h>
 
+namespace cupuacu::gui {
 enum MouseEventType { MOVE, DOWN, UP };
 
 struct MouseButtonState {
@@ -27,7 +28,7 @@ struct MouseEvent {
     const uint8_t numClicks;
 };
 
-static void scaleMouseCoordinates(const CupuacuState *const state, float &x, float &y)
+static void scaleMouseCoordinates(const cupuacu::State *const state, float &x, float &y)
 {
     SDL_FPoint canvasDimensions;
     SDL_GetTextureSize(state->canvas, &canvasDimensions.x, &canvasDimensions.y);
@@ -39,7 +40,7 @@ static void scaleMouseCoordinates(const CupuacuState *const state, float &x, flo
     y *= canvasDimensions.y / winDimensions.y;
 }
 
-static MouseEvent convertFromSDL(const CupuacuState *state, const SDL_Event *event)
+static MouseEvent convertFromSDL(const cupuacu::State *state, const SDL_Event *event)
 {
     MouseEventType type = MOVE;
     float xf = 0.0f, yf = 0.0f;
@@ -123,4 +124,4 @@ static MouseEvent withNewCoordinates(const MouseEvent &evt, int32_t newXi, int32
         evt.numClicks
     };
 }
-
+}

@@ -13,7 +13,9 @@
 #include <string>
 #include <cstdint>
 
-struct CupuacuState;
+namespace cupuacu::gui {
+
+struct State;
 
 class Component {
 private:
@@ -30,12 +32,12 @@ private:
     void setParent(Component *parentToUse);
 
 protected:
-    CupuacuState *state;
+    cupuacu::State *state;
     void removeAllChildren();
     Component* getParent() const;
 
 public:
-    Component(CupuacuState*, const std::string componentName);
+    Component(cupuacu::State*, const std::string componentName);
     void setVisible(bool shouldBeVisible);
     bool isVisible() const { return visible; }
     const std::vector<std::unique_ptr<Component>>& getChildren() const;
@@ -180,3 +182,4 @@ public:
 
     bool isDirty() const { return dirty; }
 };
+}

@@ -2,10 +2,12 @@
 
 #include "Component.h"
 #include "text.h"
-#include "../CupuacuState.h"
+#include "../State.h"
 
 #include <SDL3/SDL.h>
 #include <string>
+
+namespace cupuacu::gui {
 
 class LabeledField : public Component {
 private:
@@ -14,7 +16,7 @@ private:
     const SDL_Color background;
 
 public:
-    LabeledField(CupuacuState* stateToUse, const std::string& labelToUse, const SDL_Color backgroundToUse)
+    LabeledField(cupuacu::State* stateToUse, const std::string& labelToUse, const SDL_Color backgroundToUse)
         : Component(stateToUse, "LabeledField for " + labelToUse), label(labelToUse), background(backgroundToUse)
     {
     }
@@ -36,3 +38,4 @@ public:
         renderText(renderer, displayText, fontPointSize, rect, false);
     }
 };
+}

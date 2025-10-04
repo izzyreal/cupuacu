@@ -8,7 +8,9 @@
 #include <cmath>
 #include <algorithm>
 
-Waveform::Waveform(CupuacuState *state, const uint8_t channelIndexToUse)
+using namespace cupuacu::gui;
+
+Waveform::Waveform(cupuacu::State *state, const uint8_t channelIndexToUse)
     : Component(state, "Waveform"), channelIndex(channelIndexToUse)
 {
 }

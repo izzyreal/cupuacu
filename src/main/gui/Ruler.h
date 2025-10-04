@@ -7,9 +7,10 @@
 
 #include "text.h"
 
+namespace cupuacu::gui {
 class Ruler : public Component {
 public:
-    explicit Ruler(CupuacuState* state, const std::string parentName)
+    explicit Ruler(cupuacu::State* state, const std::string parentName)
         : Component(state, "Ruler for " + parentName)
     {
     }
@@ -239,4 +240,5 @@ private:
     float longTickSpacingPx = 0.f;
 
 };
+}
 

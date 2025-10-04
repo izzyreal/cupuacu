@@ -11,21 +11,30 @@
 #include <atomic>
 #include <memory>
 #include <optional>
+#include <deque>
 
+namespace cupuacu {
+namespace actions {
 struct CustomDataSource;
+class Undoable;
+}
 
+namespace gui {
 class MenuBar;
 class Component;
 class Waveform;
 class MainView;
 class VuMeter;
 class VuMeterContainer;
+}
 
 enum SelectedChannels {
     BOTH, LEFT, RIGHT
 };
- 
-struct CupuacuState {
+
+struct State {
+    std::deque<std::shared_ptr<actions::Undoable>> undoables;
+    std::deque<std::shared_ptr<actions::Undoable>> redoables;
     uint8_t menuFontSize = 40;
     uint8_t pixelScale = 1;
     std::string currentFile = "/Users/izmar/Downloads/ams_chill.wav";
@@ -36,7 +45,7 @@ struct CupuacuState {
     double samplesPerPixel = 1;
     double verticalZoom;
     int64_t sampleOffset;
-    Selection<double> selection = Selection<double>(0.0);
+    gui::Selection<double> selection = gui::Selection<double>(0.0);
     SelectedChannels selectedChannels;
     SelectedChannels hoveringOverChannels;
     double samplesToScroll;
@@ -46,53 +55,58 @@ struct CupuacuState {
     std::atomic<int64_t> playbackPosition;
     std::atomic<bool> isPlaying = false;
 
-    std::shared_ptr<CustomDataSource> activePlayback;
+    std::shared_ptr<actions::CustomDataSource> activePlayback;
 
     SDL_Window *window = NULL;
     SDL_Renderer *renderer = NULL;
     SDL_Texture *canvas = NULL;
     SDL_Texture *textTexture = NULL;
 
-    Component *capturingComponent = nullptr;
-    Component *componentUnderMouse = nullptr;
+    gui::Component *capturingComponent = nullptr;
+    gui::Component *componentUnderMouse = nullptr;
 
-    std::vector<Waveform*> waveforms;
-    std::unique_ptr<Component> rootComponent;
-    MenuBar *menuBar;
-    MainView *mainView;
-    Component *statusBar;
-    VuMeterContainer *vuMeterContainer;
-    VuMeter *vuMeter;
+    std::vector<gui::Waveform*> waveforms;
+    std::unique_ptr<gui::Component> rootComponent;
+    gui::MenuBar *menuBar;
+    gui::MainView *mainView;
+    gui::Component *statusBar;
+    gui::VuMeterContainer *vuMeterContainer;
+    gui::VuMeter *vuMeter;
+
+    void addUndoable(std::shared_ptr<actions::Undoable>);
+    void undo();
+    void redo();
 };
+}
 
-static void resetSampleValueUnderMouseCursor(CupuacuState *state)
+static void resetSampleValueUnderMouseCursor(cupuacu::State *state)
 {
     state->sampleValueUnderMouseCursor.reset();
 }
 
-static void updateSampleValueUnderMouseCursor(CupuacuState *state, const float sampleValue)
+static void updateSampleValueUnderMouseCursor(cupuacu::State *state, const float sampleValue)
 {
     state->sampleValueUnderMouseCursor.emplace(sampleValue);
 }
 
-static void resetWaveformState(CupuacuState *state)
+static void resetWaveformState(cupuacu::State *state)
 {
     state->verticalZoom = 1;
     state->sampleOffset = 0;
     state->selection.reset();
-    state->selectedChannels = SelectedChannels::BOTH;
+    state->selectedChannels = cupuacu::SelectedChannels::BOTH;
     state->samplesToScroll = 0;
     state->playbackPosition.store(-1);
 }
 
-int64_t getMaxSampleOffset(const CupuacuState*);
+int64_t getMaxSampleOffset(const cupuacu::State*);
 
-static void updateSampleOffset(CupuacuState *state, const int64_t sampleOffset)
+static void updateSampleOffset(cupuacu::State *state, const int64_t sampleOffset)
 {
     state->sampleOffset = std::clamp(sampleOffset, int64_t{0}, getMaxSampleOffset(state));
 }
 
-static bool updateCursorPos(CupuacuState *state, const int64_t cursorPos)
+static bool updateCursorPos(cupuacu::State *state, const int64_t cursorPos)
 {
     const int64_t oldCursor = state->cursor;
     state->cursor = std::clamp(cursorPos, int64_t{0}, state->document.getFrameCount());

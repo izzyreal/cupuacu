@@ -6,9 +6,10 @@
 #include <vector>
 #include <string>
 
+namespace cupuacu::gui {
 class VuMeterContainer : public Component {
 public:
-    explicit VuMeterContainer(CupuacuState* state)
+    explicit VuMeterContainer(cupuacu::State* state)
         : Component(state, "VuMeterContainer")
     {
         vuMeter = emplaceChild<VuMeter>(state);
@@ -61,3 +62,5 @@ private:
     VuMeter* vuMeter;
     Ruler* ruler;
 };
+}
+

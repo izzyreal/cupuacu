@@ -2,13 +2,14 @@
 
 #include "Component.h"
 #include "LabeledField.h"
-#include "../CupuacuState.h"
+#include "../State.h"
 
 #include <SDL3/SDL.h>
 #include <limits>
 #include <optional>
 #include <string>
 
+namespace cupuacu::gui {
 class StatusBar : public Component {
 private:
     LabeledField* posField;
@@ -28,7 +29,7 @@ private:
     std::optional<float> lastSampleValueUnderMouseCursor;
 
 public:
-    StatusBar(CupuacuState* stateToUse)
+    StatusBar(cupuacu::State* stateToUse)
         : Component(stateToUse, "StatusBar")
     {
         posField = emplaceChild<LabeledField>(state, "Pos", Colors::background);
@@ -128,3 +129,4 @@ public:
         }
     }
 };
+}

@@ -1,6 +1,7 @@
 #pragma once
 #include "Component.h"
 
+namespace cupuacu::gui {
 enum class TriangleMarkerType {
     CursorTop,
     CursorBottom,
@@ -12,7 +13,7 @@ enum class TriangleMarkerType {
 
 class TriangleMarker : public Component {
 public:
-    TriangleMarker(CupuacuState* state, TriangleMarkerType type);
+    TriangleMarker(cupuacu::State* state, TriangleMarkerType type);
 
     void onDraw(SDL_Renderer* r) override;
     bool mouseMove(const MouseEvent&) override;
@@ -31,4 +32,5 @@ private:
     void drawTriangle(SDL_Renderer* r, const SDL_FPoint (&pts)[3], const SDL_FColor& color);
     SDL_FColor getColor() const;
 };
+}
 

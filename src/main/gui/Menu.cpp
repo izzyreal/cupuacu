@@ -5,7 +5,9 @@
 
 #include "RoundedRect.h"
 
-Menu::Menu(CupuacuState *state, const std::string menuNameToUse, const std::function<void()> actionToUse) :
+using namespace cupuacu::gui;
+
+Menu::Menu(cupuacu::State *state, const std::string menuNameToUse, const std::function<void()> actionToUse) :
     Component(state, "Menu for " + menuNameToUse), menuName(menuNameToUse), action(actionToUse)
 {
     disableParentClipping();

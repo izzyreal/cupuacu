@@ -8,9 +8,11 @@
 
 using namespace moodycamel;
 
+namespace cupuacu::gui {
+
 class VuMeter : public Component {
 public:
-    explicit VuMeter(CupuacuState* state)
+    explicit VuMeter(cupuacu::State* state)
         : Component(state, "VuMeter"),
           numChannels(1)
     {
@@ -155,4 +157,4 @@ private:
     std::vector<ReaderWriterQueue<float>> sampleQueues;
     std::vector<float> previousPeaks;
 };
-
+}

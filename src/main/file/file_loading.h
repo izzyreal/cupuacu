@@ -1,13 +1,14 @@
 #pragma once
 
-#include "../CupuacuState.h"
+#include "../State.h"
 
 #include <sndfile.hh>
 
 #include <stdexcept>
 #include <vector>
 
-static void loadSampleData(CupuacuState *state)
+namespace cupuacu::file {
+static void loadSampleData(cupuacu::State *state)
 {
     // Prepare SF_INFO
     SF_INFO sfinfo{};
@@ -54,5 +55,6 @@ static void loadSampleData(CupuacuState *state)
     sf_close(snd);
 
     state->selection.setHighest(state->document.getFrameCount());
+}
 }
 

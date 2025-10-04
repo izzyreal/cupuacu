@@ -5,6 +5,8 @@
 
 #include "Component.h"
 
+namespace cupuacu::gui {
+
 class Label : public Component {
 private:
     std::string text;
@@ -23,7 +25,7 @@ private:
     void updateTexture(SDL_Renderer* renderer);
 
 public:
-    Label(CupuacuState* state,
+    Label(cupuacu::State* state,
           const std::string& textToUse);
 
     ~Label();
@@ -37,4 +39,4 @@ public:
 
     void onDraw(SDL_Renderer* renderer) override;
 };
-
+}

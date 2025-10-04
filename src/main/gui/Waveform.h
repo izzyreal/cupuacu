@@ -1,16 +1,17 @@
 #pragma once
 #include "Component.h"
-#include "../CupuacuState.h"
+#include "../State.h"
 #include <SDL3/SDL.h>
 
 #include "SamplePoint.h"
 
+namespace cupuacu::gui {
 class Waveform : public Component {
 
 public:
     static bool shouldShowSamplePoints(const double samplesPerPixel, const uint8_t pixelScale);
 
-    static void clearHighlightIfNotChannel(CupuacuState *state, const uint8_t channelIndexNotToClear)
+    static void clearHighlightIfNotChannel(cupuacu::State *state, const uint8_t channelIndexNotToClear)
     {
         for (int64_t waveformChannel = 0; waveformChannel < state->waveforms.size(); ++waveformChannel)
         {
@@ -23,7 +24,7 @@ public:
         }
     }
 
-    static uint16_t getWaveformWidth(const CupuacuState *state)
+    static uint16_t getWaveformWidth(const cupuacu::State *state)
     {
         if (state->waveforms.empty())
         {
@@ -33,7 +34,7 @@ public:
         return state->waveforms[0]->getWidth();
     }
 
-    static void updateAllSamplePoints(CupuacuState *state)
+    static void updateAllSamplePoints(cupuacu::State *state)
     {
         for (auto &waveform : state->waveforms)
         {
@@ -41,7 +42,7 @@ public:
         }
     }
 
-    static void setAllWaveformsDirty(CupuacuState *state)
+    static void setAllWaveformsDirty(cupuacu::State *state)
     {
         for (auto &waveform : state->waveforms)
         {
@@ -69,7 +70,7 @@ public:
         return static_cast<int64_t>(std::llround(getDoubleSampleIndexForXPos(xPos, sampleOffset, samplesPerPixel)));
     }
 
-    Waveform(CupuacuState*, const uint8_t channelIndex);
+    Waveform(cupuacu::State*, const uint8_t channelIndex);
 
     void onDraw(SDL_Renderer*) override;
     void timerCallback() override;
@@ -102,3 +103,5 @@ private:
     void drawPlaybackPosition(SDL_Renderer*);
     void drawCursor(SDL_Renderer*);
 };
+}
+

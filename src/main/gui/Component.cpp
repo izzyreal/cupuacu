@@ -1,5 +1,5 @@
 #include "Component.h"
-#include "../CupuacuState.h"
+#include "../State.h"
 #include "MenuBar.h"
 #include <ranges>
 #include <cmath>
@@ -9,7 +9,9 @@
 #include <cstdlib>
 #endif
 
-Component::Component(CupuacuState *stateToUse, const std::string componentNameToUse) :
+using namespace cupuacu::gui;
+
+Component::Component(cupuacu::State *stateToUse, const std::string componentNameToUse) :
     state(stateToUse), componentName(componentNameToUse)
 {
 }

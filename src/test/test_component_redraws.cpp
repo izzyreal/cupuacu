@@ -24,15 +24,15 @@ static SDL_Rect makeRect(int x, int y, int w, int h)
 
 // Minimal concrete test components
 struct DummyA : public Component {
-    DummyA(CupuacuState* s, const std::string &name) : Component(s, name) {}
+    DummyA(cupuacu::State* s, const std::string &name) : Component(s, name) {}
 };
 struct DummyB : public Component {
-    DummyB(CupuacuState* s, const std::string &name) : Component(s, name) {}
+    DummyB(cupuacu::State* s, const std::string &name) : Component(s, name) {}
 };
 
 TEST_CASE("parent setDirty marks itself and children only (no ancestors or siblings)", "[dirty]")
 {
-    CupuacuState state{};
+    cupuacu::State state{};
     state.componentUnderMouse = nullptr;
     state.capturingComponent = nullptr;
     state.menuBar = nullptr;
@@ -65,7 +65,7 @@ TEST_CASE("parent setDirty marks itself and children only (no ancestors or sibli
 
 TEST_CASE("setBounds records old and new bounds", "[bounds]")
 {
-    CupuacuState state{};
+    cupuacu::State state{};
     state.menuBar = nullptr;
     state.componentUnderMouse = nullptr;
     state.capturingComponent = nullptr;
@@ -87,7 +87,7 @@ TEST_CASE("setBounds records old and new bounds", "[bounds]")
 
 TEST_CASE("removeChild pushes old child's bounds into dirtyRects", "[removeChild]")
 {
-    CupuacuState state{};
+    cupuacu::State state{};
     state.menuBar = nullptr;
     state.componentUnderMouse = nullptr;
     state.capturingComponent = nullptr;
@@ -108,7 +108,7 @@ TEST_CASE("removeChild pushes old child's bounds into dirtyRects", "[removeChild
 
 TEST_CASE("sendToBack and bringToFront mark parent dirty and reorder children", "[zorder]")
 {
-    CupuacuState state{};
+    cupuacu::State state{};
     state.menuBar = nullptr;
     state.componentUnderMouse = nullptr;
     state.capturingComponent = nullptr;
@@ -137,7 +137,7 @@ TEST_CASE("sendToBack and bringToFront mark parent dirty and reorder children", 
 
 TEST_CASE("removeChildrenOfType removes matching children and sets dirty", "[removeChildrenOfType]")
 {
-    CupuacuState state{};
+    cupuacu::State state{};
     state.menuBar = nullptr;
     state.componentUnderMouse = nullptr;
     state.capturingComponent = nullptr;
@@ -167,7 +167,7 @@ TEST_CASE("removeChildrenOfType removes matching children and sets dirty", "[rem
 
 TEST_CASE("containsAbsoluteCoordinate respects parent clipping and disableParentClipping", "[clipping]")
 {
-    CupuacuState state{};
+    cupuacu::State state{};
     state.menuBar = nullptr;
     state.componentUnderMouse = nullptr;
     state.capturingComponent = nullptr;

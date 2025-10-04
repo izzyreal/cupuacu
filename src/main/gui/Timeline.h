@@ -9,11 +9,13 @@
 #include <sstream>
 #include <iomanip>
 
+namespace cupuacu::gui {
+
 class Timeline : public Component {
 public:
     enum class Mode { Decimal, Samples };
 
-    explicit Timeline(CupuacuState* state)
+    explicit Timeline(cupuacu::State* state)
         : Component(state, "Timeline")
     {
         ruler = emplaceChild<Ruler>(state, getComponentName());
@@ -154,4 +156,5 @@ private:
     double lastSamplesPerPixel = 0.0;
     int64_t lastSampleOffset = 0;
 };
+}
 

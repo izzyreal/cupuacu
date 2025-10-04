@@ -1,6 +1,6 @@
 #include "Play.h"
 
-#include "../CupuacuState.h"
+#include "../State.h"
 #include "../gui/VuMeter.h"
 
 #define MINIAUDIO_IMPLEMENTATION
@@ -13,6 +13,7 @@
 #include <atomic>
 #include <mutex>
 
+namespace cupuacu::actions {
 struct CustomDataSource {
     ma_data_source_base base;
     std::vector<const float*> channelData;
@@ -20,16 +21,17 @@ struct CustomDataSource {
     ma_uint64 cursor;
     ma_uint64 start;
     ma_uint64 end;
-    CupuacuState* state;
+    cupuacu::State* state;
     ma_device device;
 };
+}
 
-static ma_result custom_data_source_read(ma_data_source* pDataSource,
+ma_result custom_data_source_read(ma_data_source* pDataSource,
                                          void* pFramesOut,
                                          ma_uint64 frameCount,
                                          ma_uint64* pFramesRead)
 {
-    CustomDataSource* ds = (CustomDataSource*)pDataSource;
+    cupuacu::actions::CustomDataSource* ds = (cupuacu::actions::CustomDataSource*)pDataSource;
     ma_uint64 framesAvailable = ds->end - ds->cursor;
     ma_uint64 framesToRead = (frameCount < framesAvailable) ? frameCount : framesAvailable;
 
@@ -44,7 +46,7 @@ static ma_result custom_data_source_read(ma_data_source* pDataSource,
     int64_t numChannels = ds->channelData.size();
 
     const bool selectionIsActive = ds->state->selection.isActive();
-    const SelectedChannels selectedChannels = ds->state->selectedChannels;
+    const cupuacu::SelectedChannels selectedChannels = ds->state->selectedChannels;
 
     for (ma_uint64 i = 0; i < framesToRead; ++i)
     {
@@ -53,9 +55,9 @@ static ma_result custom_data_source_read(ma_data_source* pDataSource,
         for (int64_t ch = 0; ch < numChannels; ++ch)
         {
             const bool shouldPlayChannel = !selectionIsActive ||
-                selectedChannels == SelectedChannels::BOTH ||
-                (ch == 0 && selectedChannels == SelectedChannels::LEFT) ||
-                (ch == 1 && selectedChannels == SelectedChannels::RIGHT);
+                selectedChannels == cupuacu::SelectedChannels::BOTH ||
+                (ch == 0 && selectedChannels == cupuacu::SelectedChannels::LEFT) ||
+                (ch == 1 && selectedChannels == cupuacu::SelectedChannels::RIGHT);
 
             float sample = shouldPlayChannel ? ds->channelData[ch][ds->cursor + i] : 0.f;
             out[i * numChannels + ch] = sample;
@@ -80,9 +82,9 @@ static ma_result custom_data_source_read(ma_data_source* pDataSource,
     return MA_SUCCESS;
 }
 
-static ma_result custom_data_source_seek(ma_data_source *pDataSource, ma_uint64 frameIndex)
+ma_result custom_data_source_seek(ma_data_source *pDataSource, ma_uint64 frameIndex)
 {
-    CustomDataSource *ds = (CustomDataSource*)pDataSource;
+    cupuacu::actions::CustomDataSource *ds = (cupuacu::actions::CustomDataSource*)pDataSource;
 
     if (frameIndex < ds->start || frameIndex >= ds->end)
     {
@@ -94,21 +96,21 @@ static ma_result custom_data_source_seek(ma_data_source *pDataSource, ma_uint64 
     return MA_SUCCESS;
 }
 
-static ma_result custom_data_source_get_cursor(ma_data_source *pDataSource, ma_uint64 *pCursor)
+ma_result custom_data_source_get_cursor(ma_data_source *pDataSource, ma_uint64 *pCursor)
 {
-    CustomDataSource *ds = (CustomDataSource*)pDataSource;
+    cupuacu::actions::CustomDataSource *ds = (cupuacu::actions::CustomDataSource*)pDataSource;
     *pCursor = ds->cursor;
     return MA_SUCCESS;
 }
 
-static ma_result custom_data_source_get_data_format(ma_data_source* pDataSource,
+ma_result custom_data_source_get_data_format(ma_data_source* pDataSource,
                                                     ma_format* pFormat,
                                                     ma_uint32* pChannels,
                                                     ma_uint32* pSampleRate,
                                                     ma_channel* pChannelMap,
                                                     size_t channelMapSize)
 {
-    CustomDataSource* ds = (CustomDataSource*)pDataSource;
+    cupuacu::actions::CustomDataSource* ds = (cupuacu::actions::CustomDataSource*)pDataSource;
     *pFormat = ma_format_f32;
     *pChannels = (ma_uint32)ds->channelData.size();
     *pSampleRate = (ma_uint32)ds->state->document.getSampleRate();
@@ -125,7 +127,7 @@ static ma_result custom_data_source_get_data_format(ma_data_source* pDataSource,
     return MA_SUCCESS;
 }
 
-static ma_data_source_vtable custom_data_source_vtable = {
+ma_data_source_vtable custom_data_source_vtable = {
     custom_data_source_read,
     custom_data_source_seek,
     custom_data_source_get_data_format,
@@ -133,10 +135,10 @@ static ma_data_source_vtable custom_data_source_vtable = {
     NULL
 };
 
-static ma_result custom_data_source_init(CustomDataSource* ds,
+ma_result custom_data_source_init(cupuacu::actions::CustomDataSource* ds,
                                          ma_uint64 start,
                                          ma_uint64 end,
-                                         CupuacuState* state)
+                                         cupuacu::State* state)
 {
     ma_data_source_config config = ma_data_source_config_init();
     config.vtable = &custom_data_source_vtable;
@@ -159,11 +161,11 @@ static ma_result custom_data_source_init(CustomDataSource* ds,
     return MA_SUCCESS;
 }
 
-static std::mutex playbackMutex;
+std::mutex playbackMutex;
 
-static void ma_playback_callback(ma_device *pDevice, void *pOutput, const void *pInput, ma_uint32 frameCount)
+void ma_playback_callback(ma_device *pDevice, void *pOutput, const void *pInput, ma_uint32 frameCount)
 {
-    CustomDataSource *ds = (CustomDataSource*)pDevice->pUserData;
+    cupuacu::actions::CustomDataSource *ds = (cupuacu::actions::CustomDataSource*)pDevice->pUserData;
     ma_uint64 framesRead;
     ma_result result = ds->base.vtable->onRead((ma_data_source*)ds, pOutput, frameCount, &framesRead);
 
@@ -173,9 +175,9 @@ static void ma_playback_callback(ma_device *pDevice, void *pOutput, const void *
     }
 }
 
-void performStop(CupuacuState *state)
+void performStop(cupuacu::State *state)
 {
-    std::shared_ptr<CustomDataSource> ds;
+    std::shared_ptr<cupuacu::actions::CustomDataSource> ds;
 
     {
         std::lock_guard<std::mutex> lock(playbackMutex);
@@ -203,7 +205,7 @@ void performStop(CupuacuState *state)
     }
 }
 
-void play(CupuacuState *state)
+void cupuacu::actions::play(cupuacu::State *state)
 {
     std::shared_ptr<CustomDataSource> ds;
 
@@ -283,7 +285,7 @@ void play(CupuacuState *state)
     }).detach();
 }
 
-void requestStop(CupuacuState *state)
+void cupuacu::actions::requestStop(cupuacu::State *state)
 {
     state->isPlaying.store(false);
 }

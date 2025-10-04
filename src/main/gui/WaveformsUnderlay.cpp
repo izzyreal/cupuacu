@@ -5,6 +5,8 @@
 
 #include <cassert>
 
+using namespace cupuacu::gui;
+
 int64_t getValidSampleIndexUnderMouseCursor(const int32_t mouseX,
                                              const double samplesPerPixel,
                                              const int64_t sampleOffset,
@@ -15,7 +17,7 @@ int64_t getValidSampleIndexUnderMouseCursor(const int32_t mouseX,
     return std::clamp(sampleIndex, int64_t{0}, frameCount - 1);
 }
 
-WaveformsUnderlay::WaveformsUnderlay(CupuacuState* stateToUse)
+WaveformsUnderlay::WaveformsUnderlay(cupuacu::State* stateToUse)
     : Component(stateToUse, "WaveformsUnderlay")
 {
 }

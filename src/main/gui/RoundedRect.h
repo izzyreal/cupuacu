@@ -4,6 +4,8 @@
 #include <cmath>
 #include <vector>
 
+namespace cupuacu::gui {
+
 // Internal: quarter filled arc
 inline void drawQuarterFilled(SDL_Renderer* renderer,
                               float cx, float cy,
@@ -275,4 +277,5 @@ inline void drawVerticalEdges(SDL_Renderer* renderer,
     SDL_SetRenderDrawColor(renderer, col.r, col.g, col.b, col.a);
     SDL_RenderLine(renderer, rect.x, rect.y, rect.x, rect.y + rect.h - 1.0f);           // left
     SDL_RenderLine(renderer, rect.x + rect.w - 1.0f, rect.y, rect.x + rect.w - 1.0f, rect.y + rect.h - 1.0f); // right
+}
 }

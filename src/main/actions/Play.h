@@ -1,7 +1,10 @@
 #pragma once
 
-struct CupuacuState;
+namespace cupuacu {
+    struct State;
+}
 
-void play(CupuacuState*);
-
-void requestStop(CupuacuState*);
+namespace cupuacu::actions {
+void play(cupuacu::State*);
+void requestStop(cupuacu::State*);
+}

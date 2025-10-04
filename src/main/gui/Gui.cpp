@@ -1,6 +1,6 @@
 #include "Gui.h"
 
-#include "../CupuacuState.h"
+#include "../State.h"
 #include "../actions/Zoom.h"
 
 #include "MenuBar.h"
@@ -25,7 +25,7 @@ SDL_Point computeRequiredCanvasDimensions(SDL_Window *window, const uint8_t pixe
     return result;
 }
 
-void createCanvas(CupuacuState *state, const SDL_Point &dimensions)
+void createCanvas(cupuacu::State *state, const SDL_Point &dimensions)
 {
     if (state->canvas)
     {
@@ -97,7 +97,7 @@ SDL_Rect computeVuMeterContainerBounds(const uint16_t canvasWidth,
     return result;
 }
 
-void buildComponents(CupuacuState *state)
+void cupuacu::gui::buildComponents(cupuacu::State *state)
 {
     state->componentUnderMouse = nullptr;
     state->capturingComponent = nullptr;
@@ -119,7 +119,7 @@ void buildComponents(CupuacuState *state)
     resizeComponents(state);
 }
 
-void resizeComponents(CupuacuState *state)
+void cupuacu::gui::resizeComponents(cupuacu::State *state)
 {
     float currentCanvasW, currentCanvasH;
     SDL_GetTextureSize(state->canvas, &currentCanvasW, &currentCanvasH);
@@ -176,7 +176,7 @@ void resizeComponents(CupuacuState *state)
 
     if (state->samplesPerPixel == 0)
     {
-        resetZoom(state);
+        cupuacu::actions::resetZoom(state);
     }
 }
 

@@ -2,11 +2,11 @@
 
 #include "Component.h"
 
-struct CupuacuState;
+namespace cupuacu::gui {
 
 class WaveformsUnderlay : public Component {
 public:
-    WaveformsUnderlay(CupuacuState*);
+    WaveformsUnderlay(cupuacu::State*);
 
     void mouseLeave() override;
 
@@ -31,4 +31,5 @@ private:
 
     void handleChannelSelection(const int32_t mouseY, const bool isMouseDownEvent) const;
 };
+}
 

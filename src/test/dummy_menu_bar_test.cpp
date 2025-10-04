@@ -5,7 +5,7 @@
 
 TEST_CASE("MenuBar dirty rect intersection check")
 {
-    CupuacuState state;
+    cupuacu::State state;
     state.pixelScale   = 1;
     state.menuFontSize = 12;
     state.window       = nullptr;

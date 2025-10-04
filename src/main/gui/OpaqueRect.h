@@ -2,12 +2,13 @@
 
 #include "Component.h"
 
+namespace cupuacu::gui {
 class OpaqueRect : public Component {
 private:
     const SDL_Color color;
 
 public:
-    OpaqueRect(CupuacuState *state, const SDL_Color colorToUse) :
+    OpaqueRect(cupuacu::State *state, const SDL_Color colorToUse) :
         Component(state, "OpaqueRect"), color(colorToUse)
     {
     }
@@ -19,3 +20,4 @@ public:
         SDL_RenderFillRect(renderer, &rect);
     }
 };
+}

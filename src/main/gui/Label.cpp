@@ -1,8 +1,10 @@
 #include "Label.h"
-#include "../CupuacuState.h"
+#include "../State.h"
 #include "text.h"
 
-Label::Label(CupuacuState* state,
+using namespace cupuacu::gui;
+
+Label::Label(cupuacu::State* state,
              const std::string& textToUse)
     : Component(state, "Label: " + textToUse),
       text(textToUse)

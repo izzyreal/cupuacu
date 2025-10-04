@@ -3,9 +3,11 @@
 #include "Waveform.h"
 #include "WaveformsUnderlay.h"
 
-#include "../CupuacuState.h"
+#include "../State.h"
 
-Waveforms::Waveforms(CupuacuState *state) :
+using namespace cupuacu::gui;
+
+Waveforms::Waveforms(cupuacu::State *state) :
     Component(state, "Waveforms")
 {
     waveformsUnderlay = emplaceChild<WaveformsUnderlay>(state);

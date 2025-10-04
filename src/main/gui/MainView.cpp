@@ -1,12 +1,14 @@
 #include "MainView.h"
-#include "../CupuacuState.h"
+#include "../State.h"
 #include "Waveforms.h"
 #include "Waveform.h"
 #include "TriangleMarker.h"
 #include "OpaqueRect.h"
 #include "Timeline.h"
 
-MainView::MainView(CupuacuState *state) : Component(state, "MainView")
+using namespace cupuacu::gui;
+
+MainView::MainView(cupuacu::State *state) : Component(state, "MainView")
 {
     for (int i = 0; i < 4; ++i)
     {

@@ -1,12 +1,14 @@
 #include <SDL3/SDL.h>
-#include "../CupuacuState.h"
+#include "../State.h"
 #include "Waveform.h"
 #include "../actions/ShowOpenFileDialog.h"
 #include "../actions/Play.h"
 #include "../actions/Zoom.h"
 #include "../actions/Save.h"
 
-static void updateWaveforms(CupuacuState *state)
+namespace cupuacu::gui {
+
+static void updateWaveforms(cupuacu::State *state)
 {
     for (auto waveform : state->waveforms)
     {
@@ -17,14 +19,14 @@ static void updateWaveforms(CupuacuState *state)
 
 static void handleKeyDown(
         SDL_Event *event,
-        CupuacuState *state)
+        cupuacu::State *state)
 {
     uint8_t multiplier = 1;
     uint8_t multiplierFactor = 12 / state->pixelScale;
 
     if (event->key.scancode == SDL_SCANCODE_ESCAPE)
     {
-        resetZoom(state);
+        actions::resetZoom(state);
         updateWaveforms(state);
         return;
     }
@@ -37,33 +39,51 @@ static void handleKeyDown(
 
     if (event->key.scancode == SDL_SCANCODE_Q)
     {
-        if (tryZoomOutHorizontally(state))
+        if (actions::tryZoomOutHorizontally(state))
         {
             updateWaveforms(state);
         }
     }
     else if (event->key.scancode == SDL_SCANCODE_W)
     {
-        if (tryZoomInHorizontally(state))
+        if (actions::tryZoomInHorizontally(state))
         {
             updateWaveforms(state);
         }
     }
     else if (event->key.scancode == SDL_SCANCODE_E)
     {
-        if (tryZoomOutVertically(state, multiplier))
+        if (actions::tryZoomOutVertically(state, multiplier))
         {
             updateWaveforms(state);
         }
     }
     else if (event->key.scancode == SDL_SCANCODE_R)
     {
-        zoomInVertically(state, multiplier);
+        actions::zoomInVertically(state, multiplier);
         updateWaveforms(state);
     }
     else if (event->key.scancode == SDL_SCANCODE_Z)
     {
-        if (tryZoomSelection(state))
+#if __APPLE__
+        if (event->key.mod & SDL_KMOD_GUI)
+#else
+        if (event->key.mod & SDL_KMOD_CTRL)
+#endif
+        {
+            if (event->key.mod & SDL_KMOD_SHIFT)
+            {
+                state->redo();
+            }
+            else
+            {
+                state->undo();
+            }
+
+            return;
+        }
+        
+        if (actions::tryZoomSelection(state))
         {
             updateWaveforms(state);
         }
@@ -121,7 +141,7 @@ static void handleKeyDown(
         if (event->key.mod & SDL_KMOD_CTRL)
 #endif
         {
-            showOpenFileDialog(state);
+            actions::showOpenFileDialog(state);
         }
     }
     else if (event->key.scancode == SDL_SCANCODE_S)
@@ -132,18 +152,18 @@ static void handleKeyDown(
         if (event->key.mod & SDL_KMOD_CTRL)
 #endif
         {
-            overwrite(state);
+            actions::overwrite(state);
         }
     }
     else if (event->key.scancode == SDL_SCANCODE_SPACE)
     {
         if (state->isPlaying.load())
         {
-            requestStop(state);
+            actions::requestStop(state);
             return;
         }
 
-        play(state);
+        actions::play(state);
     }
     else if (event->key.scancode == SDL_SCANCODE_PERIOD &&
              (event->key.mod & SDL_KMOD_SHIFT))
@@ -183,4 +203,5 @@ static void handleKeyDown(
             }
         }
     }
+}
 }

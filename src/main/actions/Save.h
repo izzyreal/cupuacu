@@ -1,10 +1,11 @@
 #pragma once
 
-#include "../CupuacuState.h"
+#include "../State.h"
 #include "../file/WavWriter.h"
 
-static void overwrite(CupuacuState *state)
+namespace cupuacu::actions {
+static void overwrite(cupuacu::State *state)
 {
-    WavWriter::rewriteWavFile(state);
+    file::WavWriter::rewriteWavFile(state);
 }
-
+}

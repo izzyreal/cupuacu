@@ -1,7 +1,9 @@
 #include "TriangleMarker.h"
-#include "../CupuacuState.h"
+#include "../State.h"
 
-TriangleMarker::TriangleMarker(CupuacuState* state, TriangleMarkerType typeIn)
+using namespace cupuacu::gui;
+
+TriangleMarker::TriangleMarker(cupuacu::State* state, TriangleMarkerType typeIn)
     : Component(state, [typeIn]() {
           switch (typeIn) {
               case TriangleMarkerType::CursorTop:            return "TriangleMarker:CursorTop";

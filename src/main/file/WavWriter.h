@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../CupuacuState.h"
+#include "../State.h"
 
 #include <ios>
 #include <filesystem>
@@ -12,6 +12,7 @@
 #include <vector>
 #include <cstdio>
 
+namespace cupuacu::file {
 class WavWriter {
     private:
         static std::ifstream openInputFileStream(const std::filesystem::path &p)
@@ -108,7 +109,7 @@ class WavWriter {
             os.write(buffer.data(), buffer.size());
         }
 
-        static void writeDataChunk(const CupuacuState *state, std::istream &is, std::ostream &os)
+        static void writeDataChunk(const cupuacu::State *state, std::istream &is, std::ostream &os)
         {
             std::streampos dataOffset = findDataChunkStartOffset(is);
             os.seekp(0, std::ios::end);
@@ -275,7 +276,7 @@ class WavWriter {
         }
 
     public:
-        static void rewriteWavFile(CupuacuState *state)
+        static void rewriteWavFile(cupuacu::State *state)
         {
             std::filesystem::path input(state->currentFile);
             std::filesystem::path output(std::filesystem::temp_directory_path() / input.filename());
@@ -308,4 +309,4 @@ class WavWriter {
             std::filesystem::rename(output, input);
         }
 };
-
+}

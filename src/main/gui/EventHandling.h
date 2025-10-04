@@ -1,14 +1,15 @@
 #pragma once
 #include <SDL3/SDL.h>
-#include "../CupuacuState.h"
+#include "../State.h"
 #include "Gui.h"
 #include "Component.h"
 #include "MouseEvent.h"
 #include "Waveform.h"
 #include "TriangleMarker.h"
-#include "WaveformsUnderlay.h"
 #include "keyboard_handling.h"
 #include "../ResourceUtil.hpp"
+
+namespace cupuacu::gui {
 
 static bool wasMaximized = false;
 
@@ -63,11 +64,11 @@ static void cleanupCursors()
     if (pointerCursor) SDL_DestroyCursor(pointerCursor);
 }
 
-static void updateMouseCursor(const CupuacuState *state)
+static void updateMouseCursor(const cupuacu::State *state)
 {
     SDL_Cursor* newCursor = defaultCursor;
 
-    if (dynamic_cast<const Waveform*>(state->componentUnderMouse))
+    if (dynamic_cast<const gui::Waveform*>(state->componentUnderMouse))
     {
         if (state->hoveringOverChannels == SelectedChannels::LEFT)
         {
@@ -82,8 +83,8 @@ static void updateMouseCursor(const CupuacuState *state)
             newCursor = textCursor;
         }
     }
-    else if (dynamic_cast<const SamplePoint*>(state->componentUnderMouse) ||
-             dynamic_cast<const TriangleMarker*>(state->componentUnderMouse))
+    else if (dynamic_cast<const gui::SamplePoint*>(state->componentUnderMouse) ||
+             dynamic_cast<const gui::TriangleMarker*>(state->componentUnderMouse))
     {
         newCursor = pointerCursor;
     }
@@ -95,7 +96,7 @@ static void updateMouseCursor(const CupuacuState *state)
     }
 }
 
-static void updateComponentUnderMouse(CupuacuState *state, const int32_t mouseX, const int32_t mouseY)
+static void updateComponentUnderMouse(cupuacu::State *state, const int32_t mouseX, const int32_t mouseY)
 {
     auto oldComponentUnderMouse = state->componentUnderMouse;
     const auto newComponentUnderMouse = state->rootComponent->findComponentAt(mouseX, mouseY);
@@ -117,7 +118,7 @@ static void updateComponentUnderMouse(CupuacuState *state, const int32_t mouseX,
     }
 }
 
-static void handleResize(CupuacuState *state)
+static void handleResize(cupuacu::State *state)
 {
     int winW, winH;
     SDL_GetWindowSize(state->window, &winW, &winH);
@@ -146,7 +147,7 @@ static void handleResize(CupuacuState *state)
     resizeComponents(state);
 }
 
-static void handleMouseMotion(CupuacuState *state, SDL_Event *event)
+static void handleMouseMotion(cupuacu::State *state, SDL_Event *event)
 {
     const MouseEvent mouseEvent = convertFromSDL(state, event);
 
@@ -158,7 +159,7 @@ static void handleMouseMotion(CupuacuState *state, SDL_Event *event)
     }
 }
 
-static void handleMouseDown(CupuacuState *state, SDL_Event *event)
+static void handleMouseDown(cupuacu::State *state, SDL_Event *event)
 {
     const MouseEvent mouseEvent = convertFromSDL(state, event);
 
@@ -171,7 +172,7 @@ static void handleMouseDown(CupuacuState *state, SDL_Event *event)
     state->capturingComponent->handleMouseEvent(mouseEvent);
 }
 
-static void handleMouseUp(CupuacuState *state, SDL_Event *event)
+static void handleMouseUp(cupuacu::State *state, SDL_Event *event)
 {
     const MouseEvent mouseEvent = convertFromSDL(state, event);
 
@@ -192,7 +193,7 @@ static void handleMouseUp(CupuacuState *state, SDL_Event *event)
     state->capturingComponent = nullptr;
 }
 
-static void handleWindowMouseLeave(CupuacuState *state)
+static void handleWindowMouseLeave(cupuacu::State *state)
 {
     if (state->capturingComponent != nullptr)
     {
@@ -212,7 +213,7 @@ static void handleWindowMouseLeave(CupuacuState *state)
     state->componentUnderMouse = nullptr;
 }
 
-inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
+inline SDL_AppResult handleAppEvent(cupuacu::State *state, SDL_Event *event)
 {
     switch (event->type)
     {
@@ -251,4 +252,5 @@ inline SDL_AppResult handleAppEvent(CupuacuState *state, SDL_Event *event)
     }
 
     return SDL_APP_CONTINUE;
+}
 }

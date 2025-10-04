@@ -2,6 +2,8 @@
 
 #include "Component.h"
 
+namespace cupuacu::gui {
+
 class Waveforms;
 class TriangleMarker;
 class OpaqueRect;
@@ -9,7 +11,7 @@ class Timeline;
 
 class MainView : public Component {
 public:
-    MainView(CupuacuState*);
+    MainView(cupuacu::State*);
 
     void rebuildWaveforms();
     void resized() override;
@@ -38,3 +40,4 @@ private:
     OpaqueRect *borders[4];
     Timeline *timeline = nullptr;
 };
+}

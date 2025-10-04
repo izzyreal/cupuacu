@@ -1,18 +1,20 @@
 #pragma once
 
 #include "../Constants.h"
-#include "../CupuacuState.h"
+#include "../State.h"
 #include "../gui/Waveform.h"
 
-static double getMinSamplesPerPixel(const CupuacuState *state)
+namespace cupuacu::actions {
+
+static double getMinSamplesPerPixel(const cupuacu::State *state)
 {
-    const auto waveformWidth = Waveform::getWaveformWidth(state);
+    const auto waveformWidth = gui::Waveform::getWaveformWidth(state);
     return 1.0 / waveformWidth;
 }
 
-static void resetZoom(CupuacuState *state)
+static void resetZoom(cupuacu::State *state)
 {
-    const auto waveformWidth = Waveform::getWaveformWidth(state);
+    const auto waveformWidth = gui::Waveform::getWaveformWidth(state);
     if (waveformWidth == 0)
     {
         state->samplesPerPixel = 0;
@@ -34,7 +36,7 @@ static void resetZoom(CupuacuState *state)
     state->sampleOffset = 0;
 }
 
-static bool tryZoomInHorizontally(CupuacuState *state)
+static bool tryZoomInHorizontally(cupuacu::State *state)
 {
     const double minSamplesPerPixel = getMinSamplesPerPixel(state);
 
@@ -55,9 +57,9 @@ static bool tryZoomInHorizontally(CupuacuState *state)
     return true;
 }
 
-static bool tryZoomOutHorizontally(CupuacuState *state)
+static bool tryZoomOutHorizontally(cupuacu::State *state)
 {
-    const auto waveformWidth = Waveform::getWaveformWidth(state);
+    const auto waveformWidth = gui::Waveform::getWaveformWidth(state);
     const float maxSamplesPerPixel = static_cast<float>(state->document.getFrameCount()) / waveformWidth;
 
     if (state->samplesPerPixel >= maxSamplesPerPixel)
@@ -83,12 +85,12 @@ static bool tryZoomOutHorizontally(CupuacuState *state)
     return true;
 }
 
-static void zoomInVertically(CupuacuState *state, const uint8_t multiplier)
+static void zoomInVertically(cupuacu::State *state, const uint8_t multiplier)
 {
     state->verticalZoom += 0.3 * multiplier;
 }
 
-static bool tryZoomOutVertically(CupuacuState *state, const uint8_t multiplier)
+static bool tryZoomOutVertically(cupuacu::State *state, const uint8_t multiplier)
 {
     if (state->verticalZoom <= 1)
     {
@@ -105,7 +107,7 @@ static bool tryZoomOutVertically(CupuacuState *state, const uint8_t multiplier)
     return true;
 }
 
-static bool tryZoomSelection(CupuacuState *state)
+static bool tryZoomSelection(cupuacu::State *state)
 {
     if (!state->selection.isActive() || state->selection.getLengthInt() < 1)
     {
@@ -114,11 +116,11 @@ static bool tryZoomSelection(CupuacuState *state)
 
     state->verticalZoom = INITIAL_VERTICAL_ZOOM;
 
-    const auto waveformWidth = Waveform::getWaveformWidth(state);
+    const auto waveformWidth = gui::Waveform::getWaveformWidth(state);
     const auto selectionLength = state->selection.getLengthInt();
 
     state->samplesPerPixel = selectionLength / static_cast<double>(waveformWidth);
     state->sampleOffset = state->selection.getStartInt();
     return true;
 }
-
+}

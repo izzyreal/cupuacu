@@ -8,6 +8,8 @@
 #include <map>
 #include <string>
 
+namespace cupuacu::gui {
+
 // Font cache to store TTF_Font instances by point size
 static std::map<uint8_t, TTF_Font*>& getFontCache() {
     static std::map<uint8_t, TTF_Font*> fontCache;
@@ -114,3 +116,5 @@ const std::function<void(
     SDL_DestroySurface(textSurface);
     SDL_DestroyTexture(textTexture);
 };
+}
+
