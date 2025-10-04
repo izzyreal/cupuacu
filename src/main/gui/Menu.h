@@ -19,22 +19,28 @@ private:
     const std::string menuName;
     std::vector<Menu*> subMenus;
     const std::function<void()> action;
+    std::function<std::string()> menuNameGetter = []{ return ""; };
+    std::function<bool()> isAvailable = [] { return true; };
 
     Label *label = nullptr;
 
     bool isFirstLevel() const;
 
+    std::string getMenuName();
+
 public:
     Menu(cupuacu::State*, const std::string menuNameToUse, const std::function<void()> actionToUse = {});
+    Menu(cupuacu::State*, const std::function<std::string()> menuNameGetterToUse, const std::function<void()> actionToUse = {});
 
-    void enableDepthIs0();
+    void setIsAvailable(std::function<bool()>);
 
     template <typename... Args>
-    void addSubMenu(Args&&... args)
+    Menu* addSubMenu(Args&&... args)
     {
         auto subMenu = emplaceChild<Menu>(std::forward<Args>(args)...);
         subMenu->setVisible(false);
         subMenus.push_back(subMenu);
+        return subMenus.back();
     }
     
     void showSubMenus();

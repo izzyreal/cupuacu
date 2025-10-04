@@ -11,6 +11,12 @@ Label::Label(cupuacu::State* state,
 {
 }
 
+void Label::setOpacity(const uint8_t opacityToUse)
+{
+    opacity = opacityToUse;
+    setDirty();
+}
+
 Label::~Label() {
     if (cachedTexture) {
         SDL_DestroyTexture(cachedTexture);
@@ -28,7 +34,7 @@ void Label::updateTexture(SDL_Renderer* renderer) {
     auto font = getFont(fontPointSize);
     if (!font) return;
 
-    SDL_Color textColor = {255, 255, 255, 255};
+    SDL_Color textColor = {255, 255, 255, opacity};
     SDL_Surface* surf = TTF_RenderText_Blended(font, text.c_str(), text.size(), textColor);
     if (!surf) return;
 
@@ -39,6 +45,7 @@ void Label::updateTexture(SDL_Renderer* renderer) {
 
     cachedText = text;
     cachedPointSize = fontPointSize;
+    cachedOpacity = opacity;
 }
 
 void Label::onDraw(SDL_Renderer* renderer)

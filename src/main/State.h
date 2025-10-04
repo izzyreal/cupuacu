@@ -76,6 +76,10 @@ struct State {
     void addUndoable(std::shared_ptr<actions::Undoable>);
     void undo();
     void redo();
+    bool canUndo() { return !undoables.empty(); }
+    bool canRedo() { return !redoables.empty(); }
+    std::string getUndoDescription();
+    std::string getRedoDescription();
 };
 }
 

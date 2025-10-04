@@ -12,7 +12,7 @@ private:
     std::string text;
     bool centerHorizontally = false;
     bool centerVertically   = true;
-    float margin            = 15;
+    float margin            = 0;
     int pointSize           = 8;
 
     // --- cache ---
@@ -21,14 +21,19 @@ private:
     int cachedH = 0;
     std::string cachedText;
     int cachedPointSize = 0;
+    int cachedOpacity = 0;
 
     void updateTexture(SDL_Renderer* renderer);
 
+    uint8_t opacity = 255;
+
 public:
     Label(cupuacu::State* state,
-          const std::string& textToUse);
+          const std::string& textToUse = "");
 
     ~Label();
+
+    void setOpacity(const uint8_t opacity);
 
     std::string getText() { return text; }
     void setText(const std::string& newText) { text = newText; setDirty(); }

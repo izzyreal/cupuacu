@@ -24,7 +24,7 @@ namespace cupuacu::actions::audio {
                 newValue = newValueToUse;
             }
 
-            void perform() override
+            void redo() override
             {
                 state->document.setSample(channel, sampleIndex, newValue);
             }
@@ -33,5 +33,9 @@ namespace cupuacu::actions::audio {
             {
                 state->document.setSample(channel, sampleIndex, oldValue);
             }
+
+            std::string getUndoDescription() override { return "Change sample value"; }
+
+            std::string getRedoDescription() override { return getUndoDescription(); }
     };
 }

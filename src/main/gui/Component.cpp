@@ -289,7 +289,9 @@ void Component::draw(SDL_Renderer* renderer)
 bool Component::handleMouseEvent(const MouseEvent &mouseEvent)
 {
     if (!visible)
+    {
         return false;
+    }
 
     float localXf = mouseEvent.mouseXf - xPos;
     float localYf = mouseEvent.mouseYf - yPos;
@@ -330,6 +332,20 @@ bool Component::handleMouseEvent(const MouseEvent &mouseEvent)
     }
     else
     {
+        if (state->menuBar->hasMenuOpen())
+        {
+            if (!isComponentOrChildOf(this, state->menuBar))
+            {
+                if (mouseEvent.type == DOWN)
+                {
+                    state->menuBar->hideSubMenus();
+                    return true;
+                }
+
+                return false;
+            }
+        }
+
         if (mouseEvent.type == MOVE)
         {
             if (mouseMove(localMouseEvent))
@@ -340,10 +356,6 @@ bool Component::handleMouseEvent(const MouseEvent &mouseEvent)
             if (mouseDown(localMouseEvent))
             {
                 state->capturingComponent = this;
-                if (componentName.substr(0, 4) != "Menu")
-                {
-                    state->menuBar->hideSubMenus();
-                }
                 return true;
             }
         }
@@ -420,3 +432,16 @@ Component* Component::findComponentAt(int x, int y)
 
     return nullptr;
 }
+
+bool Component::isComponentOrChildOf(Component *c1, Component *c2)
+{
+    if (c1 == c2) return true;
+
+    for (auto &child : c2->children)
+    {
+        if (isComponentOrChildOf(c1, child.get())) return true;
+    }
+
+    return false;
+}
+

@@ -3,6 +3,7 @@
 #include "../State.h"
 
 #include <functional>
+#include <string>
 
 namespace cupuacu::actions {
 class Undoable {
@@ -13,8 +14,12 @@ class Undoable {
 
         std::function<void()> updateGui = []{};
 
-        virtual void perform() = 0;
+        virtual void redo() = 0;
         virtual void undo() = 0;
+
+        virtual std::string getRedoDescription() = 0;
+        virtual std::string getUndoDescription() = 0;
+
 };
 }
 

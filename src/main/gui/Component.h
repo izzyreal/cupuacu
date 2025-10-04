@@ -48,6 +48,8 @@ public:
         return bounds.x + std::round(bounds.w / 2.f);
     }
 
+    static bool isComponentOrChildOf(Component*, Component*);
+
     bool hasChild(Component *component)
     {
         for (auto &c : children)

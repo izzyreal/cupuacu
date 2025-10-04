@@ -37,7 +37,7 @@ AddDependency(Catch2 "https://github.com/catchorg/Catch2.git" "v3.8.1")
 
 add_executable(Cupuacu
     src/main/main.cpp
-    src/main/CupuacuState.cpp
+    src/main/State.cpp
     src/main/gui/Gui.cpp
     src/main/gui/MainView.cpp
     src/main/gui/TriangleMarker.cpp
@@ -53,7 +53,7 @@ add_executable(Cupuacu
 )
 
 add_executable(cupuacu-tests
-    src/main/CupuacuState.cpp
+    src/main/State.cpp
     src/main/gui/Gui.cpp
     src/main/gui/MainView.cpp
     src/main/gui/TriangleMarker.cpp

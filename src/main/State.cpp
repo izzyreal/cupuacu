@@ -47,8 +47,12 @@ void cupuacu::State::redo()
 
     auto redoable = redoables.back();
     redoables.pop_back();
-    redoable->perform();
+    redoable->redo();
     redoable->updateGui();
     undoables.push_back(redoable);
 }
+
+std::string cupuacu::State::getUndoDescription() { if (!canUndo()) return ""; return undoables.back()->getUndoDescription(); }
+std::string cupuacu::State::getRedoDescription() { if (!canRedo()) return ""; return redoables.back()->getRedoDescription(); }
+
 

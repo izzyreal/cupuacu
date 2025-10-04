@@ -446,6 +446,8 @@ void Waveform::timerCallback()
 
 void Waveform::mouseLeave()
 {
+    state->hoveringOverChannels = SelectedChannels::BOTH;
+
     for (auto &c : getChildren())
     {
         // Mouse just entered a sample point.

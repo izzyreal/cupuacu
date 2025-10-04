@@ -40,7 +40,6 @@ public:
         for (const auto &labelText : labelTexts)
         {
             auto * label = emplaceChild<Label>(state, labelText);
-            label->setMargin(0);
             label->setFontSize(18);
             label->setCenterHorizontally(true);
             labels.push_back(label);
@@ -49,7 +48,6 @@ public:
         if (!mandatoryEndLabel.empty())
         {
             auto * label = emplaceChild<Label>(state, mandatoryEndLabel);
-            label->setMargin(0);
             label->setFontSize(18);
             label->setCenterHorizontally(true);
             labels.push_back(label);

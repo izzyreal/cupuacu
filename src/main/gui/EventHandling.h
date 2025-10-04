@@ -3,6 +3,7 @@
 #include "../State.h"
 #include "Gui.h"
 #include "Component.h"
+#include "MenuBar.h"
 #include "MouseEvent.h"
 #include "Waveform.h"
 #include "TriangleMarker.h"
@@ -68,7 +69,11 @@ static void updateMouseCursor(const cupuacu::State *state)
 {
     SDL_Cursor* newCursor = defaultCursor;
 
-    if (dynamic_cast<const gui::Waveform*>(state->componentUnderMouse))
+    if (state->menuBar->hasMenuOpen())
+    {
+        newCursor = defaultCursor;
+    }
+    else if (dynamic_cast<const gui::Waveform*>(state->componentUnderMouse))
     {
         if (state->hoveringOverChannels == SelectedChannels::LEFT)
         {
