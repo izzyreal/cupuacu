@@ -277,16 +277,15 @@ class WavWriter {
     public:
         static void rewriteWavFile(CupuacuState *state)
         {
-            std::filesystem::path originalPath(state->currentFile);
-            std::filesystem::path copyPath = originalPath;
-            copyPath += ".copy.wav";
+            std::filesystem::path input(state->currentFile);
+            std::filesystem::path output(std::filesystem::temp_directory_path() / input.filename());
 
-            auto ifs = openInputFileStream(originalPath);
+            auto ifs = openInputFileStream(input);
             if (!is16BitPcmWavFile(ifs)) {
                 throw std::invalid_argument("Not a 16-bit PCM WAV file");
             }
 
-            auto ofs = openOutputFileStream(copyPath);
+            auto ofs = openOutputFileStream(output);
 
             copyBytesBeforeDataChunk(ifs, ofs);
             writeDataChunk(state, ifs, ofs);
@@ -295,12 +294,18 @@ class WavWriter {
             ofs.flush();
             ofs.close();
 
-            bool identical = isCopyBinaryIdentical(originalPath, copyPath);
-            if (identical) {
-                std::printf("Copy is binary identical to original\n");
-            } else {
-                std::printf("Copy differs from original\n");
+            bool identical = isCopyBinaryIdentical(input, output);
+
+            if (identical)
+            {
+                std::printf("Saved file is binary identical to what was loaded.\n");
             }
+            else
+            {
+                std::printf("Save file differs from what was loaded.\n");
+            }
+
+            std::filesystem::rename(output, input);
         }
 };
 
