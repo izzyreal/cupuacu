@@ -56,7 +56,7 @@ public:
 
     void onDraw(SDL_Renderer* renderer) override
     {
-        Helpers::fillRect(renderer, getLocalBounds(), Colors::black);
+        Helpers::fillRect(renderer, getLocalBounds(), Colors::background);
     }
 
 private:
