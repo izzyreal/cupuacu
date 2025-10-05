@@ -3,6 +3,9 @@
 #include "../../Document.h"
 #include "../../gui/MainView.h"
 #include "../Zoom.h"
+#include <vector>
+#include <cstdint>
+#include <algorithm>
 
 namespace cupuacu::actions::audio {
 
@@ -10,14 +13,22 @@ class Trim : public Undoable {
     int64_t startFrame;
     int64_t length;
 
-    cupuacu::Document beforeRegion;
-    cupuacu::Document afterRegion;
+    int sampleRate = 0;
+    SampleFormat format = SampleFormat::Unknown;
+
+    int64_t oldTotal = 0;
+    int64_t beforeCount = 0;
+    int64_t middleCount = 0;
+    int64_t afterCount = 0;
+
+    std::vector<std::vector<float>> before;
+    std::vector<std::vector<float>> after;
 
 public:
     Trim(State* state, int64_t start, int64_t lengthToKeep)
         : Undoable(state), startFrame(start), length(lengthToKeep)
     {
-        updateGui = [state = state, length = length] {
+        updateGui = [state = state] {
             resetZoom(state);
             state->mainView->setDirty();
         };
@@ -27,74 +38,65 @@ public:
     {
         auto& doc = state->document;
         const int64_t ch = doc.getChannelCount();
-        const int sr = doc.getSampleRate();
-        const int64_t total = doc.getFrameCount();
+        sampleRate = doc.getSampleRate();
+        format = doc.getSampleFormat();
+        oldTotal = doc.getFrameCount();
 
-        if (startFrame < 0 || length <= 0 || startFrame >= total)
+        if (startFrame < 0 || length <= 0 || startFrame >= oldTotal)
             return;
 
-        const int64_t endFrame = std::min(startFrame + length, total);
+        const int64_t endFrame = std::min(startFrame + length, oldTotal);
 
-        const int64_t beforeCount = std::max<int64_t>(0, startFrame);
-        const int64_t afterCount = std::max<int64_t>(0, total - endFrame);
+        beforeCount = startFrame;
+        middleCount = endFrame - startFrame;
+        afterCount = oldTotal - endFrame;
 
-        // backup removed parts
-        if (beforeCount > 0) {
-            beforeRegion.initialize(doc.getSampleFormat(), sr, ch, beforeCount);
-            for (int64_t c = 0; c < ch; ++c)
-                for (int64_t i = 0; i < beforeCount; ++i)
-                    beforeRegion.setSample(c, i, doc.getSample(c, i), false);
-        }
+        before.assign((size_t)ch, {});
+        after.assign((size_t)ch, {});
 
-        if (afterCount > 0) {
-            afterRegion.initialize(doc.getSampleFormat(), sr, ch, afterCount);
-            for (int64_t c = 0; c < ch; ++c)
-                for (int64_t i = 0; i < afterCount; ++i)
-                    afterRegion.setSample(c, i, doc.getSample(c, endFrame + i), false);
-        }
-
-        // replace doc with kept region
-        const int64_t newCount = endFrame - startFrame;
-        cupuacu::Document newDoc;
-        newDoc.initialize(doc.getSampleFormat(), sr, ch, newCount);
         for (int64_t c = 0; c < ch; ++c)
-            for (int64_t i = 0; i < newCount; ++i)
-                newDoc.setSample(c, i, doc.getSample(c, startFrame + i), false);
+        {
+            if (beforeCount > 0)
+            {
+                before[(size_t)c].resize((size_t)beforeCount);
+                for (int64_t i = 0; i < beforeCount; ++i)
+                    before[(size_t)c][(size_t)i] = doc.getSample(c, i);
+            }
 
-        doc = std::move(newDoc);
+            if (afterCount > 0)
+            {
+                after[(size_t)c].resize((size_t)afterCount);
+                for (int64_t i = 0; i < afterCount; ++i)
+                    after[(size_t)c][(size_t)i] = doc.getSample(c, endFrame + i);
+            }
+        }
+
+        doc.removeFrames(endFrame, afterCount);
+        doc.removeFrames(0, beforeCount);
+        doc.updateWaveformCache();
+
         updateCursorPos(state, 0);
         state->selection.setValue1(0);
-        state->selection.setValue2(length);
+        state->selection.setValue2(middleCount);
     }
 
     void undo() override
     {
         auto& doc = state->document;
         const int64_t ch = doc.getChannelCount();
-        const int sr = doc.getSampleRate();
 
-        const int64_t beforeCount = beforeRegion.getFrameCount();
-        const int64_t afterCount = afterRegion.getFrameCount();
-        const int64_t middleCount = doc.getFrameCount();
-        const int64_t total = beforeCount + middleCount + afterCount;
-
-        cupuacu::Document restored;
-        restored.initialize(doc.getSampleFormat(), sr, ch, total);
-
-        // before
+        doc.insertFrames(0, beforeCount);
         for (int64_t c = 0; c < ch; ++c)
             for (int64_t i = 0; i < beforeCount; ++i)
-                restored.setSample(c, i, beforeRegion.getSample(c, i), false);
-        // middle
-        for (int64_t c = 0; c < ch; ++c)
-            for (int64_t i = 0; i < middleCount; ++i)
-                restored.setSample(c, beforeCount + i, doc.getSample(c, i), false);
-        // after
+                doc.setSample(c, i, before[(size_t)c][(size_t)i], false);
+
+        doc.insertFrames(beforeCount + middleCount, afterCount);
         for (int64_t c = 0; c < ch; ++c)
             for (int64_t i = 0; i < afterCount; ++i)
-                restored.setSample(c, beforeCount + middleCount + i, afterRegion.getSample(c, i), false);
+                doc.setSample(c, beforeCount + middleCount + i, after[(size_t)c][(size_t)i], false);
 
-        doc = std::move(restored);
+        doc.updateWaveformCache();
+
         updateCursorPos(state, beforeCount);
         state->selection.setValue1(beforeCount);
         state->selection.setValue2(beforeCount + middleCount);

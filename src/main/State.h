@@ -37,7 +37,7 @@ struct State {
     std::deque<std::shared_ptr<actions::Undoable>> redoables;
     uint8_t menuFontSize = 40;
     uint8_t pixelScale = 1;
-    std::string currentFile = "/Users/izmar/Downloads/ams_chill.wav";
+    std::string currentFile = "/Users/izmar/Documents/VMPC2000XL/Volumes/MPC2000XL.bk2/BOAT.WAV";
     Document document;
     Document clipboard;
 

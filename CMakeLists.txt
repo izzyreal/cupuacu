@@ -32,7 +32,7 @@ set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 
 AddDependency(SDL3 "https://github.com/libsdl-org/SDL.git" "release-3.2.14")
 AddDependency(SDL_ttf "https://github.com/libsdl-org/SDL_ttf.git" "release-3.2.2")
-AddDependency(libsndfile "https://github.com/libsndfile/libsndfile.git" "1.2.2")
+AddDependency(libsndfile "https://github.com/libsndfile/libsndfile.git" "master")
 AddDependency(Catch2 "https://github.com/catchorg/Catch2.git" "v3.8.1")
 
 add_executable(Cupuacu

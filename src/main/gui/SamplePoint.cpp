@@ -62,6 +62,9 @@ bool SamplePoint::mouseUp(const MouseEvent &e)
     undoable->updateGui = [state = state, channelIndex = channelIndex]{ state->mainView->setDirty(); state->waveforms[channelIndex]->updateSamplePoints(); };
 
     state->addUndoable(undoable);
+    auto &waveformCache = state->document.getWaveformCache(channelIndex);
+    waveformCache.invalidateSample(sampleIndex);
+    waveformCache.rebuildDirty(state->document.getAudioBuffer()->getImmutableChannelData(channelIndex).data());
 
     undoable.reset();
 

@@ -1,6 +1,7 @@
 #include "Waveform.h"
 
 #include "WaveformsUnderlay.h"
+#include "WaveformCache.h"
 
 #include "smooth_line.h"
 
@@ -207,89 +208,104 @@ void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
 {
     SDL_SetRenderDrawColor(renderer, waveformColor.r, waveformColor.g, waveformColor.b, waveformColor.a);
 
-    const auto samplesPerPixel = state->samplesPerPixel;
+    const double samplesPerPixel = state->samplesPerPixel;
     const int64_t sampleOffset = state->sampleOffset;
-    const int64_t frameCount = state->document.getFrameCount();
-    const auto verticalZoom = state->verticalZoom;
-    const auto widthToUse = getWidth();
-    const auto heightToUse = getHeight();
+    const double verticalZoom = state->verticalZoom;
+    const int widthToUse = getWidth();
+    const int heightToUse = getHeight();
     const uint16_t samplePointSize = getSamplePointSize(state->pixelScale);
     const auto drawableHeight = heightToUse - samplePointSize;
-    const auto halfSamplePointSize = samplePointSize / 2;
+    const float scale = (float)(verticalZoom * drawableHeight * 0.5f);
+    const int centerY = heightToUse / 2;
 
-    const float scale = verticalZoom * drawableHeight * 0.5f;
+    auto sampleData = state->document.getAudioBuffer()->getImmutableChannelData(channelIndex);
+    const int64_t frameCount = state->document.getFrameCount();
 
-    const uint64_t availableSamples = static_cast<uint64_t>(frameCount) - sampleOffset;
-    const uint64_t actualInputSamples = std::min(static_cast<uint64_t>(std::ceil((widthToUse + 1) * samplesPerPixel)), availableSamples);
-    const int maxPixel = static_cast<int>(std::ceil(actualInputSamples / samplesPerPixel));
+    const bool bypassCache = samplesPerPixel < WaveformCache::BASE_BLOCK_SIZE;
 
-    if (actualInputSamples < 4)
+    auto &waveformCache = state->document.getWaveformCache(channelIndex);
+
+    if (!bypassCache && waveformCache.levelsCount() == 0)
+        waveformCache.rebuildAll(sampleData.data(), frameCount);
+
+    if (!bypassCache)
     {
-        return;
+        const auto& lvl0 = waveformCache.getLevel((double)WaveformCache::BASE_BLOCK_SIZE);
+        if (lvl0.empty())
+            waveformCache.rebuildAll(sampleData.data(), frameCount);
     }
+
+    const int cacheLevel = bypassCache ? 0 : waveformCache.getLevelIndex(samplesPerPixel);
+    const int64_t samplesPerPeak = bypassCache ? 0 : waveformCache.samplesPerPeakForLevel(cacheLevel);
+    const auto& peaks = bypassCache ? *(const std::vector<Peak>*)nullptr : waveformCache.getLevel(samplesPerPixel);
+
+    auto getPeakForPixel = [&](int x, Peak& out) -> bool
+    {
+        const double aD = (double)sampleOffset + (double)x * samplesPerPixel;
+        const double bD = (double)sampleOffset + (double)(x + 1) * samplesPerPixel;
+
+        if (bD <= 0.0) return false;
+        if (aD >= (double)frameCount) return false;
+
+        int64_t a = (int64_t)std::floor(aD);
+        int64_t b = (int64_t)std::floor(bD);
+        a = std::clamp<int64_t>(a, 0, frameCount - 1);
+        b = std::clamp<int64_t>(b, a + 1, frameCount);
+
+        if (bypassCache)
+        {
+            float minv = sampleData[a];
+            float maxv = sampleData[a];
+            for (int64_t i = a + 1; i < b; ++i)
+            {
+                float v = sampleData[i];
+                minv = std::min(minv, v);
+                maxv = std::max(maxv, v);
+            }
+            out = { minv, maxv };
+            return true;
+        }
+
+        if (peaks.empty()) return false;
+
+        const int64_t i0 = std::clamp<int64_t>(a / samplesPerPeak, 0, (int64_t)peaks.size() - 1);
+        const int64_t i1 = std::clamp<int64_t>((b - 1) / samplesPerPeak, 0, (int64_t)peaks.size() - 1);
+
+        float minv = peaks[i0].min;
+        float maxv = peaks[i0].max;
+        for (int64_t i = i0 + 1; i <= i1; ++i)
+        {
+            minv = std::min(minv, peaks[i].min);
+            maxv = std::max(maxv, peaks[i].max);
+        }
+
+        out = { minv, maxv };
+        return true;
+    };
 
     int prevY = 0;
     bool hasPrev = false;
 
-    auto sampleData = state->document.getAudioBuffer()->getImmutableChannelData(channelIndex);
-
-    for (int x = 0; x < std::min(static_cast<int64_t>(widthToUse), static_cast<int64_t>(maxPixel)); ++x)
+    for (int x = 0; x < widthToUse; ++x)
     {
-        const int64_t startSample = static_cast<int64_t>(x * samplesPerPixel) + static_cast<int64_t>(sampleOffset);
-        int64_t endSample = std::min(static_cast<int64_t>((x + 1) * samplesPerPixel) + static_cast<int64_t>(sampleOffset), frameCount);
-
-        if (startSample >= frameCount)
-        {
-            break;
-        }
-
-        if (endSample <= startSample)
-        {
-            endSample = startSample + 1;
-        }
-
-        float minSample = std::numeric_limits<float>::max();
-        float maxSample = std::numeric_limits<float>::lowest();
-
-        for (int64_t i = startSample; i < endSample; ++i)
-        {
-            const float s = sampleData[i];
-            minSample = std::min(minSample, s);
-            maxSample = std::max(maxSample, s);
-        }
-
-        const float midSample = (minSample + maxSample) * 0.5f;
-        const int y = static_cast<int>(heightToUse / 2.0f - midSample * scale);
-
-        if (hasPrev)
-        {
-            if ((y >= halfSamplePointSize || prevY >= halfSamplePointSize) &&
-                (y < heightToUse - halfSamplePointSize || prevY < heightToUse - halfSamplePointSize))
-            {
-                SDL_RenderLine(renderer, x - 1, prevY, x, y);
-            }
-        }
-
-        prevY = y;
-        hasPrev = true;
-
-        const int y1 = static_cast<int>(heightToUse / 2.0f - maxSample * scale);
-        const int y2 = static_cast<int>(heightToUse / 2.0f - minSample * scale);
-
-        if ((y1 < halfSamplePointSize && y2 < halfSamplePointSize) ||
-            (y1 >= heightToUse - halfSamplePointSize && y2 >= heightToUse - halfSamplePointSize))
-        {
+        Peak p;
+        if (!getPeakForPixel(x, p))
             continue;
-        }
+
+        const int y1 = (int)(centerY - p.max * scale);
+        const int y2 = (int)(centerY - p.min * scale);
+        const int midY = (y1 + y2) / 2;
 
         if (y1 != y2)
-        {
             SDL_RenderLine(renderer, x, y1, x, y2);
-        }
         else
-        {
             SDL_RenderPoint(renderer, x, y1);
-        }
+
+        if (hasPrev)
+            SDL_RenderLine(renderer, x - 1, prevY, x, midY);
+
+        prevY = midY;
+        hasPrev = true;
     }
 }
 
