@@ -39,6 +39,7 @@ struct State {
     uint8_t pixelScale = 1;
     std::string currentFile = "/Users/izmar/Downloads/ams_chill.wav";
     Document document;
+    Document clipboard;
 
     std::vector<SDL_Rect> dirtyRects;
 
@@ -74,6 +75,7 @@ struct State {
     gui::VuMeter *vuMeter;
 
     void addUndoable(std::shared_ptr<actions::Undoable>);
+    void addAndDoUndoable(std::shared_ptr<actions::Undoable>);
     void undo();
     void redo();
     bool canUndo() { return !undoables.empty(); }

@@ -24,6 +24,13 @@ void cupuacu::State::addUndoable(std::shared_ptr<cupuacu::actions::Undoable> und
     undoables.push_back(undoable);
 }
 
+void cupuacu::State::addAndDoUndoable(std::shared_ptr<cupuacu::actions::Undoable> undoable)
+{
+    undoables.push_back(undoable);
+    undoable->redo();
+    undoable->updateGui();
+}
+
 void cupuacu::State::undo()
 {
     if (undoables.empty())

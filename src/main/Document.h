@@ -9,7 +9,7 @@
 namespace cupuacu {
 class Document {
 private:
-    std::shared_ptr<cupuacu::AudioBuffer> buffer;
+    std::shared_ptr<cupuacu::AudioBuffer> buffer = std::make_shared<cupuacu::AudioBuffer>();
     int sampleRate = 0;
     SampleFormat format = SampleFormat::Unknown;
 
@@ -21,6 +21,8 @@ public:
         buffer = format == SampleFormat::PCM_S16 ? std::make_shared<cupuacu::DirtyTrackingAudioBuffer>() : std::make_shared<cupuacu::AudioBuffer>();
         buffer->resize(channelCount, frameCount);
     }
+
+    SampleFormat getSampleFormat() { return format; }
 
     int getSampleRate() const { return sampleRate; }
     int64_t getFrameCount() const { return buffer->getFrameCount(); }
