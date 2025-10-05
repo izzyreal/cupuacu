@@ -48,6 +48,13 @@ ma_result custom_data_source_read(ma_data_source* pDataSource,
     const bool selectionIsActive = ds->state->selection.isActive();
     const cupuacu::SelectedChannels selectedChannels = ds->state->selectedChannels;
 
+    // For each channel compute a peak over the framesToRead and write interleaved output
+    // No allocations here; only stack variables and existing buffers are used.
+    // We will compute per-channel peak and push it into the VuMeter's peak queue.
+
+    // Initialize peaks
+    float peaks[2] = {0.f, 0.f}; // max 2 channels (we cap channels to 2 elsewhere)
+
     for (ma_uint64 i = 0; i < framesToRead; ++i)
     {
         for (int64_t ch = 0; ch < numChannels; ++ch)
@@ -58,16 +65,26 @@ ma_result custom_data_source_read(ma_data_source* pDataSource,
                 (ch == 1 && selectedChannels == cupuacu::SelectedChannels::RIGHT);
 
             float sample = shouldPlayChannel ? ds->channelData[ch][ds->cursor + i] : 0.f;
+
+            // write to output interleaved
             out[i * numChannels + ch] = sample;
+
+            // update peak for this channel (use absolute value)
+            float a = sample >= 0.f ? sample : -sample;
+            if (a > peaks[ch]) peaks[ch] = a;
         }
     }
 
-    for (int64_t ch = 0; ch < numChannels; ++ch)
+    // Push computed peaks into the VuMeter (audio thread safe, no allocations)
+    if (ds->state && ds->state->vuMeter)
     {
-        ds->state->vuMeter->pushSamplesForChannelChunk(out, framesToRead, numChannels, ch);
+        // cap channels to available peaks array
+        for (int64_t ch = 0; ch < numChannels; ++ch)
+        {
+            ds->state->vuMeter->pushPeakForChannel(peaks[ch], (int)ch);
+        }
+        ds->state->vuMeter->setPeaksPushed();
     }
-
-    ds->state->vuMeter->setSamplesPushed();
 
     ds->cursor += framesToRead;
     *pFramesRead = framesToRead;

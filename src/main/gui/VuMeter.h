@@ -16,8 +16,7 @@ public:
         : Component(state, "VuMeter"),
           numChannels(1)
     {
-        sampleQueues.resize(numChannels);
-        previousPeaks.resize(numChannels, 0.f);
+        setNumChannels(numChannels);
     }
 
     void startDecay()
@@ -28,29 +27,27 @@ public:
     void setNumChannels(int n)
     {
         numChannels = n;
-        sampleQueues.resize(numChannels);
+        peakQueues.resize(numChannels);
 
         for (int i = 0; i < numChannels; i++)
         {
-            sampleQueues[i] = ReaderWriterQueue<float>(24000);
+            // capacity set once here; no allocations happen on audio thread
+            peakQueues[i] = ReaderWriterQueue<float>(24000);
         }
 
         previousPeaks.resize(numChannels, 0.f);
     }
 
-    void setSamplesPushed() { samplesPushed.store(true, std::memory_order_relaxed); }
+    void setPeaksPushed() { peaksPushed.store(true, std::memory_order_relaxed); }
 
-    void pushSamplesForChannelChunk(const float* interleavedSamples, size_t frameCount, int totalChannels, int channel)
+    // Called from audio thread
+    void pushPeakForChannel(float peak, int channel)
     {
         if (channel < 0 || channel >= numChannels)
-        {
             return;
-        }
 
-        for (size_t i = 0; i < frameCount; ++i)
-        {
-            sampleQueues[channel].try_enqueue(std::abs(interleavedSamples[i * totalChannels + channel]));
-        }
+        // enqueue the peak (no allocation)
+        peakQueues[channel].try_enqueue(peak);
     }
 
     void onDraw(SDL_Renderer* renderer) override
@@ -72,7 +69,7 @@ public:
             float peak = 0.f;
             float val;
 
-            while (sampleQueues[ch].try_dequeue(val))
+            while (peakQueues[ch].try_dequeue(val))
             {
                 peak = std::max(peak, val);
             }
@@ -148,19 +145,18 @@ public:
             }
         }
 
-        if (samplesPushed.load(std::memory_order_relaxed) || isDecaying.load(std::memory_order_relaxed))
+        if (peaksPushed.load(std::memory_order_relaxed) || isDecaying.load(std::memory_order_relaxed))
         {
-            samplesPushed.store(false, std::memory_order_relaxed);
+            peaksPushed.store(false, std::memory_order_relaxed);
             setDirty();
         }
     }
 
 private:
-    std::atomic<bool> samplesPushed {false};
+    std::atomic<bool> peaksPushed {false};
     std::atomic<bool> isDecaying{false};
     int numChannels;
-    std::vector<ReaderWriterQueue<float>> sampleQueues;
+    std::vector<ReaderWriterQueue<float>> peakQueues;
     std::vector<float> previousPeaks;
 };
 }
-
