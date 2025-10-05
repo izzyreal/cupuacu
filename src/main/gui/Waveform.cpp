@@ -1,6 +1,7 @@
 #include "Waveform.h"
 
 #include "WaveformsUnderlay.h"
+#include "WaveformCache.h"
 
 #include "smooth_line.h"
 
@@ -207,89 +208,57 @@ void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
 {
     SDL_SetRenderDrawColor(renderer, waveformColor.r, waveformColor.g, waveformColor.b, waveformColor.a);
 
-    const auto samplesPerPixel = state->samplesPerPixel;
+    const double samplesPerPixel = state->samplesPerPixel;
     const int64_t sampleOffset = state->sampleOffset;
-    const int64_t frameCount = state->document.getFrameCount();
-    const auto verticalZoom = state->verticalZoom;
-    const auto widthToUse = getWidth();
-    const auto heightToUse = getHeight();
+    const double verticalZoom = state->verticalZoom;
+    const int widthToUse = getWidth();
+    const int heightToUse = getHeight();
     const uint16_t samplePointSize = getSamplePointSize(state->pixelScale);
     const auto drawableHeight = heightToUse - samplePointSize;
     const auto halfSamplePointSize = samplePointSize / 2;
+    const float scale = static_cast<float>(verticalZoom * drawableHeight * 0.5f);
 
-    const float scale = verticalZoom * drawableHeight * 0.5f;
+    auto sampleData = state->document.getAudioBuffer()->getImmutableChannelData(channelIndex);
+    const int64_t frameCount = state->document.getFrameCount();
 
-    const uint64_t availableSamples = static_cast<uint64_t>(frameCount) - sampleOffset;
-    const uint64_t actualInputSamples = std::min(static_cast<uint64_t>(std::ceil((widthToUse + 1) * samplesPerPixel)), availableSamples);
-    const int maxPixel = static_cast<int>(std::ceil(actualInputSamples / samplesPerPixel));
+    if (WaveformCache::getLevel(samplesPerPixel).empty())
+        WaveformCache::build(sampleData.data(), frameCount);
 
-    if (actualInputSamples < 4)
-    {
+    const auto& peaks = WaveformCache::getLevel(samplesPerPixel);
+    if (peaks.empty())
         return;
-    }
+
+    const int level = static_cast<int>(std::floor(std::log2(std::max(1.0, samplesPerPixel))));
+    const double samplesPerPeak = std::pow(2.0, level);
 
     int prevY = 0;
     bool hasPrev = false;
 
-    auto sampleData = state->document.getAudioBuffer()->getImmutableChannelData(channelIndex);
-
-    for (int x = 0; x < std::min(static_cast<int64_t>(widthToUse), static_cast<int64_t>(maxPixel)); ++x)
+    for (int x = 0; x < widthToUse; ++x)
     {
-        const int64_t startSample = static_cast<int64_t>(x * samplesPerPixel) + static_cast<int64_t>(sampleOffset);
-        int64_t endSample = std::min(static_cast<int64_t>((x + 1) * samplesPerPixel) + static_cast<int64_t>(sampleOffset), frameCount);
+        const double sampleIndexD = static_cast<double>(sampleOffset) + static_cast<double>(x) * samplesPerPixel;
+        if (sampleIndexD < 0.0) continue;
+        if (sampleIndexD >= static_cast<double>(frameCount)) break;
 
-        if (startSample >= frameCount)
-        {
-            break;
-        }
+        const int64_t peakIndex = static_cast<int64_t>(std::floor(sampleIndexD / samplesPerPeak));
+        if (peakIndex < 0 || peakIndex >= static_cast<int64_t>(peaks.size())) continue;
 
-        if (endSample <= startSample)
-        {
-            endSample = startSample + 1;
-        }
+        const auto& p = peaks[peakIndex];
 
-        float minSample = std::numeric_limits<float>::max();
-        float maxSample = std::numeric_limits<float>::lowest();
-
-        for (int64_t i = startSample; i < endSample; ++i)
-        {
-            const float s = sampleData[i];
-            minSample = std::min(minSample, s);
-            maxSample = std::max(maxSample, s);
-        }
-
-        const float midSample = (minSample + maxSample) * 0.5f;
-        const int y = static_cast<int>(heightToUse / 2.0f - midSample * scale);
-
-        if (hasPrev)
-        {
-            if ((y >= halfSamplePointSize || prevY >= halfSamplePointSize) &&
-                (y < heightToUse - halfSamplePointSize || prevY < heightToUse - halfSamplePointSize))
-            {
-                SDL_RenderLine(renderer, x - 1, prevY, x, y);
-            }
-        }
-
-        prevY = y;
-        hasPrev = true;
-
-        const int y1 = static_cast<int>(heightToUse / 2.0f - maxSample * scale);
-        const int y2 = static_cast<int>(heightToUse / 2.0f - minSample * scale);
-
-        if ((y1 < halfSamplePointSize && y2 < halfSamplePointSize) ||
-            (y1 >= heightToUse - halfSamplePointSize && y2 >= heightToUse - halfSamplePointSize))
-        {
-            continue;
-        }
+        const int y1 = static_cast<int>(heightToUse / 2.0 - p.max * scale);
+        const int y2 = static_cast<int>(heightToUse / 2.0 - p.min * scale);
+        const int midY = (y1 + y2) / 2;
 
         if (y1 != y2)
-        {
             SDL_RenderLine(renderer, x, y1, x, y2);
-        }
         else
-        {
             SDL_RenderPoint(renderer, x, y1);
-        }
+
+        if (hasPrev)
+            SDL_RenderLine(renderer, x - 1, prevY, x, midY);
+
+        prevY = midY;
+        hasPrev = true;
     }
 }
 
