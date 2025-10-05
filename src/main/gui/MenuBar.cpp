@@ -7,6 +7,10 @@
 
 #include "../actions/ShowOpenFileDialog.h"
 #include "../actions/Save.h"
+#include "../actions/audio/Copy.h"
+#include "../actions/audio/Trim.h"
+#include "../actions/audio/Cut.h"
+#include "../actions/audio/Paste.h"
 
 using namespace cupuacu::gui;
 
@@ -73,6 +77,62 @@ MenuBar::MenuBar(cupuacu::State *stateToUse) : Component(stateToUse, "MenuBar")
     redoMenu->setIsAvailable([&]{ return state->canRedo(); });
 
     logoData = get_resource_data("cupuacu-logo1.bmp");
+
+        // --- Trim, Cut, Copy, Paste ---
+
+#ifdef __APPLE__
+    const std::string trimText{"Trim (Cmd + T)"};
+    const std::string cutText{"Cut (Cmd + X)"};
+    const std::string copyText{"Copy (Cmd + C)"};
+    const std::string pasteText{"Paste (Cmd + V)"};
+#else
+    const std::string trimText{"Trim (Ctrl + T)"};
+    const std::string cutText{"Cut (Ctrl + X)"};
+    const std::string copyText{"Copy (Ctrl + C)"};
+    const std::string pasteText{"Paste (Ctrl + V)"};
+#endif
+
+    auto trimMenu = editMenu->addSubMenu(state, trimText, [&] {
+        auto undoable = std::make_shared<actions::audio::Trim>(
+            state,
+            state->selection.getStartInt(),
+            state->selection.getLengthInt());
+        state->addAndDoUndoable(undoable);
+    });
+    trimMenu->setIsAvailable([&] {
+            return state->selection.isActive();
+            });
+
+    auto cutMenu = editMenu->addSubMenu(state, cutText, [&] {
+        auto undoable = std::make_shared<actions::audio::Cut>(
+            state,
+            state->selection.getStartInt(),
+            state->selection.getLengthInt());
+        state->addAndDoUndoable(undoable);
+    });
+    cutMenu->setIsAvailable([&] { return state->selection.isActive(); });
+
+    auto copyMenu = editMenu->addSubMenu(state, copyText, [&] {
+        auto undoable = std::make_shared<actions::audio::Copy>(
+            state,
+            state->selection.getStartInt(),
+            state->selection.getLengthInt());
+        state->addAndDoUndoable(undoable);
+    });
+    copyMenu->setIsAvailable([&] { return state->selection.isActive(); });
+
+    auto pasteMenu = editMenu->addSubMenu(state, pasteText, [&] {
+        const int64_t start = state->selection.isActive()
+            ? state->selection.getStartInt()
+            : state->cursor;
+        const int64_t end = state->selection.isActive()
+            ? state->selection.getEndInt()
+            : -1;
+
+        auto undoable = std::make_shared<actions::audio::Paste>(state, start, end);
+        state->addAndDoUndoable(undoable);
+    });
+    pasteMenu->setIsAvailable([&] { return state->clipboard.getFrameCount() > 0; });
 }
 
 void MenuBar::onDraw(SDL_Renderer* renderer)
