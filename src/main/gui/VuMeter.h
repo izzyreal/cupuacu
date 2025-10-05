@@ -36,6 +36,8 @@ public:
         }
 
         previousPeaks.resize(numChannels, 0.f);
+        peakHolds.resize(numChannels, 0.f);
+        holdFrames.resize(numChannels, 0);
     }
 
     void setPeaksPushed() { peaksPushed.store(true, std::memory_order_relaxed); }
@@ -58,8 +60,6 @@ public:
         int border = std::max(1, 2 / state->pixelScale);
         int barSpacing = fullBounds.h / numChannels;
 
-        constexpr float attackTimeSec = 0.015f;
-        constexpr float releaseTimeSec = 0.02f;
         float dt = 1.0f / 60.0f;
         float alphaAttack = 1.0f - std::exp(-dt / attackTimeSec);
         float alphaRelease = 1.0f - std::exp(-dt / releaseTimeSec);
@@ -79,7 +79,7 @@ public:
                 float db = 20.f * log10f(std::max(peak, 1e-5f));
                 float normalized = (db + 72.f) / 72.f;
                 normalized = std::clamp(normalized, 0.f, 1.f);
-                normalized = std::pow(normalized, 0.70f);
+                normalized = std::pow(normalized, 0.92f);
                 peak = normalized;
             }
 
@@ -118,6 +118,21 @@ public:
                 SDL_Rect pixelRect {barRect.x + x, barRect.y, 1, barRect.h};
                 Helpers::fillRect(renderer, pixelRect, color);
             }
+            if (peak > peakHolds[ch]) {
+                peakHolds[ch] = peak;
+                holdFrames[ch] = holdTimeFrames;
+            } else if (holdFrames[ch] > 0) {
+                --holdFrames[ch];
+            } else {
+                // decay the hold slowly
+                peakHolds[ch] -= 0.2f;
+                if (peakHolds[ch] < previousPeaks[ch])
+                    peakHolds[ch] = previousPeaks[ch];
+            }
+
+            int holdX = static_cast<int>(peakHolds[ch] * barRect.w);
+            SDL_Rect peakLine = { barRect.x + holdX, barRect.y, 1, barRect.h };
+            Helpers::fillRect(renderer, peakLine, Colors::green);
         }
     }
 
@@ -130,6 +145,7 @@ public:
 
         if (isDecaying.load(std::memory_order_relaxed))
         {
+            releaseTimeSec = decayReleaseTimeSec;
             bool allZero = true;
             for (const auto& p : previousPeaks)
             {
@@ -144,6 +160,10 @@ public:
                 isDecaying.store(false, std::memory_order_relaxed);
             }
         }
+        else
+        {
+            releaseTimeSec = normalReleaseTimeSec;
+        }
 
         if (peaksPushed.load(std::memory_order_relaxed) || isDecaying.load(std::memory_order_relaxed))
         {
@@ -153,10 +173,17 @@ public:
     }
 
 private:
+    const float attackTimeSec = 0.012f;
+    const float normalReleaseTimeSec = 0.09f;
+    const float decayReleaseTimeSec = 0.02f;
+    float releaseTimeSec = normalReleaseTimeSec;
     std::atomic<bool> peaksPushed {false};
     std::atomic<bool> isDecaying{false};
     int numChannels;
     std::vector<ReaderWriterQueue<float>> peakQueues;
     std::vector<float> previousPeaks;
+    std::vector<float> peakHolds;
+    std::vector<int> holdFrames;
+    static constexpr int holdTimeFrames = 30;
 };
 }
