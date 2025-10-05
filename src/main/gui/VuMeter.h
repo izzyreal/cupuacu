@@ -145,6 +145,7 @@ public:
             if (allZero)
             {
                 isDecaying.store(false, std::memory_order_relaxed);
+                setNumChannels(numChannels);
             }
         }
 
@@ -152,8 +153,11 @@ public:
         {
             samplesPushed.store(false, std::memory_order_relaxed);
             setDirty();
+            deterministicLog.push_back(previousPeaks); // copy per-channel peaks
         }
     }
+
+std::vector<std::vector<float>> deterministicLog; // channel × frame
 
 private:
     std::atomic<bool> samplesPushed {false};

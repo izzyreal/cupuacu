@@ -87,16 +87,34 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 {
     cupuacu::State *state = (cupuacu::State*) appstate;
 
-    state->rootComponent->timerCallbackRecursive();
+    Uint64 freq = SDL_GetPerformanceFrequency();
+    Uint64 frameStart = SDL_GetPerformanceCounter();
 
+    state->rootComponent->timerCallbackRecursive();
     SDL_SetRenderTarget(state->renderer, state->canvas);
     state->rootComponent->draw(state->renderer);
     renderCanvasToWindow(state);
     state->dirtyRects.clear();
 
-    //state->rootComponent->printDirtyTree();
+    // Compute elapsed time of work
+    Uint64 workEnd = SDL_GetPerformanceCounter();
+    Uint64 workNS = (workEnd - frameStart) * 1'000'000'000 / freq;
 
-    SDL_Delay(16);
+    // Target 16ms = 16,000,000 ns
+    const Uint64 targetNS = 16'000'000 - 931'000;
+    if (workNS < targetNS)
+    {
+        SDL_DelayNS(targetNS - workNS);
+    }
+
+    // Total frame time including delay
+    Uint64 frameEnd = SDL_GetPerformanceCounter();
+    Uint64 totalNS = (frameEnd - frameStart) * 1'000'000'000 / freq;
+    double totalMS = totalNS / 1'000'000.0;
+    double deviationMS = totalMS - 16.0;
+
+    //printf("Frame total: %.5f ms, deviation from 16ms: %+.5f ms\n", totalMS, deviationMS);
+
     return SDL_APP_CONTINUE;
 }
 

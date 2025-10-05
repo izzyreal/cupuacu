@@ -173,6 +173,23 @@ void ma_playback_callback(ma_device *pDevice, void *pOutput, const void *pInput,
     }
 }
 
+void printVuMeterLog(cupuacu::State* state)
+{
+    if (!state->vuMeter) return;
+
+    const auto& log = state->vuMeter->deterministicLog;
+    int frameIndex = 0;
+    for (const auto& frame : log)
+    {
+        printf("Frame %04d: ", frameIndex++);
+        for (float peak : frame)
+        {
+            printf("%.5f ", peak);
+        }
+        printf("\n");
+    }
+}
+
 void performStop(cupuacu::State *state)
 {
     std::shared_ptr<cupuacu::actions::CustomDataSource> ds;
@@ -196,6 +213,8 @@ void performStop(cupuacu::State *state)
 
     ma_device_uninit(&ds->device);
     ma_data_source_uninit(&ds->base);
+
+    printVuMeterLog(state);
 
     if (state->vuMeter)
     {
@@ -237,6 +256,10 @@ void cupuacu::actions::play(cupuacu::State *state)
         end   = (ma_uint64)state->selection.getEndInt();
     } else {
         start = (ma_uint64)state->cursor;
+    }
+
+    if (state->vuMeter) {
+        state->vuMeter->deterministicLog.clear();
     }
 
     ds = std::make_shared<CustomDataSource>();
