@@ -22,11 +22,12 @@ int64_t getMaxSampleOffset(const cupuacu::State *state)
 void cupuacu::State::addUndoable(std::shared_ptr<cupuacu::actions::Undoable> undoable)
 {
     undoables.push_back(undoable);
+    redoables.clear();
 }
 
 void cupuacu::State::addAndDoUndoable(std::shared_ptr<cupuacu::actions::Undoable> undoable)
 {
-    undoables.push_back(undoable);
+    addUndoable(undoable);
     undoable->redo();
     undoable->updateGui();
 }
