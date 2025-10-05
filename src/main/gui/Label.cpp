@@ -53,7 +53,7 @@ void Label::onDraw(SDL_Renderer* renderer)
     const uint8_t fontPointSize = (float) pointSize / state->pixelScale;
 
     // Rebuild texture if needed
-    if (!cachedTexture || cachedText != text || cachedPointSize != fontPointSize) {
+    if (!cachedTexture || cachedText != text || cachedPointSize != fontPointSize || opacity != cachedOpacity) {
         updateTexture(renderer);
     }
 
