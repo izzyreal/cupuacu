@@ -14,7 +14,7 @@ struct Peak {
 
 class WaveformCache {
 public:
-    static void build(const float* samples, int64_t numSamples, int levels = 8)
+    static void build(const float* samples, int64_t numSamples, int levels = 16)
     {
         std::scoped_lock lock(mutex());
         auto& data = cache();
