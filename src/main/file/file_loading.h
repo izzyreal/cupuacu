@@ -1,7 +1,6 @@
 #pragma once
 
 #include "../State.h"
-#include "../gui/WaveformCache.h"
 
 #include <sndfile.hh>
 
@@ -56,7 +55,6 @@ static void loadSampleData(cupuacu::State *state)
     sf_close(snd);
 
     state->selection.setHighest(state->document.getFrameCount());
-    gui::WaveformCache::clear();
 }
 }
 

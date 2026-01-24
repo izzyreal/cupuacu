@@ -215,38 +215,85 @@ void Waveform::renderBlockWaveform(SDL_Renderer* renderer)
     const int heightToUse = getHeight();
     const uint16_t samplePointSize = getSamplePointSize(state->pixelScale);
     const auto drawableHeight = heightToUse - samplePointSize;
-    const auto halfSamplePointSize = samplePointSize / 2;
-    const float scale = static_cast<float>(verticalZoom * drawableHeight * 0.5f);
+    const float scale = (float)(verticalZoom * drawableHeight * 0.5f);
+    const int centerY = heightToUse / 2;
 
     auto sampleData = state->document.getAudioBuffer()->getImmutableChannelData(channelIndex);
     const int64_t frameCount = state->document.getFrameCount();
 
-    if (WaveformCache::getLevel(samplesPerPixel).empty())
-        WaveformCache::build(sampleData.data(), frameCount);
+    const bool bypassCache = samplesPerPixel < WaveformCache::BASE_BLOCK_SIZE;
 
-    const auto& peaks = WaveformCache::getLevel(samplesPerPixel);
-    if (peaks.empty())
-        return;
+    auto &waveformCache = state->document.getWaveformCache(channelIndex);
 
-    const int level = static_cast<int>(std::floor(std::log2(std::max(1.0, samplesPerPixel))));
-    const double samplesPerPeak = std::pow(2.0, level);
+    if (!bypassCache && waveformCache.levelsCount() == 0)
+        waveformCache.rebuildAll(sampleData.data(), frameCount);
+
+    if (!bypassCache)
+    {
+        const auto& lvl0 = waveformCache.getLevel((double)WaveformCache::BASE_BLOCK_SIZE);
+        if (lvl0.empty())
+            waveformCache.rebuildAll(sampleData.data(), frameCount);
+    }
+
+    const int cacheLevel = bypassCache ? 0 : waveformCache.getLevelIndex(samplesPerPixel);
+    const int64_t samplesPerPeak = bypassCache ? 0 : waveformCache.samplesPerPeakForLevel(cacheLevel);
+    const auto& peaks = bypassCache ? *(const std::vector<Peak>*)nullptr : waveformCache.getLevel(samplesPerPixel);
+
+    auto getPeakForPixel = [&](int x, Peak& out) -> bool
+    {
+        const double aD = (double)sampleOffset + (double)x * samplesPerPixel;
+        const double bD = (double)sampleOffset + (double)(x + 1) * samplesPerPixel;
+
+        if (bD <= 0.0) return false;
+        if (aD >= (double)frameCount) return false;
+
+        int64_t a = (int64_t)std::floor(aD);
+        int64_t b = (int64_t)std::floor(bD);
+        a = std::clamp<int64_t>(a, 0, frameCount - 1);
+        b = std::clamp<int64_t>(b, a + 1, frameCount);
+
+        if (bypassCache)
+        {
+            float minv = sampleData[a];
+            float maxv = sampleData[a];
+            for (int64_t i = a + 1; i < b; ++i)
+            {
+                float v = sampleData[i];
+                minv = std::min(minv, v);
+                maxv = std::max(maxv, v);
+            }
+            out = { minv, maxv };
+            return true;
+        }
+
+        if (peaks.empty()) return false;
+
+        const int64_t i0 = std::clamp<int64_t>(a / samplesPerPeak, 0, (int64_t)peaks.size() - 1);
+        const int64_t i1 = std::clamp<int64_t>((b - 1) / samplesPerPeak, 0, (int64_t)peaks.size() - 1);
+
+        float minv = peaks[i0].min;
+        float maxv = peaks[i0].max;
+        for (int64_t i = i0 + 1; i <= i1; ++i)
+        {
+            minv = std::min(minv, peaks[i].min);
+            maxv = std::max(maxv, peaks[i].max);
+        }
+
+        out = { minv, maxv };
+        return true;
+    };
 
     int prevY = 0;
     bool hasPrev = false;
 
     for (int x = 0; x < widthToUse; ++x)
     {
-        const double sampleIndexD = static_cast<double>(sampleOffset) + static_cast<double>(x) * samplesPerPixel;
-        if (sampleIndexD < 0.0) continue;
-        if (sampleIndexD >= static_cast<double>(frameCount)) break;
+        Peak p;
+        if (!getPeakForPixel(x, p))
+            continue;
 
-        const int64_t peakIndex = static_cast<int64_t>(std::floor(sampleIndexD / samplesPerPeak));
-        if (peakIndex < 0 || peakIndex >= static_cast<int64_t>(peaks.size())) continue;
-
-        const auto& p = peaks[peakIndex];
-
-        const int y1 = static_cast<int>(heightToUse / 2.0 - p.max * scale);
-        const int y2 = static_cast<int>(heightToUse / 2.0 - p.min * scale);
+        const int y1 = (int)(centerY - p.max * scale);
+        const int y2 = (int)(centerY - p.min * scale);
         const int midY = (y1 + y2) / 2;
 
         if (y1 != y2)

@@ -2,6 +2,8 @@
 #include "../Undoable.h"
 #include "../../Document.h"
 #include <algorithm>
+#include <vector>
+#include <cstdint>
 #include "../Zoom.h"
 #include "../../gui/MainView.h"
 
@@ -9,13 +11,14 @@ namespace cupuacu::actions::audio {
 
 class Paste : public Undoable {
     int64_t startFrame;
-    int64_t endFrame; // -1 = insert mode
+    int64_t endFrame;
 
+    int64_t insertedFrameCount = 0;
     int64_t overwrittenFrameCount = 0;
-    cupuacu::Document insertedData;
-    cupuacu::Document overwrittenData;
 
-    // Selection & cursor before paste
+    std::vector<std::vector<float>> inserted;
+    std::vector<std::vector<float>> overwritten;
+
     double oldSel1 = 0;
     double oldSel2 = 0;
     int64_t oldCursorPos = 0;
@@ -24,7 +27,6 @@ public:
     Paste(State* state, int64_t start, int64_t end = -1)
         : Undoable(state), startFrame(start), endFrame(end)
     {
-        // store the pre-paste editing context
         if (state->selection.isActive())
         {
             oldSel1 = state->selection.getStart();
@@ -51,45 +53,54 @@ public:
         const int64_t docFrames = doc.getFrameCount();
 
         if (startFrame < 0 || startFrame > docFrames)
-            return; // invalid paste location
+            return;
 
-        insertedData = clip;
+        insertedFrameCount = clipFrames;
+        inserted.assign((size_t)ch, {});
+        for (int64_t c = 0; c < ch; ++c)
+        {
+            inserted[(size_t)c].resize((size_t)insertedFrameCount);
+            for (int64_t i = 0; i < insertedFrameCount; ++i)
+                inserted[(size_t)c][(size_t)i] = clip.getSample(c, i);
+        }
+
+        overwrittenFrameCount = 0;
+        overwritten.clear();
 
         if (endFrame >= 0 && endFrame > startFrame)
         {
-            // --- Overwrite mode ---
             overwrittenFrameCount = std::min(endFrame - startFrame, docFrames - startFrame);
             overwrittenFrameCount = std::max<int64_t>(0, overwrittenFrameCount);
 
-            // Backup region being replaced
-            if (overwrittenFrameCount > 0) {
-                overwrittenData.initialize(doc.getSampleFormat(), doc.getSampleRate(), ch, overwrittenFrameCount);
+            overwritten.assign((size_t)ch, {});
+            if (overwrittenFrameCount > 0)
+            {
                 for (int64_t c = 0; c < ch; ++c)
+                {
+                    overwritten[(size_t)c].resize((size_t)overwrittenFrameCount);
                     for (int64_t i = 0; i < overwrittenFrameCount; ++i)
-                        overwrittenData.setSample(c, i, doc.getSample(c, startFrame + i), false);
+                        overwritten[(size_t)c][(size_t)i] = doc.getSample(c, startFrame + i);
+                }
 
-                // Remove the old region
                 doc.removeFrames(startFrame, overwrittenFrameCount);
             }
 
-            // Insert clipboard frames (new region)
-            doc.insertFrames(startFrame, clipFrames);
+            doc.insertFrames(startFrame, insertedFrameCount);
         }
         else
         {
-            // --- Insert mode ---
-            doc.insertFrames(startFrame, clipFrames);
+            doc.insertFrames(startFrame, insertedFrameCount);
         }
 
-        // Final safety check: prevent out-of-range writes
-        const int64_t maxWritable = std::min<int64_t>(clipFrames, doc.getFrameCount() - startFrame);
+        const int64_t maxWritable = std::min<int64_t>(insertedFrameCount, doc.getFrameCount() - startFrame);
         for (int64_t c = 0; c < ch; ++c)
             for (int64_t i = 0; i < maxWritable; ++i)
-                doc.setSample(c, startFrame + i, clip.getSample(c, i), false);
+                doc.setSample(c, startFrame + i, inserted[(size_t)c][(size_t)i], false);
 
-        // --- Select the newly pasted region ---
+        doc.updateWaveformCache();
+
         state->selection.setValue1(startFrame);
-        state->selection.setValue2(startFrame + clipFrames);
+        state->selection.setValue2(startFrame + insertedFrameCount);
         updateCursorPos(state, startFrame);
     }
 
@@ -98,25 +109,25 @@ public:
         auto& doc = state->document;
         const int64_t ch = doc.getChannelCount();
         const int64_t docFrames = doc.getFrameCount();
-        const int64_t clipFrames = insertedData.getFrameCount();
 
         if (startFrame < 0 || startFrame >= docFrames)
             return;
 
-        // Remove pasted region
-        const int64_t removeCount = std::min<int64_t>(clipFrames, docFrames - startFrame);
+        const int64_t removeCount = std::min<int64_t>(insertedFrameCount, docFrames - startFrame);
         doc.removeFrames(startFrame, removeCount);
 
-        // If overwrite, restore original region
-        if (endFrame >= 0 && overwrittenData.getFrameCount() > 0) {
-            doc.insertFrames(startFrame, overwrittenData.getFrameCount());
-            const int64_t maxRestore = std::min<int64_t>(overwrittenData.getFrameCount(), doc.getFrameCount() - startFrame);
+        if (endFrame >= 0 && overwrittenFrameCount > 0)
+        {
+            doc.insertFrames(startFrame, overwrittenFrameCount);
+            const int64_t maxRestore = std::min<int64_t>(overwrittenFrameCount, doc.getFrameCount() - startFrame);
+
             for (int64_t c = 0; c < ch; ++c)
                 for (int64_t i = 0; i < maxRestore; ++i)
-                    doc.setSample(c, startFrame + i, overwrittenData.getSample(c, i), false);
+                    doc.setSample(c, startFrame + i, overwritten[(size_t)c][(size_t)i], false);
         }
 
-        // --- Restore previous selection & cursor ---
+        doc.updateWaveformCache();
+
         if (oldSel1 != 0 && oldSel2 != 0)
         {
             state->selection.setValue1(oldSel1);
