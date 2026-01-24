@@ -7,8 +7,7 @@
 
 using namespace cupuacu::gui;
 
-Waveforms::Waveforms(cupuacu::State *state) :
-    Component(state, "Waveforms")
+Waveforms::Waveforms(cupuacu::State *state) : Component(state, "Waveforms")
 {
     waveformsUnderlay = emplaceChild<WaveformsUnderlay>(state);
 }
@@ -21,7 +20,7 @@ void Waveforms::rebuildWaveforms()
     }
 
     state->waveforms.clear();
-    
+
     int numChannels = state->document.getChannelCount();
 
     if (numChannels > 0)
@@ -30,7 +29,7 @@ void Waveforms::rebuildWaveforms()
         {
             auto waveform = std::make_unique<Waveform>(state, ch);
             auto *handle = addChild(waveform);
-            state->waveforms.push_back(static_cast<Waveform*>(handle));
+            state->waveforms.push_back(static_cast<Waveform *>(handle));
         }
     }
 }
@@ -42,17 +41,14 @@ void Waveforms::resizeWaveforms()
 
     for (int ch = 0; ch < numChannels; ++ch)
     {
-        state->waveforms[ch]->setBounds(
-            0,
-            ch * channelHeight,
-            getWidth(),
-            channelHeight
-        );
+        state->waveforms[ch]->setBounds(0, ch * channelHeight, getWidth(),
+                                        channelHeight);
     }
 
     if (previousWidth != 0)
     {
-        const auto oldSamplesPerPixelFactor = previousWidth * state->samplesPerPixel;
+        const auto oldSamplesPerPixelFactor =
+            previousWidth * state->samplesPerPixel;
         const auto newSamplesPerPixel = oldSamplesPerPixelFactor / getWidth();
         state->samplesPerPixel = newSamplesPerPixel;
     }
@@ -64,4 +60,3 @@ void Waveforms::resized()
     resizeWaveforms();
     previousWidth = getWidth();
 }
-

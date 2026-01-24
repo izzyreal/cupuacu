@@ -10,252 +10,277 @@
 #include "keyboard_handling.h"
 #include "../ResourceUtil.hpp"
 
-namespace cupuacu::gui {
-
-static bool wasMaximized = false;
-
-static SDL_Cursor* defaultCursor = nullptr;
-static SDL_Cursor* textCursor = nullptr;
-static SDL_Cursor* pointerCursor = nullptr;
-static SDL_Cursor* currentCursor = nullptr;
-static SDL_Cursor* selectLCursor = nullptr;
-static SDL_Cursor* selectRCursor = nullptr;
-
-static SDL_Cursor* loadCustomCursor(const std::string& filename, int hot_x, int hot_y)
+namespace cupuacu::gui
 {
-    const auto data = get_resource_data(filename);
-    if (data.empty()) {
-        SDL_Log("Cursor resource '%s' not found", filename.c_str());
-        return nullptr;
-    }
 
-    SDL_IOStream* io = SDL_IOFromConstMem(data.data(), (int)data.size());
-    SDL_Surface* surface = SDL_LoadBMP_IO(io, 1);
-    if (!surface) {
-        SDL_Log("SDL_LoadBMP_IO failed: %s", SDL_GetError());
-        return nullptr;
-    }
+    static bool wasMaximized = false;
 
-    SDL_Cursor* cursor = SDL_CreateColorCursor(surface, hot_x, hot_y);
-    SDL_DestroySurface(surface);
+    static SDL_Cursor *defaultCursor = nullptr;
+    static SDL_Cursor *textCursor = nullptr;
+    static SDL_Cursor *pointerCursor = nullptr;
+    static SDL_Cursor *currentCursor = nullptr;
+    static SDL_Cursor *selectLCursor = nullptr;
+    static SDL_Cursor *selectRCursor = nullptr;
 
-    if (!cursor) {
-        SDL_Log("SDL_CreateColorCursor failed: %s", SDL_GetError());
-    }
-    return cursor;
-}
-
-static void initCursors()
-{
-    defaultCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_DEFAULT);
-    textCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_TEXT);
-    pointerCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_POINTER);
-    currentCursor = defaultCursor;
-
-    selectLCursor = loadCustomCursor("select_l.bmp", 0, 0);
-    selectRCursor = loadCustomCursor("select_r.bmp", 0, 0);
-    
-    SDL_SetCursor(currentCursor);
-}
-
-static void cleanupCursors()
-{
-    if (defaultCursor) SDL_DestroyCursor(defaultCursor);
-    if (textCursor) SDL_DestroyCursor(textCursor);
-    if (pointerCursor) SDL_DestroyCursor(pointerCursor);
-}
-
-static void updateMouseCursor(const cupuacu::State *state)
-{
-    SDL_Cursor* newCursor = defaultCursor;
-
-    if (state->menuBar->hasMenuOpen())
+    static SDL_Cursor *loadCustomCursor(const std::string &filename, int hot_x,
+                                        int hot_y)
     {
-        newCursor = defaultCursor;
-    }
-    else if (dynamic_cast<const gui::Waveform*>(state->componentUnderMouse))
-    {
-        if (state->hoveringOverChannels == SelectedChannels::LEFT)
+        const auto data = get_resource_data(filename);
+        if (data.empty())
         {
+            SDL_Log("Cursor resource '%s' not found", filename.c_str());
+            return nullptr;
+        }
+
+        SDL_IOStream *io = SDL_IOFromConstMem(data.data(), (int)data.size());
+        SDL_Surface *surface = SDL_LoadBMP_IO(io, 1);
+        if (!surface)
+        {
+            SDL_Log("SDL_LoadBMP_IO failed: %s", SDL_GetError());
+            return nullptr;
+        }
+
+        SDL_Cursor *cursor = SDL_CreateColorCursor(surface, hot_x, hot_y);
+        SDL_DestroySurface(surface);
+
+        if (!cursor)
+        {
+            SDL_Log("SDL_CreateColorCursor failed: %s", SDL_GetError());
+        }
+        return cursor;
+    }
+
+    static void initCursors()
+    {
+        defaultCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_DEFAULT);
+        textCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_TEXT);
+        pointerCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_POINTER);
+        currentCursor = defaultCursor;
+
+        selectLCursor = loadCustomCursor("select_l.bmp", 0, 0);
+        selectRCursor = loadCustomCursor("select_r.bmp", 0, 0);
+
+        SDL_SetCursor(currentCursor);
+    }
+
+    static void cleanupCursors()
+    {
+        if (defaultCursor)
+        {
+            SDL_DestroyCursor(defaultCursor);
+        }
+        if (textCursor)
+        {
+            SDL_DestroyCursor(textCursor);
+        }
+        if (pointerCursor)
+        {
+            SDL_DestroyCursor(pointerCursor);
+        }
+    }
+
+    static void updateMouseCursor(const cupuacu::State *state)
+    {
+        SDL_Cursor *newCursor = defaultCursor;
+
+        if (state->menuBar->hasMenuOpen())
+        {
+            newCursor = defaultCursor;
+        }
+        else if (dynamic_cast<const gui::Waveform *>(
+                     state->componentUnderMouse))
+        {
+            if (state->hoveringOverChannels == SelectedChannels::LEFT)
+            {
                 newCursor = selectLCursor;
-        }
-        else if (state->hoveringOverChannels == SelectedChannels::RIGHT)
-        {
+            }
+            else if (state->hoveringOverChannels == SelectedChannels::RIGHT)
+            {
                 newCursor = selectRCursor;
+            }
+            else /* SelectedChannels::BOTH */
+            {
+                newCursor = textCursor;
+            }
         }
-        else /* SelectedChannels::BOTH */
+        else if (dynamic_cast<const gui::SamplePoint *>(
+                     state->componentUnderMouse) ||
+                 dynamic_cast<const gui::TriangleMarker *>(
+                     state->componentUnderMouse))
         {
-            newCursor = textCursor;
+            newCursor = pointerCursor;
         }
-    }
-    else if (dynamic_cast<const gui::SamplePoint*>(state->componentUnderMouse) ||
-             dynamic_cast<const gui::TriangleMarker*>(state->componentUnderMouse))
-    {
-        newCursor = pointerCursor;
-    }
 
-    if (newCursor != currentCursor)
-    {
-        SDL_SetCursor(newCursor);
-        currentCursor = newCursor;
-    }
-}
-
-static void updateComponentUnderMouse(cupuacu::State *state, const int32_t mouseX, const int32_t mouseY)
-{
-    auto oldComponentUnderMouse = state->componentUnderMouse;
-    const auto newComponentUnderMouse = state->rootComponent->findComponentAt(mouseX, mouseY);
-
-    if (state->componentUnderMouse != newComponentUnderMouse)
-    {
-        state->componentUnderMouse = newComponentUnderMouse;
-
-        if (oldComponentUnderMouse != nullptr)
+        if (newCursor != currentCursor)
         {
-            oldComponentUnderMouse->mouseLeave();
-        }
-
-        if (newComponentUnderMouse != nullptr)
-        {
-            newComponentUnderMouse->mouseEnter();
-            //printf("New component under mouse: %s\n", newComponentUnderMouse->getComponentName().c_str());
+            SDL_SetCursor(newCursor);
+            currentCursor = newCursor;
         }
     }
-}
 
-static void handleResize(cupuacu::State *state)
-{
-    int winW, winH;
-    SDL_GetWindowSize(state->window, &winW, &winH);
-
-    int hpp = state->pixelScale;
-
-    int newW = (winW / hpp) * hpp;
-    int newH = (winH / hpp) * hpp;
-
-    if (newW != winW || newH != winH)
+    static void updateComponentUnderMouse(cupuacu::State *state,
+                                          const int32_t mouseX,
+                                          const int32_t mouseY)
     {
-        if (wasMaximized)
+        auto oldComponentUnderMouse = state->componentUnderMouse;
+        const auto newComponentUnderMouse =
+            state->rootComponent->findComponentAt(mouseX, mouseY);
+
+        if (state->componentUnderMouse != newComponentUnderMouse)
         {
-            wasMaximized = false;
-            SDL_RestoreWindow(state->window);
-            SDL_SetWindowSize(state->window, newW, newH);
-            SDL_SetWindowPosition(state->window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+            state->componentUnderMouse = newComponentUnderMouse;
+
+            if (oldComponentUnderMouse != nullptr)
+            {
+                oldComponentUnderMouse->mouseLeave();
+            }
+
+            if (newComponentUnderMouse != nullptr)
+            {
+                newComponentUnderMouse->mouseEnter();
+                // printf("New component under mouse: %s\n",
+                // newComponentUnderMouse->getComponentName().c_str());
+            }
         }
-        else
-        {
-            SDL_SetWindowSize(state->window, newW, newH);
-        }
-        return;
     }
 
-    resizeComponents(state);
-}
-
-static void handleMouseMotion(cupuacu::State *state, SDL_Event *event)
-{
-    const MouseEvent mouseEvent = convertFromSDL(state, event);
-
-    state->rootComponent->handleMouseEvent(mouseEvent);
-
-    if (state->capturingComponent == nullptr)
+    static void handleResize(cupuacu::State *state)
     {
-        updateComponentUnderMouse(state, mouseEvent.mouseXi, mouseEvent.mouseYi);
+        int winW, winH;
+        SDL_GetWindowSize(state->window, &winW, &winH);
+
+        int hpp = state->pixelScale;
+
+        int newW = (winW / hpp) * hpp;
+        int newH = (winH / hpp) * hpp;
+
+        if (newW != winW || newH != winH)
+        {
+            if (wasMaximized)
+            {
+                wasMaximized = false;
+                SDL_RestoreWindow(state->window);
+                SDL_SetWindowSize(state->window, newW, newH);
+                SDL_SetWindowPosition(state->window, SDL_WINDOWPOS_CENTERED,
+                                      SDL_WINDOWPOS_CENTERED);
+            }
+            else
+            {
+                SDL_SetWindowSize(state->window, newW, newH);
+            }
+            return;
+        }
+
+        resizeComponents(state);
     }
-}
 
-static void handleMouseDown(cupuacu::State *state, SDL_Event *event)
-{
-    const MouseEvent mouseEvent = convertFromSDL(state, event);
-
-    if (state->capturingComponent == nullptr)
+    static void handleMouseMotion(cupuacu::State *state, SDL_Event *event)
     {
+        const MouseEvent mouseEvent = convertFromSDL(state, event);
+
         state->rootComponent->handleMouseEvent(mouseEvent);
-        return;
+
+        if (state->capturingComponent == nullptr)
+        {
+            updateComponentUnderMouse(state, mouseEvent.mouseXi,
+                                      mouseEvent.mouseYi);
+        }
     }
 
-    state->capturingComponent->handleMouseEvent(mouseEvent);
-}
-
-static void handleMouseUp(cupuacu::State *state, SDL_Event *event)
-{
-    const MouseEvent mouseEvent = convertFromSDL(state, event);
-
-    updateComponentUnderMouse(state, mouseEvent.mouseXi, mouseEvent.mouseYi);
-
-    if (state->capturingComponent == nullptr)
+    static void handleMouseDown(cupuacu::State *state, SDL_Event *event)
     {
-        state->rootComponent->handleMouseEvent(mouseEvent);
-        return;
+        const MouseEvent mouseEvent = convertFromSDL(state, event);
+
+        if (state->capturingComponent == nullptr)
+        {
+            state->rootComponent->handleMouseEvent(mouseEvent);
+            return;
+        }
+
+        state->capturingComponent->handleMouseEvent(mouseEvent);
     }
 
-    if (!state->capturingComponent->containsAbsoluteCoordinate(mouseEvent.mouseXi, mouseEvent.mouseYi))
+    static void handleMouseUp(cupuacu::State *state, SDL_Event *event)
     {
-        state->capturingComponent->mouseLeave();
+        const MouseEvent mouseEvent = convertFromSDL(state, event);
+
+        updateComponentUnderMouse(state, mouseEvent.mouseXi,
+                                  mouseEvent.mouseYi);
+
+        if (state->capturingComponent == nullptr)
+        {
+            state->rootComponent->handleMouseEvent(mouseEvent);
+            return;
+        }
+
+        if (!state->capturingComponent->containsAbsoluteCoordinate(
+                mouseEvent.mouseXi, mouseEvent.mouseYi))
+        {
+            state->capturingComponent->mouseLeave();
+        }
+
+        state->capturingComponent->handleMouseEvent(mouseEvent);
+        state->capturingComponent = nullptr;
     }
 
-    state->capturingComponent->handleMouseEvent(mouseEvent);
-    state->capturingComponent = nullptr;
-}
-
-static void handleWindowMouseLeave(cupuacu::State *state)
-{
-    if (state->capturingComponent != nullptr)
+    static void handleWindowMouseLeave(cupuacu::State *state)
     {
-        return;
+        if (state->capturingComponent != nullptr)
+        {
+            return;
+        }
+
+        if (state->selection.isActive())
+        {
+            return;
+        }
+
+        for (auto *waveform : state->waveforms)
+        {
+            waveform->clearHighlight();
+        }
+
+        state->componentUnderMouse = nullptr;
     }
 
-    if (state->selection.isActive())
+    inline SDL_AppResult handleAppEvent(cupuacu::State *state, SDL_Event *event)
     {
-        return;
+        switch (event->type)
+        {
+            case SDL_EVENT_QUIT:
+                cleanupCursors();
+                return SDL_APP_SUCCESS;
+            case SDL_EVENT_WINDOW_MAXIMIZED:
+                wasMaximized = true;
+                break;
+            case SDL_EVENT_WINDOW_RESIZED:
+                handleResize(state);
+                break;
+            case SDL_EVENT_WINDOW_MOUSE_LEAVE:
+                handleWindowMouseLeave(state);
+                break;
+            case SDL_EVENT_KEY_DOWN:
+                handleKeyDown(event, state);
+                break;
+            case SDL_EVENT_MOUSE_MOTION:
+                handleMouseMotion(state, event);
+                break;
+            case SDL_EVENT_MOUSE_BUTTON_DOWN:
+                handleMouseDown(state, event);
+                // state->rootComponent->printTree();
+                break;
+            case SDL_EVENT_MOUSE_BUTTON_UP:
+                handleMouseUp(state, event);
+                break;
+        }
+
+        updateMouseCursor(state);
+
+        if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
+        {
+            // state->selection.printInfo();
+        }
+
+        return SDL_APP_CONTINUE;
     }
-
-    for (auto* waveform : state->waveforms)
-    {
-        waveform->clearHighlight();
-    }
-
-    state->componentUnderMouse = nullptr;
-}
-
-inline SDL_AppResult handleAppEvent(cupuacu::State *state, SDL_Event *event)
-{
-    switch (event->type)
-    {
-        case SDL_EVENT_QUIT:
-            cleanupCursors();
-            return SDL_APP_SUCCESS;
-        case SDL_EVENT_WINDOW_MAXIMIZED:
-            wasMaximized = true;
-            break;
-        case SDL_EVENT_WINDOW_RESIZED:
-            handleResize(state);
-            break;
-        case SDL_EVENT_WINDOW_MOUSE_LEAVE:
-            handleWindowMouseLeave(state);
-            break;
-        case SDL_EVENT_KEY_DOWN:
-            handleKeyDown(event, state);
-            break;
-        case SDL_EVENT_MOUSE_MOTION:
-            handleMouseMotion(state, event);
-            break;
-        case SDL_EVENT_MOUSE_BUTTON_DOWN:
-            handleMouseDown(state, event);
-            //state->rootComponent->printTree();
-            break;
-        case SDL_EVENT_MOUSE_BUTTON_UP:
-            handleMouseUp(state, event);
-            break;
-    }
-
-    updateMouseCursor(state);
-
-    if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
-    {
-        //state->selection.printInfo();
-    }
-
-    return SDL_APP_CONTINUE;
-}
-}
+} // namespace cupuacu::gui

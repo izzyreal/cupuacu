@@ -2,11 +2,13 @@
 
 #include "Component.h"
 
-namespace cupuacu::gui {
+namespace cupuacu::gui
+{
 
-class Waveforms : public Component {
+    class Waveforms : public Component
+    {
     public:
-        Waveforms(cupuacu::State*);
+        Waveforms(cupuacu::State *);
 
         void rebuildWaveforms();
 
@@ -17,5 +19,5 @@ class Waveforms : public Component {
     private:
         Component *waveformsUnderlay = nullptr;
         uint32_t previousWidth = 0;
-};
-}
+    };
+} // namespace cupuacu::gui

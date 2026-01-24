@@ -4,114 +4,120 @@
 #include <vector>
 #include <cstdint>
 
-namespace cupuacu {
+namespace cupuacu
+{
 
-class DirtyTrackingAudioBuffer : public AudioBuffer {
-private:
-    std::vector<uint8_t> dirtyFlags;
-
-    bool isDirty(int64_t channel, int64_t frame) const override
+    class DirtyTrackingAudioBuffer : public AudioBuffer
     {
-        int64_t idx = frame * channels.size() + channel;
-        return (dirtyFlags[idx / 8] >> (idx % 8)) & 1;
-    }
+    private:
+        std::vector<uint8_t> dirtyFlags;
 
-    void markDirty(int64_t channel, int64_t frame)
-    {
-        int64_t idx = frame * channels.size() + channel;
-        dirtyFlags[idx / 8] |= (1 << (idx % 8));
-    }
-
-    void clearDirty(int64_t channel, int64_t frame) {
-        int64_t idx = frame * channels.size() + channel;
-        dirtyFlags[idx / 8] &= ~(1 << (idx % 8));
-    }
-
-public:
-    void resize(int64_t numChannels, int64_t numFrames) override
-    {
-        AudioBuffer::resize(numChannels, numFrames);
-        dirtyFlags.resize((numChannels * numFrames + 7) / 8, 0);
-    }
-
-    void setSample(int64_t channel, int64_t frame, float value, const bool shouldMarkDirty = true) override
-    {
-        AudioBuffer::setSample(channel, frame, value);
-
-        if (shouldMarkDirty)
+        bool isDirty(int64_t channel, int64_t frame) const override
         {
-            markDirty(channel, frame);
+            int64_t idx = frame * channels.size() + channel;
+            return (dirtyFlags[idx / 8] >> (idx % 8)) & 1;
         }
-    }
 
-    void insertFrames(int64_t frameIndex, int64_t numFrames) override
-    {
-        AudioBuffer::insertFrames(frameIndex, numFrames);
-
-        auto chCount = getChannelCount();
-
-        std::vector<uint8_t> newFlags((chCount * getFrameCount() + 7) / 8, 0);
-
-        for (int64_t f = 0; f < frameIndex; ++f)
+        void markDirty(int64_t channel, int64_t frame)
         {
-            for (int64_t c = 0; c < chCount; ++c)
+            int64_t idx = frame * channels.size() + channel;
+            dirtyFlags[idx / 8] |= (1 << (idx % 8));
+        }
+
+        void clearDirty(int64_t channel, int64_t frame)
+        {
+            int64_t idx = frame * channels.size() + channel;
+            dirtyFlags[idx / 8] &= ~(1 << (idx % 8));
+        }
+
+    public:
+        void resize(int64_t numChannels, int64_t numFrames) override
+        {
+            AudioBuffer::resize(numChannels, numFrames);
+            dirtyFlags.resize((numChannels * numFrames + 7) / 8, 0);
+        }
+
+        void setSample(int64_t channel, int64_t frame, float value,
+                       const bool shouldMarkDirty = true) override
+        {
+            AudioBuffer::setSample(channel, frame, value);
+
+            if (shouldMarkDirty)
             {
-                if (isDirty(c, f))
-                {
-                    int64_t idx = f * chCount + c;
-                    newFlags[idx / 8] |= (1 << (idx % 8));
-                }
+                markDirty(channel, frame);
             }
         }
 
-        for (int64_t f = frameIndex; f < getFrameCount() - numFrames; ++f)
+        void insertFrames(int64_t frameIndex, int64_t numFrames) override
         {
-            for (int64_t c = 0; c < chCount; ++c)
+            AudioBuffer::insertFrames(frameIndex, numFrames);
+
+            auto chCount = getChannelCount();
+
+            std::vector<uint8_t> newFlags((chCount * getFrameCount() + 7) / 8,
+                                          0);
+
+            for (int64_t f = 0; f < frameIndex; ++f)
             {
-                if (isDirty(c, f))
+                for (int64_t c = 0; c < chCount; ++c)
                 {
-                    int64_t newIdx = (f + numFrames) * chCount + c;
-                    newFlags[newIdx / 8] |= (1 << (newIdx % 8));
+                    if (isDirty(c, f))
+                    {
+                        int64_t idx = f * chCount + c;
+                        newFlags[idx / 8] |= (1 << (idx % 8));
+                    }
                 }
             }
-        }
 
-        dirtyFlags = std::move(newFlags);
-    }
-
-    void removeFrames(int64_t frameIndex, int64_t numFrames) override
-    {
-        AudioBuffer::removeFrames(frameIndex, numFrames);
-
-        auto chCount = getChannelCount();
-
-        std::vector<uint8_t> newFlags((chCount * getFrameCount() + 7) / 8, 0);
-
-        for (int64_t f = 0; f < frameIndex; ++f)
-        {
-            for (int64_t c = 0; c < chCount; ++c)
+            for (int64_t f = frameIndex; f < getFrameCount() - numFrames; ++f)
             {
-                if (isDirty(c, f))
+                for (int64_t c = 0; c < chCount; ++c)
                 {
-                    int64_t idx = f * chCount + c;
-                    newFlags[idx / 8] |= (1 << (idx % 8));
+                    if (isDirty(c, f))
+                    {
+                        int64_t newIdx = (f + numFrames) * chCount + c;
+                        newFlags[newIdx / 8] |= (1 << (newIdx % 8));
+                    }
                 }
             }
+
+            dirtyFlags = std::move(newFlags);
         }
 
-        for (int64_t f = frameIndex; f < getFrameCount(); ++f)
+        void removeFrames(int64_t frameIndex, int64_t numFrames) override
         {
-            for (int64_t c = 0; c < chCount; ++c)
+            AudioBuffer::removeFrames(frameIndex, numFrames);
+
+            auto chCount = getChannelCount();
+
+            std::vector<uint8_t> newFlags((chCount * getFrameCount() + 7) / 8,
+                                          0);
+
+            for (int64_t f = 0; f < frameIndex; ++f)
             {
-                if (isDirty(c, f + numFrames))
+                for (int64_t c = 0; c < chCount; ++c)
                 {
-                    int64_t newIdx = f * chCount + c;
-                    newFlags[newIdx / 8] |= (1 << (newIdx % 8));
+                    if (isDirty(c, f))
+                    {
+                        int64_t idx = f * chCount + c;
+                        newFlags[idx / 8] |= (1 << (idx % 8));
+                    }
                 }
             }
-        }
 
-        dirtyFlags = std::move(newFlags);
-    }
-};
-}
+            for (int64_t f = frameIndex; f < getFrameCount(); ++f)
+            {
+                for (int64_t c = 0; c < chCount; ++c)
+                {
+                    if (isDirty(c, f + numFrames))
+                    {
+                        int64_t newIdx = f * chCount + c;
+                        newFlags[newIdx / 8] |= (1 << (newIdx % 8));
+                    }
+                }
+            }
+
+            dirtyFlags = std::move(newFlags);
+        }
+    };
+} // namespace cupuacu

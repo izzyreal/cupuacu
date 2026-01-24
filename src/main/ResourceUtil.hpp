@@ -3,11 +3,12 @@
 CMRC_DECLARE(cupuacu);
 #include <string_view>
 
-namespace cupuacu {
-static std::string get_resource_data(const std::string &path)
+namespace cupuacu
 {
-    const auto file = cmrc::cupuacu::get_filesystem().open(path.c_str());
-    const auto data = std::string_view(file.begin(), file.size()).data();
-    return { data, data + file.size() };
-}
-}
+    static std::string get_resource_data(const std::string &path)
+    {
+        const auto file = cmrc::cupuacu::get_filesystem().open(path.c_str());
+        const auto data = std::string_view(file.begin(), file.size()).data();
+        return {data, data + file.size()};
+    }
+} // namespace cupuacu

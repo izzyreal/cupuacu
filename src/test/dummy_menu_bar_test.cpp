@@ -6,18 +6,18 @@
 TEST_CASE("MenuBar dirty rect intersection check")
 {
     cupuacu::State state;
-    state.pixelScale   = 1;
+    state.pixelScale = 1;
     state.menuFontSize = 12;
-    state.window       = nullptr;
-    state.renderer     = nullptr;
-    state.canvas       = nullptr;
+    state.window = nullptr;
+    state.renderer = nullptr;
+    state.canvas = nullptr;
 
     // Build a simplified tree
     state.rootComponent = std::make_unique<Component>(&state, "RootComponent");
     state.rootComponent->setSize(800, 600);
 
     auto menuBar = std::make_unique<Component>(&state, "MenuBar");
-    auto* mb = state.rootComponent->addChild(menuBar);
+    auto *mb = state.rootComponent->addChild(menuBar);
 
     // Place MenuBar at top of window
     mb->setBounds(0, 0, 800, 20);
@@ -29,24 +29,23 @@ TEST_CASE("MenuBar dirty rect intersection check")
     SDL_Rect mbRect = mb->getAbsoluteBounds();
 
     // Logging
-    std::cout << "MenuBar rect: "
-              << mbRect.x << "," << mbRect.y
-              << " " << mbRect.w << "x" << mbRect.h << "\n";
-    std::cout << "Dirty rect:   "
-              << dr.x << "," << dr.y
-              << " " << dr.w << "x" << dr.h << "\n";
+    std::cout << "MenuBar rect: " << mbRect.x << "," << mbRect.y << " "
+              << mbRect.w << "x" << mbRect.h << "\n";
+    std::cout << "Dirty rect:   " << dr.x << "," << dr.y << " " << dr.w << "x"
+              << dr.h << "\n";
 
     SDL_Rect intersection;
     bool hasIntersection = SDL_GetRectIntersection(&mbRect, &dr, &intersection);
 
-    if (hasIntersection) {
-        std::cout << "Intersection: "
-                  << intersection.x << "," << intersection.y
+    if (hasIntersection)
+    {
+        std::cout << "Intersection: " << intersection.x << "," << intersection.y
                   << " " << intersection.w << "x" << intersection.h << "\n";
-    } else {
+    }
+    else
+    {
         std::cout << "No intersection.\n";
     }
 
     REQUIRE(!hasIntersection);
 }
-

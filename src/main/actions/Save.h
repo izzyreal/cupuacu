@@ -3,9 +3,10 @@
 #include "../State.h"
 #include "../file/WavWriter.h"
 
-namespace cupuacu::actions {
-static void overwrite(cupuacu::State *state)
+namespace cupuacu::actions
 {
-    file::WavWriter::rewriteWavFile(state);
-}
-}
+    static void overwrite(cupuacu::State *state)
+    {
+        file::WavWriter::rewriteWavFile(state);
+    }
+} // namespace cupuacu::actions

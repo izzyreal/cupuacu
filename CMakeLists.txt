@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
 
 include(cmake/ResourceBundling.cmake)
+include(cmake/ClangFormat.cmake)
 
 project(Cupuacu)
 
@@ -29,11 +30,14 @@ set(SDL_INSTALL_TESTS OFF CACHE BOOL "" FORCE)
 set(BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(MINIAUDIO_INSTALL OFF CACHE BOOL "" FORCE)
 
 AddDependency(SDL3 "https://github.com/libsdl-org/SDL.git" "release-3.2.14")
 AddDependency(SDL_ttf "https://github.com/libsdl-org/SDL_ttf.git" "release-3.2.2")
 AddDependency(libsndfile "https://github.com/libsndfile/libsndfile.git" "master")
 AddDependency(Catch2 "https://github.com/catchorg/Catch2.git" "v3.8.1")
+AddDependency(miniaudio "https://github.com/mackron/miniaudio.git" "0.11.24")
+AddDependency(readerwriterqueue "https://github.com/cameron314/readerwriterqueue.git" "master")
 
 add_executable(Cupuacu
     src/main/main.cpp
@@ -73,10 +77,12 @@ add_executable(cupuacu-tests
 
 target_link_libraries(Cupuacu PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf)
 target_link_libraries(Cupuacu PRIVATE SndFile::sndfile)
+target_link_libraries(Cupuacu PRIVATE miniaudio)
 target_link_libraries(cupuacu-tests PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf)
 target_link_libraries(cupuacu-tests PRIVATE SndFile::sndfile)
 target_link_libraries(cupuacu-tests PRIVATE Catch2::Catch2WithMain)
 
+target_include_directories(Cupuacu PRIVATE ${readerwriterqueue_SOURCE_DIR})
 target_include_directories(cupuacu-tests PRIVATE src/main/)
 
 _bundle_resources(Cupuacu)

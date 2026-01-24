@@ -19,7 +19,7 @@ struct Helpers
 
     static SDL_FRect rectToFRect(const SDL_Rect r)
     {
-        return SDL_FRect{ (float)r.x, (float)r.y, (float)r.w, (float)r.h };
+        return SDL_FRect{(float)r.x, (float)r.y, (float)r.w, (float)r.h};
     }
 
     static void setRenderDrawColor(SDL_Renderer *r, SDL_Color c)
@@ -40,12 +40,10 @@ struct Helpers
         SDL_RenderFillRect(r, &rectToFill);
     }
 
-    static SDL_Rect subtractRect(const SDL_Rect& rect, const SDL_Rect& clip)
+    static SDL_Rect subtractRect(const SDL_Rect &rect, const SDL_Rect &clip)
     {
-        if (!(
-            (clip.h == rect.h && clip.w <= rect.w) ||
-            (clip.w == rect.w && clip.h <= rect.h)
-        ))
+        if (!((clip.h == rect.h && clip.w <= rect.w) ||
+              (clip.w == rect.w && clip.h <= rect.h)))
         {
             return rect;
         }
@@ -80,4 +78,3 @@ struct Helpers
         return result;
     }
 };
-

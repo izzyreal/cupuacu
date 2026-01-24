@@ -8,7 +8,7 @@
 #include "gui/EventHandling.h"
 #include "gui/Gui.h"
 
-const uint16_t initialDimensions[] = { 1280, 720 };
+const uint16_t initialDimensions[] = {1280, 720};
 
 #include <cstdint>
 #include <string>
@@ -18,7 +18,10 @@ const uint16_t initialDimensions[] = { 1280, 720 };
 
 void renderCanvasToWindow(cupuacu::State *state)
 {
-    if (state->dirtyRects.empty()) return;
+    if (state->dirtyRects.empty())
+    {
+        return;
+    }
 
     SDL_SetRenderTarget(state->renderer, NULL);
 
@@ -35,7 +38,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     *appstate = state;
 
-    SDL_SetAppMetadata("Cupuacu -- A minimalist audio editor by Izmar", "0.1", "nl.izmar.cupuacu");
+    SDL_SetAppMetadata("Cupuacu -- A minimalist audio editor by Izmar", "0.1",
+                       "nl.izmar.cupuacu");
 
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
@@ -50,13 +54,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     }
 
     if (!SDL_CreateWindowAndRenderer(
-                "",
-                initialDimensions[0],
-                initialDimensions[1],
-                SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY,
-                &state->window,
-                &state->renderer)
-            )
+            "", initialDimensions[0], initialDimensions[1],
+            SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY,
+            &state->window, &state->renderer))
     {
         SDL_Log("SDL_CreateWindowAndRenderer() failed: %s", SDL_GetError());
         return SDL_APP_FAILURE;
@@ -85,7 +85,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
-    cupuacu::State *state = (cupuacu::State*) appstate;
+    cupuacu::State *state = (cupuacu::State *)appstate;
 
     state->rootComponent->timerCallbackRecursive();
 
@@ -94,7 +94,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     renderCanvasToWindow(state);
     state->dirtyRects.clear();
 
-    //state->rootComponent->printDirtyTree();
+    // state->rootComponent->printDirtyTree();
 
     SDL_Delay(16);
     return SDL_APP_CONTINUE;
@@ -102,15 +102,14 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
-    return cupuacu::gui::handleAppEvent((cupuacu::State*)appstate, event);
+    return cupuacu::gui::handleAppEvent((cupuacu::State *)appstate, event);
 }
 
 void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
     TTF_Quit();
-    cupuacu::State *state = (cupuacu::State*)appstate;
+    cupuacu::State *state = (cupuacu::State *)appstate;
     SDL_DestroyRenderer(state->renderer);
     SDL_DestroyWindow(state->window);
     SDL_Quit();
 }
-

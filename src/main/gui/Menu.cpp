@@ -9,8 +9,10 @@
 
 using namespace cupuacu::gui;
 
-Menu::Menu(cupuacu::State *state, const std::string menuNameToUse, const std::function<void()> actionToUse) :
-    Component(state, "Menu for " + menuNameToUse), menuName(menuNameToUse), action(actionToUse)
+Menu::Menu(cupuacu::State *state, const std::string menuNameToUse,
+           const std::function<void()> actionToUse)
+    : Component(state, "Menu for " + menuNameToUse), menuName(menuNameToUse),
+      action(actionToUse)
 {
     disableParentClipping();
     label = emplaceChild<Label>(state);
@@ -18,8 +20,11 @@ Menu::Menu(cupuacu::State *state, const std::string menuNameToUse, const std::fu
     label->setFontSize(state->menuFontSize);
 }
 
-Menu::Menu(cupuacu::State *state, const std::function<std::string()> menuNameGetterToUse, const std::function<void()> actionToUse) :
-    Component(state, "Menu"), menuNameGetter(menuNameGetterToUse), action(actionToUse), menuName("")
+Menu::Menu(cupuacu::State *state,
+           const std::function<std::string()> menuNameGetterToUse,
+           const std::function<void()> actionToUse)
+    : Component(state, "Menu"), menuNameGetter(menuNameGetterToUse),
+      action(actionToUse), menuName("")
 {
     disableParentClipping();
     label = emplaceChild<Label>(state);
@@ -34,13 +39,16 @@ void Menu::setIsAvailable(std::function<bool()> isAvailableToUse)
 
 std::string Menu::getMenuName()
 {
-    if (menuName.empty()) return menuNameGetter();
+    if (menuName.empty())
+    {
+        return menuNameGetter();
+    }
     return menuName;
 }
 
 bool Menu::isFirstLevel() const
 {
-    return dynamic_cast<MenuBar*>(getParent()) != nullptr;
+    return dynamic_cast<MenuBar *>(getParent()) != nullptr;
 }
 
 void Menu::resized()
@@ -66,7 +74,8 @@ void Menu::showSubMenus()
 
     int subMenuYPos = getHeight();
 
-    const int menuItemHeight = int(((float)state->menuFontSize / state->pixelScale) * 2.0f);
+    const int menuItemHeight =
+        int(((float)state->menuFontSize / state->pixelScale) * 2.0f);
 
     int subMenuWidth = 1;
 
@@ -81,7 +90,9 @@ void Menu::showSubMenus()
 
     for (auto &subMenu : subMenus)
     {
-        subMenu->setBounds(0, subMenuYPos, subMenuWidth + subMenuHorizontalMargin, menuItemHeight);
+        subMenu->setBounds(0, subMenuYPos,
+                           subMenuWidth + subMenuHorizontalMargin,
+                           menuItemHeight);
         subMenu->setVisible(true);
         subMenuYPos += menuItemHeight;
     }
@@ -92,9 +103,12 @@ void Menu::showSubMenus()
     int w = 0;
     int h = 0;
 
-    for (auto* sub : subMenus)
+    for (auto *sub : subMenus)
     {
-        if (sub->getWidth() > w) w = sub->getWidth();
+        if (sub->getWidth() > w)
+        {
+            w = sub->getWidth();
+        }
         h = sub->getYPos() + sub->getHeight() - y;
     }
 
@@ -113,13 +127,13 @@ void Menu::hideSubMenus()
     setDirty();
 }
 
-void Menu::onDraw(SDL_Renderer* renderer)
+void Menu::onDraw(SDL_Renderer *renderer)
 {
-    auto radius = 14.f/state->pixelScale;
+    auto radius = 14.f / state->pixelScale;
     auto rect = getLocalBoundsF();
 
     label->setOpacity(isAvailable() ? 255 : 128);
-    
+
     label->setText(getMenuName());
 
     if (isFirstLevel())
@@ -128,33 +142,33 @@ void Menu::onDraw(SDL_Renderer* renderer)
         Helpers::setRenderDrawColor(renderer, bg);
 
         auto rect = getLocalBoundsF();
-        
+
         SDL_RenderFillRect(renderer, &rect);
-        
+
         if (currentlyOpen)
         {
-            SDL_Color col1 = { 70, 70, 70, 255 };
+            SDL_Color col1 = {70, 70, 70, 255};
             drawRoundedRect(renderer, rect, radius, col1);
         }
-        
+
         return;
     }
 
-    SDL_Color col1 = { 50, 50, 50, 255 };
-    SDL_Color col2 = { 60, 60, 200, 255 }; 
-    SDL_Color outline { 180, 180, 180, 255 };
+    SDL_Color col1 = {50, 50, 50, 255};
+    SDL_Color col2 = {60, 60, 200, 255};
+    SDL_Color outline{180, 180, 180, 255};
 
-    auto parentMenu = dynamic_cast<Menu*>(getParent());
+    auto parentMenu = dynamic_cast<Menu *>(getParent());
     bool isFirst = parentMenu->subMenus.front() == this;
-    bool isLast  = parentMenu->subMenus.back()  == this;
+    bool isLast = parentMenu->subMenus.back() == this;
 
     auto rectShrunk = rect;
 
     float shrink = 6.f / state->pixelScale;
     rectShrunk.x += shrink;
     rectShrunk.y += shrink;
-    rectShrunk.w -= shrink*2;
-    rectShrunk.h -= shrink*2;
+    rectShrunk.w -= shrink * 2;
+    rectShrunk.h -= shrink * 2;
 
     if (isFirst && isLast)
     {
@@ -230,10 +244,12 @@ void Menu::mouseLeave()
 {
     setDirty();
 
-    if (dynamic_cast<Menu*>(state->componentUnderMouse) == nullptr)
+    if (dynamic_cast<Menu *>(state->componentUnderMouse) == nullptr)
     {
-        const bool componentUnderMouseIsMenuBar = state->componentUnderMouse == state->menuBar;
-        const bool componentUnderMouseIsMenuBarChild = state->menuBar->hasChild(state->componentUnderMouse);
+        const bool componentUnderMouseIsMenuBar =
+            state->componentUnderMouse == state->menuBar;
+        const bool componentUnderMouseIsMenuBarChild =
+            state->menuBar->hasChild(state->componentUnderMouse);
         if (componentUnderMouseIsMenuBar || componentUnderMouseIsMenuBarChild)
         {
             if (state->menuBar->hasMenuOpen())
@@ -247,9 +263,9 @@ void Menu::mouseLeave()
 
 void Menu::mouseEnter()
 {
-    if (!subMenus.empty() &&
-        ((state->menuBar->getOpenMenu() != nullptr &&
-        state->menuBar->getOpenMenu() != this) || state->menuBar->shouldOpenSubMenuOnMouseOver())) 
+    if (!subMenus.empty() && ((state->menuBar->getOpenMenu() != nullptr &&
+                               state->menuBar->getOpenMenu() != this) ||
+                              state->menuBar->shouldOpenSubMenuOnMouseOver()))
     {
         state->menuBar->hideSubMenus();
         showSubMenus();
@@ -257,4 +273,3 @@ void Menu::mouseEnter()
 
     setDirty();
 }
-

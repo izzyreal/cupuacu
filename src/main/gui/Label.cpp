@@ -4,10 +4,8 @@
 
 using namespace cupuacu::gui;
 
-Label::Label(cupuacu::State* state,
-             const std::string& textToUse)
-    : Component(state, "Label: " + textToUse),
-      text(textToUse)
+Label::Label(cupuacu::State *state, const std::string &textToUse)
+    : Component(state, "Label: " + textToUse), text(textToUse)
 {
 }
 
@@ -17,26 +15,37 @@ void Label::setOpacity(const uint8_t opacityToUse)
     setDirty();
 }
 
-Label::~Label() {
-    if (cachedTexture) {
+Label::~Label()
+{
+    if (cachedTexture)
+    {
         SDL_DestroyTexture(cachedTexture);
         cachedTexture = nullptr;
     }
 }
 
-void Label::updateTexture(SDL_Renderer* renderer) {
-    if (cachedTexture) {
+void Label::updateTexture(SDL_Renderer *renderer)
+{
+    if (cachedTexture)
+    {
         SDL_DestroyTexture(cachedTexture);
         cachedTexture = nullptr;
     }
 
     const uint8_t fontPointSize = getEffectiveFontSize();
     auto font = getFont(fontPointSize);
-    if (!font) return;
+    if (!font)
+    {
+        return;
+    }
 
     SDL_Color textColor = {255, 255, 255, opacity};
-    SDL_Surface* surf = TTF_RenderText_Blended(font, text.c_str(), text.size(), textColor);
-    if (!surf) return;
+    SDL_Surface *surf =
+        TTF_RenderText_Blended(font, text.c_str(), text.size(), textColor);
+    if (!surf)
+    {
+        return;
+    }
 
     cachedW = surf->w;
     cachedH = surf->h;
@@ -48,16 +57,21 @@ void Label::updateTexture(SDL_Renderer* renderer) {
     cachedOpacity = opacity;
 }
 
-void Label::onDraw(SDL_Renderer* renderer)
+void Label::onDraw(SDL_Renderer *renderer)
 {
-    const uint8_t fontPointSize = (float) pointSize / state->pixelScale;
+    const uint8_t fontPointSize = (float)pointSize / state->pixelScale;
 
     // Rebuild texture if needed
-    if (!cachedTexture || cachedText != text || cachedPointSize != fontPointSize || opacity != cachedOpacity) {
+    if (!cachedTexture || cachedText != text ||
+        cachedPointSize != fontPointSize || opacity != cachedOpacity)
+    {
         updateTexture(renderer);
     }
 
-    if (!cachedTexture) return;
+    if (!cachedTexture)
+    {
+        return;
+    }
 
     SDL_FRect rect = getLocalBoundsF();
 
@@ -68,18 +82,19 @@ void Label::onDraw(SDL_Renderer* renderer)
     rect.h -= marginScaled * 2;
 
     // Vertical centering
-    if (centerVertically) {
+    if (centerVertically)
+    {
         rect.y = rect.y + (rect.h - cachedH) * 0.5f;
         rect.h = (float)cachedH;
     }
 
     float x = rect.x;
-    if (centerHorizontally) {
+    if (centerHorizontally)
+    {
         float centeredX = rect.x + (rect.w - cachedW) * 0.5f;
         x = std::max(centeredX, rect.x);
     }
 
-    SDL_FRect destRect = { x, rect.y, (float)cachedW, (float)cachedH };
+    SDL_FRect destRect = {x, rect.y, (float)cachedW, (float)cachedH};
     SDL_RenderTexture(renderer, cachedTexture, nullptr, &destRect);
 }
-

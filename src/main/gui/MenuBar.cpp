@@ -28,57 +28,105 @@ MenuBar::MenuBar(cupuacu::State *stateToUse) : Component(stateToUse, "MenuBar")
 #else
     const std::string openText{"Open (Ctrl + O)"};
 #endif
-    fileMenu->addSubMenu(state, openText, [&]{ actions::showOpenFileDialog(state); });
+    fileMenu->addSubMenu(state, openText,
+                         [&]
+                         {
+                             actions::showOpenFileDialog(state);
+                         });
 
 #ifdef __APPLE__
     const std::string overwriteText{"Overwrite (Cmd + S)"};
 #else
     const std::string overwriteText{"Overwrite (Ctrl + S)"};
 #endif
-    fileMenu->addSubMenu(state, overwriteText, [&]{ actions::overwrite(state); });
+    fileMenu->addSubMenu(state, overwriteText,
+                         [&]
+                         {
+                             actions::overwrite(state);
+                         });
 
-    viewMenu->addSubMenu(state, "Reset zoom (Esc)", [&]{ actions::resetZoom(state); });
-    viewMenu->addSubMenu(state, "Zoom out horiz. (Q)", [&]{ actions::tryZoomOutHorizontally(state); });
-    viewMenu->addSubMenu(state, "Zoom in horiz. (W)", [&]{ actions::tryZoomInHorizontally(state); });
-    viewMenu->addSubMenu(state, "Zoom out vert. (E)", [&]{ actions::tryZoomOutVertically(state, 1); });
-    viewMenu->addSubMenu(state, "Zoom in vert. (R)", [&]{ actions::zoomInVertically(state, 1); });
+    viewMenu->addSubMenu(state, "Reset zoom (Esc)",
+                         [&]
+                         {
+                             actions::resetZoom(state);
+                         });
+    viewMenu->addSubMenu(state, "Zoom out horiz. (Q)",
+                         [&]
+                         {
+                             actions::tryZoomOutHorizontally(state);
+                         });
+    viewMenu->addSubMenu(state, "Zoom in horiz. (W)",
+                         [&]
+                         {
+                             actions::tryZoomInHorizontally(state);
+                         });
+    viewMenu->addSubMenu(state, "Zoom out vert. (E)",
+                         [&]
+                         {
+                             actions::tryZoomOutVertically(state, 1);
+                         });
+    viewMenu->addSubMenu(state, "Zoom in vert. (R)",
+                         [&]
+                         {
+                             actions::zoomInVertically(state, 1);
+                         });
 
     // Edit menu
     editMenu = emplaceChild<Menu>(state, "Edit");
 
-    std::function<std::string()> undoMenuNameGetter = [&] {
+    std::function<std::string()> undoMenuNameGetter = [&]
+    {
 #ifdef __APPLE__
-    const std::string undoShortcut = " (Cmd + Z)";
+        const std::string undoShortcut = " (Cmd + Z)";
 #else
-    const std::string undoShortcut = " (Ctrl + Z)";
+        const std::string undoShortcut = " (Ctrl + Z)";
 #endif
         auto description = state->getUndoDescription();
-        if (!description.empty()) description.insert(0, " ");
+        if (!description.empty())
+            description.insert(0, " ");
         return "Undo" + description + undoShortcut;
     };
 
-    auto undoMenu = editMenu->addSubMenu(state, undoMenuNameGetter, [&] { state->undo(); });
+    auto undoMenu = editMenu->addSubMenu(state, undoMenuNameGetter,
+                                         [&]
+                                         {
+                                             state->undo();
+                                         });
 
-    undoMenu->setIsAvailable([&]{ return state->canUndo(); });
+    undoMenu->setIsAvailable(
+        [&]
+        {
+            return state->canUndo();
+        });
 
-    std::function<std::string()> redoMenuNameGetter = [&] {
+    std::function<std::string()> redoMenuNameGetter = [&]
+    {
 #ifdef __APPLE__
-    const std::string redoShortcut = " (Cmd + Shift + Z)";
+        const std::string redoShortcut = " (Cmd + Shift + Z)";
 #else
-    const std::string redoShortcut = " (Ctrl + Shift + Z)";
+        const std::string redoShortcut = " (Ctrl + Shift + Z)";
 #endif
         auto description = state->getRedoDescription();
-        if (!description.empty()) description.insert(0, " ");
+        if (!description.empty())
+            description.insert(0, " ");
         return "Redo" + description + redoShortcut;
     };
 
-    auto redoMenu = editMenu->addSubMenu(state, redoMenuNameGetter, [&] { state->redo(); });
+    auto redoMenu = editMenu->addSubMenu(state, redoMenuNameGetter,
+                                         [&]
+                                         {
+                                             state->redo();
+                                         });
 
-    redoMenu->setIsAvailable([&]{ return state->canRedo(); });
+    redoMenu->setIsAvailable(
+        [&]
+        {
+            return state->canRedo();
+        });
 
     logoData = get_resource_data("cupuacu-logo1.bmp");
 
-        // --- Trim, Cut, Copy, Paste ---
+    // --- Trim, Cut, Copy, Paste ---
 
 #ifdef __APPLE__
     const std::string trimText{"Trim (Cmd + T)"};
@@ -92,58 +140,84 @@ MenuBar::MenuBar(cupuacu::State *stateToUse) : Component(stateToUse, "MenuBar")
     const std::string pasteText{"Paste (Ctrl + V)"};
 #endif
 
-    auto trimMenu = editMenu->addSubMenu(state, trimText, [&] {
-        auto undoable = std::make_shared<actions::audio::Trim>(
-            state,
-            state->selection.getStartInt(),
-            state->selection.getLengthInt());
-        state->addAndDoUndoable(undoable);
-    });
-    trimMenu->setIsAvailable([&] {
+    auto trimMenu =
+        editMenu->addSubMenu(state, trimText,
+                             [&]
+                             {
+                                 auto undoable =
+                                     std::make_shared<actions::audio::Trim>(
+                                         state, state->selection.getStartInt(),
+                                         state->selection.getLengthInt());
+                                 state->addAndDoUndoable(undoable);
+                             });
+    trimMenu->setIsAvailable(
+        [&]
+        {
             return state->selection.isActive();
-            });
+        });
 
-    auto cutMenu = editMenu->addSubMenu(state, cutText, [&] {
-        auto undoable = std::make_shared<actions::audio::Cut>(
-            state,
-            state->selection.getStartInt(),
-            state->selection.getLengthInt());
-        state->addAndDoUndoable(undoable);
-    });
-    cutMenu->setIsAvailable([&] { return state->selection.isActive(); });
+    auto cutMenu =
+        editMenu->addSubMenu(state, cutText,
+                             [&]
+                             {
+                                 auto undoable =
+                                     std::make_shared<actions::audio::Cut>(
+                                         state, state->selection.getStartInt(),
+                                         state->selection.getLengthInt());
+                                 state->addAndDoUndoable(undoable);
+                             });
+    cutMenu->setIsAvailable(
+        [&]
+        {
+            return state->selection.isActive();
+        });
 
-    auto copyMenu = editMenu->addSubMenu(state, copyText, [&] {
-        auto undoable = std::make_shared<actions::audio::Copy>(
-            state,
-            state->selection.getStartInt(),
-            state->selection.getLengthInt());
-        state->addAndDoUndoable(undoable);
-    });
-    copyMenu->setIsAvailable([&] { return state->selection.isActive(); });
+    auto copyMenu =
+        editMenu->addSubMenu(state, copyText,
+                             [&]
+                             {
+                                 auto undoable =
+                                     std::make_shared<actions::audio::Copy>(
+                                         state, state->selection.getStartInt(),
+                                         state->selection.getLengthInt());
+                                 state->addAndDoUndoable(undoable);
+                             });
+    copyMenu->setIsAvailable(
+        [&]
+        {
+            return state->selection.isActive();
+        });
 
-    auto pasteMenu = editMenu->addSubMenu(state, pasteText, [&] {
-        const int64_t start = state->selection.isActive()
-            ? state->selection.getStartInt()
-            : state->cursor;
-        const int64_t end = state->selection.isActive()
-            ? state->selection.getEndInt()
-            : -1;
+    auto pasteMenu = editMenu->addSubMenu(
+        state, pasteText,
+        [&]
+        {
+            const int64_t start = state->selection.isActive()
+                                      ? state->selection.getStartInt()
+                                      : state->cursor;
+            const int64_t end =
+                state->selection.isActive() ? state->selection.getEndInt() : -1;
 
-        auto undoable = std::make_shared<actions::audio::Paste>(state, start, end);
-        state->addAndDoUndoable(undoable);
-    });
-    pasteMenu->setIsAvailable([&] { return state->clipboard.getFrameCount() > 0; });
+            auto undoable =
+                std::make_shared<actions::audio::Paste>(state, start, end);
+            state->addAndDoUndoable(undoable);
+        });
+    pasteMenu->setIsAvailable(
+        [&]
+        {
+            return state->clipboard.getFrameCount() > 0;
+        });
 }
 
-void MenuBar::onDraw(SDL_Renderer* renderer)
+void MenuBar::onDraw(SDL_Renderer *renderer)
 {
     if (!logoTexture && !logoData.empty())
     {
-        SDL_IOStream* io = SDL_IOFromConstMem(logoData.data(),
-                                              static_cast<int>(logoData.size()));
+        SDL_IOStream *io = SDL_IOFromConstMem(
+            logoData.data(), static_cast<int>(logoData.size()));
         if (io)
         {
-            SDL_Surface* surf = SDL_LoadBMP_IO(io, true);
+            SDL_Surface *surf = SDL_LoadBMP_IO(io, true);
             if (surf)
             {
                 logoTexture = SDL_CreateTextureFromSurface(renderer, surf);
@@ -210,11 +284,20 @@ void MenuBar::mouseEnter()
     setDirty();
 }
 
-Menu* MenuBar::getOpenMenu()
+Menu *MenuBar::getOpenMenu()
 {
-    if (fileMenu->isOpen()) return fileMenu;
-    if (viewMenu->isOpen()) return viewMenu;
-    if (editMenu->isOpen()) return editMenu;
+    if (fileMenu->isOpen())
+    {
+        return fileMenu;
+    }
+    if (viewMenu->isOpen())
+    {
+        return viewMenu;
+    }
+    if (editMenu->isOpen())
+    {
+        return editMenu;
+    }
     return nullptr;
 }
 
@@ -223,13 +306,14 @@ bool MenuBar::hasMenuOpen()
     return getOpenMenu() != nullptr;
 }
 
-bool MenuBar::mouseDown(const MouseEvent&)
+bool MenuBar::mouseDown(const MouseEvent &)
 {
     setOpenSubMenuOnMouseOver(false);
     return true;
 }
 
-void MenuBar::setOpenSubMenuOnMouseOver(const bool openSubMenuOnMouseOverEnabled)
+void MenuBar::setOpenSubMenuOnMouseOver(
+    const bool openSubMenuOnMouseOverEnabled)
 {
     openSubMenuOnMouseOver = openSubMenuOnMouseOverEnabled;
 }
@@ -238,4 +322,3 @@ bool MenuBar::shouldOpenSubMenuOnMouseOver() const
 {
     return openSubMenuOnMouseOver;
 }
-

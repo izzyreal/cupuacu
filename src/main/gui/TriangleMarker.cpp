@@ -3,30 +3,38 @@
 
 using namespace cupuacu::gui;
 
-TriangleMarker::TriangleMarker(cupuacu::State* state, TriangleMarkerType typeIn)
-    : Component(state, [typeIn]() {
-          switch (typeIn) {
-              case TriangleMarkerType::CursorTop:            return "TriangleMarker:CursorTop";
-              case TriangleMarkerType::CursorBottom:         return "TriangleMarker:CursorBottom";
-              case TriangleMarkerType::SelectionStartTop:    return "TriangleMarker:SelectionStartTop";
-              case TriangleMarkerType::SelectionStartBottom: return "TriangleMarker:SelectionStartBottom";
-              case TriangleMarkerType::SelectionEndTop:      return "TriangleMarker:SelectionEndTop";
-              case TriangleMarkerType::SelectionEndBottom:   return "TriangleMarker:SelectionEndBottom";
-          }
-          return "TriangleMarker";
-      }()),
+TriangleMarker::TriangleMarker(cupuacu::State *state, TriangleMarkerType typeIn)
+    : Component(state,
+                [typeIn]()
+                {
+                    switch (typeIn)
+                    {
+                        case TriangleMarkerType::CursorTop:
+                            return "TriangleMarker:CursorTop";
+                        case TriangleMarkerType::CursorBottom:
+                            return "TriangleMarker:CursorBottom";
+                        case TriangleMarkerType::SelectionStartTop:
+                            return "TriangleMarker:SelectionStartTop";
+                        case TriangleMarkerType::SelectionStartBottom:
+                            return "TriangleMarker:SelectionStartBottom";
+                        case TriangleMarkerType::SelectionEndTop:
+                            return "TriangleMarker:SelectionEndTop";
+                        case TriangleMarkerType::SelectionEndBottom:
+                            return "TriangleMarker:SelectionEndBottom";
+                    }
+                    return "TriangleMarker";
+                }()),
       type(typeIn)
 {
 }
 
 SDL_FColor TriangleMarker::getColor() const
 {
-    return SDL_FColor{188/255.f, 188/255.f, 0.f, 1.f};
+    return SDL_FColor{188 / 255.f, 188 / 255.f, 0.f, 1.f};
 }
 
-void TriangleMarker::drawTriangle(SDL_Renderer* r,
-                                  const SDL_FPoint (&pts)[3],
-                                  const SDL_FColor& color)
+void TriangleMarker::drawTriangle(SDL_Renderer *r, const SDL_FPoint (&pts)[3],
+                                  const SDL_FColor &color)
 {
     SDL_Vertex verts[3];
 
@@ -41,30 +49,31 @@ void TriangleMarker::drawTriangle(SDL_Renderer* r,
     SDL_RenderGeometry(r, nullptr, verts, 3, indices, 3);
 }
 
-void TriangleMarker::onDraw(SDL_Renderer* r)
+void TriangleMarker::onDraw(SDL_Renderer *r)
 {
     const float w = static_cast<float>(getWidth());
     const float h = static_cast<float>(getHeight());
     const SDL_FColor color = getColor();
 
-    switch (type) {
+    switch (type)
+    {
         case TriangleMarkerType::CursorTop:
-            drawTriangle(r, {SDL_FPoint{w/2, h}, {0,0}, {w,0}}, color);
+            drawTriangle(r, {SDL_FPoint{w / 2, h}, {0, 0}, {w, 0}}, color);
             break;
         case TriangleMarkerType::CursorBottom:
-            drawTriangle(r, {SDL_FPoint{w/2,0}, {0,h}, {w,h}}, color);
+            drawTriangle(r, {SDL_FPoint{w / 2, 0}, {0, h}, {w, h}}, color);
             break;
         case TriangleMarkerType::SelectionStartTop:
-            drawTriangle(r, {SDL_FPoint{0,0}, {0,h}, {w,0}}, color);
+            drawTriangle(r, {SDL_FPoint{0, 0}, {0, h}, {w, 0}}, color);
             break;
         case TriangleMarkerType::SelectionStartBottom:
-            drawTriangle(r, {SDL_FPoint{0,h}, {0,0}, {w,h}}, color);
+            drawTriangle(r, {SDL_FPoint{0, h}, {0, 0}, {w, h}}, color);
             break;
         case TriangleMarkerType::SelectionEndTop:
-            drawTriangle(r, {SDL_FPoint{w,0}, {w,h}, {0,0}}, color);
+            drawTriangle(r, {SDL_FPoint{w, 0}, {w, h}, {0, 0}}, color);
             break;
         case TriangleMarkerType::SelectionEndBottom:
-            drawTriangle(r, {SDL_FPoint{w,h}, {w,0}, {0,h}}, color);
+            drawTriangle(r, {SDL_FPoint{w, h}, {w, 0}, {0, h}}, color);
             break;
     }
 }
@@ -73,11 +82,13 @@ bool TriangleMarker::mouseDown(const MouseEvent &e)
 {
     const float mouseParentX = e.mouseXf + getXPos();
 
-    if (type == TriangleMarkerType::SelectionStartTop || type == TriangleMarkerType::SelectionStartBottom)
+    if (type == TriangleMarkerType::SelectionStartTop ||
+        type == TriangleMarkerType::SelectionStartBottom)
     {
         dragStartSample = state->selection.getStart();
     }
-    else if (type == TriangleMarkerType::SelectionEndTop || type == TriangleMarkerType::SelectionEndBottom)
+    else if (type == TriangleMarkerType::SelectionEndTop ||
+             type == TriangleMarkerType::SelectionEndBottom)
     {
         dragStartSample = state->selection.getEndInt();
     }
@@ -115,7 +126,8 @@ bool TriangleMarker::mouseMove(const MouseEvent &e)
 
     const bool selectionWasActive = state->selection.isActive();
 
-    switch (type) {
+    switch (type)
+    {
         case TriangleMarkerType::CursorTop:
         case TriangleMarkerType::CursorBottom:
             updateCursorPos(state, newSamplePos);
@@ -141,4 +153,3 @@ bool TriangleMarker::mouseMove(const MouseEvent &e)
 
     return true;
 }
-
