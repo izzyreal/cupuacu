@@ -41,6 +41,7 @@ ma_result custom_data_source_read(ma_data_source *pDataSource, void *pFramesOut,
     {
         *pFramesRead = 0;
         ds->state->isPlaying.store(false);
+        ds->state->playbackPosition.store(-1);
         return MA_AT_END;
     }
 
@@ -208,6 +209,7 @@ void ma_playback_callback(ma_device *pDevice, void *pOutput, const void *pInput,
     if (result == MA_AT_END)
     {
         ds->state->isPlaying.store(false);
+        ds->state->playbackPosition.store(-1);
     }
 }
 
@@ -220,6 +222,7 @@ void performStop(cupuacu::State *state)
         ds = state->activePlayback;
         state->activePlayback.reset();
         state->isPlaying.store(false);
+        ds->state->playbackPosition.store(-1);
     }
 
     if (!ds)

@@ -462,15 +462,13 @@ void Waveform::onDraw(SDL_Renderer *renderer)
 
 void Waveform::drawPlaybackPosition(SDL_Renderer *renderer)
 {
-    const int64_t playbackPos = state->playbackPosition.load();
-
-    if (playbackPos == -1)
+    if (playbackPosition == -1)
     {
         return;
     }
 
     const int32_t playbackXPos = getXPosForSampleIndex(
-        playbackPos, state->sampleOffset, state->samplesPerPixel);
+        playbackPosition, state->sampleOffset, state->samplesPerPixel);
 
     if (playbackXPos >= 0 && playbackXPos <= getWidth())
     {
