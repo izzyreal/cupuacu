@@ -81,8 +81,10 @@ namespace cupuacu::gui
                 1, int(std::ceil(double(totalVisibleSamples) / maxTicks)));
 
             static const std::vector<int> niceSteps = {
-                1,   2,    5,    10,   20,    50,    100,   200,
-                500, 1000, 2000, 5000, 10000, 20000, 50000, 100000};
+                1,       2,         5,         10,        20,        50,
+                100,     200,       500,       1000,      2000,      5000,
+                10'000,  20'000,    50'000,    100'000,   200'000,   400'000,
+                800'000, 1'600'000, 3'200'000, 6'400'000, 12'800'000};
 
             int samplesPerTick = niceSteps.back();
             for (int step : niceSteps)
