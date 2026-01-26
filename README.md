@@ -1,7 +1,7 @@
 **WIP, currently doesn't do anything useful. Keep an eye out on the releases.**
 
 <p align="center">
-  <img src="https://izmar.nl/images/cupuacu.png" width=500 />
+  <img src="https://izmar.nl/images/cupuacu.png" width=800 />
 </p>
 
 # Cupuacu -- A minimalist cross-platform audio editor inspired by Syntrillium Cool Edit
