@@ -3,18 +3,21 @@
 #include <SDL3/SDL.h>
 
 #include "gui/Selection.h"
+
+#include "SelectedChannels.hpp"
 #include "Document.h"
 
 #include <cstdint>
 #include <vector>
 #include <string>
-#include <atomic>
 #include <memory>
 #include <optional>
 #include <deque>
 
 namespace cupuacu
 {
+    class AudioDevices;
+
     namespace actions
     {
         struct CustomDataSource;
@@ -31,15 +34,9 @@ namespace cupuacu
         class VuMeterContainer;
     } // namespace gui
 
-    enum SelectedChannels
-    {
-        BOTH,
-        LEFT,
-        RIGHT
-    };
-
     struct State
     {
+        std::shared_ptr<AudioDevices> audioDevices;
         std::deque<std::shared_ptr<actions::Undoable>> undoables;
         std::deque<std::shared_ptr<actions::Undoable>> redoables;
         uint8_t menuFontSize = 40;
@@ -61,10 +58,6 @@ namespace cupuacu
         std::optional<float> sampleValueUnderMouseCursor;
 
         int64_t cursor = 0;
-        std::atomic<int64_t> playbackPosition;
-        std::atomic<bool> isPlaying = false;
-
-        std::shared_ptr<actions::CustomDataSource> activePlayback;
 
         SDL_Window *window = NULL;
         SDL_Renderer *renderer = NULL;
@@ -117,7 +110,6 @@ static void resetWaveformState(cupuacu::State *state)
     state->selection.reset();
     state->selectedChannels = cupuacu::SelectedChannels::BOTH;
     state->samplesToScroll = 0;
-    state->playbackPosition.store(-1);
 }
 
 int64_t getMaxSampleOffset(const cupuacu::State *);

@@ -1,5 +1,7 @@
 #include <SDL3/SDL.h>
 #include "../State.h"
+#include "AudioDevice.hpp"
+#include "AudioDevices.hpp"
 #include "Waveform.h"
 #include "../actions/ShowOpenFileDialog.h"
 #include "../actions/Play.h"
@@ -173,7 +175,7 @@ namespace cupuacu::gui
         }
         else if (event->key.scancode == SDL_SCANCODE_SPACE)
         {
-            if (state->isPlaying.load())
+            if (state->audioDevices->getOutputDevice()->isPlaying())
             {
                 actions::requestStop(state);
                 return;

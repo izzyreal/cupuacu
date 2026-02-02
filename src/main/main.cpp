@@ -16,6 +16,8 @@ const uint16_t initialDimensions[] = {1280, 720};
 
 #include "file/file_loading.h"
 
+#include "AudioDevices.hpp"
+
 void renderCanvasToWindow(cupuacu::State *state)
 {
     if (state->dirtyRects.empty())
@@ -32,6 +34,8 @@ void renderCanvasToWindow(cupuacu::State *state)
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 {
     cupuacu::State *state = new cupuacu::State();
+
+    state->audioDevices = std::make_shared<cupuacu::AudioDevices>();
 
     resetWaveformState(state);
     resetSampleValueUnderMouseCursor(state);
