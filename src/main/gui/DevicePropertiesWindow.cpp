@@ -37,6 +37,21 @@ DevicePropertiesWindow::DevicePropertiesWindow(cupuacu::State *stateToUse)
         state->windows.push_back(window.get());
     }
 
+    if (state->mainWindow && state->mainWindow->getSdlWindow())
+    {
+        if (!SDL_SetWindowParent(window->getSdlWindow(),
+                                 state->mainWindow->getSdlWindow()))
+        {
+            SDL_Log("DevicePropertiesWindow: SDL_SetWindowParent failed: %s",
+                    SDL_GetError());
+        }
+        if (!SDL_SetWindowModal(window->getSdlWindow(), true))
+        {
+            SDL_Log("DevicePropertiesWindow: SDL_SetWindowModal failed: %s",
+                    SDL_GetError());
+        }
+    }
+
     auto rootComponent =
         std::make_unique<Component>(state, "DevicePropertiesRoot");
     rootComponent->setVisible(true);

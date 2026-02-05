@@ -437,7 +437,7 @@ bool Component::handleMouseEvent(const MouseEvent &mouseEvent)
         {
             if (mouseDown(localMouseEvent))
             {
-                if (window)
+                if (window && shouldCaptureMouse())
                 {
                     window->setCapturingComponent(this);
                 }

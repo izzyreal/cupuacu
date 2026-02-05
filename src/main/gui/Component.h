@@ -176,6 +176,10 @@ namespace cupuacu::gui
         {
             return false;
         }
+        virtual bool shouldCaptureMouse() const
+        {
+            return true;
+        }
         virtual void timerCallback() {}
         virtual void resized() {}
 

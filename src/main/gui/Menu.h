@@ -67,5 +67,9 @@ namespace cupuacu::gui
         bool mouseUp(const MouseEvent &) override;
         void mouseLeave() override;
         void mouseEnter() override;
+        bool shouldCaptureMouse() const override
+        {
+            return false;
+        }
     };
 } // namespace cupuacu::gui
