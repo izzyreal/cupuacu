@@ -87,6 +87,16 @@ namespace cupuacu::gui
         }
 
         SDL_Cursor *newCursor = defaultCursor;
+        SDL_Window *focus = SDL_GetKeyboardFocus();
+        if (!focus || focus != window->getSdlWindow())
+        {
+            if (newCursor != currentCursor)
+            {
+                SDL_SetCursor(newCursor);
+                currentCursor = newCursor;
+            }
+            return;
+        }
 
         if (window->getMenuBar() && window->getMenuBar()->hasMenuOpen())
         {
