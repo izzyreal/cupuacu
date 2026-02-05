@@ -3,6 +3,8 @@
 #include "Component.h"
 #include "Helpers.h"
 
+#include "State.h"
+
 #include <readerwriterqueue.h>
 
 #include <cmath>

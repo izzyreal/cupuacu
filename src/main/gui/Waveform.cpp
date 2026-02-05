@@ -4,6 +4,7 @@
 #include "AudioDevices.hpp"
 #include "WaveformsUnderlay.h"
 #include "WaveformCache.h"
+#include "Window.h"
 
 #include "smooth_line.h"
 
@@ -402,8 +403,9 @@ void Waveform::drawSelection(SDL_Renderer *renderer)
 
 void Waveform::drawHighlight(SDL_Renderer *renderer)
 {
-    if (const auto waveformsUnderlay =
-            dynamic_cast<WaveformsUnderlay *>(state->capturingComponent);
+    auto window = getWindow();
+    if (const auto waveformsUnderlay = dynamic_cast<WaveformsUnderlay *>(
+            window ? window->getCapturingComponent() : nullptr);
         waveformsUnderlay != nullptr)
     {
         return;
@@ -416,8 +418,8 @@ void Waveform::drawHighlight(SDL_Renderer *renderer)
     {
         const auto sampleOffset = state->sampleOffset;
 
-        const auto samplePoint =
-            dynamic_cast<SamplePoint *>(state->capturingComponent);
+        const auto samplePoint = dynamic_cast<SamplePoint *>(
+            window ? window->getCapturingComponent() : nullptr);
         const int64_t sampleIndex = samplePoint == nullptr
                                         ? *samplePosUnderCursor
                                         : samplePoint->getSampleIndex();
@@ -528,7 +530,7 @@ void Waveform::mouseLeave()
     {
         // Mouse just entered a sample point.
         // We don't want to clear the highlight in this case.
-        if (state->componentUnderMouse == c.get())
+        if (window && window->getComponentUnderMouse() == c.get())
         {
             return;
         }

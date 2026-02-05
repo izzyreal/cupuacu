@@ -3,7 +3,9 @@
 #include "../State.h"
 #include "OpaqueRect.h"
 #include "Menu.h"
+#include "Window.h"
 #include "../ResourceUtil.hpp"
+#include "DevicePropertiesWindow.h"
 
 #include "../actions/ShowOpenFileDialog.h"
 #include "../actions/Save.h"
@@ -11,6 +13,8 @@
 #include "../actions/audio/Trim.h"
 #include "../actions/audio/Cut.h"
 #include "../actions/audio/Paste.h"
+
+#include <memory>
 
 using namespace cupuacu::gui;
 
@@ -209,7 +213,21 @@ MenuBar::MenuBar(cupuacu::State *stateToUse) : Component(stateToUse, "MenuBar")
             return state->clipboard.getFrameCount() > 0;
         });
 
-    optionsMenu->addSubMenu(state, "Device Properties", [] {});
+    optionsMenu->addSubMenu(
+        state, "Device Properties",
+        [&]
+        {
+            if (!state->devicePropertiesWindow ||
+                !state->devicePropertiesWindow->isOpen())
+            {
+                state->devicePropertiesWindow =
+                    std::make_unique<DevicePropertiesWindow>(state);
+            }
+            else
+            {
+                state->devicePropertiesWindow->raise();
+            }
+        });
 }
 
 void MenuBar::onDraw(SDL_Renderer *renderer)
@@ -252,7 +270,13 @@ void MenuBar::hideSubMenus()
     viewMenu->hideSubMenus();
     editMenu->hideSubMenus();
     optionsMenu->hideSubMenus();
-    state->rootComponent->setDirty();
+    if (auto window = getWindow())
+    {
+        if (auto root = window->getRootComponent())
+        {
+            root->setDirty();
+        }
+    }
     openSubMenuOnMouseOver = false;
 }
 

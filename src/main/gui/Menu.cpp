@@ -2,6 +2,7 @@
 
 #include "MenuBar.h"
 #include "Label.h"
+#include "Window.h"
 
 #include "text.h"
 
@@ -210,12 +211,18 @@ bool Menu::mouseDown(const MouseEvent &e)
         }
         if (action)
         {
-            state->menuBar->hideSubMenus();
+            if (auto window = getWindow(); window && window->getMenuBar())
+            {
+                window->getMenuBar()->hideSubMenus();
+            }
             action();
         }
         else
         {
-            state->menuBar->hideSubMenus();
+            if (auto window = getWindow(); window && window->getMenuBar())
+            {
+                window->getMenuBar()->hideSubMenus();
+            }
         }
         return true;
     }
@@ -223,13 +230,25 @@ bool Menu::mouseDown(const MouseEvent &e)
     if (wasCurrentlyOpen)
     {
         hideSubMenus();
-        state->menuBar->hideSubMenus();
-        state->rootComponent->setDirty();
+        if (auto window = getWindow(); window && window->getMenuBar())
+        {
+            window->getMenuBar()->hideSubMenus();
+            if (auto root = window->getRootComponent())
+            {
+                root->setDirty();
+            }
+        }
         return true;
     }
 
-    state->menuBar->hideSubMenus();
-    state->rootComponent->setDirty();
+    if (auto window = getWindow(); window && window->getMenuBar())
+    {
+        window->getMenuBar()->hideSubMenus();
+        if (auto root = window->getRootComponent())
+        {
+            root->setDirty();
+        }
+    }
     showSubMenus();
 
     return true;
@@ -244,18 +263,25 @@ void Menu::mouseLeave()
 {
     setDirty();
 
-    if (dynamic_cast<Menu *>(state->componentUnderMouse) == nullptr)
+    auto window = getWindow();
+    if (!window)
+    {
+        return;
+    }
+
+    if (dynamic_cast<Menu *>(window->getComponentUnderMouse()) == nullptr)
     {
         const bool componentUnderMouseIsMenuBar =
-            state->componentUnderMouse == state->menuBar;
+            window->getComponentUnderMouse() == window->getMenuBar();
         const bool componentUnderMouseIsMenuBarChild =
-            state->menuBar->hasChild(state->componentUnderMouse);
+            window->getMenuBar() &&
+            window->getMenuBar()->hasChild(window->getComponentUnderMouse());
         if (componentUnderMouseIsMenuBar || componentUnderMouseIsMenuBarChild)
         {
-            if (state->menuBar->hasMenuOpen())
+            if (window->getMenuBar() && window->getMenuBar()->hasMenuOpen())
             {
-                state->menuBar->hideSubMenus();
-                state->menuBar->setOpenSubMenuOnMouseOver(true);
+                window->getMenuBar()->hideSubMenus();
+                window->getMenuBar()->setOpenSubMenuOnMouseOver(true);
             }
         }
     }
@@ -263,11 +289,18 @@ void Menu::mouseLeave()
 
 void Menu::mouseEnter()
 {
-    if (!subMenus.empty() && ((state->menuBar->getOpenMenu() != nullptr &&
-                               state->menuBar->getOpenMenu() != this) ||
-                              state->menuBar->shouldOpenSubMenuOnMouseOver()))
+    auto window = getWindow();
+    if (!window || !window->getMenuBar())
     {
-        state->menuBar->hideSubMenus();
+        return;
+    }
+
+    if (!subMenus.empty() &&
+        ((window->getMenuBar()->getOpenMenu() != nullptr &&
+          window->getMenuBar()->getOpenMenu() != this) ||
+         window->getMenuBar()->shouldOpenSubMenuOnMouseOver()))
+    {
+        window->getMenuBar()->hideSubMenus();
         showSubMenus();
     }
 

@@ -50,12 +50,15 @@ add_executable(Cupuacu
     src/main/gui/TriangleMarker.cpp
     src/main/gui/Component.cpp
     src/main/gui/Label.cpp
+    src/main/gui/DropdownMenu.cpp
+    src/main/gui/DevicePropertiesWindow.cpp
     src/main/gui/WaveformsUnderlay.cpp
     src/main/gui/Waveforms.cpp
     src/main/gui/Waveform.cpp
     src/main/gui/SamplePoint.cpp
     src/main/gui/Menu.cpp
     src/main/gui/MenuBar.cpp
+    src/main/gui/Window.cpp
     src/main/actions/Play.cpp
 )
 
@@ -66,12 +69,14 @@ add_executable(cupuacu-tests
     src/main/gui/TriangleMarker.cpp
     src/main/gui/Component.cpp
     src/main/gui/Label.cpp
+    src/main/gui/DropdownMenu.cpp
     src/main/gui/WaveformsUnderlay.cpp
     src/main/gui/Waveforms.cpp
     src/main/gui/Waveform.cpp
     src/main/gui/SamplePoint.cpp
     src/main/gui/Menu.cpp
     src/main/gui/MenuBar.cpp
+    src/main/gui/Window.cpp
     src/main/actions/Play.cpp
     src/test/test.cpp
     src/test/dummy_menu_bar_test.cpp

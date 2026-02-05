@@ -7,37 +7,8 @@
 #include "StatusBar.h"
 #include "MainView.h"
 #include "VuMeterContainer.h"
+#include "Window.h"
 
-#include <cmath>
-
-SDL_Point computeRequiredCanvasDimensions(SDL_Window *window,
-                                          const uint8_t pixelScale)
-{
-    SDL_Point result;
-
-    if (!SDL_GetWindowSizeInPixels(window, &result.x, &result.y))
-    {
-        return {0, 0};
-    }
-
-    result.x = std::floor(result.x / pixelScale);
-    result.y = std::floor(result.y / pixelScale);
-
-    return result;
-}
-
-void createCanvas(cupuacu::State *state, const SDL_Point &dimensions)
-{
-    if (state->canvas)
-    {
-        SDL_DestroyTexture(state->canvas);
-    }
-
-    state->canvas =
-        SDL_CreateTexture(state->renderer, SDL_PIXELFORMAT_RGBA8888,
-                          SDL_TEXTUREACCESS_TARGET, dimensions.x, dimensions.y);
-    SDL_SetTextureScaleMode(state->canvas, SDL_SCALEMODE_NEAREST);
-}
 
 SDL_Rect computeMainViewBounds(const uint16_t canvasWidth,
                                const uint16_t canvasHeight,
@@ -82,47 +53,53 @@ SDL_Rect computeVuMeterContainerBounds(const uint16_t canvasWidth,
     return result;
 }
 
-void cupuacu::gui::buildComponents(cupuacu::State *state)
+void cupuacu::gui::buildComponents(cupuacu::State *state, Window *window)
 {
-    state->componentUnderMouse = nullptr;
-    state->capturingComponent = nullptr;
-    state->rootComponent = std::make_unique<Component>(state, "RootComponent");
-    state->rootComponent->setVisible(true);
-
-    auto mainView = std::make_unique<MainView>(state);
-    state->mainView = state->rootComponent->addChild(mainView);
-
-    auto vuMeterContainer = std::make_unique<VuMeterContainer>(state);
-    state->vuMeterContainer = state->rootComponent->addChild(vuMeterContainer);
-
-    auto statusBar = std::make_unique<StatusBar>(state);
-    state->statusBar = state->rootComponent->addChild(statusBar);
-
-    auto menuBar = std::make_unique<MenuBar>(state);
-    state->menuBar = state->rootComponent->addChild(menuBar);
-
-    resizeComponents(state);
-}
-
-void cupuacu::gui::resizeComponents(cupuacu::State *state)
-{
-    float currentCanvasW, currentCanvasH;
-    SDL_GetTextureSize(state->canvas, &currentCanvasW, &currentCanvasH);
-
-    const SDL_Point requiredCanvasDimensions =
-        computeRequiredCanvasDimensions(state->window, state->pixelScale);
-
-    if (requiredCanvasDimensions.x == (int)currentCanvasW &&
-        requiredCanvasDimensions.y == (int)currentCanvasH)
+    if (!window)
     {
         return;
     }
 
-    createCanvas(state, requiredCanvasDimensions);
+    window->setComponentUnderMouse(nullptr);
+    window->setCapturingComponent(nullptr);
+    window->setOnResize(
+        [state, window]
+        {
+            resizeComponents(state, window);
+        });
 
-    const int newCanvasW = requiredCanvasDimensions.x,
-              newCanvasH = requiredCanvasDimensions.y;
-    state->rootComponent->setSize(newCanvasW, newCanvasH);
+    auto rootComponent = std::make_unique<Component>(state, "RootComponent");
+    rootComponent->setVisible(true);
+
+    auto mainView = std::make_unique<MainView>(state);
+    state->mainView = rootComponent->addChild(mainView);
+
+    auto vuMeterContainer = std::make_unique<VuMeterContainer>(state);
+    state->vuMeterContainer = rootComponent->addChild(vuMeterContainer);
+
+    auto statusBar = std::make_unique<StatusBar>(state);
+    state->statusBar = rootComponent->addChild(statusBar);
+
+    auto menuBar = std::make_unique<MenuBar>(state);
+    window->setMenuBar(rootComponent->addChild(menuBar));
+
+    window->setRootComponent(std::move(rootComponent));
+    window->refreshForScaleOrResize();
+}
+
+void cupuacu::gui::resizeComponents(cupuacu::State *state, Window *window)
+{
+    if (!window || !window->getCanvas() || !window->getRootComponent())
+    {
+        return;
+    }
+
+    float currentCanvasW = 0.0f, currentCanvasH = 0.0f;
+    SDL_GetTextureSize(window->getCanvas(), &currentCanvasW, &currentCanvasH);
+
+    const int newCanvasW = (int)currentCanvasW;
+    const int newCanvasH = (int)currentCanvasH;
+    window->getRootComponent()->setSize(newCanvasW, newCanvasH);
 
     const SDL_Rect menuBarRect = computeMenuBarBounds(
         newCanvasW, newCanvasH, state->pixelScale, state->menuFontSize);
@@ -134,8 +111,11 @@ void cupuacu::gui::resizeComponents(cupuacu::State *state)
     const SDL_Rect vuMeterContainerRect = computeVuMeterContainerBounds(
         newCanvasW, newCanvasH, vuMeterContainerHeight, statusBarRect);
 
-    state->menuBar->setBounds(menuBarRect.x, menuBarRect.y, menuBarRect.w,
-                              menuBarRect.h);
+    if (window->getMenuBar())
+    {
+        window->getMenuBar()->setBounds(menuBarRect.x, menuBarRect.y,
+                                        menuBarRect.w, menuBarRect.h);
+    }
 
     const SDL_Rect mainViewBounds{0, menuBarRect.h, newCanvasW,
                                   newCanvasH - menuBarRect.h -
@@ -151,7 +131,7 @@ void cupuacu::gui::resizeComponents(cupuacu::State *state)
     state->statusBar->setBounds(statusBarRect.x, statusBarRect.y,
                                 statusBarRect.w, statusBarRect.h);
 
-    state->rootComponent->setDirty();
+    window->getRootComponent()->setDirty();
 
     if (state->samplesPerPixel == 0)
     {

@@ -4,6 +4,7 @@
 #include <string>
 
 #include "Component.h"
+#include "State.h"
 
 namespace cupuacu::gui
 {

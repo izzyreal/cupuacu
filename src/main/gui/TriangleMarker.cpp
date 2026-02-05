@@ -1,5 +1,6 @@
 #include "TriangleMarker.h"
 #include "../State.h"
+#include "Window.h"
 
 using namespace cupuacu::gui;
 
@@ -115,7 +116,8 @@ bool TriangleMarker::mouseUp(const MouseEvent &e)
 
 bool TriangleMarker::mouseMove(const MouseEvent &e)
 {
-    if (state->capturingComponent != this || !e.buttonState.left)
+    if (!getWindow() || getWindow()->getCapturingComponent() != this ||
+        !e.buttonState.left)
     {
         return false;
     }

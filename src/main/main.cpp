@@ -7,29 +7,19 @@
 #include "State.h"
 #include "gui/EventHandling.h"
 #include "gui/Gui.h"
+#include "gui/DevicePropertiesWindow.h"
+#include "gui/Window.h"
 
 const uint16_t initialDimensions[] = {1280, 720};
 
 #include <cstdint>
 #include <string>
 #include <filesystem>
+#include <algorithm>
 
 #include "file/file_loading.h"
 
 #include "AudioDevices.hpp"
-
-void renderCanvasToWindow(cupuacu::State *state)
-{
-    if (state->dirtyRects.empty())
-    {
-        return;
-    }
-
-    SDL_SetRenderTarget(state->renderer, NULL);
-
-    SDL_RenderTexture(state->renderer, state->canvas, NULL, NULL);
-    SDL_RenderPresent(state->renderer);
-}
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 {
@@ -57,32 +47,33 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
         return SDL_APP_FAILURE;
     }
 
-    if (!SDL_CreateWindowAndRenderer(
-            "", initialDimensions[0], initialDimensions[1],
-            SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY,
-            &state->window, &state->renderer))
+    state->mainWindow = std::make_unique<cupuacu::gui::Window>(
+        state, "", initialDimensions[0], initialDimensions[1],
+        SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+    if (!state->mainWindow->isOpen())
     {
-        SDL_Log("SDL_CreateWindowAndRenderer() failed: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
+    state->windows.push_back(state->mainWindow.get());
 
     cupuacu::gui::initCursors();
 
     if (std::filesystem::exists(state->currentFile))
     {
         cupuacu::file::loadSampleData(state);
-        SDL_SetWindowTitle(state->window, state->currentFile.c_str());
+        SDL_SetWindowTitle(state->mainWindow->getSdlWindow(),
+                           state->currentFile.c_str());
     }
     else
     {
         state->currentFile = "";
     }
 
-    cupuacu::gui::buildComponents(state);
+    cupuacu::gui::buildComponents(state, state->mainWindow.get());
 
     cupuacu::actions::resetZoom(state);
 
-    SDL_RenderPresent(state->renderer);
+    state->mainWindow->renderFrame();
 
     return SDL_APP_CONTINUE;
 }
@@ -91,14 +82,32 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 {
     cupuacu::State *state = (cupuacu::State *)appstate;
 
-    state->rootComponent->timerCallbackRecursive();
+    if (state->mainWindow && state->mainWindow->getRootComponent())
+    {
+        state->mainWindow->getRootComponent()->timerCallbackRecursive();
+    }
 
-    SDL_SetRenderTarget(state->renderer, state->canvas);
-    state->rootComponent->draw(state->renderer);
-    renderCanvasToWindow(state);
-    state->dirtyRects.clear();
+    for (auto *window : state->windows)
+    {
+        if (window && window->isOpen())
+        {
+            window->renderFrameIfDirty();
+        }
+    }
 
-    // state->rootComponent->printDirtyTree();
+    if (state->devicePropertiesWindow &&
+        !state->devicePropertiesWindow->isOpen())
+    {
+        state->devicePropertiesWindow.reset();
+    }
+
+    state->windows.erase(
+        std::remove_if(state->windows.begin(), state->windows.end(),
+                       [](cupuacu::gui::Window *window)
+                       {
+                           return !window || !window->isOpen();
+                       }),
+        state->windows.end());
 
     SDL_Delay(16);
     return SDL_APP_CONTINUE;
@@ -113,7 +122,8 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
     TTF_Quit();
     cupuacu::State *state = (cupuacu::State *)appstate;
-    SDL_DestroyRenderer(state->renderer);
-    SDL_DestroyWindow(state->window);
+    state->devicePropertiesWindow.reset();
+    state->mainWindow.reset();
+    state->windows.clear();
     SDL_Quit();
 }

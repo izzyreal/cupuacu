@@ -1,6 +1,7 @@
 #include "WaveformsUnderlay.h"
 
 #include "Waveform.h"
+#include "Window.h"
 #include <algorithm>
 
 #include <cassert>
@@ -142,7 +143,8 @@ void WaveformsUnderlay::handleChannelSelection(
         state->hoveringOverChannels = SelectedChannels::BOTH;
     }
 
-    if (state->capturingComponent == this || isMouseDownEvent)
+    if ((getWindow() && getWindow()->getCapturingComponent() == this) ||
+        isMouseDownEvent)
     {
         state->selectedChannels = state->hoveringOverChannels;
     }
@@ -180,7 +182,8 @@ bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
 
     handleChannelSelection(e.mouseYi, false);
 
-    if (state->capturingComponent != this || !e.buttonState.left)
+    if (!getWindow() || getWindow()->getCapturingComponent() != this ||
+        !e.buttonState.left)
     {
         return false;
     }
@@ -228,7 +231,10 @@ void WaveformsUnderlay::timerCallback()
 
     if (oldOffset != state->sampleOffset)
     {
-        state->componentUnderMouse = nullptr;
+        if (getWindow())
+        {
+            getWindow()->setComponentUnderMouse(nullptr);
+        }
         for (auto *wf : state->waveforms)
         {
             wf->updateSamplePoints();

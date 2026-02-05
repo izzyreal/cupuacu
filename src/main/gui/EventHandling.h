@@ -4,6 +4,7 @@
 #include "Gui.h"
 #include "Component.h"
 #include "MenuBar.h"
+#include "Window.h"
 #include "MouseEvent.h"
 #include "Waveform.h"
 #include "TriangleMarker.h"
@@ -12,8 +13,6 @@
 
 namespace cupuacu::gui
 {
-
-    static bool wasMaximized = false;
 
     static SDL_Cursor *defaultCursor = nullptr;
     static SDL_Cursor *textCursor = nullptr;
@@ -79,16 +78,22 @@ namespace cupuacu::gui
         }
     }
 
-    static void updateMouseCursor(const cupuacu::State *state)
+    static void updateMouseCursor(const cupuacu::State *state,
+                                  const Window *window)
     {
+        if (!window)
+        {
+            return;
+        }
+
         SDL_Cursor *newCursor = defaultCursor;
 
-        if (state->menuBar->hasMenuOpen())
+        if (window->getMenuBar() && window->getMenuBar()->hasMenuOpen())
         {
             newCursor = defaultCursor;
         }
         else if (dynamic_cast<const gui::Waveform *>(
-                     state->componentUnderMouse))
+                     window->getComponentUnderMouse()))
         {
             if (state->hoveringOverChannels == SelectedChannels::LEFT)
             {
@@ -104,9 +109,9 @@ namespace cupuacu::gui
             }
         }
         else if (dynamic_cast<const gui::SamplePoint *>(
-                     state->componentUnderMouse) ||
+                     window->getComponentUnderMouse()) ||
                  dynamic_cast<const gui::TriangleMarker *>(
-                     state->componentUnderMouse))
+                     window->getComponentUnderMouse()))
         {
             newCursor = pointerCursor;
         }
@@ -118,114 +123,14 @@ namespace cupuacu::gui
         }
     }
 
-    static void updateComponentUnderMouse(cupuacu::State *state,
-                                          const int32_t mouseX,
-                                          const int32_t mouseY)
+    static void handleWindowMouseLeave(cupuacu::State *state, Window *window)
     {
-        auto oldComponentUnderMouse = state->componentUnderMouse;
-        const auto newComponentUnderMouse =
-            state->rootComponent->findComponentAt(mouseX, mouseY);
-
-        if (state->componentUnderMouse != newComponentUnderMouse)
+        if (!window)
         {
-            state->componentUnderMouse = newComponentUnderMouse;
-
-            if (oldComponentUnderMouse != nullptr)
-            {
-                oldComponentUnderMouse->mouseLeave();
-            }
-
-            if (newComponentUnderMouse != nullptr)
-            {
-                newComponentUnderMouse->mouseEnter();
-                // printf("New component under mouse: %s\n",
-                // newComponentUnderMouse->getComponentName().c_str());
-            }
-        }
-    }
-
-    static void handleResize(cupuacu::State *state)
-    {
-        int winW, winH;
-        SDL_GetWindowSize(state->window, &winW, &winH);
-
-        int hpp = state->pixelScale;
-
-        int newW = (winW / hpp) * hpp;
-        int newH = (winH / hpp) * hpp;
-
-        if (newW != winW || newH != winH)
-        {
-            if (wasMaximized)
-            {
-                wasMaximized = false;
-                SDL_RestoreWindow(state->window);
-                SDL_SetWindowSize(state->window, newW, newH);
-                SDL_SetWindowPosition(state->window, SDL_WINDOWPOS_CENTERED,
-                                      SDL_WINDOWPOS_CENTERED);
-            }
-            else
-            {
-                SDL_SetWindowSize(state->window, newW, newH);
-            }
             return;
         }
 
-        resizeComponents(state);
-    }
-
-    static void handleMouseMotion(cupuacu::State *state, SDL_Event *event)
-    {
-        const MouseEvent mouseEvent = convertFromSDL(state, event);
-
-        state->rootComponent->handleMouseEvent(mouseEvent);
-
-        if (state->capturingComponent == nullptr)
-        {
-            updateComponentUnderMouse(state, mouseEvent.mouseXi,
-                                      mouseEvent.mouseYi);
-        }
-    }
-
-    static void handleMouseDown(cupuacu::State *state, SDL_Event *event)
-    {
-        const MouseEvent mouseEvent = convertFromSDL(state, event);
-
-        if (state->capturingComponent == nullptr)
-        {
-            state->rootComponent->handleMouseEvent(mouseEvent);
-            return;
-        }
-
-        state->capturingComponent->handleMouseEvent(mouseEvent);
-    }
-
-    static void handleMouseUp(cupuacu::State *state, SDL_Event *event)
-    {
-        const MouseEvent mouseEvent = convertFromSDL(state, event);
-
-        updateComponentUnderMouse(state, mouseEvent.mouseXi,
-                                  mouseEvent.mouseYi);
-
-        if (state->capturingComponent == nullptr)
-        {
-            state->rootComponent->handleMouseEvent(mouseEvent);
-            return;
-        }
-
-        if (!state->capturingComponent->containsAbsoluteCoordinate(
-                mouseEvent.mouseXi, mouseEvent.mouseYi))
-        {
-            state->capturingComponent->mouseLeave();
-        }
-
-        state->capturingComponent->handleMouseEvent(mouseEvent);
-        state->capturingComponent = nullptr;
-    }
-
-    static void handleWindowMouseLeave(cupuacu::State *state)
-    {
-        if (state->capturingComponent != nullptr)
+        if (window->getCapturingComponent() != nullptr)
         {
             return;
         }
@@ -240,41 +145,124 @@ namespace cupuacu::gui
             waveform->clearHighlight();
         }
 
-        state->componentUnderMouse = nullptr;
+        window->setComponentUnderMouse(nullptr);
+    }
+
+    static SDL_WindowID getEventWindowId(const SDL_Event *event)
+    {
+        switch (event->type)
+        {
+            case SDL_EVENT_WINDOW_RESIZED:
+            case SDL_EVENT_WINDOW_MAXIMIZED:
+            case SDL_EVENT_WINDOW_EXPOSED:
+            case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+                return event->window.windowID;
+            case SDL_EVENT_MOUSE_MOTION:
+                return event->motion.windowID;
+            case SDL_EVENT_MOUSE_BUTTON_DOWN:
+            case SDL_EVENT_MOUSE_BUTTON_UP:
+                return event->button.windowID;
+            case SDL_EVENT_KEY_DOWN:
+                return event->key.windowID;
+            default:
+                return 0;
+        }
+    }
+
+    static Window *findWindowForEvent(cupuacu::State *state,
+                                      const SDL_Event *event)
+    {
+        const SDL_WindowID windowId = getEventWindowId(event);
+        if (windowId == 0)
+        {
+            return nullptr;
+        }
+
+        for (auto *window : state->windows)
+        {
+            if (window && window->getId() == windowId)
+            {
+                return window;
+            }
+        }
+        return nullptr;
     }
 
     inline SDL_AppResult handleAppEvent(cupuacu::State *state, SDL_Event *event)
     {
+        Window *eventWindow = findWindowForEvent(state, event);
         switch (event->type)
         {
             case SDL_EVENT_QUIT:
                 cleanupCursors();
                 return SDL_APP_SUCCESS;
             case SDL_EVENT_WINDOW_MAXIMIZED:
-                wasMaximized = true;
-                break;
             case SDL_EVENT_WINDOW_RESIZED:
-                handleResize(state);
+                if (eventWindow)
+                {
+                    eventWindow->handleEvent(*event);
+                }
                 break;
             case SDL_EVENT_WINDOW_MOUSE_LEAVE:
-                handleWindowMouseLeave(state);
+                if (eventWindow)
+                {
+                    if (state->mainWindow &&
+                        eventWindow == state->mainWindow.get())
+                    {
+                        handleWindowMouseLeave(state, eventWindow);
+                    }
+                }
                 break;
             case SDL_EVENT_KEY_DOWN:
-                handleKeyDown(event, state);
+                if (eventWindow && state->mainWindow &&
+                    eventWindow == state->mainWindow.get())
+                {
+                    handleKeyDown(event, state);
+                }
                 break;
             case SDL_EVENT_MOUSE_MOTION:
-                handleMouseMotion(state, event);
+                if (eventWindow)
+                {
+                    eventWindow->handleEvent(*event);
+                }
                 break;
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
-                handleMouseDown(state, event);
+                if (eventWindow)
+                {
+                    eventWindow->handleEvent(*event);
+                }
                 // state->rootComponent->printTree();
                 break;
             case SDL_EVENT_MOUSE_BUTTON_UP:
-                handleMouseUp(state, event);
+                if (eventWindow)
+                {
+                    eventWindow->handleEvent(*event);
+                }
+                break;
+            case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+                if (eventWindow)
+                {
+                    eventWindow->handleEvent(*event);
+                    if (state->mainWindow &&
+                        eventWindow == state->mainWindow.get())
+                    {
+                        cleanupCursors();
+                        return SDL_APP_SUCCESS;
+                    }
+                }
+                break;
+            default:
+                if (eventWindow)
+                {
+                    eventWindow->handleEvent(*event);
+                }
                 break;
         }
 
-        updateMouseCursor(state);
+        if (state->mainWindow)
+        {
+            updateMouseCursor(state, state->mainWindow.get());
+        }
 
         if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
         {

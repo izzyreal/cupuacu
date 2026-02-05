@@ -1,6 +1,7 @@
 #include "Component.h"
 #include "../State.h"
 #include "MenuBar.h"
+#include "Window.h"
 #include <ranges>
 #include <cmath>
 
@@ -23,9 +24,9 @@ void Component::setVisible(bool shouldBeVisible)
     {
         visible = shouldBeVisible;
         SDL_Rect r = getAbsoluteBounds();
-        if (r.w > 0 && r.h > 0)
+        if (window && r.w > 0 && r.h > 0)
         {
-            state->dirtyRects.push_back(r);
+            window->getDirtyRects().push_back(r);
         }
     }
 }
@@ -38,6 +39,10 @@ void Component::setInterceptMouseEnabled(const bool shouldInterceptMouse)
 void Component::setParent(Component *parentToUse)
 {
     parent = parentToUse;
+    if (parent && !window)
+    {
+        window = parent->window;
+    }
 }
 
 const std::vector<std::unique_ptr<Component>> &Component::getChildren() const
@@ -53,7 +58,10 @@ void Component::removeChild(Component *child)
         if (it->get() == child)
         {
             children.erase(it);
-            state->dirtyRects.push_back(oldBounds);
+            if (window)
+            {
+                window->getDirtyRects().push_back(oldBounds);
+            }
             setDirty();
             break;
         }
@@ -111,13 +119,16 @@ void Component::removeAllChildren()
 {
     for (auto &c : children)
     {
-        if (state->componentUnderMouse == c.get())
+        if (window)
         {
-            state->componentUnderMouse = nullptr;
-        }
-        if (state->capturingComponent == c.get())
-        {
-            state->capturingComponent = nullptr;
+            if (window->getComponentUnderMouse() == c.get())
+            {
+                window->setComponentUnderMouse(nullptr);
+            }
+            if (window->getCapturingComponent() == c.get())
+            {
+                window->setCapturingComponent(nullptr);
+            }
         }
     }
     children.clear();
@@ -126,12 +137,26 @@ void Component::removeAllChildren()
 
 const bool Component::isMouseOver() const
 {
-    return state->componentUnderMouse == this;
+    return window && window->getComponentUnderMouse() == this;
 }
 
 Component *Component::getParent() const
 {
     return parent;
+}
+
+void Component::setWindow(Window *windowToUse)
+{
+    if (window == windowToUse)
+    {
+        return;
+    }
+
+    window = windowToUse;
+    for (auto &c : children)
+    {
+        c->setWindow(windowToUse);
+    }
 }
 
 const std::string Component::getComponentName() const
@@ -193,9 +218,9 @@ void Component::setDirty()
     }
     dirty = true;
     SDL_Rect r = getAbsoluteBounds();
-    if (r.w > 0 && r.h > 0)
+    if (window && r.w > 0 && r.h > 0)
     {
-        state->dirtyRects.push_back(r);
+        window->getDirtyRects().push_back(r);
     }
     for (auto &c : children)
     {
@@ -209,6 +234,10 @@ void Component::setDirty()
 void Component::draw(SDL_Renderer *renderer)
 {
     if (!visible)
+    {
+        return;
+    }
+    if (!window)
     {
         return;
     }
@@ -231,7 +260,7 @@ void Component::draw(SDL_Renderer *renderer)
         SDL_Rect intersection;
         if (SDL_GetRectIntersection(&absRect, &parentRect, &intersection))
         {
-            for (const auto &dr : state->dirtyRects)
+            for (const auto &dr : window->getDirtyRects())
             {
                 if (SDL_HasRectIntersection(&intersection, &dr))
                 {
@@ -243,7 +272,7 @@ void Component::draw(SDL_Renderer *renderer)
     }
     else
     {
-        for (const auto &dr : state->dirtyRects)
+        for (const auto &dr : window->getDirtyRects())
         {
             if (SDL_HasRectIntersection(&absRect, &dr))
             {
@@ -348,7 +377,8 @@ bool Component::handleMouseEvent(const MouseEvent &mouseEvent)
         }
     }
 
-    Component *capturingComponent = state->capturingComponent;
+    Component *capturingComponent =
+        window ? window->getCapturingComponent() : nullptr;
 
     if (localXi < 0 || localXi >= width || localYi < 0 || localYi >= height)
     {
@@ -368,7 +398,10 @@ bool Component::handleMouseEvent(const MouseEvent &mouseEvent)
             {
                 if (mouseUp(localMouseEvent))
                 {
-                    state->capturingComponent = nullptr;
+                    if (window)
+                    {
+                        window->setCapturingComponent(nullptr);
+                    }
                     return true;
                 }
             }
@@ -376,15 +409,16 @@ bool Component::handleMouseEvent(const MouseEvent &mouseEvent)
     }
     else
     {
-        if (state->menuBar->hasMenuOpen() ||
-            state->menuBar->shouldOpenSubMenuOnMouseOver())
+        if (window && window->getMenuBar() &&
+            (window->getMenuBar()->hasMenuOpen() ||
+             window->getMenuBar()->shouldOpenSubMenuOnMouseOver()))
         {
-            if (!isComponentOrChildOf(this, state->menuBar))
+            if (!isComponentOrChildOf(this, window->getMenuBar()))
             {
                 if (mouseEvent.type == DOWN)
                 {
-                    state->menuBar->setOpenSubMenuOnMouseOver(false);
-                    state->menuBar->hideSubMenus();
+                    window->getMenuBar()->setOpenSubMenuOnMouseOver(false);
+                    window->getMenuBar()->hideSubMenus();
                     return true;
                 }
 
@@ -403,7 +437,10 @@ bool Component::handleMouseEvent(const MouseEvent &mouseEvent)
         {
             if (mouseDown(localMouseEvent))
             {
-                state->capturingComponent = this;
+                if (window)
+                {
+                    window->setCapturingComponent(this);
+                }
                 return true;
             }
         }
@@ -411,7 +448,10 @@ bool Component::handleMouseEvent(const MouseEvent &mouseEvent)
         {
             if (mouseUp(localMouseEvent))
             {
-                state->capturingComponent = nullptr;
+                if (window)
+                {
+                    window->setCapturingComponent(nullptr);
+                }
                 return true;
             }
         }

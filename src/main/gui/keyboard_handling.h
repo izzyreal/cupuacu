@@ -3,6 +3,7 @@
 #include "AudioDevice.hpp"
 #include "AudioDevices.hpp"
 #include "Waveform.h"
+#include "Window.h"
 #include "../actions/ShowOpenFileDialog.h"
 #include "../actions/Play.h"
 #include "../actions/Zoom.h"
@@ -192,7 +193,14 @@ namespace cupuacu::gui
 
                 const double newSamplesPerPixel = state->samplesPerPixel * 2;
 
-                buildComponents(state);
+                buildComponents(state, state->mainWindow.get());
+                for (auto *window : state->windows)
+                {
+                    if (window && window != state->mainWindow.get())
+                    {
+                        window->refreshForScaleOrResize();
+                    }
+                }
 
                 state->samplesPerPixel = newSamplesPerPixel;
 
@@ -211,7 +219,14 @@ namespace cupuacu::gui
 
                 const double newSamplesPerPixel = state->samplesPerPixel / 2;
 
-                buildComponents(state);
+                buildComponents(state, state->mainWindow.get());
+                for (auto *window : state->windows)
+                {
+                    if (window && window != state->mainWindow.get())
+                    {
+                        window->refreshForScaleOrResize();
+                    }
+                }
 
                 state->samplesPerPixel = newSamplesPerPixel;
 

@@ -13,10 +13,14 @@
 #include <string>
 #include <cstdint>
 
+namespace cupuacu
+{
+    struct State;
+}
+
 namespace cupuacu::gui
 {
-
-    struct State;
+    class Window;
 
     class Component
     {
@@ -35,11 +39,17 @@ namespace cupuacu::gui
 
     protected:
         cupuacu::State *state;
+        Window *window = nullptr;
         void removeAllChildren();
         Component *getParent() const;
 
     public:
         Component(cupuacu::State *, const std::string componentName);
+        void setWindow(Window *windowToUse);
+        Window *getWindow() const
+        {
+            return window;
+        }
         void setVisible(bool shouldBeVisible);
         bool isVisible() const
         {
