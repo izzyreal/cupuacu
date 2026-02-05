@@ -2,6 +2,8 @@
 #include "../State.h"
 #include "text.h"
 
+#include <cmath>
+
 using namespace cupuacu::gui;
 
 Label::Label(cupuacu::State *state, const std::string &textToUse)
@@ -93,6 +95,12 @@ void Label::onDraw(SDL_Renderer *renderer)
     {
         float centeredX = rect.x + (rect.w - cachedW) * 0.5f;
         x = std::max(centeredX, rect.x);
+    }
+
+    if (state->pixelScale > 1)
+    {
+        x = std::round(x);
+        rect.y = std::round(rect.y);
     }
 
     SDL_FRect destRect = {x, rect.y, (float)cachedW, (float)cachedH};
