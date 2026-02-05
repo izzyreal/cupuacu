@@ -2,6 +2,8 @@
 
 #include "Colors.h"
 #include "Helpers.h"
+#include "RoundedRect.h"
+#include "Window.h"
 #include "text.h"
 
 #include <algorithm>
@@ -149,6 +151,10 @@ void DropdownMenu::setExpanded(const bool expandedToUse)
     }
     expanded = expandedToUse;
     updateLabelVisibility();
+    if (!expanded)
+    {
+        hoveredIndex = -1;
+    }
     if (expanded)
     {
         bringToFront();
@@ -192,13 +198,96 @@ void DropdownMenu::resized()
 
 void DropdownMenu::onDraw(SDL_Renderer *renderer)
 {
-    Helpers::fillRect(renderer, getLocalBoundsF(), Colors::border);
-    SDL_FRect inner = getLocalBoundsF();
+    SDL_FRect outer = getLocalBoundsF();
+    const float radius = std::max(1.0f, 12.0f / state->pixelScale);
+
+    const SDL_Color border = Colors::border;
+    const SDL_Color baseBg = {55, 55, 55, 255};
+    const SDL_Color hoverBg = {70, 70, 70, 255};
+
+    drawRoundedRect(renderer, outer, radius, border);
+
+    SDL_FRect inner = outer;
     inner.x += 1.0f;
     inner.y += 1.0f;
     inner.w -= 2.0f;
     inner.h -= 2.0f;
-    Helpers::fillRect(renderer, inner, Colors::background);
+    drawRoundedRect(renderer, inner, std::max(0.0f, radius - 1.0f), baseBg);
+
+    if (expanded && hoveredIndex >= 0 &&
+        hoveredIndex < (int)itemLabels.size())
+    {
+        const int rowHeight = getRowHeight();
+        SDL_FRect hoverRect = inner;
+        hoverRect.y = inner.y + hoveredIndex * rowHeight;
+        hoverRect.h = rowHeight;
+        float hoverRadius = 0.0f;
+        if (hoveredIndex == 0 || hoveredIndex == (int)itemLabels.size() - 1)
+        {
+            hoverRadius = std::max(0.0f, radius - 1.0f);
+        }
+        drawRoundedRect(renderer, hoverRect, hoverRadius, hoverBg);
+    }
+
+    if (itemLabels.size() > 1)
+    {
+        const float arrowPadding =
+            std::max(1.0f, 12.0f / state->pixelScale);
+        const float arrowWidth =
+            std::max(1.0f, 20.0f / state->pixelScale);
+        const float arrowHeight =
+            std::max(1.0f, 10.0f / state->pixelScale);
+        const float arrowOffset = std::max(1.0f, 4.0f / state->pixelScale);
+        const float cx =
+            std::round(inner.x + inner.w - arrowPadding - arrowWidth * 0.5f -
+                       arrowOffset);
+        const float cy = inner.y + getRowHeight() * 0.5f;
+        SDL_Vertex verts[3];
+        SDL_FColor color{220 / 255.f, 220 / 255.f, 220 / 255.f, 1.0f};
+        verts[0].position = {cx - arrowWidth * 0.5f, cy - arrowHeight * 0.5f};
+        verts[1].position = {cx + arrowWidth * 0.5f, cy - arrowHeight * 0.5f};
+        verts[2].position = {cx, cy + arrowHeight * 0.5f};
+        for (auto &v : verts)
+        {
+            v.color = color;
+            v.tex_coord = {0.f, 0.f};
+        }
+        const int indices[3] = {0, 1, 2};
+        SDL_RenderGeometry(renderer, nullptr, verts, 3, indices, 3);
+    }
+}
+
+bool DropdownMenu::mouseMove(const MouseEvent &event)
+{
+    if (!expanded)
+    {
+        if (hoveredIndex != -1)
+        {
+            hoveredIndex = -1;
+            setDirty();
+        }
+        return false;
+    }
+
+    const int rowHeight = getRowHeight();
+    const int row = rowHeight > 0 ? (event.mouseYi / rowHeight) : -1;
+    const int newIndex =
+        (row >= 0 && row < (int)itemLabels.size()) ? row : -1;
+    if (newIndex != hoveredIndex)
+    {
+        hoveredIndex = newIndex;
+        setDirty();
+    }
+    return false;
+}
+
+void DropdownMenu::mouseLeave()
+{
+    if (hoveredIndex != -1)
+    {
+        hoveredIndex = -1;
+        setDirty();
+    }
 }
 
 bool DropdownMenu::mouseDown(const MouseEvent &event)
@@ -215,7 +304,10 @@ bool DropdownMenu::mouseDown(const MouseEvent &event)
 
     if (!expanded)
     {
-        setExpanded(true);
+        if (items.size() > 1)
+        {
+            setExpanded(true);
+        }
         return true;
     }
 

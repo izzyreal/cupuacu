@@ -19,6 +19,7 @@ namespace cupuacu::gui
         int collapsedHeight = 0;
         int fontSizeOverride = 0;
         int itemMargin = 6; // virtual pixels
+        int hoveredIndex = -1;
         std::function<void(int)> onSelectionChanged;
 
         int getFontSize() const;
@@ -46,5 +47,7 @@ namespace cupuacu::gui
         void resized() override;
         void onDraw(SDL_Renderer *renderer) override;
         bool mouseDown(const MouseEvent &) override;
+        bool mouseMove(const MouseEvent &) override;
+        void mouseLeave() override;
     };
 } // namespace cupuacu::gui
