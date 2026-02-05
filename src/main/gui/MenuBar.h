@@ -15,6 +15,7 @@ namespace cupuacu::gui
         Menu *fileMenu;
         Menu *viewMenu;
         Menu *editMenu;
+        Menu *optionsMenu;
         bool openSubMenuOnMouseOver = false;
         std::string logoData;
         SDL_Texture *logoTexture;

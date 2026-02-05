@@ -73,6 +73,7 @@ MenuBar::MenuBar(cupuacu::State *stateToUse) : Component(stateToUse, "MenuBar")
 
     // Edit menu
     editMenu = emplaceChild<Menu>(state, "Edit");
+    optionsMenu = emplaceChild<Menu>(state, "Options");
 
     std::function<std::string()> undoMenuNameGetter = [&]
     {
@@ -207,6 +208,8 @@ MenuBar::MenuBar(cupuacu::State *stateToUse) : Component(stateToUse, "MenuBar")
         {
             return state->clipboard.getFrameCount() > 0;
         });
+
+    optionsMenu->addSubMenu(state, "Device Properties", [] {});
 }
 
 void MenuBar::onDraw(SDL_Renderer *renderer)
@@ -248,6 +251,7 @@ void MenuBar::hideSubMenus()
     fileMenu->hideSubMenus();
     viewMenu->hideSubMenus();
     editMenu->hideSubMenus();
+    optionsMenu->hideSubMenus();
     state->rootComponent->setDirty();
     openSubMenuOnMouseOver = false;
 }
@@ -259,6 +263,7 @@ void MenuBar::resized()
     int fileW = int(40 * scale);
     int viewW = int(40 * scale);
     int editW = int(40 * scale); // wide enough for Undo/Redo text
+    int optionsW = int(60 * scale); // wide enough for Device Properties text
     int h = getHeight();
 
     int logoSpace = 0;
@@ -271,9 +276,10 @@ void MenuBar::resized()
     fileMenu->setBounds(logoSpace, 0, fileW, h);
     viewMenu->setBounds(logoSpace + fileW, 0, viewW, h);
     editMenu->setBounds(logoSpace + fileW + viewW, 0, editW, h);
+    optionsMenu->setBounds(logoSpace + fileW + viewW + editW, 0, optionsW, h);
 
     SDL_Rect backgroundBounds = getLocalBounds();
-    backgroundBounds.x = editMenu->getBounds().x + editW;
+    backgroundBounds.x = optionsMenu->getBounds().x + optionsW;
     backgroundBounds.w = getWidth() - backgroundBounds.x;
 
     background->setBounds(backgroundBounds);
@@ -297,6 +303,10 @@ Menu *MenuBar::getOpenMenu()
     if (editMenu->isOpen())
     {
         return editMenu;
+    }
+    if (optionsMenu->isOpen())
+    {
+        return optionsMenu;
     }
     return nullptr;
 }
