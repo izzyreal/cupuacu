@@ -208,13 +208,13 @@ namespace cupuacu::gui
                 return SDL_APP_SUCCESS;
             case SDL_EVENT_WINDOW_MAXIMIZED:
             case SDL_EVENT_WINDOW_RESIZED:
-                if (eventWindow)
+                if (eventWindow && eventWindow->hasFocus())
                 {
                     eventWindow->handleEvent(*event);
                 }
                 break;
             case SDL_EVENT_WINDOW_MOUSE_LEAVE:
-                if (eventWindow)
+                if (eventWindow && eventWindow->hasFocus())
                 {
                     if (state->mainWindow &&
                         eventWindow == state->mainWindow.get())
@@ -224,33 +224,34 @@ namespace cupuacu::gui
                 }
                 break;
             case SDL_EVENT_KEY_DOWN:
-                if (eventWindow && state->mainWindow &&
+                if (eventWindow && eventWindow->hasFocus() &&
+                    state->mainWindow &&
                     eventWindow == state->mainWindow.get())
                 {
                     handleKeyDown(event, state);
                 }
                 break;
             case SDL_EVENT_MOUSE_MOTION:
-                if (eventWindow)
+                if (eventWindow && eventWindow->hasFocus())
                 {
                     eventWindow->handleEvent(*event);
                 }
                 break;
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
-                if (eventWindow)
+                if (eventWindow && eventWindow->hasFocus())
                 {
                     eventWindow->handleEvent(*event);
                 }
                 // state->rootComponent->printTree();
                 break;
             case SDL_EVENT_MOUSE_BUTTON_UP:
-                if (eventWindow)
+                if (eventWindow && eventWindow->hasFocus())
                 {
                     eventWindow->handleEvent(*event);
                 }
                 break;
             case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
-                if (eventWindow)
+                if (eventWindow && eventWindow->hasFocus())
                 {
                     eventWindow->handleEvent(*event);
                     if (state->mainWindow &&
@@ -262,7 +263,7 @@ namespace cupuacu::gui
                 }
                 break;
             default:
-                if (eventWindow)
+                if (eventWindow && eventWindow->hasFocus())
                 {
                     eventWindow->handleEvent(*event);
                 }

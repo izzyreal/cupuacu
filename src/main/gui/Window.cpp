@@ -27,6 +27,16 @@ Window::~Window()
     close();
 }
 
+bool Window::hasFocus() const
+{
+    if (!window)
+    {
+        return false;
+    }
+
+    return SDL_GetKeyboardFocus() == window;
+}
+
 void Window::setRootComponent(std::unique_ptr<Component> rootToUse)
 {
     rootComponent = std::move(rootToUse);

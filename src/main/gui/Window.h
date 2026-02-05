@@ -30,6 +30,7 @@ namespace cupuacu::gui
         {
             return window != nullptr;
         }
+        bool hasFocus() const;
         SDL_WindowID getId() const
         {
             return windowId;
