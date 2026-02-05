@@ -47,6 +47,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
         return SDL_APP_FAILURE;
     }
 
+    SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
+
     state->mainWindow = std::make_unique<cupuacu::gui::Window>(
         state, "", initialDimensions[0], initialDimensions[1],
         SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
@@ -74,7 +76,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     cupuacu::actions::resetZoom(state);
 
     state->mainWindow->renderFrame();
-
     return SDL_APP_CONTINUE;
 }
 

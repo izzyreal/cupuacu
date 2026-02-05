@@ -45,11 +45,6 @@ DevicePropertiesWindow::DevicePropertiesWindow(cupuacu::State *stateToUse)
             SDL_Log("DevicePropertiesWindow: SDL_SetWindowParent failed: %s",
                     SDL_GetError());
         }
-        if (!SDL_SetWindowModal(window->getSdlWindow(), true))
-        {
-            SDL_Log("DevicePropertiesWindow: SDL_SetWindowModal failed: %s",
-                    SDL_GetError());
-        }
     }
 
     auto rootComponent =
@@ -122,6 +117,8 @@ DevicePropertiesWindow::DevicePropertiesWindow(cupuacu::State *stateToUse)
 
     layoutComponents();
     renderOnce();
+
+    raise();
 }
 
 DevicePropertiesWindow::~DevicePropertiesWindow()
