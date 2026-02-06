@@ -79,7 +79,7 @@ void Component::removeChild(Component *child)
     }
 }
 
-void Component::sendToBack()
+void Component::sendToBack() const
 {
     if (parent == nullptr)
     {
@@ -102,7 +102,7 @@ void Component::sendToBack()
     }
 }
 
-void Component::bringToFront()
+void Component::bringToFront() const
 {
     if (parent == nullptr)
     {
@@ -146,7 +146,7 @@ Component *Component::getParent() const
     return parent;
 }
 
-void Component::clearWindowPointersForSubtree(Component *subtreeRoot)
+void Component::clearWindowPointersForSubtree(Component *subtreeRoot) const
 {
     if (!window || !subtreeRoot)
     {
@@ -504,7 +504,7 @@ int32_t Component::getYPos() const
     return yPos;
 }
 
-std::pair<int, int> Component::getAbsolutePosition()
+std::pair<int, int> Component::getAbsolutePosition() const
 {
     int resultX = getXPos(), resultY = getYPos();
     const Component *p = getParent();

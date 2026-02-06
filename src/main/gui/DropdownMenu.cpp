@@ -52,7 +52,7 @@ void DropdownMenu::rebuildLabels()
     }
 }
 
-void DropdownMenu::updateLabelStyles()
+void DropdownMenu::updateLabelStyles() const
 {
     for (size_t i = 0; i < itemLabels.size(); ++i)
     {
@@ -61,7 +61,7 @@ void DropdownMenu::updateLabelStyles()
     }
 }
 
-void DropdownMenu::updateLabelVisibility()
+void DropdownMenu::updateLabelVisibility() const
 {
     for (size_t i = 0; i < itemLabels.size(); ++i)
     {
@@ -164,7 +164,8 @@ void DropdownMenu::setExpanded(const bool expandedToUse)
         std::max(1, static_cast<int>(items.size())) * rowHeight;
     const int targetHeight =
         expanded ? expandedHeight
-                 : (collapsedHeight > 0 ? collapsedHeight : rowHeight);
+                 : collapsedHeight > 0 ? collapsedHeight
+                                                   : rowHeight;
     setSize(getWidth(), targetHeight);
     setDirty();
 }
@@ -270,9 +271,9 @@ bool DropdownMenu::mouseMove(const MouseEvent &event)
     }
 
     const int rowHeight = getRowHeight();
-    const int row = rowHeight > 0 ? (event.mouseYi / rowHeight) : -1;
+    const int row = rowHeight > 0 ? event.mouseYi / rowHeight : -1;
     const int newIndex =
-        (row >= 0 && row < (int)itemLabels.size()) ? row : -1;
+        row >= 0 && row < (int)itemLabels.size() ? row : -1;
     if (newIndex != hoveredIndex)
     {
         hoveredIndex = newIndex;
@@ -312,7 +313,7 @@ bool DropdownMenu::mouseDown(const MouseEvent &event)
     }
 
     const int rowHeight = getRowHeight();
-    const int row = rowHeight > 0 ? (event.mouseYi / rowHeight) : 0;
+    const int row = rowHeight > 0 ? event.mouseYi / rowHeight : 0;
     if (row >= 0 && row < (int)items.size())
     {
         const int oldIndex = selectedIndex;

@@ -255,7 +255,7 @@ uint8_t WaveformsUnderlay::channelAt(const uint16_t y) const
     return std::clamp(ch, 0, maxCh);
 }
 
-void WaveformsUnderlay::markAllWaveformsDirty()
+void WaveformsUnderlay::markAllWaveformsDirty() const
 {
     for (auto *wf : state->waveforms)
     {
@@ -263,12 +263,12 @@ void WaveformsUnderlay::markAllWaveformsDirty()
     }
 }
 
-void WaveformsUnderlay::handleScroll(const int32_t mouseX, const int32_t mouseY)
+void WaveformsUnderlay::handleScroll(const int32_t mouseX, const int32_t mouseY) const
 {
     if (mouseX > getWidth() || mouseX < 0)
     {
         const auto samplesPerPixel = state->samplesPerPixel;
-        const auto diff = (mouseX < 0) ? mouseX : mouseX - getWidth();
+        const auto diff = mouseX < 0 ? mouseX : mouseX - getWidth();
         const auto samplesToScroll = diff * samplesPerPixel;
         state->samplesToScroll = samplesToScroll;
     }

@@ -12,7 +12,7 @@ namespace cupuacu::gui
 
         void rebuildWaveforms();
 
-        void resizeWaveforms();
+        void resizeWaveforms() const;
 
         void resized() override;
 

@@ -24,8 +24,8 @@ Menu::Menu(State *state, const std::string &menuNameToUse,
 Menu::Menu(State *state,
            const std::function<std::string()> &menuNameGetterToUse,
            const std::function<void()> &actionToUse)
-    : Component(state, "Menu"), menuNameGetter(menuNameGetterToUse),
-      action(actionToUse), menuName("")
+    : Component(state, "Menu"), menuName(""),
+      action(actionToUse), menuNameGetter(menuNameGetterToUse)
 {
     disableParentClipping();
     label = emplaceChild<Label>(state);
@@ -38,7 +38,7 @@ void Menu::setIsAvailable(const std::function<bool()> &isAvailableToUse)
     isAvailable = isAvailableToUse;
 }
 
-std::string Menu::getMenuName()
+std::string Menu::getMenuName() const
 {
     if (menuName.empty())
     {
@@ -76,7 +76,7 @@ void Menu::showSubMenus()
     int subMenuYPos = getHeight();
 
     const int menuItemHeight =
-        int(((float)state->menuFontSize / state->pixelScale) * 2.0f);
+        int((float)state->menuFontSize / state->pixelScale * 2.0f);
 
     int subMenuWidth = 1;
 
@@ -96,21 +96,6 @@ void Menu::showSubMenus()
                            menuItemHeight);
         subMenu->setVisible(true);
         subMenuYPos += menuItemHeight;
-    }
-
-    // compute bounding rect
-    int x = subMenus.front()->getXPos();
-    const int y = subMenus.front()->getYPos();
-    int w = 0;
-    int h = 0;
-
-    for (const auto *sub : subMenus)
-    {
-        if (sub->getWidth() > w)
-        {
-            w = sub->getWidth();
-        }
-        h = sub->getYPos() + sub->getHeight() - y;
     }
 
     currentlyOpen = true;
@@ -141,8 +126,6 @@ void Menu::onDraw(SDL_Renderer *renderer)
     {
         constexpr SDL_Color bg = Colors::background;
         Helpers::setRenderDrawColor(renderer, bg);
-
-        const auto rect = getLocalBoundsF();
 
         SDL_RenderFillRect(renderer, &rect);
 

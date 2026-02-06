@@ -59,7 +59,7 @@ namespace cupuacu::gui
             }
         }
 
-        void updateLabels()
+        void updateLabels() const
         {
             if (getWidth() <= 0)
             {
@@ -68,7 +68,7 @@ namespace cupuacu::gui
 
             const int waveformWidth = Waveform::getWaveformWidth(state);
 
-            double maxTicks = (waveformWidth * state->pixelScale) / 85.f;
+            double maxTicks = waveformWidth * state->pixelScale / 85.f;
             maxTicks = std::max(1.0, maxTicks);
 
             const int totalVisibleSamples =
@@ -100,7 +100,7 @@ namespace cupuacu::gui
                 state->samplesPerPixel, state->pixelScale);
 
             int firstSampleWithTick =
-                ((state->sampleOffset + samplesPerTick - 1) / samplesPerTick) *
+                (state->sampleOffset + samplesPerTick - 1) / samplesPerTick *
                 samplesPerTick;
             firstSampleWithTick =
                 std::max(0, firstSampleWithTick - samplesPerTick);
@@ -109,7 +109,7 @@ namespace cupuacu::gui
                 waveformWidth - 1, state->sampleOffset, state->samplesPerPixel);
 
             const int lastSampleWithTick =
-                ((lastVisibleSample + samplesPerTick - 1) / samplesPerTick) *
+                (lastVisibleSample + samplesPerTick - 1) / samplesPerTick *
                 samplesPerTick;
 
             const float firstTickX =
@@ -177,7 +177,7 @@ namespace cupuacu::gui
                 {
                     temp /= 10;
                 }
-                subdivisions = (temp == 2) ? 2 : 5;
+                subdivisions = temp == 2 ? 2 : 5;
             }
 
             ruler->setLongTickSubdivisions(subdivisions);

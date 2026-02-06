@@ -15,10 +15,10 @@ namespace cupuacu::gui
     public:
         MainView(State *);
 
-        void rebuildWaveforms();
+        void rebuildWaveforms() const;
         void resized() override;
         void timerCallback() override;
-        void updateTriangleMarkerBounds();
+        void updateTriangleMarkerBounds() const;
 
     private:
         TriangleMarker *cursorTop;

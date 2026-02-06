@@ -251,7 +251,7 @@ void DevicePropertiesWindow::populateDevices(const int hostApiIndex)
     inputDeviceDropdown->setSelectedIndex(0);
 }
 
-void DevicePropertiesWindow::layoutComponents()
+void DevicePropertiesWindow::layoutComponents() const
 {
     if (!window || !window->getRootComponent())
     {
@@ -305,7 +305,7 @@ void DevicePropertiesWindow::layoutComponents()
     inputDeviceDropdown->setItemMargin(padding);
 }
 
-void DevicePropertiesWindow::renderOnce()
+void DevicePropertiesWindow::renderOnce() const
 {
     if (window)
     {
@@ -313,7 +313,7 @@ void DevicePropertiesWindow::renderOnce()
     }
 }
 
-void DevicePropertiesWindow::raise()
+void DevicePropertiesWindow::raise() const
 {
     if (window && window->getSdlWindow())
     {

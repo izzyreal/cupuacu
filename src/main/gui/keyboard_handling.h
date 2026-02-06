@@ -185,7 +185,7 @@ namespace cupuacu::gui
             actions::play(state);
         }
         else if (event->key.scancode == SDL_SCANCODE_PERIOD &&
-                 (event->key.mod & SDL_KMOD_SHIFT))
+                 event->key.mod & SDL_KMOD_SHIFT)
         {
             if (state->pixelScale < 4)
             {
@@ -211,7 +211,7 @@ namespace cupuacu::gui
             }
         }
         else if (event->key.scancode == SDL_SCANCODE_COMMA &&
-                 (event->key.mod & SDL_KMOD_SHIFT))
+                 event->key.mod & SDL_KMOD_SHIFT)
         {
             if (state->pixelScale > 1)
             {
@@ -239,7 +239,7 @@ namespace cupuacu::gui
         else if (event->key.scancode == SDL_SCANCODE_X)
         {
 #if __APPLE__
-            if ((event->key.mod & SDL_KMOD_GUI) && state->selection.isActive())
+            if (event->key.mod & SDL_KMOD_GUI && state->selection.isActive())
 #else
             if ((event->key.mod & SDL_KMOD_CTRL) && state->selection.isActive())
 #endif
@@ -253,7 +253,7 @@ namespace cupuacu::gui
         else if (event->key.scancode == SDL_SCANCODE_C)
         {
 #if __APPLE__
-            if ((event->key.mod & SDL_KMOD_GUI) && state->selection.isActive())
+            if (event->key.mod & SDL_KMOD_GUI && state->selection.isActive())
 #else
             if ((event->key.mod & SDL_KMOD_CTRL) && state->selection.isActive())
 #endif
@@ -288,7 +288,7 @@ namespace cupuacu::gui
         else if (event->key.scancode == SDL_SCANCODE_T)
         {
 #if __APPLE__
-            if ((event->key.mod & SDL_KMOD_GUI) && state->selection.isActive())
+            if (event->key.mod & SDL_KMOD_GUI && state->selection.isActive())
 #else
             if ((event->key.mod & SDL_KMOD_CTRL) && state->selection.isActive())
 #endif

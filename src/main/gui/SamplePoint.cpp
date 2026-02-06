@@ -108,7 +108,7 @@ bool SamplePoint::mouseMove(const MouseEvent &e)
     dragYPos = std::clamp(dragYPos, minY, maxY);
 
     // Calculate the new sample value based on the clamped y-position
-    const float vertCenter = dragYPos + (samplePointSize * 0.5f);
+    const float vertCenter = dragYPos + samplePointSize * 0.5f;
     float newSampleValue = getSampleValueForYPos(vertCenter, parentHeight,
                                                  verticalZoom, samplePointSize);
 
@@ -125,7 +125,7 @@ bool SamplePoint::mouseMove(const MouseEvent &e)
 
 void SamplePoint::onDraw(SDL_Renderer *r)
 {
-    SDL_SetRenderDrawColor(r, 0, (isMouseOver() || isDragging) ? 255 : 185, 0,
+    SDL_SetRenderDrawColor(r, 0, isMouseOver() || isDragging ? 255 : 185, 0,
                            255);
     const SDL_FRect rectToFill{0, 0, (float)getWidth(), (float)getHeight()};
     SDL_RenderFillRect(r, &rectToFill);

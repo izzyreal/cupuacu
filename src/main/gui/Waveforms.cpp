@@ -34,7 +34,7 @@ void Waveforms::rebuildWaveforms()
     }
 }
 
-void Waveforms::resizeWaveforms()
+void Waveforms::resizeWaveforms() const
 {
     const int numChannels = static_cast<int>(state->waveforms.size());
     const float channelHeight = numChannels > 0 ? getHeight() / numChannels : 0;

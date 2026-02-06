@@ -28,8 +28,8 @@ static std::vector<float> splineInterpolateNonUniform(
     std::vector<double> alpha(n);
     for (int i = 1; i < n; ++i)
     {
-        alpha[i] = (3.0 / h[i]) * (y[i + 1] - y[i]) -
-                   (3.0 / h[i - 1]) * (y[i] - y[i - 1]);
+        alpha[i] = 3.0 / h[i] * (y[i + 1] - y[i]) -
+                   3.0 / h[i - 1] * (y[i] - y[i - 1]);
     }
 
     std::vector<double> l(n + 1), mu(n + 1), z(n + 1);
@@ -155,7 +155,7 @@ splineInterpolate(const std::vector<int16_t>::const_iterator begin,
     for (int j = n - 1; j >= 0; --j)
     {
         c[j] = z[j] - mu[j] * c[j + 1];
-        b[j] = (y[j + 1] - y[j]) - (c[j + 1] + 2.0 * c[j]) / 3.0;
+        b[j] = y[j + 1] - y[j] - (c[j + 1] + 2.0 * c[j]) / 3.0;
         d[j] = (c[j + 1] - c[j]) / 3.0;
         a[j] = y[j];
     }

@@ -314,7 +314,7 @@ void MenuBar::mouseEnter()
     setDirty();
 }
 
-Menu *MenuBar::getOpenMenu()
+Menu *MenuBar::getOpenMenu() const
 {
     if (fileMenu->isOpen())
     {

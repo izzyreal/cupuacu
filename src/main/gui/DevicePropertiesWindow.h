@@ -21,7 +21,7 @@ namespace cupuacu::gui
         {
             return window && window->isOpen();
         }
-        void raise();
+        void raise() const;
         Window *getWindow() const
         {
             return window.get();
@@ -46,7 +46,7 @@ namespace cupuacu::gui
 
         void populateHostApis();
         void populateDevices(const int hostApiIndex);
-        void layoutComponents();
-        void renderOnce();
+        void layoutComponents() const;
+        void renderOnce() const;
     };
 } // namespace cupuacu::gui

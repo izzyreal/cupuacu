@@ -36,7 +36,7 @@ namespace cupuacu::gui
         std::vector<std::unique_ptr<Component>> children;
 
         void setParent(Component *parentToUse);
-        void clearWindowPointersForSubtree(Component *subtreeRoot);
+        void clearWindowPointersForSubtree(Component *subtreeRoot) const;
 
     protected:
         State *state;
@@ -66,7 +66,7 @@ namespace cupuacu::gui
 
         static bool isComponentOrChildOf(Component *, Component *);
 
-        bool hasChild(Component *component)
+        bool hasChild(Component *component) const
         {
             for (auto &c : children)
             {
@@ -84,17 +84,17 @@ namespace cupuacu::gui
 
         const bool isMouseOver() const;
 
-        SDL_Rect getBounds()
+        SDL_Rect getBounds() const
         {
             return {xPos, yPos, width, height};
         }
 
-        SDL_Rect getLocalBounds()
+        SDL_Rect getLocalBounds() const
         {
             return {0, 0, width, height};
         }
 
-        SDL_FRect getLocalBoundsF()
+        SDL_FRect getLocalBoundsF() const
         {
             return {0.0f, 0.0f, (float)width, (float)height};
         }
@@ -112,7 +112,7 @@ namespace cupuacu::gui
         {
             parentClippingEnabled = false;
         }
-        bool isParentClippingEnabled()
+        bool isParentClippingEnabled() const
         {
             return parentClippingEnabled;
         }
@@ -160,8 +160,8 @@ namespace cupuacu::gui
 
         const std::string getComponentName() const;
 
-        void sendToBack();
-        void bringToFront();
+        void sendToBack() const;
+        void bringToFront() const;
         void setBounds(const SDL_Rect);
         void setBounds(int32_t xPosToUse, int32_t yPosToUse, int32_t widthToUse,
                        int32_t heightToUse);
@@ -197,7 +197,7 @@ namespace cupuacu::gui
         int32_t getHeight() const;
         int32_t getXPos() const;
         int32_t getYPos() const;
-        std::pair<int, int> getAbsolutePosition();
+        std::pair<int, int> getAbsolutePosition() const;
         bool containsAbsoluteCoordinate(int x, int y);
         Component *findComponentAt(int x, int y);
 

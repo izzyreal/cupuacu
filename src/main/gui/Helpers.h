@@ -61,7 +61,7 @@ struct Helpers
         }
         else if (clip.x <= rect.x)
         {
-            const int overlap = (clip.x + clip.w) - rect.x;
+            const int overlap = clip.x + clip.w - rect.x;
             result.x += overlap;
             result.w -= overlap;
         }

@@ -108,8 +108,8 @@ void Window::handleResize()
     SDL_GetWindowSize(window, &winW, &winH);
 
     const int hpp = state->pixelScale;
-    const int newW = (winW / hpp) * hpp;
-    const int newH = (winH / hpp) * hpp;
+    const int newW = winW / hpp * hpp;
+    const int newH = winH / hpp * hpp;
 
     if (newW != winW || newH != winH)
     {
@@ -217,12 +217,12 @@ MouseEvent Window::makeMouseEvent(const SDL_Event &event) const
     else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
              event.type == SDL_EVENT_MOUSE_BUTTON_UP)
     {
-        type = (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) ? DOWN : UP;
+        type = event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ? DOWN : UP;
         xf = event.button.x;
         yf = event.button.y;
-        left = (event.button.button == SDL_BUTTON_LEFT);
-        middle = (event.button.button == SDL_BUTTON_MIDDLE);
-        right = (event.button.button == SDL_BUTTON_RIGHT);
+        left = event.button.button == SDL_BUTTON_LEFT;
+        middle = event.button.button == SDL_BUTTON_MIDDLE;
+        right = event.button.button == SDL_BUTTON_RIGHT;
         clicks = event.button.clicks;
     }
 

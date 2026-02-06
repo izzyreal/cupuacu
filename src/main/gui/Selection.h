@@ -29,12 +29,12 @@ namespace cupuacu::gui
 
         T getStart() const
         {
-            return (value1 < value2) ? value1 : value2;
+            return value1 < value2 ? value1 : value2;
         }
 
         T getEnd() const
         {
-            return (value1 < value2) ? value2 : value1;
+            return value1 < value2 ? value2 : value1;
         }
 
         void setValue1(const T v)
@@ -59,7 +59,7 @@ namespace cupuacu::gui
 
         int64_t getLengthInt() const
         {
-            return (getEndInt() - getStartInt()) + 1;
+            return getEndInt() - getStartInt() + 1;
         }
 
         void reset()
@@ -88,7 +88,7 @@ namespace cupuacu::gui
                    getLengthInt() > 0;
         }
 
-        void printInfo()
+        void printInfo() const
         {
             printf(
                 "active: %i, value1: %d, value2: %d, startInt: %i, endInt: %i, "

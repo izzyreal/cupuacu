@@ -115,12 +115,12 @@ namespace cupuacu::gui
                 const auto labelText =
                     mandatoryEndLabel.empty()
                         ? labelTexts[i]
-                        : (i == numLabels - 1 ? mandatoryEndLabel
-                                              : labelTexts[i]);
+                        : i == numLabels - 1 ? mandatoryEndLabel
+                                                            : labelTexts[i];
                 auto [labelWidth, th] =
                     measureText(labelText, labels[i]->getEffectiveFontSize());
-                int labelX = ((longTickSpacingPx * i) + scrollOffsetPx) -
-                             (labelWidth * 0.5f);
+                int labelX = longTickSpacingPx * i + scrollOffsetPx -
+                             labelWidth * 0.5f;
 
                 if (baseHorizontalMargin != 0.f)
                 {
@@ -245,7 +245,7 @@ namespace cupuacu::gui
                         }
                     }
 
-                    const int height = (t == 0) ? tickHeightLong : tickHeightShort;
+                    const int height = t == 0 ? tickHeightLong : tickHeightShort;
 
                     const SDL_Rect tickRect{tickX, bounds.y, 1, height};
                     Helpers::fillRect(renderer, tickRect, Colors::white);

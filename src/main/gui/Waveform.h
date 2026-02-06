@@ -116,13 +116,13 @@ namespace cupuacu::gui
 
         std::vector<std::unique_ptr<SamplePoint>> computeSamplePoints();
 
-        void drawHorizontalLines(SDL_Renderer *);
-        void drawSelection(SDL_Renderer *);
-        void drawHighlight(SDL_Renderer *);
-        void renderBlockWaveform(SDL_Renderer *);
-        void renderSmoothWaveform(SDL_Renderer *);
+        void drawHorizontalLines(SDL_Renderer *) const;
+        void drawSelection(SDL_Renderer *) const;
+        void drawHighlight(SDL_Renderer *) const;
+        void renderBlockWaveform(SDL_Renderer *) const;
+        void renderSmoothWaveform(SDL_Renderer *) const;
 
-        void drawPlaybackPosition(SDL_Renderer *);
-        void drawCursor(SDL_Renderer *);
+        void drawPlaybackPosition(SDL_Renderer *) const;
+        void drawCursor(SDL_Renderer *) const;
     };
 } // namespace cupuacu::gui

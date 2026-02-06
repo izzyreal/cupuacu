@@ -16,7 +16,7 @@ SDL_Rect computeMainViewBounds(const uint16_t canvasWidth,
                                const uint8_t menuHeight)
 {
     const SDL_Rect result{0, menuHeight, canvasWidth,
-                    canvasHeight - (menuHeight * 2)};
+                    canvasHeight - menuHeight * 2};
     return result;
 }
 
@@ -26,7 +26,7 @@ SDL_Rect computeMenuBarBounds(const uint16_t canvasWidth,
                               const uint8_t menuFontSize)
 {
     const SDL_Rect result{0, 0, canvasWidth,
-                    static_cast<int>((menuFontSize * 1.33) / pixelScale)};
+                    static_cast<int>(menuFontSize * 1.33 / pixelScale)};
     return result;
 }
 
@@ -36,7 +36,7 @@ SDL_Rect computeStatusBarBounds(const uint16_t canvasWidth,
                                 const uint8_t menuFontSize)
 {
     const auto statusBarHeight =
-        static_cast<int>((menuFontSize * 1.33) / pixelScale);
+        static_cast<int>(menuFontSize * 1.33 / pixelScale);
 
     const SDL_Rect result{0, canvasHeight - statusBarHeight, canvasWidth,
                     statusBarHeight};

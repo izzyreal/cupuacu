@@ -39,7 +39,7 @@ uint8_t MainView::computeBorderWidth() const
     return baseBorderWidth / state->pixelScale;
 }
 
-void MainView::rebuildWaveforms()
+void MainView::rebuildWaveforms() const
 {
     waveforms->rebuildWaveforms();
     waveforms->resizeWaveforms();
@@ -69,7 +69,7 @@ void MainView::resized()
     updateTriangleMarkerBounds();
 }
 
-void MainView::updateTriangleMarkerBounds()
+void MainView::updateTriangleMarkerBounds() const
 
 {
     const auto borderWidth = computeBorderWidth();

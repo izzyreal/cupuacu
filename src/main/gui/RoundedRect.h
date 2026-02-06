@@ -31,7 +31,7 @@ namespace cupuacu::gui
         for (int i = 0; i <= segments; ++i)
         {
             const float theta =
-                (startAngleDeg + (90.0f * i) / segments) * (float)M_PI / 180.0f;
+                (startAngleDeg + 90.0f * i / segments) * (float)M_PI / 180.0f;
             const float x = cx + std::cos(theta) * radius;
             const float y = cy + std::sin(theta) * radius;
 

@@ -25,8 +25,8 @@ namespace cupuacu::gui
         int getFontSize() const;
         int getRowHeight() const;
         void rebuildLabels();
-        void updateLabelStyles();
-        void updateLabelVisibility();
+        void updateLabelStyles() const;
+        void updateLabelVisibility() const;
 
     public:
         DropdownMenu(State *stateToUse);
