@@ -1,12 +1,14 @@
-#include "Menu.h"
+#include "gui/Menu.h"
 
-#include "MenuBar.h"
-#include "Label.h"
-#include "Window.h"
+#include "gui/MenuBar.h"
+#include "gui/Label.h"
+#include "gui/Window.h"
+#include "gui/Helpers.h"
+#include "gui/Colors.h"
 
-#include "text.h"
+#include "gui/text.h"
 
-#include "RoundedRect.h"
+#include "gui/RoundedRect.h"
 
 using namespace cupuacu::gui;
 

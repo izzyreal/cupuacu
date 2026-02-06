@@ -1,11 +1,13 @@
 #pragma once
 
-#include "Component.h"
-#include "Label.h"
+#include "gui/Component.h"
+#include "gui/Label.h"
+#include "gui/Helpers.h"
+#include "gui/Colors.h"
+#include "gui/text.h"
+
 #include <vector>
 #include <string>
-
-#include "text.h"
 
 namespace cupuacu::gui
 {

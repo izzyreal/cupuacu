@@ -2,9 +2,6 @@
 
 #include "MouseEvent.h"
 
-#include "Helpers.h"
-#include "Colors.h"
-
 #include <SDL3/SDL.h>
 
 #include <algorithm>

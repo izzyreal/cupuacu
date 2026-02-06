@@ -1,18 +1,21 @@
 #include "MenuBar.h"
 
-#include "../State.h"
-#include "OpaqueRect.h"
-#include "Menu.h"
-#include "Window.h"
-#include "../ResourceUtil.hpp"
-#include "DevicePropertiesWindow.h"
+#include "State.h"
+#include "ResourceUtil.hpp"
 
-#include "../actions/ShowOpenFileDialog.h"
-#include "../actions/Save.h"
-#include "../actions/audio/Copy.h"
-#include "../actions/audio/Trim.h"
-#include "../actions/audio/Cut.h"
-#include "../actions/audio/Paste.h"
+#include "gui/OpaqueRect.h"
+#include "gui/Menu.h"
+#include "gui/Window.h"
+#include "gui/DevicePropertiesWindow.h"
+#include "gui/Colors.h"
+#include "gui/Helpers.h"
+
+#include "actions/ShowOpenFileDialog.h"
+#include "actions/Save.h"
+#include "actions/audio/Copy.h"
+#include "actions/audio/Trim.h"
+#include "actions/audio/Cut.h"
+#include "actions/audio/Paste.h"
 
 #include <memory>
 

@@ -1,7 +1,8 @@
 #pragma once
 
-#include "Component.h"
-#include "Helpers.h"
+#include "gui/Component.h"
+#include "gui/Helpers.h"
+#include "gui/Colors.h"
 
 #include "State.h"
 

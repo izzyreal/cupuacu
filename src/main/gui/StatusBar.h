@@ -2,11 +2,15 @@
 
 #include "AudioDevice.hpp"
 #include "AudioDevices.hpp"
-#include "Component.h"
-#include "LabeledField.h"
-#include "../State.h"
+
+#include "gui/Component.h"
+#include "gui/LabeledField.h"
+#include "gui/Colors.h"
+
+#include "State.h"
 
 #include <SDL3/SDL.h>
+
 #include <limits>
 #include <optional>
 #include <string>

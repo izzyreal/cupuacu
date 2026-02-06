@@ -1,15 +1,17 @@
 #pragma once
 
-#include "Component.h"
-#include "text.h"
-#include "../State.h"
+#include "gui/Component.h"
+#include "gui/text.h"
+#include "gui/Helpers.h"
+
+#include "State.h"
 
 #include <SDL3/SDL.h>
+
 #include <string>
 
 namespace cupuacu::gui
 {
-
     class LabeledField : public Component
     {
     private:
