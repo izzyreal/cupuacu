@@ -102,13 +102,13 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         state->devicePropertiesWindow.reset();
     }
 
-    state->windows.erase(
-        std::remove_if(state->windows.begin(), state->windows.end(),
-                       [](cupuacu::gui::Window *window)
-                       {
-                           return !window || !window->isOpen();
-                       }),
-        state->windows.end());
+    state->windows.erase(std::remove_if(state->windows.begin(),
+                                        state->windows.end(),
+                                        [](cupuacu::gui::Window *window)
+                                        {
+                                            return !window || !window->isOpen();
+                                        }),
+                         state->windows.end());
 
     SDL_Delay(16);
     return SDL_APP_CONTINUE;

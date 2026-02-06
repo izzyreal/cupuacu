@@ -8,8 +8,9 @@ namespace cupuacu::gui
 {
 
     // Internal: quarter filled arc
-    inline void drawQuarterFilled(SDL_Renderer *renderer, float cx, float cy,
-                                  float radius, float startAngleDeg,
+    inline void drawQuarterFilled(SDL_Renderer *renderer, const float cx,
+                                  const float cy, const float radius,
+                                  const float startAngleDeg,
                                   const SDL_Color &col)
     {
         constexpr int segments = 16;
@@ -21,7 +22,7 @@ namespace cupuacu::gui
         center.position.x = cx;
         center.position.y = cy;
         const SDL_FColor fcol{col.r / 255.f, col.g / 255.f, col.b / 255.f,
-                        col.a / 255.f};
+                              col.a / 255.f};
         center.color = fcol;
         center.tex_coord.x = 0.0f;
         center.tex_coord.y = 0.0f;
@@ -56,8 +57,9 @@ namespace cupuacu::gui
     }
 
     // Internal: quarter outline arc
-    inline void drawQuarterOutline(SDL_Renderer *renderer, float cx, float cy,
-                                   float radius, float startAngleDeg,
+    inline void drawQuarterOutline(SDL_Renderer *renderer, const float cx,
+                                   const float cy, const float radius,
+                                   const float startAngleDeg,
                                    const SDL_Color &col)
     {
         constexpr int segments = 24;
@@ -68,7 +70,8 @@ namespace cupuacu::gui
 
         for (int i = 1; i <= segments; ++i)
         {
-            const float theta = (startAngleDeg + step * i) * (float)M_PI / 180.0f;
+            const float theta =
+                (startAngleDeg + step * i) * (float)M_PI / 180.0f;
             const float x = cx + std::cos(theta) * radius;
             const float y = cy + std::sin(theta) * radius;
 
@@ -95,11 +98,12 @@ namespace cupuacu::gui
         SDL_SetRenderDrawColor(renderer, col.r, col.g, col.b, col.a);
 
         // Core rectangles
-        const SDL_FRect core = {rect.x + radius, rect.y, rect.w - 2 * radius, rect.h};
+        const SDL_FRect core = {rect.x + radius, rect.y, rect.w - 2 * radius,
+                                rect.h};
         SDL_RenderFillRect(renderer, &core);
 
         const SDL_FRect vertical = {rect.x, rect.y + radius, rect.w,
-                              rect.h - 2 * radius};
+                                    rect.h - 2 * radius};
         SDL_RenderFillRect(renderer, &vertical);
 
         // Four corners
@@ -168,12 +172,13 @@ namespace cupuacu::gui
         SDL_SetRenderDrawColor(renderer, col.r, col.g, col.b, col.a);
 
         // Core rectangle covering bottom and middle
-        const SDL_FRect core = {rect.x, rect.y + radius, rect.w, rect.h - radius};
+        const SDL_FRect core = {rect.x, rect.y + radius, rect.w,
+                                rect.h - radius};
         SDL_RenderFillRect(renderer, &core);
 
         // Top horizontal bar (between corners)
         const SDL_FRect topBar = {rect.x + radius, rect.y, rect.w - 2 * radius,
-                            radius};
+                                  radius};
         SDL_RenderFillRect(renderer, &topBar);
 
         // Top corners
@@ -204,7 +209,7 @@ namespace cupuacu::gui
 
         // Bottom horizontal bar (between corners)
         const SDL_FRect bottomBar = {rect.x + radius, rect.y + rect.h - radius,
-                               rect.w - 2 * radius, radius};
+                                     rect.w - 2 * radius, radius};
         SDL_RenderFillRect(renderer, &bottomBar);
 
         // Bottom corners

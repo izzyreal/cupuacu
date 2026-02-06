@@ -84,7 +84,7 @@ namespace cupuacu::gui
                              )>
         renderText = [](SDL_Renderer *renderer, const std::string &text,
                         const uint8_t pointSize, const SDL_FRect &destRect,
-                        bool shouldCenterHorizontally)
+                        const bool shouldCenterHorizontally)
     {
         constexpr SDL_Color textColor = {255, 255, 255, 255};
 
@@ -126,7 +126,8 @@ namespace cupuacu::gui
                                       // left-align if needed
         }
 
-        const SDL_FRect textDestRect = {x, destRect.y, (float)textW, (float)textH};
+        const SDL_FRect textDestRect = {x, destRect.y, (float)textW,
+                                        (float)textH};
 
         SDL_SetRenderTarget(renderer, canvas);
         SDL_RenderTexture(renderer, textTexture, nullptr, &textDestRect);

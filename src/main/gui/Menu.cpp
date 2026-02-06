@@ -26,8 +26,8 @@ Menu::Menu(State *state, const std::string &menuNameToUse,
 Menu::Menu(State *state,
            const std::function<std::string()> &menuNameGetterToUse,
            const std::function<void()> &actionToUse)
-    : Component(state, "Menu"), menuName(""),
-      action(actionToUse), menuNameGetter(menuNameGetterToUse)
+    : Component(state, "Menu"), menuName(""), action(actionToUse),
+      menuNameGetter(menuNameGetterToUse)
 {
     disableParentClipping();
     label = emplaceChild<Label>(state);

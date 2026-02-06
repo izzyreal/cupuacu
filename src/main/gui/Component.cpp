@@ -12,13 +12,12 @@
 
 using namespace cupuacu::gui;
 
-Component::Component(State *stateToUse,
-                     const std::string &componentNameToUse)
+Component::Component(State *stateToUse, const std::string &componentNameToUse)
     : state(stateToUse), componentName(componentNameToUse)
 {
 }
 
-void Component::setVisible(bool shouldBeVisible)
+void Component::setVisible(const bool shouldBeVisible)
 {
     if (visible != shouldBeVisible)
     {
@@ -87,11 +86,12 @@ void Component::sendToBack() const
     }
 
     auto &parentChildren = parent->children;
-    const auto thisIter = std::find_if(parentChildren.begin(), parentChildren.end(),
-                                 [this](const std::unique_ptr<Component> &child)
-                                 {
-                                     return child.get() == this;
-                                 });
+    const auto thisIter =
+        std::find_if(parentChildren.begin(), parentChildren.end(),
+                     [this](const std::unique_ptr<Component> &child)
+                     {
+                         return child.get() == this;
+                     });
 
     if (thisIter != parentChildren.end() && thisIter != parentChildren.begin())
     {
@@ -197,8 +197,8 @@ void Component::setBounds(const SDL_Rect b)
     setBounds(b.x, b.y, b.w, b.h);
 }
 
-void Component::setBounds(int32_t xPosToUse, int32_t yPosToUse,
-                          int32_t widthToUse, int32_t heightToUse)
+void Component::setBounds(const int32_t xPosToUse, const int32_t yPosToUse,
+                          const int32_t widthToUse, const int32_t heightToUse)
 {
     if (xPosToUse == xPos && yPosToUse == yPos && widthToUse == width &&
         heightToUse == height)
@@ -228,12 +228,12 @@ void Component::setBounds(int32_t xPosToUse, int32_t yPosToUse,
     resized();
 }
 
-void Component::setSize(int32_t widthToUse, int32_t heightToUse)
+void Component::setSize(const int32_t widthToUse, const int32_t heightToUse)
 {
     setBounds(xPos, yPos, widthToUse, heightToUse);
 }
 
-void Component::setYPos(int32_t yPosToUse)
+void Component::setYPos(const int32_t yPosToUse)
 {
     setBounds(xPos, yPosToUse, width, height);
 }
@@ -517,7 +517,7 @@ std::pair<int, int> Component::getAbsolutePosition() const
     return {resultX, resultY};
 }
 
-bool Component::containsAbsoluteCoordinate(int x, int y)
+bool Component::containsAbsoluteCoordinate(const int x, const int y)
 {
     if (!visible)
     {
@@ -550,7 +550,7 @@ bool Component::containsAbsoluteCoordinate(int x, int y)
     return SDL_PointInRect(&pt, &rect);
 }
 
-Component *Component::findComponentAt(int x, int y)
+Component *Component::findComponentAt(const int x, const int y)
 {
     if (!visible)
     {

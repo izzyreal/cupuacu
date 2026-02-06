@@ -38,7 +38,8 @@ namespace cupuacu::gui
 
             const float labelAreaHeight = ruler->getLabelAreaHeight();
             const float tickAreaHeight = ruler->getTickAreaHeight();
-            const int meterHeight = bounds.h - (labelAreaHeight + tickAreaHeight);
+            const int meterHeight =
+                bounds.h - (labelAreaHeight + tickAreaHeight);
 
             const int margin = static_cast<int>(20 / state->pixelScale);
 

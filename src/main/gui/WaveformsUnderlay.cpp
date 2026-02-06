@@ -263,7 +263,8 @@ void WaveformsUnderlay::markAllWaveformsDirty() const
     }
 }
 
-void WaveformsUnderlay::handleScroll(const int32_t mouseX, const int32_t mouseY) const
+void WaveformsUnderlay::handleScroll(const int32_t mouseX,
+                                     const int32_t mouseY) const
 {
     if (mouseX > getWidth() || mouseX < 0)
     {

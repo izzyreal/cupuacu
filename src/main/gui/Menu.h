@@ -39,8 +39,7 @@ namespace cupuacu::gui
     public:
         Menu(State *, const std::string &menuNameToUse,
              const std::function<void()> &actionToUse = {});
-        Menu(State *,
-             const std::function<std::string()> &menuNameGetterToUse,
+        Menu(State *, const std::function<std::string()> &menuNameGetterToUse,
              const std::function<void()> &actionToUse = {});
 
         void setIsAvailable(const std::function<bool()> &);

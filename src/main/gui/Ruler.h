@@ -11,7 +11,7 @@
 
 namespace cupuacu::gui
 {
-    class Ruler : public Component
+    class Ruler final : public Component
     {
     public:
         explicit Ruler(State *state, const std::string &parentName)
@@ -69,12 +69,12 @@ namespace cupuacu::gui
             centerFirstLabel = shouldCenter;
         }
 
-        void setHorizontalMargin(float margin)
+        void setHorizontalMargin(const float margin)
         {
             baseHorizontalMargin = margin;
         }
 
-        void setScrollOffsetPx(int px)
+        void setScrollOffsetPx(const int px)
         {
             scrollOffsetPx = px;
         }
@@ -114,15 +114,13 @@ namespace cupuacu::gui
 
             for (int i = 0; i < numLabels; ++i)
             {
-                const auto labelText =
-                    mandatoryEndLabel.empty()
-                        ? labelTexts[i]
-                        : i == numLabels - 1 ? mandatoryEndLabel
+                const auto labelText = mandatoryEndLabel.empty() ? labelTexts[i]
+                                       : i == numLabels - 1 ? mandatoryEndLabel
                                                             : labelTexts[i];
                 auto [labelWidth, th] =
                     measureText(labelText, labels[i]->getEffectiveFontSize());
-                int labelX = longTickSpacingPx * i + scrollOffsetPx -
-                             labelWidth * 0.5f;
+                int labelX =
+                    longTickSpacingPx * i + scrollOffsetPx - labelWidth * 0.5f;
 
                 if (baseHorizontalMargin != 0.f)
                 {
@@ -247,7 +245,8 @@ namespace cupuacu::gui
                         }
                     }
 
-                    const int height = t == 0 ? tickHeightLong : tickHeightShort;
+                    const int height =
+                        t == 0 ? tickHeightLong : tickHeightShort;
 
                     const SDL_Rect tickRect{tickX, bounds.y, 1, height};
                     Helpers::fillRect(renderer, tickRect, Colors::white);
@@ -255,7 +254,7 @@ namespace cupuacu::gui
             }
         }
 
-        void setLongTickSpacingPx(float spacing)
+        void setLongTickSpacingPx(const float spacing)
         {
             longTickSpacingPx = spacing;
             setDirty();

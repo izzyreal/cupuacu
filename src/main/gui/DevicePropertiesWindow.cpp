@@ -14,7 +14,7 @@ namespace
 {
     constexpr int kWindowWidth = 500;
     constexpr int kWindowHeight = 500;
-}
+} // namespace
 
 DevicePropertiesWindow::DevicePropertiesWindow(State *stateToUse)
     : state(stateToUse)
@@ -51,11 +51,10 @@ DevicePropertiesWindow::DevicePropertiesWindow(State *stateToUse)
         std::make_unique<Component>(state, "DevicePropertiesRoot");
     rootComponent->setVisible(true);
 
-    background = rootComponent->emplaceChild<OpaqueRect>(state,
-                                                        Colors::background);
+    background =
+        rootComponent->emplaceChild<OpaqueRect>(state, Colors::background);
 
-    deviceTypeLabel =
-        rootComponent->emplaceChild<Label>(state, "Device Type");
+    deviceTypeLabel = rootComponent->emplaceChild<Label>(state, "Device Type");
     deviceTypeDropdown = rootComponent->emplaceChild<DropdownMenu>(state);
 
     outputDeviceLabel =
@@ -85,7 +84,7 @@ DevicePropertiesWindow::DevicePropertiesWindow(State *stateToUse)
     populateDevices(hostApiIndex);
 
     deviceTypeDropdown->setOnSelectionChanged(
-        [this](int index)
+        [this](const int index)
         {
             int hostApiIndexToUse = -1;
             if (index >= 0 && index < (int)hostApiIndices.size())
@@ -106,8 +105,7 @@ DevicePropertiesWindow::DevicePropertiesWindow(State *stateToUse)
     window->setOnClose(
         [this]
         {
-            if (state && state->mainWindow &&
-                state->mainWindow->getSdlWindow())
+            if (state && state->mainWindow && state->mainWindow->getSdlWindow())
             {
                 SDL_RaiseWindow(state->mainWindow->getSdlWindow());
             }
@@ -126,7 +124,7 @@ DevicePropertiesWindow::~DevicePropertiesWindow()
     if (window && state)
     {
         const auto it = std::find(state->windows.begin(), state->windows.end(),
-                            window.get());
+                                  window.get());
         if (it != state->windows.end())
         {
             state->windows.erase(it);
@@ -220,15 +218,15 @@ void DevicePropertiesWindow::populateDevices(const int hostApiIndex)
 
             if (info->maxOutputChannels > 0)
             {
-                outputItems.emplace_back(
-                    info->name ? info->name : "Unknown output device");
+                outputItems.emplace_back(info->name ? info->name
+                                                    : "Unknown output device");
                 outputDeviceIndices.push_back(i);
             }
 
             if (info->maxInputChannels > 0)
             {
-                inputItems.emplace_back(
-                    info->name ? info->name : "Unknown input device");
+                inputItems.emplace_back(info->name ? info->name
+                                                   : "Unknown input device");
                 inputDeviceIndices.push_back(i);
             }
         }

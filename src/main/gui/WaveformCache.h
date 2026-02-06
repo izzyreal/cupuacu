@@ -32,14 +32,14 @@ namespace cupuacu::gui
             dirtyToBlock = -1;
         }
 
-        void init(int64_t n)
+        void init(const int64_t n)
         {
             numSamples = std::max<int64_t>(0, n);
             buildStorage();
             markAllDirty();
         }
 
-        void rebuildAll(const float *samples, int64_t n)
+        void rebuildAll(const float *samples, const int64_t n)
         {
             numSamples = std::max<int64_t>(0, n);
             buildStorage();
@@ -67,12 +67,12 @@ namespace cupuacu::gui
             markDirtyBlocks(b0, b1);
         }
 
-        void invalidateSample(int64_t sample)
+        void invalidateSample(const int64_t sample)
         {
             invalidateSamples(sample, sample);
         }
 
-        int getLevelIndex(double samplesPerPixel) const
+        int getLevelIndex(const double samplesPerPixel) const
         {
             if (levels.empty())
             {
@@ -100,7 +100,7 @@ namespace cupuacu::gui
             return levels[level];
         }
 
-        void applyInsert(int64_t posSample, int64_t countSamples)
+        void applyInsert(int64_t posSample, const int64_t countSamples)
         {
             if (countSamples <= 0)
             {
@@ -205,7 +205,7 @@ namespace cupuacu::gui
             dirtyToBlock = level0Size() - 1;
         }
 
-        const std::vector<Peak> &getLevel(double samplesPerPixel) const
+        const std::vector<Peak> &getLevel(const double samplesPerPixel) const
         {
             return getLevelByIndex(getLevelIndex(samplesPerPixel));
         }
@@ -329,7 +329,7 @@ namespace cupuacu::gui
             }
         }
 
-        static int64_t level0SizeFromSamples(int64_t ns)
+        static int64_t level0SizeFromSamples(const int64_t ns)
         {
             if (ns <= 0)
             {
@@ -343,7 +343,7 @@ namespace cupuacu::gui
             return level0SizeFromSamples(numSamples);
         }
 
-        int64_t levelSize(int level) const
+        int64_t levelSize(const int level) const
         {
             int64_t sz = level0Size();
             for (int l = 1; l <= level; ++l)

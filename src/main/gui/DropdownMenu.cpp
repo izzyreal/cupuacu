@@ -29,8 +29,7 @@ int DropdownMenu::getFontSize() const
 
 int DropdownMenu::getRowHeight() const
 {
-    const int fontSizeVirtual =
-        std::max(1, getFontSize() / state->pixelScale);
+    const int fontSizeVirtual = std::max(1, getFontSize() / state->pixelScale);
     const auto [textW, textH] = measureText("Ag", fontSizeVirtual);
     const int textHeight = std::max(1, (int)std::ceil(textH));
     return textHeight + itemMargin * 2;
@@ -162,9 +161,8 @@ void DropdownMenu::setExpanded(const bool expandedToUse)
     const int rowHeight = getRowHeight();
     const int expandedHeight =
         std::max(1, static_cast<int>(items.size())) * rowHeight;
-    const int targetHeight =
-        expanded ? expandedHeight
-                 : collapsedHeight > 0 ? collapsedHeight
+    const int targetHeight = expanded              ? expandedHeight
+                             : collapsedHeight > 0 ? collapsedHeight
                                                    : rowHeight;
     setSize(getWidth(), targetHeight);
     setDirty();
@@ -215,8 +213,7 @@ void DropdownMenu::onDraw(SDL_Renderer *renderer)
     inner.h -= 2.0f;
     drawRoundedRect(renderer, inner, std::max(0.0f, radius - 1.0f), baseBg);
 
-    if (expanded && hoveredIndex >= 0 &&
-        hoveredIndex < (int)itemLabels.size())
+    if (expanded && hoveredIndex >= 0 && hoveredIndex < (int)itemLabels.size())
     {
         const int rowHeight = getRowHeight();
         SDL_FRect hoverRect = inner;
@@ -232,16 +229,12 @@ void DropdownMenu::onDraw(SDL_Renderer *renderer)
 
     if (itemLabels.size() > 1)
     {
-        const float arrowPadding =
-            std::max(1.0f, 12.0f / state->pixelScale);
-        const float arrowWidth =
-            std::max(1.0f, 20.0f / state->pixelScale);
-        const float arrowHeight =
-            std::max(1.0f, 10.0f / state->pixelScale);
+        const float arrowPadding = std::max(1.0f, 12.0f / state->pixelScale);
+        const float arrowWidth = std::max(1.0f, 20.0f / state->pixelScale);
+        const float arrowHeight = std::max(1.0f, 10.0f / state->pixelScale);
         const float arrowOffset = std::max(1.0f, 4.0f / state->pixelScale);
-        const float cx =
-            std::round(inner.x + inner.w - arrowPadding - arrowWidth * 0.5f -
-                       arrowOffset);
+        const float cx = std::round(inner.x + inner.w - arrowPadding -
+                                    arrowWidth * 0.5f - arrowOffset);
         const float cy = inner.y + getRowHeight() * 0.5f;
         SDL_Vertex verts[3];
         constexpr SDL_FColor color{220 / 255.f, 220 / 255.f, 220 / 255.f, 1.0f};
@@ -272,8 +265,7 @@ bool DropdownMenu::mouseMove(const MouseEvent &event)
 
     const int rowHeight = getRowHeight();
     const int row = rowHeight > 0 ? event.mouseYi / rowHeight : -1;
-    const int newIndex =
-        row >= 0 && row < (int)itemLabels.size() ? row : -1;
+    const int newIndex = row >= 0 && row < (int)itemLabels.size() ? row : -1;
     if (newIndex != hoveredIndex)
     {
         hoveredIndex = newIndex;

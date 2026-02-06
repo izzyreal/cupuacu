@@ -20,8 +20,8 @@ namespace cupuacu::gui
         float dragYPos = 0.f;
 
         static float getSampleValueForYPos(const int16_t y, const uint16_t h,
-                                    const double v,
-                                    const uint16_t samplePointSize);
+                                           const double v,
+                                           const uint16_t samplePointSize);
 
         std::shared_ptr<actions::audio::SetSampleValue> undoable;
 

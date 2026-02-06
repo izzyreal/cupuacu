@@ -36,7 +36,7 @@ namespace cupuacu::gui
         float dragMouseOffsetParentX = 0.f;
 
         static void drawTriangle(SDL_Renderer *r, const SDL_FPoint (&pts)[3],
-                          const SDL_FColor &color);
+                                 const SDL_FColor &color);
         static SDL_FColor getColor();
     };
 } // namespace cupuacu::gui

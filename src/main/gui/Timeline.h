@@ -30,7 +30,7 @@ namespace cupuacu::gui
             lastSamplesPerPixel = state->samplesPerPixel;
         }
 
-        void setMode(Mode m)
+        void setMode(const Mode m)
         {
             mode = m;
             ruler->setMandatoryEndLabel("smpl");

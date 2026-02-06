@@ -21,8 +21,8 @@ namespace cupuacu::gui
     static SDL_Cursor *selectLCursor = nullptr;
     static SDL_Cursor *selectRCursor = nullptr;
 
-    static SDL_Cursor *loadCustomCursor(const std::string &filename, int hot_x,
-                                        int hot_y)
+    static SDL_Cursor *loadCustomCursor(const std::string &filename,
+                                        const int hot_x, const int hot_y)
     {
         const auto data = get_resource_data(filename);
         if (data.empty())
@@ -78,8 +78,7 @@ namespace cupuacu::gui
         }
     }
 
-    static void updateMouseCursor(const State *state,
-                                  const Window *window)
+    static void updateMouseCursor(const State *state, const Window *window)
     {
         if (!window)
         {
@@ -179,8 +178,7 @@ namespace cupuacu::gui
         }
     }
 
-    static Window *findWindowForEvent(State *state,
-                                      const SDL_Event *event)
+    static Window *findWindowForEvent(State *state, const SDL_Event *event)
     {
         const SDL_WindowID windowId = getEventWindowId(event);
         if (windowId == 0)
@@ -225,8 +223,7 @@ namespace cupuacu::gui
                 break;
             case SDL_EVENT_KEY_DOWN:
                 if (eventWindow && eventWindow->hasFocus() &&
-                    state->mainWindow &&
-                    eventWindow == state->mainWindow.get())
+                    state->mainWindow && eventWindow == state->mainWindow.get())
                 {
                     handleKeyDown(event, state);
                 }

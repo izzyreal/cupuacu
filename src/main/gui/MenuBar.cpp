@@ -290,7 +290,8 @@ void MenuBar::resized()
     const int fileW = int(40 * scale);
     const int viewW = int(40 * scale);
     const int editW = int(40 * scale); // wide enough for Undo/Redo text
-    const int optionsW = int(60 * scale); // wide enough for Device Properties text
+    const int optionsW =
+        int(60 * scale); // wide enough for Device Properties text
     const int h = getHeight();
 
     int logoSpace = 0;

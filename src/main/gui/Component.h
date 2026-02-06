@@ -42,6 +42,7 @@ namespace cupuacu::gui
         Component *getParent() const;
 
     public:
+        virtual ~Component() = default;
         Component(State *, const std::string &componentName);
         void setWindow(Window *windowToUse);
         Window *getWindow() const
@@ -207,7 +208,7 @@ namespace cupuacu::gui
             }
         }
 
-        void printTree(int depth = 0) const
+        void printTree(const int depth = 0) const
         {
             for (int i = 0; i < depth; ++i)
             {

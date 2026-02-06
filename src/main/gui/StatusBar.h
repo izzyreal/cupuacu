@@ -37,8 +37,7 @@ namespace cupuacu::gui
         std::optional<float> lastSampleValueUnderMouseCursor;
 
     public:
-        StatusBar(State *stateToUse)
-            : Component(stateToUse, "StatusBar")
+        StatusBar(State *stateToUse) : Component(stateToUse, "StatusBar")
         {
             posField =
                 emplaceChild<LabeledField>(state, "Pos", Colors::background);

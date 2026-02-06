@@ -7,8 +7,8 @@
 
 using namespace cupuacu::gui;
 
-Window::Window(State *stateToUse, const std::string &title, int width,
-               int height, Uint32 flags)
+Window::Window(State *stateToUse, const std::string &title, const int width,
+               const int height, const Uint32 flags)
     : state(stateToUse)
 {
     if (!SDL_CreateWindowAndRenderer(title.c_str(), width, height, flags,
@@ -91,9 +91,9 @@ void Window::resizeCanvasIfNeeded()
         canvas = nullptr;
     }
 
-    canvas = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
-                               SDL_TEXTUREACCESS_TARGET, required.x,
-                               required.y);
+    canvas =
+        SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
+                          SDL_TEXTUREACCESS_TARGET, required.x, required.y);
     SDL_SetTextureScaleMode(canvas, SDL_SCALEMODE_NEAREST);
 }
 

@@ -28,8 +28,8 @@ static std::vector<float> splineInterpolateNonUniform(
     std::vector<double> alpha(n);
     for (int i = 1; i < n; ++i)
     {
-        alpha[i] = 3.0 / h[i] * (y[i + 1] - y[i]) -
-                   3.0 / h[i - 1] * (y[i] - y[i - 1]);
+        alpha[i] =
+            3.0 / h[i] * (y[i + 1] - y[i]) - 3.0 / h[i - 1] * (y[i] - y[i - 1]);
     }
 
     std::vector<double> l(n + 1), mu(n + 1), z(n + 1);
@@ -107,7 +107,7 @@ static std::vector<float> splineInterpolateNonUniform(
 static std::vector<float>
 splineInterpolate(const std::vector<int16_t>::const_iterator begin,
                   const std::vector<int16_t>::const_iterator end,
-                  int newNumberOfDataPoints)
+                  const int newNumberOfDataPoints)
 {
     const int n =
         static_cast<int>(std::distance(begin, end)) - 1; // number of intervals
@@ -180,7 +180,8 @@ splineInterpolate(const std::vector<int16_t>::const_iterator begin,
     return result;
 }
 
-static float cubicInterpolate(float p0, float p1, float p2, float p3, float t)
+static float cubicInterpolate(const float p0, const float p1, const float p2,
+                              const float p3, const float t)
 {
     const float a0 = -0.5f * p0 + 1.5f * p1 - 1.5f * p2 + 0.5f * p3;
     const float a1 = p0 - 2.5f * p1 + 2.0f * p2 - 0.5f * p3;
@@ -191,9 +192,9 @@ static float cubicInterpolate(float p0, float p1, float p2, float p3, float t)
 }
 
 static std::vector<float>
-smoothenCubic(std::vector<int16_t>::const_iterator begin,
-              std::vector<int16_t>::const_iterator end,
-              int newNumberOfDataPoints)
+smoothenCubic(const std::vector<int16_t>::const_iterator begin,
+              const std::vector<int16_t>::const_iterator end,
+              const int newNumberOfDataPoints)
 {
     const int sourceSize = static_cast<int>(std::distance(begin, end));
 

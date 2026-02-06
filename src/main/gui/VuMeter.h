@@ -15,7 +15,6 @@ using namespace moodycamel;
 
 namespace cupuacu::gui
 {
-
     class VuMeter : public Component
     {
     public:
@@ -30,7 +29,7 @@ namespace cupuacu::gui
             isDecaying.store(true, std::memory_order_relaxed);
         }
 
-        void setNumChannels(int n)
+        void setNumChannels(const int n)
         {
             numChannels = n;
             peakQueues.resize(numChannels);
@@ -52,7 +51,7 @@ namespace cupuacu::gui
         }
 
         // Called from audio thread
-        void pushPeakForChannel(float peak, int channel)
+        void pushPeakForChannel(const float peak, const int channel)
         {
             if (channel < 0 || channel >= numChannels)
             {
@@ -133,7 +132,8 @@ namespace cupuacu::gui
                         color = {255, Uint8(255 * (1.0f - t)), 0, 255};
                     }
 
-                    const SDL_Rect pixelRect{barRect.x + x, barRect.y, 1, barRect.h};
+                    const SDL_Rect pixelRect{barRect.x + x, barRect.y, 1,
+                                             barRect.h};
                     Helpers::fillRect(renderer, pixelRect, color);
                 }
                 if (peak > peakHolds[ch])
@@ -157,7 +157,7 @@ namespace cupuacu::gui
 
                 const int holdX = static_cast<int>(peakHolds[ch] * barRect.w);
                 const SDL_Rect peakLine = {barRect.x + holdX, barRect.y, 1,
-                                     barRect.h};
+                                           barRect.h};
                 Helpers::fillRect(renderer, peakLine, Colors::green);
             }
         }

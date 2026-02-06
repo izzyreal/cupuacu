@@ -34,9 +34,10 @@ namespace cupuacu::gui
         const uint8_t numClicks;
     };
 
-    static MouseEvent withNewCoordinates(const MouseEvent &evt, int32_t newXi,
-                                         int32_t newYi, float newXf,
-                                         float newYf)
+    static MouseEvent withNewCoordinates(const MouseEvent &evt,
+                                         const int32_t newXi,
+                                         const int32_t newYi, const float newXf,
+                                         const float newYf)
     {
         return MouseEvent{evt.type,      newXi,           newYi,
                           newXf,         newYf,           evt.mouseRelX,

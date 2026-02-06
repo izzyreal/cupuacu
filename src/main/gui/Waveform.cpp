@@ -187,9 +187,8 @@ void Waveform::renderSmoothWaveform(SDL_Renderer *renderer) const
         const float x2 = static_cast<float>(xq[i + 1]);
 
         const float y1f = heightToUse / 2.0f -
-                    smoothened[i] * verticalZoom * drawableHeight / 2.0f;
-        const float y2f = heightToUse / 2.0f -
-                    smoothened[i + 1] *
+                          smoothened[i] * verticalZoom * drawableHeight / 2.0f;
+        const float y2f = heightToUse / 2.0f - smoothened[i + 1] *
                                                    verticalZoom *
                                                    drawableHeight / 2.0f;
 
@@ -271,7 +270,7 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
     const auto &peaks = bypassCache ? *(const std::vector<Peak> *)nullptr
                                     : waveformCache.getLevel(samplesPerPixel);
 
-    auto getPeakForPixel = [&](int x, Peak &out) -> bool
+    auto getPeakForPixel = [&](const int x, Peak &out) -> bool
     {
         const double aD = (double)sampleOffset + (double)x * samplesPerPixel;
         const double bD =
@@ -368,10 +367,8 @@ void Waveform::drawSelection(SDL_Renderer *renderer) const
     const bool isSelected =
         state->selection.isActive() &&
         (state->selectedChannels == BOTH ||
-         (channelIndex == 0 &&
-          state->selectedChannels == LEFT) ||
-         (channelIndex == 1 &&
-          state->selectedChannels == RIGHT));
+         (channelIndex == 0 && state->selectedChannels == LEFT) ||
+         (channelIndex == 1 && state->selectedChannels == RIGHT));
 
     const int64_t firstSample = state->selection.getStartInt();
     const int64_t lastSample = state->selection.getEndInt() + 1;
@@ -397,7 +394,7 @@ void Waveform::drawSelection(SDL_Renderer *renderer) const
         }
 
         const SDL_FRect selectionRect = {startX, 0.0f, selectionWidth,
-                                   (float)getHeight()};
+                                         (float)getHeight()};
 
         SDL_RenderFillRect(renderer, &selectionRect);
     }
@@ -435,7 +432,7 @@ void Waveform::drawHighlight(SDL_Renderer *renderer) const
             SDL_SetRenderDrawColor(renderer, 0, 128, 255, 100);
             SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
             const SDL_FRect sampleRect = {xPos, 0.0f, sampleWidth,
-                                    (float)getHeight()};
+                                          (float)getHeight()};
             SDL_RenderFillRect(renderer, &sampleRect);
         }
     }

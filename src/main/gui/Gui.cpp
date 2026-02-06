@@ -9,14 +9,13 @@
 #include "VuMeterContainer.h"
 #include "Window.h"
 
-
 SDL_Rect computeMainViewBounds(const uint16_t canvasWidth,
                                const uint16_t canvasHeight,
                                const uint8_t pixelScale,
                                const uint8_t menuHeight)
 {
     const SDL_Rect result{0, menuHeight, canvasWidth,
-                    canvasHeight - menuHeight * 2};
+                          canvasHeight - menuHeight * 2};
     return result;
 }
 
@@ -26,7 +25,7 @@ SDL_Rect computeMenuBarBounds(const uint16_t canvasWidth,
                               const uint8_t menuFontSize)
 {
     const SDL_Rect result{0, 0, canvasWidth,
-                    static_cast<int>(menuFontSize * 1.33 / pixelScale)};
+                          static_cast<int>(menuFontSize * 1.33 / pixelScale)};
     return result;
 }
 
@@ -39,7 +38,7 @@ SDL_Rect computeStatusBarBounds(const uint16_t canvasWidth,
         static_cast<int>(menuFontSize * 1.33 / pixelScale);
 
     const SDL_Rect result{0, canvasHeight - statusBarHeight, canvasWidth,
-                    statusBarHeight};
+                          statusBarHeight};
     return result;
 }
 
@@ -48,8 +47,8 @@ SDL_Rect computeVuMeterContainerBounds(const uint16_t canvasWidth,
                                        const uint8_t vuMeterContainerHeight,
                                        const SDL_Rect &statusBarRect)
 {
-    const SDL_Rect result{0, statusBarRect.y - vuMeterContainerHeight, canvasWidth,
-                    vuMeterContainerHeight};
+    const SDL_Rect result{0, statusBarRect.y - vuMeterContainerHeight,
+                          canvasWidth, vuMeterContainerHeight};
     return result;
 }
 

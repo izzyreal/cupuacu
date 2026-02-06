@@ -22,18 +22,20 @@ struct Helpers
         return SDL_FRect{(float)r.x, (float)r.y, (float)r.w, (float)r.h};
     }
 
-    static void setRenderDrawColor(SDL_Renderer *r, SDL_Color c)
+    static void setRenderDrawColor(SDL_Renderer *r, const SDL_Color c)
     {
         SDL_SetRenderDrawColor(r, c.r, c.g, c.b, c.a);
     }
 
-    static void fillRect(SDL_Renderer *r, SDL_FRect rect, SDL_Color c)
+    static void fillRect(SDL_Renderer *r, const SDL_FRect rect,
+                         const SDL_Color c)
     {
         setRenderDrawColor(r, c);
         SDL_RenderFillRect(r, &rect);
     }
 
-    static void fillRect(SDL_Renderer *r, SDL_Rect rect, SDL_Color c)
+    static void fillRect(SDL_Renderer *r, const SDL_Rect rect,
+                         const SDL_Color c)
     {
         setRenderDrawColor(r, c);
         const SDL_FRect rectToFill(rectToFRect(rect));
