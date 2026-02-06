@@ -16,7 +16,7 @@ namespace
     constexpr int kWindowHeight = 500;
 }
 
-DevicePropertiesWindow::DevicePropertiesWindow(cupuacu::State *stateToUse)
+DevicePropertiesWindow::DevicePropertiesWindow(State *stateToUse)
     : state(stateToUse)
 {
     if (!state)
@@ -125,7 +125,7 @@ DevicePropertiesWindow::~DevicePropertiesWindow()
 {
     if (window && state)
     {
-        auto it = std::find(state->windows.begin(), state->windows.end(),
+        const auto it = std::find(state->windows.begin(), state->windows.end(),
                             window.get());
         if (it != state->windows.end())
         {
@@ -149,7 +149,7 @@ void DevicePropertiesWindow::populateHostApis()
         PaError err = Pa_Initialize();
         if (err != paNoError)
         {
-            cupuacu::PaUtil::handlePaError(err);
+            PaUtil::handlePaError(err);
             apiCount = -1;
         }
         else

@@ -36,7 +36,7 @@ struct Helpers
     static void fillRect(SDL_Renderer *r, SDL_Rect rect, SDL_Color c)
     {
         setRenderDrawColor(r, c);
-        SDL_FRect rectToFill(rectToFRect(rect));
+        const SDL_FRect rectToFill(rectToFRect(rect));
         SDL_RenderFillRect(r, &rectToFill);
     }
 
@@ -61,13 +61,13 @@ struct Helpers
         }
         else if (clip.x <= rect.x)
         {
-            int overlap = (clip.x + clip.w) - rect.x;
+            const int overlap = (clip.x + clip.w) - rect.x;
             result.x += overlap;
             result.w -= overlap;
         }
         else if (clip.x + clip.w >= rect.x + rect.w)
         {
-            int overlap = rect.x + rect.w - clip.x;
+            const int overlap = rect.x + rect.w - clip.x;
             result.w -= overlap;
         }
         else

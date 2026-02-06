@@ -19,14 +19,14 @@ namespace cupuacu::gui
         bool isDragging = false;
         float dragYPos = 0.f;
 
-        float getSampleValueForYPos(const int16_t y, const uint16_t h,
+        static float getSampleValueForYPos(const int16_t y, const uint16_t h,
                                     const double v,
                                     const uint16_t samplePointSize);
 
         std::shared_ptr<actions::audio::SetSampleValue> undoable;
 
     public:
-        SamplePoint(cupuacu::State *, const uint8_t channelIndexToUse,
+        SamplePoint(State *, const uint8_t channelIndexToUse,
                     const int64_t sampleIndexToUse);
 
         uint64_t getSampleIndex() const;

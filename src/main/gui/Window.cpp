@@ -7,7 +7,7 @@
 
 using namespace cupuacu::gui;
 
-Window::Window(cupuacu::State *stateToUse, const std::string &title, int width,
+Window::Window(State *stateToUse, const std::string &title, int width,
                int height, Uint32 flags)
     : state(stateToUse)
 {
@@ -246,7 +246,7 @@ MouseEvent Window::makeMouseEvent(const SDL_Event &event) const
     xi = static_cast<int32_t>(std::floor(xf));
     yi = static_cast<int32_t>(std::floor(yf));
 
-    MouseButtonState bs{left, middle, right};
+    const MouseButtonState bs{left, middle, right};
     return MouseEvent{type, xi, yi, xf, yf, relx, rely, bs, clicks};
 }
 
@@ -258,7 +258,7 @@ void Window::updateComponentUnderMouse(const int32_t mouseX,
         return;
     }
 
-    auto oldComponentUnderMouse = componentUnderMouse;
+    const auto oldComponentUnderMouse = componentUnderMouse;
     const auto newComponentUnderMouse =
         rootComponent->findComponentAt(mouseX, mouseY);
 

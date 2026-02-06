@@ -16,7 +16,7 @@ namespace cupuacu::gui
     class TriangleMarker : public Component
     {
     public:
-        TriangleMarker(cupuacu::State *state, TriangleMarkerType type);
+        TriangleMarker(State *state, TriangleMarkerType type);
 
         void onDraw(SDL_Renderer *r) override;
         bool mouseMove(const MouseEvent &) override;
@@ -35,8 +35,8 @@ namespace cupuacu::gui
         double dragStartSample = 0.0;
         float dragMouseOffsetParentX = 0.f;
 
-        void drawTriangle(SDL_Renderer *r, const SDL_FPoint (&pts)[3],
+        static void drawTriangle(SDL_Renderer *r, const SDL_FPoint (&pts)[3],
                           const SDL_FColor &color);
-        SDL_FColor getColor() const;
+        static SDL_FColor getColor();
     };
 } // namespace cupuacu::gui

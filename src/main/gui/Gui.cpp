@@ -15,7 +15,7 @@ SDL_Rect computeMainViewBounds(const uint16_t canvasWidth,
                                const uint8_t pixelScale,
                                const uint8_t menuHeight)
 {
-    SDL_Rect result{0, menuHeight, canvasWidth,
+    const SDL_Rect result{0, menuHeight, canvasWidth,
                     canvasHeight - (menuHeight * 2)};
     return result;
 }
@@ -25,7 +25,7 @@ SDL_Rect computeMenuBarBounds(const uint16_t canvasWidth,
                               const uint8_t pixelScale,
                               const uint8_t menuFontSize)
 {
-    SDL_Rect result{0, 0, canvasWidth,
+    const SDL_Rect result{0, 0, canvasWidth,
                     static_cast<int>((menuFontSize * 1.33) / pixelScale)};
     return result;
 }
@@ -38,7 +38,7 @@ SDL_Rect computeStatusBarBounds(const uint16_t canvasWidth,
     const auto statusBarHeight =
         static_cast<int>((menuFontSize * 1.33) / pixelScale);
 
-    SDL_Rect result{0, canvasHeight - statusBarHeight, canvasWidth,
+    const SDL_Rect result{0, canvasHeight - statusBarHeight, canvasWidth,
                     statusBarHeight};
     return result;
 }
@@ -48,12 +48,12 @@ SDL_Rect computeVuMeterContainerBounds(const uint16_t canvasWidth,
                                        const uint8_t vuMeterContainerHeight,
                                        const SDL_Rect &statusBarRect)
 {
-    SDL_Rect result{0, statusBarRect.y - vuMeterContainerHeight, canvasWidth,
+    const SDL_Rect result{0, statusBarRect.y - vuMeterContainerHeight, canvasWidth,
                     vuMeterContainerHeight};
     return result;
 }
 
-void cupuacu::gui::buildComponents(cupuacu::State *state, Window *window)
+void cupuacu::gui::buildComponents(State *state, Window *window)
 {
     if (!window)
     {
@@ -87,7 +87,7 @@ void cupuacu::gui::buildComponents(cupuacu::State *state, Window *window)
     window->refreshForScaleOrResize();
 }
 
-void cupuacu::gui::resizeComponents(cupuacu::State *state, Window *window)
+void cupuacu::gui::resizeComponents(State *state, Window *window)
 {
     if (!window || !window->getCanvas() || !window->getRootComponent())
     {
@@ -135,6 +135,6 @@ void cupuacu::gui::resizeComponents(cupuacu::State *state, Window *window)
 
     if (state->samplesPerPixel == 0)
     {
-        cupuacu::actions::resetZoom(state);
+        actions::resetZoom(state);
     }
 }

@@ -12,8 +12,8 @@
 
 using namespace cupuacu::gui;
 
-Component::Component(cupuacu::State *stateToUse,
-                     const std::string componentNameToUse)
+Component::Component(State *stateToUse,
+                     const std::string &componentNameToUse)
     : state(stateToUse), componentName(componentNameToUse)
 {
 }
@@ -23,7 +23,7 @@ void Component::setVisible(bool shouldBeVisible)
     if (visible != shouldBeVisible)
     {
         visible = shouldBeVisible;
-        SDL_Rect r = getAbsoluteBounds();
+        const SDL_Rect r = getAbsoluteBounds();
         if (window && r.w > 0 && r.h > 0)
         {
             window->getDirtyRects().push_back(r);
@@ -63,7 +63,7 @@ void Component::removeChild(Component *child)
     }
 
     clearWindowPointersForSubtree(it->get());
-    auto oldBounds = it->get()->getAbsoluteBounds();
+    const auto oldBounds = it->get()->getAbsoluteBounds();
     for (; it != children.end(); ++it)
     {
         if (it->get() == child)
@@ -87,7 +87,7 @@ void Component::sendToBack()
     }
 
     auto &parentChildren = parent->children;
-    auto thisIter = std::find_if(parentChildren.begin(), parentChildren.end(),
+    const auto thisIter = std::find_if(parentChildren.begin(), parentChildren.end(),
                                  [this](const std::unique_ptr<Component> &child)
                                  {
                                      return child.get() == this;
@@ -181,7 +181,7 @@ void Component::setWindow(Window *windowToUse)
     }
 
     window = windowToUse;
-    for (auto &c : children)
+    for (const auto &c : children)
     {
         c->setWindow(windowToUse);
     }
@@ -206,8 +206,8 @@ void Component::setBounds(int32_t xPosToUse, int32_t yPosToUse,
         return;
     }
 
-    auto oldBounds = getLocalBounds();
-    SDL_Rect newBounds = {xPosToUse, yPosToUse, widthToUse, heightToUse};
+    const auto oldBounds = getLocalBounds();
+    const SDL_Rect newBounds = {xPosToUse, yPosToUse, widthToUse, heightToUse};
 
     xPos = xPosToUse;
     yPos = yPosToUse;
@@ -218,7 +218,7 @@ void Component::setBounds(int32_t xPosToUse, int32_t yPosToUse,
 
     SDL_Rect unionBounds;
     SDL_GetRectUnion(&oldBounds, &newBounds, &unionBounds);
-    bool occludesOldBounds = SDL_RectsEqual(&unionBounds, &newBounds);
+    const bool occludesOldBounds = SDL_RectsEqual(&unionBounds, &newBounds);
 
     if (!occludesOldBounds && parent != nullptr)
     {
@@ -245,12 +245,12 @@ void Component::setDirty()
         return;
     }
     dirty = true;
-    SDL_Rect r = getAbsoluteBounds();
+    const SDL_Rect r = getAbsoluteBounds();
     if (window && r.w > 0 && r.h > 0)
     {
         window->getDirtyRects().push_back(r);
     }
-    for (auto &c : children)
+    for (const auto &c : children)
     {
         if (c->isVisible())
         {
@@ -270,7 +270,7 @@ void Component::draw(SDL_Renderer *renderer)
         return;
     }
 
-    SDL_Rect absRect = getAbsoluteBounds();
+    const SDL_Rect absRect = getAbsoluteBounds();
     bool intersects = true;
 
     if (parentClippingEnabled)
@@ -321,7 +321,7 @@ void Component::draw(SDL_Renderer *renderer)
 
     SDL_Rect viewPortRect;
     SDL_GetRenderViewport(renderer, &viewPortRect);
-    SDL_Rect parentViewPortRect = viewPortRect;
+    const SDL_Rect parentViewPortRect = viewPortRect;
 
     viewPortRect.x = absRect.x;
     viewPortRect.y = absRect.y;
@@ -373,7 +373,7 @@ void Component::draw(SDL_Renderer *renderer)
     }
 #endif
 
-    for (auto &c : children)
+    for (const auto &c : children)
     {
         c->draw(renderer);
     }
@@ -389,15 +389,15 @@ bool Component::handleMouseEvent(const MouseEvent &mouseEvent)
         return false;
     }
 
-    float localXf = mouseEvent.mouseXf - xPos;
-    float localYf = mouseEvent.mouseYf - yPos;
-    int localXi = static_cast<int>(std::floor(localXf));
-    int localYi = static_cast<int>(std::floor(localYf));
+    const float localXf = mouseEvent.mouseXf - xPos;
+    const float localYf = mouseEvent.mouseYf - yPos;
+    const int localXi = static_cast<int>(std::floor(localXf));
+    const int localYi = static_cast<int>(std::floor(localYf));
 
-    MouseEvent localMouseEvent =
+    const MouseEvent localMouseEvent =
         withNewCoordinates(mouseEvent, localXi, localYi, localXf, localYf);
 
-    for (auto &c : std::views::reverse(children))
+    for (const auto &c : std::views::reverse(children))
     {
         if (c->handleMouseEvent(localMouseEvent))
         {
@@ -405,7 +405,7 @@ bool Component::handleMouseEvent(const MouseEvent &mouseEvent)
         }
     }
 
-    Component *capturingComponent =
+    const Component *capturingComponent =
         window ? window->getCapturingComponent() : nullptr;
 
     if (localXi < 0 || localXi >= width || localYi < 0 || localYi >= height)
@@ -507,7 +507,7 @@ int32_t Component::getYPos() const
 std::pair<int, int> Component::getAbsolutePosition()
 {
     int resultX = getXPos(), resultY = getYPos();
-    Component *p = getParent();
+    const Component *p = getParent();
     while (p != nullptr)
     {
         resultX += p->getXPos();
@@ -557,9 +557,9 @@ Component *Component::findComponentAt(int x, int y)
         return nullptr;
     }
 
-    for (auto &c : std::views::reverse(children))
+    for (const auto &c : std::views::reverse(children))
     {
-        if (auto found = c->findComponentAt(x, y); found != nullptr)
+        if (const auto found = c->findComponentAt(x, y); found != nullptr)
         {
             return found;
         }

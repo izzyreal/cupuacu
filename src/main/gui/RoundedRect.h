@@ -20,7 +20,7 @@ namespace cupuacu::gui
         SDL_Vertex center{};
         center.position.x = cx;
         center.position.y = cy;
-        SDL_FColor fcol{col.r / 255.f, col.g / 255.f, col.b / 255.f,
+        const SDL_FColor fcol{col.r / 255.f, col.g / 255.f, col.b / 255.f,
                         col.a / 255.f};
         center.color = fcol;
         center.tex_coord.x = 0.0f;
@@ -30,10 +30,10 @@ namespace cupuacu::gui
         // Arc vertices
         for (int i = 0; i <= segments; ++i)
         {
-            float theta =
+            const float theta =
                 (startAngleDeg + (90.0f * i) / segments) * (float)M_PI / 180.0f;
-            float x = cx + std::cos(theta) * radius;
-            float y = cy + std::sin(theta) * radius;
+            const float x = cx + std::cos(theta) * radius;
+            const float y = cy + std::sin(theta) * radius;
 
             SDL_Vertex v{};
             v.position.x = x;
@@ -61,16 +61,16 @@ namespace cupuacu::gui
                                    const SDL_Color &col)
     {
         constexpr int segments = 24;
-        float step = 90.0f / segments;
+        constexpr float step = 90.0f / segments;
 
         float prevX = cx + std::cos(startAngleDeg * M_PI / 180.0f) * radius;
         float prevY = cy + std::sin(startAngleDeg * M_PI / 180.0f) * radius;
 
         for (int i = 1; i <= segments; ++i)
         {
-            float theta = (startAngleDeg + step * i) * (float)M_PI / 180.0f;
-            float x = cx + std::cos(theta) * radius;
-            float y = cy + std::sin(theta) * radius;
+            const float theta = (startAngleDeg + step * i) * (float)M_PI / 180.0f;
+            const float x = cx + std::cos(theta) * radius;
+            const float y = cy + std::sin(theta) * radius;
 
             SDL_RenderLine(renderer, prevX, prevY, x, y);
 
@@ -95,10 +95,10 @@ namespace cupuacu::gui
         SDL_SetRenderDrawColor(renderer, col.r, col.g, col.b, col.a);
 
         // Core rectangles
-        SDL_FRect core = {rect.x + radius, rect.y, rect.w - 2 * radius, rect.h};
+        const SDL_FRect core = {rect.x + radius, rect.y, rect.w - 2 * radius, rect.h};
         SDL_RenderFillRect(renderer, &core);
 
-        SDL_FRect vertical = {rect.x, rect.y + radius, rect.w,
+        const SDL_FRect vertical = {rect.x, rect.y + radius, rect.w,
                               rect.h - 2 * radius};
         SDL_RenderFillRect(renderer, &vertical);
 
@@ -121,7 +121,7 @@ namespace cupuacu::gui
         {
             SDL_SetRenderDrawColor(renderer, col.r, col.g, col.b, col.a);
             // Subtract 1 from width/height to stay inside rect
-            SDL_FRect r = {rect.x, rect.y, rect.w - 1.0f, rect.h - 1.0f};
+            const SDL_FRect r = {rect.x, rect.y, rect.w - 1.0f, rect.h - 1.0f};
             SDL_RenderRect(renderer, &r);
             return;
         }
@@ -130,10 +130,10 @@ namespace cupuacu::gui
 
         SDL_SetRenderDrawColor(renderer, col.r, col.g, col.b, col.a);
 
-        float x0 = rect.x;
-        float y0 = rect.y;
-        float x1 = rect.x + rect.w - 1.0f;
-        float y1 = rect.y + rect.h - 1.0f;
+        const float x0 = rect.x;
+        const float y0 = rect.y;
+        const float x1 = rect.x + rect.w - 1.0f;
+        const float y1 = rect.y + rect.h - 1.0f;
 
         // Straight edges
         SDL_RenderLine(renderer, x0 + radius, y0, x1 - radius, y0); // top
@@ -168,11 +168,11 @@ namespace cupuacu::gui
         SDL_SetRenderDrawColor(renderer, col.r, col.g, col.b, col.a);
 
         // Core rectangle covering bottom and middle
-        SDL_FRect core = {rect.x, rect.y + radius, rect.w, rect.h - radius};
+        const SDL_FRect core = {rect.x, rect.y + radius, rect.w, rect.h - radius};
         SDL_RenderFillRect(renderer, &core);
 
         // Top horizontal bar (between corners)
-        SDL_FRect topBar = {rect.x + radius, rect.y, rect.w - 2 * radius,
+        const SDL_FRect topBar = {rect.x + radius, rect.y, rect.w - 2 * radius,
                             radius};
         SDL_RenderFillRect(renderer, &topBar);
 
@@ -199,11 +199,11 @@ namespace cupuacu::gui
         SDL_SetRenderDrawColor(renderer, col.r, col.g, col.b, col.a);
 
         // Core rectangle covering top and middle
-        SDL_FRect core = {rect.x, rect.y, rect.w, rect.h - radius};
+        const SDL_FRect core = {rect.x, rect.y, rect.w, rect.h - radius};
         SDL_RenderFillRect(renderer, &core);
 
         // Bottom horizontal bar (between corners)
-        SDL_FRect bottomBar = {rect.x + radius, rect.y + rect.h - radius,
+        const SDL_FRect bottomBar = {rect.x + radius, rect.y + rect.h - radius,
                                rect.w - 2 * radius, radius};
         SDL_RenderFillRect(renderer, &bottomBar);
 
@@ -235,10 +235,10 @@ namespace cupuacu::gui
         radius = std::min(radius, std::min(rect.w, rect.h) / 2.0f);
         SDL_SetRenderDrawColor(renderer, col.r, col.g, col.b, col.a);
 
-        float x0 = rect.x;
-        float y0 = rect.y;
-        float x1 = rect.x + rect.w - 1.0f;
-        float y1 = rect.y + rect.h - 1.0f;
+        const float x0 = rect.x;
+        const float y0 = rect.y;
+        const float x1 = rect.x + rect.w - 1.0f;
+        const float y1 = rect.y + rect.h - 1.0f;
 
         // Top edge
         SDL_RenderLine(renderer, x0 + radius, y0, x1 - radius, y0);
@@ -276,10 +276,10 @@ namespace cupuacu::gui
         radius = std::min(radius, std::min(rect.w, rect.h) / 2.0f);
         SDL_SetRenderDrawColor(renderer, col.r, col.g, col.b, col.a);
 
-        float x0 = rect.x;
-        float y0 = rect.y;
-        float x1 = rect.x + rect.w - 1.0f;
-        float y1 = rect.y + rect.h - 1.0f;
+        const float x0 = rect.x;
+        const float y0 = rect.y;
+        const float x1 = rect.x + rect.w - 1.0f;
+        const float y1 = rect.y + rect.h - 1.0f;
 
         // Bottom edge
         SDL_RenderLine(renderer, x0 + radius, y1, x1 - radius, y1);

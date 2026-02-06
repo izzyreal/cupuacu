@@ -18,7 +18,7 @@ namespace cupuacu::gui
         const SDL_Color background;
 
     public:
-        LabeledField(cupuacu::State *stateToUse, const std::string &labelToUse,
+        LabeledField(State *stateToUse, const std::string &labelToUse,
                      const SDL_Color backgroundToUse)
             : Component(stateToUse, "LabeledField for " + labelToUse),
               label(labelToUse), background(backgroundToUse)
@@ -39,8 +39,8 @@ namespace cupuacu::gui
             Helpers::fillRect(renderer, getLocalBounds(), background);
             const uint8_t fontPointSize =
                 state->menuFontSize / state->pixelScale;
-            std::string displayText = label + ": " + value;
-            auto rect = getLocalBoundsF();
+            const std::string displayText = label + ": " + value;
+            const auto rect = getLocalBoundsF();
             renderText(renderer, displayText, fontPointSize, rect, false);
         }
     };

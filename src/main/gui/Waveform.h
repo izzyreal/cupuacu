@@ -15,7 +15,7 @@ namespace cupuacu::gui
                                            const uint8_t pixelScale);
 
         static void
-        clearHighlightIfNotChannel(cupuacu::State *state,
+        clearHighlightIfNotChannel(State *state,
                                    const uint8_t channelIndexNotToClear)
         {
             for (int64_t waveformChannel = 0;
@@ -30,7 +30,7 @@ namespace cupuacu::gui
             }
         }
 
-        static uint16_t getWaveformWidth(const cupuacu::State *state)
+        static uint16_t getWaveformWidth(const State *state)
         {
             if (state->waveforms.empty())
             {
@@ -40,17 +40,17 @@ namespace cupuacu::gui
             return state->waveforms[0]->getWidth();
         }
 
-        static void updateAllSamplePoints(cupuacu::State *state)
+        static void updateAllSamplePoints(State *state)
         {
-            for (auto &waveform : state->waveforms)
+            for (const auto &waveform : state->waveforms)
             {
                 waveform->updateSamplePoints();
             }
         }
 
-        static void setAllWaveformsDirty(cupuacu::State *state)
+        static void setAllWaveformsDirty(State *state)
         {
-            for (auto &waveform : state->waveforms)
+            for (const auto &waveform : state->waveforms)
             {
                 waveform->setDirty();
             }
@@ -90,7 +90,7 @@ namespace cupuacu::gui
                                                          samplesPerPixel)));
         }
 
-        Waveform(cupuacu::State *, const uint8_t channelIndex);
+        Waveform(State *, const uint8_t channelIndex);
 
         void onDraw(SDL_Renderer *) override;
         void timerCallback() override;

@@ -15,7 +15,7 @@ namespace cupuacu::gui
     class DevicePropertiesWindow
     {
     public:
-        DevicePropertiesWindow(cupuacu::State *stateToUse);
+        DevicePropertiesWindow(State *stateToUse);
         ~DevicePropertiesWindow();
         bool isOpen() const
         {
@@ -28,7 +28,7 @@ namespace cupuacu::gui
         }
 
     private:
-        cupuacu::State *state = nullptr;
+        State *state = nullptr;
         std::unique_ptr<Window> window;
         bool ownsPortAudio = false;
 

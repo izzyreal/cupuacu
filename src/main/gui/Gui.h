@@ -11,6 +11,6 @@ namespace cupuacu::gui
 {
     class Window;
 
-    void resizeComponents(cupuacu::State *state, Window *window);
-    void buildComponents(cupuacu::State *state, Window *window);
+    void resizeComponents(State *state, Window *window);
+    void buildComponents(State *state, Window *window);
 } // namespace cupuacu::gui

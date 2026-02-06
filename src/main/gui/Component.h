@@ -39,13 +39,13 @@ namespace cupuacu::gui
         void clearWindowPointersForSubtree(Component *subtreeRoot);
 
     protected:
-        cupuacu::State *state;
+        State *state;
         Window *window = nullptr;
         void removeAllChildren();
         Component *getParent() const;
 
     public:
-        Component(cupuacu::State *, const std::string componentName);
+        Component(State *, const std::string &componentName);
         void setWindow(Window *windowToUse);
         Window *getWindow() const
         {
@@ -204,7 +204,7 @@ namespace cupuacu::gui
         void timerCallbackRecursive()
         {
             timerCallback();
-            for (auto &c : children)
+            for (const auto &c : children)
             {
                 c->timerCallbackRecursive();
             }

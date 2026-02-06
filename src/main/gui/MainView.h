@@ -13,7 +13,7 @@ namespace cupuacu::gui
     class MainView : public Component
     {
     public:
-        MainView(cupuacu::State *);
+        MainView(State *);
 
         void rebuildWaveforms();
         void resized() override;

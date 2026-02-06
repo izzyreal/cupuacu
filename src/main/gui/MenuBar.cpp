@@ -18,7 +18,7 @@
 
 using namespace cupuacu::gui;
 
-MenuBar::MenuBar(cupuacu::State *stateToUse) : Component(stateToUse, "MenuBar")
+MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
 {
     background = emplaceChild<OpaqueRect>(state, Colors::background);
     disableParentClipping();
@@ -28,7 +28,7 @@ MenuBar::MenuBar(cupuacu::State *stateToUse) : Component(stateToUse, "MenuBar")
     viewMenu = emplaceChild<Menu>(state, "View");
 
 #ifdef __APPLE__
-    const std::string openText{"Open (Cmd + O)"};
+    constexpr std::string openText{"Open (Cmd + O)"};
 #else
     const std::string openText{"Open (Ctrl + O)"};
 #endif
@@ -39,7 +39,7 @@ MenuBar::MenuBar(cupuacu::State *stateToUse) : Component(stateToUse, "MenuBar")
                          });
 
 #ifdef __APPLE__
-    const std::string overwriteText{"Overwrite (Cmd + S)"};
+    constexpr std::string overwriteText{"Overwrite (Cmd + S)"};
 #else
     const std::string overwriteText{"Overwrite (Ctrl + S)"};
 #endif
@@ -82,7 +82,7 @@ MenuBar::MenuBar(cupuacu::State *stateToUse) : Component(stateToUse, "MenuBar")
     std::function<std::string()> undoMenuNameGetter = [&]
     {
 #ifdef __APPLE__
-        const std::string undoShortcut = " (Cmd + Z)";
+        constexpr std::string undoShortcut = " (Cmd + Z)";
 #else
         const std::string undoShortcut = " (Ctrl + Z)";
 #endif
@@ -107,7 +107,7 @@ MenuBar::MenuBar(cupuacu::State *stateToUse) : Component(stateToUse, "MenuBar")
     std::function<std::string()> redoMenuNameGetter = [&]
     {
 #ifdef __APPLE__
-        const std::string redoShortcut = " (Cmd + Shift + Z)";
+        constexpr std::string redoShortcut = " (Cmd + Shift + Z)";
 #else
         const std::string redoShortcut = " (Ctrl + Shift + Z)";
 #endif
@@ -134,10 +134,10 @@ MenuBar::MenuBar(cupuacu::State *stateToUse) : Component(stateToUse, "MenuBar")
     // --- Trim, Cut, Copy, Paste ---
 
 #ifdef __APPLE__
-    const std::string trimText{"Trim (Cmd + T)"};
-    const std::string cutText{"Cut (Cmd + X)"};
-    const std::string copyText{"Copy (Cmd + C)"};
-    const std::string pasteText{"Paste (Cmd + V)"};
+    constexpr std::string trimText{"Trim (Cmd + T)"};
+    constexpr std::string cutText{"Cut (Cmd + X)"};
+    constexpr std::string copyText{"Copy (Cmd + C)"};
+    constexpr std::string pasteText{"Paste (Cmd + V)"};
 #else
     const std::string trimText{"Trim (Ctrl + T)"};
     const std::string cutText{"Cut (Ctrl + X)"};
@@ -149,7 +149,7 @@ MenuBar::MenuBar(cupuacu::State *stateToUse) : Component(stateToUse, "MenuBar")
         editMenu->addSubMenu(state, trimText,
                              [&]
                              {
-                                 auto undoable =
+                                 const auto undoable =
                                      std::make_shared<actions::audio::Trim>(
                                          state, state->selection.getStartInt(),
                                          state->selection.getLengthInt());
@@ -165,7 +165,7 @@ MenuBar::MenuBar(cupuacu::State *stateToUse) : Component(stateToUse, "MenuBar")
         editMenu->addSubMenu(state, cutText,
                              [&]
                              {
-                                 auto undoable =
+                                 const auto undoable =
                                      std::make_shared<actions::audio::Cut>(
                                          state, state->selection.getStartInt(),
                                          state->selection.getLengthInt());
@@ -181,7 +181,7 @@ MenuBar::MenuBar(cupuacu::State *stateToUse) : Component(stateToUse, "MenuBar")
         editMenu->addSubMenu(state, copyText,
                              [&]
                              {
-                                 auto undoable =
+                                 const auto undoable =
                                      std::make_shared<actions::audio::Copy>(
                                          state, state->selection.getStartInt(),
                                          state->selection.getLengthInt());
@@ -203,7 +203,7 @@ MenuBar::MenuBar(cupuacu::State *stateToUse) : Component(stateToUse, "MenuBar")
             const int64_t end =
                 state->selection.isActive() ? state->selection.getEndInt() : -1;
 
-            auto undoable =
+            const auto undoable =
                 std::make_shared<actions::audio::Paste>(state, start, end);
             state->addAndDoUndoable(undoable);
         });
@@ -257,7 +257,7 @@ void MenuBar::onDraw(SDL_Renderer *renderer)
     dst.w = float(logoW);
     dst.h = float(getHeight());
 
-    float scale = float(getHeight()) / float(logoH);
+    const float scale = float(getHeight()) / float(logoH);
     dst.w = logoW * scale;
 
     Helpers::fillRect(renderer, dst, Colors::background);
@@ -270,9 +270,9 @@ void MenuBar::hideSubMenus()
     viewMenu->hideSubMenus();
     editMenu->hideSubMenus();
     optionsMenu->hideSubMenus();
-    if (auto window = getWindow())
+    if (const auto window = getWindow())
     {
-        if (auto root = window->getRootComponent())
+        if (const auto root = window->getRootComponent())
         {
             root->setDirty();
         }
@@ -282,18 +282,18 @@ void MenuBar::hideSubMenus()
 
 void MenuBar::resized()
 {
-    float scale = 4.0f / state->pixelScale;
+    const float scale = 4.0f / state->pixelScale;
 
-    int fileW = int(40 * scale);
-    int viewW = int(40 * scale);
-    int editW = int(40 * scale); // wide enough for Undo/Redo text
-    int optionsW = int(60 * scale); // wide enough for Device Properties text
-    int h = getHeight();
+    const int fileW = int(40 * scale);
+    const int viewW = int(40 * scale);
+    const int editW = int(40 * scale); // wide enough for Undo/Redo text
+    const int optionsW = int(60 * scale); // wide enough for Device Properties text
+    const int h = getHeight();
 
     int logoSpace = 0;
     if (!logoData.empty())
     {
-        float aspect = logoH ? (float)logoW / (float)logoH : 1.0f;
+        const float aspect = logoH ? (float)logoW / (float)logoH : 1.0f;
         logoSpace = int(h * aspect);
     }
 

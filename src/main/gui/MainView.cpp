@@ -8,7 +8,7 @@
 
 using namespace cupuacu::gui;
 
-MainView::MainView(cupuacu::State *state) : Component(state, "MainView")
+MainView::MainView(State *state) : Component(state, "MainView")
 {
     for (int i = 0; i < 4; ++i)
     {
@@ -51,7 +51,7 @@ void MainView::resized()
     const int width = getWidth();
     const int height = getHeight();
 
-    int timelineHeight = static_cast<int>(60 / state->pixelScale);
+    const int timelineHeight = static_cast<int>(60 / state->pixelScale);
 
     waveforms->setBounds(borderWidth, borderWidth, width - 2 * borderWidth,
                          height - 2 * borderWidth - timelineHeight);

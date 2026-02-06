@@ -78,7 +78,7 @@ namespace cupuacu::gui
         }
     }
 
-    static void updateMouseCursor(const cupuacu::State *state,
+    static void updateMouseCursor(const State *state,
                                   const Window *window)
     {
         if (!window)
@@ -87,7 +87,7 @@ namespace cupuacu::gui
         }
 
         SDL_Cursor *newCursor = defaultCursor;
-        SDL_Window *focus = SDL_GetKeyboardFocus();
+        const SDL_Window *focus = SDL_GetKeyboardFocus();
         if (!focus || focus != window->getSdlWindow())
         {
             if (newCursor != currentCursor)
@@ -102,14 +102,14 @@ namespace cupuacu::gui
         {
             newCursor = defaultCursor;
         }
-        else if (dynamic_cast<const gui::Waveform *>(
+        else if (dynamic_cast<const Waveform *>(
                      window->getComponentUnderMouse()))
         {
-            if (state->hoveringOverChannels == SelectedChannels::LEFT)
+            if (state->hoveringOverChannels == LEFT)
             {
                 newCursor = selectLCursor;
             }
-            else if (state->hoveringOverChannels == SelectedChannels::RIGHT)
+            else if (state->hoveringOverChannels == RIGHT)
             {
                 newCursor = selectRCursor;
             }
@@ -118,9 +118,9 @@ namespace cupuacu::gui
                 newCursor = textCursor;
             }
         }
-        else if (dynamic_cast<const gui::SamplePoint *>(
+        else if (dynamic_cast<const SamplePoint *>(
                      window->getComponentUnderMouse()) ||
-                 dynamic_cast<const gui::TriangleMarker *>(
+                 dynamic_cast<const TriangleMarker *>(
                      window->getComponentUnderMouse()))
         {
             newCursor = pointerCursor;
@@ -133,7 +133,7 @@ namespace cupuacu::gui
         }
     }
 
-    static void handleWindowMouseLeave(cupuacu::State *state, Window *window)
+    static void handleWindowMouseLeave(State *state, Window *window)
     {
         if (!window)
         {
@@ -179,7 +179,7 @@ namespace cupuacu::gui
         }
     }
 
-    static Window *findWindowForEvent(cupuacu::State *state,
+    static Window *findWindowForEvent(State *state,
                                       const SDL_Event *event)
     {
         const SDL_WindowID windowId = getEventWindowId(event);
@@ -198,7 +198,7 @@ namespace cupuacu::gui
         return nullptr;
     }
 
-    inline SDL_AppResult handleAppEvent(cupuacu::State *state, SDL_Event *event)
+    inline SDL_AppResult handleAppEvent(State *state, SDL_Event *event)
     {
         Window *eventWindow = findWindowForEvent(state, event);
         switch (event->type)

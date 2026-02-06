@@ -22,7 +22,7 @@ namespace cupuacu::gui
     class Window
     {
     public:
-        Window(cupuacu::State *stateToUse, const std::string &title, int width,
+        Window(State *stateToUse, const std::string &title, int width,
                int height, Uint32 flags);
         ~Window();
 
@@ -105,7 +105,7 @@ namespace cupuacu::gui
                                        const int32_t mouseY);
 
     private:
-        cupuacu::State *state = nullptr;
+        State *state = nullptr;
         SDL_Window *window = nullptr;
         SDL_Renderer *renderer = nullptr;
         SDL_Texture *canvas = nullptr;

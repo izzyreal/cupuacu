@@ -8,7 +8,7 @@ namespace cupuacu::gui
     class WaveformsUnderlay : public Component
     {
     public:
-        WaveformsUnderlay(cupuacu::State *);
+        WaveformsUnderlay(State *);
 
         void mouseLeave() override;
 

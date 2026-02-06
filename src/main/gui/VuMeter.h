@@ -18,7 +18,7 @@ namespace cupuacu::gui
     class VuMeter : public Component
     {
     public:
-        explicit VuMeter(cupuacu::State *state)
+        explicit VuMeter(State *state)
             : Component(state, "VuMeter"), numChannels(1)
         {
             setNumChannels(numChannels);
@@ -64,15 +64,15 @@ namespace cupuacu::gui
 
         void onDraw(SDL_Renderer *renderer) override
         {
-            SDL_Rect fullBounds = getLocalBounds();
+            const SDL_Rect fullBounds = getLocalBounds();
             Helpers::fillRect(renderer, fullBounds, Colors::black);
 
-            int border = std::max(1, 2 / state->pixelScale);
-            int barSpacing = fullBounds.h / numChannels;
+            const int border = std::max(1, 2 / state->pixelScale);
+            const int barSpacing = fullBounds.h / numChannels;
 
-            float dt = 1.0f / 60.0f;
-            float alphaAttack = 1.0f - std::exp(-dt / attackTimeSec);
-            float alphaRelease = 1.0f - std::exp(-dt / releaseTimeSec);
+            constexpr float dt = 1.0f / 60.0f;
+            const float alphaAttack = 1.0f - std::exp(-dt / attackTimeSec);
+            const float alphaRelease = 1.0f - std::exp(-dt / releaseTimeSec);
 
             for (int ch = 0; ch < numChannels; ++ch)
             {
@@ -86,7 +86,7 @@ namespace cupuacu::gui
 
                 if (peak > 0.f)
                 {
-                    float db = 20.f * log10f(std::max(peak, 1e-5f));
+                    const float db = 20.f * log10f(std::max(peak, 1e-5f));
                     float normalized = (db + 72.f) / 72.f;
                     normalized = std::clamp(normalized, 0.f, 1.f);
                     normalized = std::pow(normalized, 0.92f);
@@ -108,31 +108,31 @@ namespace cupuacu::gui
                 barRect.y += ch * barSpacing + border;
                 barRect.h = barSpacing - 2 * border;
                 barRect.w = fullBounds.w - 2 * border;
-                int filledWidth =
+                const int filledWidth =
                     static_cast<int>(previousPeaks[ch] * barRect.w);
 
                 for (int x = 0; x < filledWidth; ++x)
                 {
-                    float frac = (float)x / barRect.w;
+                    const float frac = (float)x / barRect.w;
                     SDL_Color color;
 
                     if (frac < 0.86f)
                     {
-                        float g = 128.f + 127.f * (frac / 0.86f);
+                        const float g = 128.f + 127.f * (frac / 0.86f);
                         color = {0, (Uint8)g, 0, 255};
                     }
                     else if (frac < 0.95f)
                     {
-                        float t = (frac - 0.86f) / (0.95f - 0.86f);
+                        const float t = (frac - 0.86f) / (0.95f - 0.86f);
                         color = {Uint8(255 * t), 255, 0, 255};
                     }
                     else
                     {
-                        float t = (frac - 0.95f) / (1.0f - 0.95f);
+                        const float t = (frac - 0.95f) / (1.0f - 0.95f);
                         color = {255, Uint8(255 * (1.0f - t)), 0, 255};
                     }
 
-                    SDL_Rect pixelRect{barRect.x + x, barRect.y, 1, barRect.h};
+                    const SDL_Rect pixelRect{barRect.x + x, barRect.y, 1, barRect.h};
                     Helpers::fillRect(renderer, pixelRect, color);
                 }
                 if (peak > peakHolds[ch])
@@ -154,8 +154,8 @@ namespace cupuacu::gui
                     }
                 }
 
-                int holdX = static_cast<int>(peakHolds[ch] * barRect.w);
-                SDL_Rect peakLine = {barRect.x + holdX, barRect.y, 1,
+                const int holdX = static_cast<int>(peakHolds[ch] * barRect.w);
+                const SDL_Rect peakLine = {barRect.x + holdX, barRect.y, 1,
                                      barRect.h};
                 Helpers::fillRect(renderer, peakLine, Colors::green);
             }

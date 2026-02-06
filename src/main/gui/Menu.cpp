@@ -10,8 +10,8 @@
 
 using namespace cupuacu::gui;
 
-Menu::Menu(cupuacu::State *state, const std::string menuNameToUse,
-           const std::function<void()> actionToUse)
+Menu::Menu(State *state, const std::string &menuNameToUse,
+           const std::function<void()> &actionToUse)
     : Component(state, "Menu for " + menuNameToUse), menuName(menuNameToUse),
       action(actionToUse)
 {
@@ -21,9 +21,9 @@ Menu::Menu(cupuacu::State *state, const std::string menuNameToUse,
     label->setFontSize(state->menuFontSize);
 }
 
-Menu::Menu(cupuacu::State *state,
-           const std::function<std::string()> menuNameGetterToUse,
-           const std::function<void()> actionToUse)
+Menu::Menu(State *state,
+           const std::function<std::string()> &menuNameGetterToUse,
+           const std::function<void()> &actionToUse)
     : Component(state, "Menu"), menuNameGetter(menuNameGetterToUse),
       action(actionToUse), menuName("")
 {
@@ -33,7 +33,7 @@ Menu::Menu(cupuacu::State *state,
     label->setFontSize(state->menuFontSize);
 }
 
-void Menu::setIsAvailable(std::function<bool()> isAvailableToUse)
+void Menu::setIsAvailable(const std::function<bool()> &isAvailableToUse)
 {
     isAvailable = isAvailableToUse;
 }
@@ -80,16 +80,16 @@ void Menu::showSubMenus()
 
     int subMenuWidth = 1;
 
-    for (auto &subMenu : subMenus)
+    for (const auto &subMenu : subMenus)
     {
-        auto subMenuName = subMenu->getMenuName();
+        const auto subMenuName = subMenu->getMenuName();
         auto [tw, th] = measureText(subMenuName, state->menuFontSize);
         subMenuWidth = std::max(subMenuWidth, tw);
     }
 
     const int subMenuHorizontalMargin = 64.f / state->pixelScale;
 
-    for (auto &subMenu : subMenus)
+    for (const auto &subMenu : subMenus)
     {
         subMenu->setBounds(0, subMenuYPos,
                            subMenuWidth + subMenuHorizontalMargin,
@@ -100,11 +100,11 @@ void Menu::showSubMenus()
 
     // compute bounding rect
     int x = subMenus.front()->getXPos();
-    int y = subMenus.front()->getYPos();
+    const int y = subMenus.front()->getYPos();
     int w = 0;
     int h = 0;
 
-    for (auto *sub : subMenus)
+    for (const auto *sub : subMenus)
     {
         if (sub->getWidth() > w)
         {
@@ -119,7 +119,7 @@ void Menu::showSubMenus()
 
 void Menu::hideSubMenus()
 {
-    for (auto &subMenu : subMenus)
+    for (const auto &subMenu : subMenus)
     {
         subMenu->setVisible(false);
     }
@@ -130,8 +130,8 @@ void Menu::hideSubMenus()
 
 void Menu::onDraw(SDL_Renderer *renderer)
 {
-    auto radius = 14.f / state->pixelScale;
-    auto rect = getLocalBoundsF();
+    const auto radius = 14.f / state->pixelScale;
+    const auto rect = getLocalBoundsF();
 
     label->setOpacity(isAvailable() ? 255 : 128);
 
@@ -139,33 +139,32 @@ void Menu::onDraw(SDL_Renderer *renderer)
 
     if (isFirstLevel())
     {
-        SDL_Color bg = Colors::background;
+        constexpr SDL_Color bg = Colors::background;
         Helpers::setRenderDrawColor(renderer, bg);
 
-        auto rect = getLocalBoundsF();
+        const auto rect = getLocalBoundsF();
 
         SDL_RenderFillRect(renderer, &rect);
 
         if (currentlyOpen)
         {
-            SDL_Color col1 = {70, 70, 70, 255};
+            constexpr SDL_Color col1 = {70, 70, 70, 255};
             drawRoundedRect(renderer, rect, radius, col1);
         }
 
         return;
     }
 
-    SDL_Color col1 = {50, 50, 50, 255};
-    SDL_Color col2 = {60, 60, 200, 255};
-    SDL_Color outline{180, 180, 180, 255};
+    constexpr SDL_Color col1 = {50, 50, 50, 255};
+    constexpr SDL_Color outline{180, 180, 180, 255};
 
-    auto parentMenu = dynamic_cast<Menu *>(getParent());
-    bool isFirst = parentMenu->subMenus.front() == this;
-    bool isLast = parentMenu->subMenus.back() == this;
+    const auto parentMenu = dynamic_cast<Menu *>(getParent());
+    const bool isFirst = parentMenu->subMenus.front() == this;
+    const bool isLast = parentMenu->subMenus.back() == this;
 
     auto rectShrunk = rect;
 
-    float shrink = 6.f / state->pixelScale;
+    const float shrink = 6.f / state->pixelScale;
     rectShrunk.x += shrink;
     rectShrunk.y += shrink;
     rectShrunk.w -= shrink * 2;
@@ -195,6 +194,7 @@ void Menu::onDraw(SDL_Renderer *renderer)
 
     if (isMouseOver() && isAvailable())
     {
+        constexpr SDL_Color col2 = {60, 60, 200, 255};
         drawRoundedRect(renderer, rectShrunk, radius, col2);
     }
 }
@@ -211,7 +211,7 @@ bool Menu::mouseDown(const MouseEvent &e)
         }
         if (action)
         {
-            if (auto window = getWindow(); window && window->getMenuBar())
+            if (const auto window = getWindow(); window && window->getMenuBar())
             {
                 window->getMenuBar()->hideSubMenus();
             }
@@ -219,7 +219,7 @@ bool Menu::mouseDown(const MouseEvent &e)
         }
         else
         {
-            if (auto window = getWindow(); window && window->getMenuBar())
+            if (const auto window = getWindow(); window && window->getMenuBar())
             {
                 window->getMenuBar()->hideSubMenus();
             }
@@ -230,10 +230,10 @@ bool Menu::mouseDown(const MouseEvent &e)
     if (wasCurrentlyOpen)
     {
         hideSubMenus();
-        if (auto window = getWindow(); window && window->getMenuBar())
+        if (const auto window = getWindow(); window && window->getMenuBar())
         {
             window->getMenuBar()->hideSubMenus();
-            if (auto root = window->getRootComponent())
+            if (const auto root = window->getRootComponent())
             {
                 root->setDirty();
             }
@@ -241,10 +241,10 @@ bool Menu::mouseDown(const MouseEvent &e)
         return true;
     }
 
-    if (auto window = getWindow(); window && window->getMenuBar())
+    if (const auto window = getWindow(); window && window->getMenuBar())
     {
         window->getMenuBar()->hideSubMenus();
-        if (auto root = window->getRootComponent())
+        if (const auto root = window->getRootComponent())
         {
             root->setDirty();
         }
@@ -263,7 +263,7 @@ void Menu::mouseLeave()
 {
     setDirty();
 
-    auto window = getWindow();
+    const auto window = getWindow();
     if (!window)
     {
         return;
@@ -289,7 +289,7 @@ void Menu::mouseLeave()
 
 void Menu::mouseEnter()
 {
-    auto window = getWindow();
+    const auto window = getWindow();
     if (!window || !window->getMenuBar())
     {
         return;

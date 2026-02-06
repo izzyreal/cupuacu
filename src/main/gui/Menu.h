@@ -37,13 +37,13 @@ namespace cupuacu::gui
         std::string getMenuName();
 
     public:
-        Menu(cupuacu::State *, const std::string menuNameToUse,
-             const std::function<void()> actionToUse = {});
-        Menu(cupuacu::State *,
-             const std::function<std::string()> menuNameGetterToUse,
-             const std::function<void()> actionToUse = {});
+        Menu(State *, const std::string &menuNameToUse,
+             const std::function<void()> &actionToUse = {});
+        Menu(State *,
+             const std::function<std::string()> &menuNameGetterToUse,
+             const std::function<void()> &actionToUse = {});
 
-        void setIsAvailable(std::function<bool()>);
+        void setIsAvailable(const std::function<bool()> &);
 
         template <typename... Args> Menu *addSubMenu(Args &&...args)
         {

@@ -10,7 +10,7 @@ namespace cupuacu::gui
         const SDL_Color color;
 
     public:
-        OpaqueRect(cupuacu::State *state, const SDL_Color colorToUse)
+        OpaqueRect(State *state, const SDL_Color colorToUse)
             : Component(state, "OpaqueRect"), color(colorToUse)
         {
         }
@@ -19,7 +19,7 @@ namespace cupuacu::gui
         {
             SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b,
                                    color.a);
-            auto rect = getLocalBoundsF();
+            const auto rect = getLocalBoundsF();
             SDL_RenderFillRect(renderer, &rect);
         }
     };

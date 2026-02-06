@@ -29,14 +29,14 @@ namespace cupuacu::gui
     static TTF_Font *getFont(const uint8_t pointSize)
     {
         auto &cache = getFontCache();
-        auto it = cache.find(pointSize);
+        const auto it = cache.find(pointSize);
         if (it != cache.end())
         {
             return it->second; // Return cached font
         }
 
         auto &fontData = getFontData();
-        auto fontIo = SDL_IOFromMem(fontData.data(), fontData.size());
+        const auto fontIo = SDL_IOFromMem(fontData.data(), fontData.size());
         TTF_Font *font = TTF_OpenFontIO(fontIo, false, pointSize);
 
         if (!font)
@@ -61,10 +61,10 @@ namespace cupuacu::gui
         cache.clear();
     }
 
-    static std::pair<int, int> measureText(const std::string text,
+    static std::pair<int, int> measureText(const std::string &text,
                                            const uint8_t pointSize)
     {
-        auto font = getFont(pointSize);
+        const auto font = getFont(pointSize);
         if (!font)
         {
             return {0, 0};
@@ -86,12 +86,12 @@ namespace cupuacu::gui
                         const uint8_t pointSize, const SDL_FRect &destRect,
                         bool shouldCenterHorizontally)
     {
-        SDL_Color textColor = {255, 255, 255, 255};
+        constexpr SDL_Color textColor = {255, 255, 255, 255};
 
         SDL_Texture *canvas = SDL_GetRenderTarget(renderer);
         SDL_SetRenderTarget(renderer, nullptr);
 
-        auto font = getFont(pointSize);
+        const auto font = getFont(pointSize);
         if (!font)
         {
             SDL_SetRenderTarget(renderer, canvas);
@@ -120,13 +120,13 @@ namespace cupuacu::gui
         float x = destRect.x;
         if (shouldCenterHorizontally)
         {
-            float centeredX = destRect.x + (destRect.w - textW) * 0.5f;
+            const float centeredX = destRect.x + (destRect.w - textW) * 0.5f;
             x = std::max(centeredX,
                          destRect.x); // Prevent left overflow; fallback to
                                       // left-align if needed
         }
 
-        SDL_FRect textDestRect = {x, destRect.y, (float)textW, (float)textH};
+        const SDL_FRect textDestRect = {x, destRect.y, (float)textW, (float)textH};
 
         SDL_SetRenderTarget(renderer, canvas);
         SDL_RenderTexture(renderer, textTexture, nullptr, &textDestRect);

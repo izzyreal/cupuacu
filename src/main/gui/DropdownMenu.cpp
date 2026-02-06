@@ -12,7 +12,7 @@
 
 using namespace cupuacu::gui;
 
-DropdownMenu::DropdownMenu(cupuacu::State *stateToUse)
+DropdownMenu::DropdownMenu(State *stateToUse)
     : Component(stateToUse, "DropdownMenu")
 {
 }
@@ -198,12 +198,12 @@ void DropdownMenu::resized()
 
 void DropdownMenu::onDraw(SDL_Renderer *renderer)
 {
-    SDL_FRect outer = getLocalBoundsF();
+    const SDL_FRect outer = getLocalBoundsF();
     const float radius = std::max(1.0f, 12.0f / state->pixelScale);
 
-    const SDL_Color border = Colors::border;
-    const SDL_Color baseBg = {55, 55, 55, 255};
-    const SDL_Color hoverBg = {70, 70, 70, 255};
+    constexpr SDL_Color border = Colors::border;
+    constexpr SDL_Color baseBg = {55, 55, 55, 255};
+    constexpr SDL_Color hoverBg = {70, 70, 70, 255};
 
     drawRoundedRect(renderer, outer, radius, border);
 
@@ -243,7 +243,7 @@ void DropdownMenu::onDraw(SDL_Renderer *renderer)
                        arrowOffset);
         const float cy = inner.y + getRowHeight() * 0.5f;
         SDL_Vertex verts[3];
-        SDL_FColor color{220 / 255.f, 220 / 255.f, 220 / 255.f, 1.0f};
+        constexpr SDL_FColor color{220 / 255.f, 220 / 255.f, 220 / 255.f, 1.0f};
         verts[0].position = {cx - arrowWidth * 0.5f, cy - arrowHeight * 0.5f};
         verts[1].position = {cx + arrowWidth * 0.5f, cy - arrowHeight * 0.5f};
         verts[2].position = {cx, cy + arrowHeight * 0.5f};
@@ -252,7 +252,7 @@ void DropdownMenu::onDraw(SDL_Renderer *renderer)
             v.color = color;
             v.tex_coord = {0.f, 0.f};
         }
-        const int indices[3] = {0, 1, 2};
+        constexpr int indices[3] = {0, 1, 2};
         SDL_RenderGeometry(renderer, nullptr, verts, 3, indices, 3);
     }
 }

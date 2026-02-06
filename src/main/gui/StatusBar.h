@@ -33,7 +33,7 @@ namespace cupuacu::gui
         std::optional<float> lastSampleValueUnderMouseCursor;
 
     public:
-        StatusBar(cupuacu::State *stateToUse)
+        StatusBar(State *stateToUse)
             : Component(stateToUse, "StatusBar")
         {
             posField =

@@ -29,7 +29,7 @@ namespace cupuacu::gui
         void updateLabelVisibility();
 
     public:
-        DropdownMenu(cupuacu::State *stateToUse);
+        DropdownMenu(State *stateToUse);
 
         void setItems(const std::vector<std::string> &itemsToUse);
         void setSelectedIndex(const int index);
