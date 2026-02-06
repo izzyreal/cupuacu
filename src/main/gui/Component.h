@@ -36,6 +36,7 @@ namespace cupuacu::gui
         std::vector<std::unique_ptr<Component>> children;
 
         void setParent(Component *parentToUse);
+        void clearWindowPointersForSubtree(Component *subtreeRoot);
 
     protected:
         cupuacu::State *state;
@@ -118,6 +119,14 @@ namespace cupuacu::gui
 
         template <typename T> void removeChildrenOfType()
         {
+            for (const auto &child : children)
+            {
+                if (dynamic_cast<T *>(child.get()) != nullptr)
+                {
+                    clearWindowPointersForSubtree(child.get());
+                }
+            }
+
             children.erase(
                 std::remove_if(children.begin(), children.end(),
                                [](const std::unique_ptr<Component> &child)

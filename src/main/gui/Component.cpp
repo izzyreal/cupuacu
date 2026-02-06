@@ -52,8 +52,19 @@ const std::vector<std::unique_ptr<Component>> &Component::getChildren() const
 
 void Component::removeChild(Component *child)
 {
-    auto oldBounds = child->getAbsoluteBounds();
-    for (auto it = children.begin(); it != children.end(); ++it)
+    auto it = std::find_if(children.begin(), children.end(),
+                           [child](const std::unique_ptr<Component> &c)
+                           {
+                               return c.get() == child;
+                           });
+    if (it == children.end())
+    {
+        return;
+    }
+
+    clearWindowPointersForSubtree(it->get());
+    auto oldBounds = it->get()->getAbsoluteBounds();
+    for (; it != children.end(); ++it)
     {
         if (it->get() == child)
         {
@@ -119,17 +130,7 @@ void Component::removeAllChildren()
 {
     for (auto &c : children)
     {
-        if (window)
-        {
-            if (window->getComponentUnderMouse() == c.get())
-            {
-                window->setComponentUnderMouse(nullptr);
-            }
-            if (window->getCapturingComponent() == c.get())
-            {
-                window->setCapturingComponent(nullptr);
-            }
-        }
+        clearWindowPointersForSubtree(c.get());
     }
     children.clear();
     setDirty();
@@ -143,6 +144,33 @@ const bool Component::isMouseOver() const
 Component *Component::getParent() const
 {
     return parent;
+}
+
+void Component::clearWindowPointersForSubtree(Component *subtreeRoot)
+{
+    if (!window || !subtreeRoot)
+    {
+        return;
+    }
+
+    Component *underMouse = window->getComponentUnderMouse();
+    if (underMouse && isComponentOrChildOf(underMouse, subtreeRoot))
+    {
+        window->setComponentUnderMouse(nullptr);
+        underMouse->mouseLeave();
+    }
+
+    Component *capturing = window->getCapturingComponent();
+    if (capturing && isComponentOrChildOf(capturing, subtreeRoot))
+    {
+        window->setCapturingComponent(nullptr);
+    }
+
+    if (auto *menuBar = window->getMenuBar();
+        menuBar && isComponentOrChildOf(menuBar, subtreeRoot))
+    {
+        window->setMenuBar(nullptr);
+    }
 }
 
 void Component::setWindow(Window *windowToUse)
