@@ -183,6 +183,10 @@ namespace cupuacu::gui
         {
             return false;
         }
+        virtual bool mouseWheel(const MouseEvent &)
+        {
+            return false;
+        }
         virtual bool shouldCaptureMouse() const
         {
             return true;

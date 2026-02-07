@@ -192,6 +192,9 @@ bool Window::isEventForWindow(const SDL_Event &event) const
         case SDL_EVENT_MOUSE_BUTTON_UP:
             eventWindowId = event.button.windowID;
             break;
+        case SDL_EVENT_MOUSE_WHEEL:
+            eventWindowId = event.wheel.windowID;
+            break;
         default:
             return false;
     }
@@ -207,6 +210,7 @@ MouseEvent Window::makeMouseEvent(const SDL_Event &event) const
     int32_t xi = 0, yi = 0;
     bool left = false, middle = false, right = false;
     uint8_t clicks = 0;
+    float wheelX = 0.0f, wheelY = 0.0f;
 
     if (event.type == SDL_EVENT_MOUSE_MOTION)
     {
@@ -230,6 +234,14 @@ MouseEvent Window::makeMouseEvent(const SDL_Event &event) const
         right = event.button.button == SDL_BUTTON_RIGHT;
         clicks = event.button.clicks;
     }
+    else if (event.type == SDL_EVENT_MOUSE_WHEEL)
+    {
+        type = WHEEL;
+        xf = event.wheel.mouse_x;
+        yf = event.wheel.mouse_y;
+        wheelX = event.wheel.x;
+        wheelY = event.wheel.y;
+    }
 
     if (canvas && window)
     {
@@ -252,7 +264,8 @@ MouseEvent Window::makeMouseEvent(const SDL_Event &event) const
     yi = static_cast<int32_t>(std::floor(yf));
 
     const MouseButtonState bs{left, middle, right};
-    return MouseEvent{type, xi, yi, xf, yf, relx, rely, bs, clicks};
+    return MouseEvent{type,      xi,      yi,      xf,      yf,
+                      relx,      rely,    bs,      clicks,  wheelX, wheelY};
 }
 
 void Window::updateComponentUnderMouse(const int32_t mouseX,
@@ -358,6 +371,17 @@ bool Window::handleEvent(const SDL_Event &event)
             {
                 capturingComponent = nullptr;
             }
+            break;
+        }
+        case SDL_EVENT_MOUSE_WHEEL:
+        {
+            if (!rootComponent)
+            {
+                break;
+            }
+            const MouseEvent mouseEvent = makeMouseEvent(event);
+            updateComponentUnderMouse(mouseEvent.mouseXi, mouseEvent.mouseYi);
+            rootComponent->handleMouseEvent(mouseEvent);
             break;
         }
         default:

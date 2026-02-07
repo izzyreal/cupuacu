@@ -434,6 +434,10 @@ bool Component::handleMouseEvent(const MouseEvent &mouseEvent)
                 }
             }
         }
+        else if (mouseEvent.type == WHEEL)
+        {
+            // Wheel events are only handled by components under the cursor.
+        }
     }
     else
     {
@@ -457,6 +461,13 @@ bool Component::handleMouseEvent(const MouseEvent &mouseEvent)
         if (mouseEvent.type == MOVE)
         {
             if (mouseMove(localMouseEvent))
+            {
+                return true;
+            }
+        }
+        else if (mouseEvent.type == WHEEL)
+        {
+            if (mouseWheel(localMouseEvent))
             {
                 return true;
             }

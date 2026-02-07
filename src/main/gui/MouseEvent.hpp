@@ -11,7 +11,8 @@ namespace cupuacu::gui
     {
         MOVE,
         DOWN,
-        UP
+        UP,
+        WHEEL
     };
 
     struct MouseButtonState
@@ -32,6 +33,8 @@ namespace cupuacu::gui
         const float mouseRelY;
         const MouseButtonState buttonState;
         const uint8_t numClicks;
+        const float wheelX = 0.0f;
+        const float wheelY = 0.0f;
     };
 
     static MouseEvent withNewCoordinates(const MouseEvent &evt,
@@ -41,6 +44,7 @@ namespace cupuacu::gui
     {
         return MouseEvent{evt.type,      newXi,           newYi,
                           newXf,         newYf,           evt.mouseRelX,
-                          evt.mouseRelY, evt.buttonState, evt.numClicks};
+                          evt.mouseRelY, evt.buttonState, evt.numClicks,
+                          evt.wheelX,    evt.wheelY};
     }
 } // namespace cupuacu::gui

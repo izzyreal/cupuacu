@@ -3,6 +3,7 @@
 #include "Waveform.hpp"
 #include "Window.hpp"
 #include <algorithm>
+#include <cmath>
 
 #include <cassert>
 
@@ -226,6 +227,56 @@ bool WaveformsUnderlay::mouseUp(const MouseEvent &e)
     return true;
 }
 
+bool WaveformsUnderlay::mouseWheel(const MouseEvent &e)
+{
+    auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    if (viewState.samplesPerPixel <= 0.0)
+    {
+        return false;
+    }
+
+    // SDL wheel.x > 0 means user scrolled right; move the viewport right.
+    constexpr double kPixelsPerWheelUnit = 12.0;
+    const double deltaSamples =
+        static_cast<double>(e.wheelX) * viewState.samplesPerPixel *
+        kPixelsPerWheelUnit;
+
+    if (deltaSamples == 0.0)
+    {
+        return false;
+    }
+
+    horizontalWheelRemainder += deltaSamples;
+    const int64_t wholeSamples =
+        static_cast<int64_t>(std::trunc(horizontalWheelRemainder));
+    if (wholeSamples == 0)
+    {
+        return true;
+    }
+
+    const int64_t oldOffset = viewState.sampleOffset;
+    updateSampleOffset(state, oldOffset + wholeSamples);
+    horizontalWheelRemainder -= static_cast<double>(wholeSamples);
+
+    if (oldOffset == viewState.sampleOffset)
+    {
+        return true;
+    }
+
+    viewState.samplesToScroll = 0.0;
+    if (getWindow())
+    {
+        getWindow()->setComponentUnderMouse(nullptr);
+    }
+    for (auto *wf : state->waveforms)
+    {
+        wf->updateSamplePoints();
+        wf->setDirty();
+    }
+
+    return true;
+}
+
 void WaveformsUnderlay::timerCallback()
 {
     auto &viewState = state->mainDocumentSessionWindow->getViewState();
@@ -239,19 +290,19 @@ void WaveformsUnderlay::timerCallback()
             ? std::min(-1.0, viewState.samplesToScroll)
             : std::max(1.0, viewState.samplesToScroll);
     const int64_t oldOffset = viewState.sampleOffset;
-
     updateSampleOffset(state, viewState.sampleOffset + samplesToScroll);
-
-    if (oldOffset != viewState.sampleOffset)
+    if (oldOffset == viewState.sampleOffset)
     {
-        if (getWindow())
-        {
-            getWindow()->setComponentUnderMouse(nullptr);
-        }
-        for (auto *wf : state->waveforms)
-        {
-            wf->updateSamplePoints();
-        }
+        return;
+    }
+
+    if (getWindow())
+    {
+        getWindow()->setComponentUnderMouse(nullptr);
+    }
+    for (auto *wf : state->waveforms)
+    {
+        wf->updateSamplePoints();
     }
 }
 

@@ -18,10 +18,13 @@ namespace cupuacu::gui
 
         bool mouseUp(const MouseEvent &) override;
 
+        bool mouseWheel(const MouseEvent &) override;
+
         void timerCallback() override;
 
     private:
         uint8_t lastNumClicks = 0;
+        double horizontalWheelRemainder = 0.0;
 
         uint16_t channelHeight() const;
 

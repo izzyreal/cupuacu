@@ -173,6 +173,8 @@ namespace cupuacu::gui
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
             case SDL_EVENT_MOUSE_BUTTON_UP:
                 return event->button.windowID;
+            case SDL_EVENT_MOUSE_WHEEL:
+                return event->wheel.windowID;
             case SDL_EVENT_KEY_DOWN:
                 return event->key.windowID;
             default:
