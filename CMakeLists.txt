@@ -51,6 +51,7 @@ add_executable(Cupuacu
     src/main/audio/AudioDevices.cpp
     src/main/audio/AudioDeviceView.cpp
     src/main/gui/Gui.cpp
+    src/main/gui/DocumentSessionWindow.cpp
     src/main/gui/MainView.cpp
     src/main/gui/TriangleMarker.cpp
     src/main/gui/Component.cpp
@@ -77,6 +78,7 @@ add_executable(cupuacu-tests
     src/main/audio/AudioDevices.cpp
     src/main/audio/AudioDeviceView.cpp
     src/main/gui/Gui.cpp
+    src/main/gui/DocumentSessionWindow.cpp
     src/main/gui/MainView.cpp
     src/main/gui/TriangleMarker.cpp
     src/main/gui/Component.cpp

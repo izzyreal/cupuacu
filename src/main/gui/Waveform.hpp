@@ -112,7 +112,7 @@ namespace cupuacu::gui
         std::optional<int64_t> lastDrawnSamplePosUnderCursor = -1;
         std::optional<int64_t> samplePosUnderCursor;
         const uint8_t channelIndex;
-        double playbackPosition = 0;
+        int64_t playbackPosition = -1;
 
         std::vector<std::unique_ptr<SamplePoint>> computeSamplePoints();
 

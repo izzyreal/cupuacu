@@ -530,9 +530,10 @@ void Waveform::timerCallback()
         setDirty();
     }
 
-    if (const auto newPlaybackPosition =
-            state->audioDevices->getPlaybackPosition();
-        newPlaybackPosition != playbackPosition)
+    const auto snapshot = state->audioDevices->getSnapshot();
+    const auto newPlaybackPosition =
+        snapshot.isPlaying() ? snapshot.getPlaybackPosition() : int64_t{-1};
+    if (newPlaybackPosition != playbackPosition)
     {
         playbackPosition = newPlaybackPosition;
         setDirty();
