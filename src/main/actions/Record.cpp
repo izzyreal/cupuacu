@@ -16,6 +16,8 @@ void cupuacu::actions::record(cupuacu::State *state)
         return;
     }
 
+    auto &session = state->activeDocumentSession;
+
     if (state->audioDevices->isRecording())
     {
         return;
@@ -27,8 +29,8 @@ void cupuacu::actions::record(cupuacu::State *state)
     }
 
     cupuacu::audio::Record recordMessage;
-    recordMessage.document = &state->document;
-    recordMessage.startPos = std::max<int64_t>(0, state->cursor);
+    recordMessage.document = &session.document;
+    recordMessage.startPos = std::max<int64_t>(0, session.cursor);
     recordMessage.vuMeter = state->vuMeter;
     state->audioDevices->enqueue(std::move(recordMessage));
 }

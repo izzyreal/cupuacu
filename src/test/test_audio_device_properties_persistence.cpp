@@ -68,8 +68,8 @@ namespace
 
 TEST_CASE("Audio device properties persistence round-trip", "[persistence]")
 {
-    const auto testConfigRoot = std::filesystem::temp_directory_path() /
-                                "cupuacu-test-config";
+    const auto testConfigRoot =
+        std::filesystem::temp_directory_path() / "cupuacu-test-config";
     ScopedConfigCleanup cleanup(testConfigRoot);
 
     cupuacu::State state{};

@@ -29,7 +29,8 @@ uint64_t SamplePoint::getSampleIndex() const
 
 float SamplePoint::getSampleValue() const
 {
-    return state->document.getSample(channelIndex, sampleIndex);
+    return state->activeDocumentSession.document.getSample(channelIndex,
+                                                           sampleIndex);
 }
 
 void SamplePoint::mouseEnter()
@@ -73,11 +74,13 @@ bool SamplePoint::mouseUp(const MouseEvent &e)
     };
 
     state->addUndoable(undoable);
-    auto &waveformCache = state->document.getWaveformCache(channelIndex);
+    auto &waveformCache =
+        state->activeDocumentSession.document.getWaveformCache(channelIndex);
     waveformCache.invalidateSample(sampleIndex);
-    waveformCache.rebuildDirty(state->document.getAudioBuffer()
-                                   ->getImmutableChannelData(channelIndex)
-                                   .data());
+    waveformCache.rebuildDirty(
+        state->activeDocumentSession.document.getAudioBuffer()
+            ->getImmutableChannelData(channelIndex)
+            .data());
 
     undoable.reset();
 
@@ -117,7 +120,8 @@ bool SamplePoint::mouseMove(const MouseEvent &e)
 
     // Update the sample point's position and sample value
     setYPos(dragYPos);
-    state->document.setSample(channelIndex, sampleIndex, newSampleValue);
+    state->activeDocumentSession.document.setSample(channelIndex, sampleIndex,
+                                                    newSampleValue);
     updateSampleValueUnderMouseCursor(state, newSampleValue);
 
     return true;

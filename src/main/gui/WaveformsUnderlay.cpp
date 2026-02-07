@@ -31,6 +31,9 @@ void WaveformsUnderlay::mouseLeave()
 
 bool WaveformsUnderlay::mouseDown(const MouseEvent &e)
 {
+    auto &session = state->activeDocumentSession;
+    auto &doc = session.document;
+
     lastNumClicks = e.numClicks;
 
     handleChannelSelection(e.mouseYi, true);
@@ -38,15 +41,14 @@ bool WaveformsUnderlay::mouseDown(const MouseEvent &e)
     const auto samplesPerPixel = state->samplesPerPixel;
     const int channel = channelAt(e.mouseYi);
     const double selectionCenter =
-        (state->selection.getStart() + state->selection.getEnd()) * 0.5;
+        (session.selection.getStart() + session.selection.getEnd()) * 0.5;
 
     if (e.numClicks >= 2)
     {
         const double startSample = state->sampleOffset;
         double endSample = state->sampleOffset + getWidth() * samplesPerPixel;
 
-        endSample =
-            std::min((double)state->document.getFrameCount(), endSample);
+        endSample = std::min((double)doc.getFrameCount(), endSample);
 
         if (samplesPerPixel < 1.0)
         {
@@ -63,8 +65,8 @@ bool WaveformsUnderlay::mouseDown(const MouseEvent &e)
             }
         }
 
-        state->selection.setValue1(startSample);
-        state->selection.setValue2(endSample);
+        session.selection.setValue1(startSample);
+        session.selection.setValue2(endSample);
 
         Waveform::setAllWaveformsDirty(state);
 
@@ -79,25 +81,25 @@ bool WaveformsUnderlay::mouseDown(const MouseEvent &e)
 
     if (shiftPressed)
     {
-        const double start = state->selection.getStart();
-        const double end = state->selection.getEnd();
+        const double start = session.selection.getStart();
+        const double end = session.selection.getEnd();
 
         if (samplePos < selectionCenter)
         {
-            state->selection.setValue1(end);
-            state->selection.setValue2(samplePos);
+            session.selection.setValue1(end);
+            session.selection.setValue2(samplePos);
         }
         else
         {
-            state->selection.setValue1(start);
-            state->selection.setValue2(samplePos);
+            session.selection.setValue1(start);
+            session.selection.setValue2(samplePos);
         }
     }
     else
     {
-        state->selection.reset();
-        state->selection.setValue1(samplePos);
-        state->cursor = state->selection.getStartInt();
+        session.selection.reset();
+        session.selection.setValue1(samplePos);
+        session.cursor = session.selection.getStartInt();
     }
 
     Waveform::setAllWaveformsDirty(state);
@@ -152,6 +154,9 @@ void WaveformsUnderlay::handleChannelSelection(
 
 bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
 {
+    auto &session = state->activeDocumentSession;
+    auto &doc = session.document;
+
     if (Waveform::shouldShowSamplePoints(state->samplesPerPixel,
                                          state->pixelScale))
     {
@@ -172,11 +177,11 @@ bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
 
     const int64_t sampleIndex = getValidSampleIndexUnderMouseCursor(
         e.mouseXi, state->samplesPerPixel, state->sampleOffset,
-        state->document.getFrameCount());
+        doc.getFrameCount());
 
     const uint8_t channel = channelAt(e.mouseYi);
     const float sampleValueUnderMouseCursor =
-        state->document.getSample(channel, sampleIndex);
+        doc.getSample(channel, sampleIndex);
 
     updateSampleValueUnderMouseCursor(state, sampleValueUnderMouseCursor);
 
@@ -194,13 +199,13 @@ bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
     {
         const double samplePos =
             state->sampleOffset + e.mouseXi * state->samplesPerPixel;
-        const bool selectionWasActive = state->selection.isActive();
+        const bool selectionWasActive = session.selection.isActive();
 
-        state->selection.setValue2(samplePos);
+        session.selection.setValue2(samplePos);
 
-        if (selectionWasActive && !state->selection.isActive())
+        if (selectionWasActive && !session.selection.isActive())
         {
-            state->selection.setValue2(samplePos + 1);
+            session.selection.setValue2(samplePos + 1);
         }
     }
 

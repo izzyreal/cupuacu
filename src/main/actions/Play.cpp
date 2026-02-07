@@ -21,12 +21,15 @@ void performStop(cupuacu::State *state)
 
 void cupuacu::actions::play(cupuacu::State *state)
 {
+    auto &session = state->activeDocumentSession;
+    auto &doc = session.document;
+
     if (state->audioDevices->isRecording())
     {
         performStop(state);
     }
 
-    uint32_t channelCount = state->document.getChannelCount();
+    uint32_t channelCount = doc.getChannelCount();
     if (channelCount == 0)
     {
         return;
@@ -36,27 +39,27 @@ void cupuacu::actions::play(cupuacu::State *state)
         channelCount = 2;
     }
 
-    uint64_t totalSamples = state->document.getFrameCount();
+    uint64_t totalSamples = doc.getFrameCount();
     uint64_t start = 0;
     uint64_t end = totalSamples;
 
-    if (state->selection.isActive())
+    if (session.selection.isActive())
     {
-        start = state->selection.getStartInt();
-        end = state->selection.getEndInt();
+        start = session.selection.getStartInt();
+        end = session.selection.getEndInt();
     }
     else
     {
-        start = state->cursor;
+        start = session.cursor;
     }
 
     {
         Play playMsg;
-        playMsg.document = &state->document;
+        playMsg.document = &doc;
         playMsg.startPos = start;
         playMsg.endPos = end;
         playMsg.selectedChannels = state->selectedChannels;
-        playMsg.selectionIsActive = state->selection.isActive();
+        playMsg.selectionIsActive = session.selection.isActive();
         playMsg.vuMeter = state->vuMeter;
         state->audioDevices->enqueue(std::move(playMsg));
     }

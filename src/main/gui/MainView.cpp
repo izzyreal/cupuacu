@@ -17,6 +17,8 @@ bool MainView::consumePendingRecordedAudio()
     {
         return false;
     }
+    auto &session = state->activeDocumentSession;
+    auto &doc = session.document;
 
     cupuacu::audio::AudioDevices::RecordedChunk chunk{};
     bool consumedAny = false;
@@ -31,46 +33,43 @@ bool MainView::consumePendingRecordedAudio()
         }
 
         consumedAny = true;
-        const int oldChannelCount =
-            static_cast<int>(state->document.getChannelCount());
-        const int64_t oldFrameCount = state->document.getFrameCount();
+        const int oldChannelCount = static_cast<int>(doc.getChannelCount());
+        const int64_t oldFrameCount = doc.getFrameCount();
         const int chunkChannelCount = static_cast<int>(chunk.channelCount);
         const int64_t requiredFrameCount =
             chunk.startFrame + static_cast<int64_t>(chunk.frameCount);
 
-        if (state->document.getChannelCount() == 0)
+        if (doc.getChannelCount() == 0)
         {
-            state->document.initialize(cupuacu::SampleFormat::FLOAT32, 44100,
-                                       chunk.channelCount, 0);
+            doc.initialize(cupuacu::SampleFormat::FLOAT32, 44100,
+                           chunk.channelCount, 0);
         }
-        else if (state->document.getChannelCount() < chunkChannelCount)
+        else if (doc.getChannelCount() < chunkChannelCount)
         {
-            state->document.resizeBuffer(
-                chunkChannelCount, state->document.getFrameCount());
+            doc.resizeBuffer(chunkChannelCount, doc.getFrameCount());
 
             for (int ch = oldChannelCount; ch < chunkChannelCount; ++ch)
             {
-                auto &cache = state->document.getWaveformCache(ch);
+                auto &cache = doc.getWaveformCache(ch);
                 cache.clear();
-                cache.applyInsert(0, state->document.getFrameCount());
-                if (state->document.getFrameCount() > 0)
+                cache.applyInsert(0, doc.getFrameCount());
+                if (doc.getFrameCount() > 0)
                 {
-                    cache.invalidateSamples(0, state->document.getFrameCount() - 1);
+                    cache.invalidateSamples(0, doc.getFrameCount() - 1);
                 }
             }
             waveformCacheChanged = true;
         }
-        else if (requiredFrameCount > state->document.getFrameCount())
+        else if (requiredFrameCount > doc.getFrameCount())
         {
-            state->document.resizeBuffer(state->document.getChannelCount(),
-                                         requiredFrameCount);
+            doc.resizeBuffer(doc.getChannelCount(), requiredFrameCount);
         }
 
         const int64_t appendCount =
             std::max<int64_t>(0, requiredFrameCount - oldFrameCount);
         if (appendCount > 0)
         {
-            state->document.insertFrames(oldFrameCount, appendCount);
+            doc.insertFrames(oldFrameCount, appendCount);
             waveformCacheChanged = true;
         }
 
@@ -80,15 +79,15 @@ bool MainView::consumePendingRecordedAudio()
             std::min<int64_t>(requiredFrameCount, oldFrameCount) - 1;
         if (overwriteEnd >= overwriteStart)
         {
-            for (int ch = 0; ch < state->document.getChannelCount(); ++ch)
+            for (int ch = 0; ch < doc.getChannelCount(); ++ch)
             {
-                state->document.getWaveformCache(ch).invalidateSamples(
-                    overwriteStart, overwriteEnd);
+                doc.getWaveformCache(ch).invalidateSamples(overwriteStart,
+                                                           overwriteEnd);
             }
             waveformCacheChanged = true;
         }
 
-        if (oldChannelCount != state->document.getChannelCount())
+        if (oldChannelCount != doc.getChannelCount())
         {
             channelLayoutChanged = true;
         }
@@ -100,15 +99,15 @@ bool MainView::consumePendingRecordedAudio()
                 static_cast<std::size_t>(frame) *
                 cupuacu::audio::AudioDevices::kMaxRecordedChannels;
 
-            state->document.setSample(0, writeFrame, chunk.interleavedSamples[base]);
-            if (state->document.getChannelCount() > 1)
+            doc.setSample(0, writeFrame, chunk.interleavedSamples[base]);
+            if (doc.getChannelCount() > 1)
             {
-                state->document.setSample(1, writeFrame,
-                                          chunk.interleavedSamples[base + 1]);
+                doc.setSample(1, writeFrame,
+                              chunk.interleavedSamples[base + 1]);
             }
         }
 
-        state->cursor = std::max(state->cursor, requiredFrameCount);
+        session.cursor = std::max(session.cursor, requiredFrameCount);
     }
 
     if (!consumedAny)
@@ -116,13 +115,15 @@ bool MainView::consumePendingRecordedAudio()
         return false;
     }
 
+    session.syncSelectionAndCursorToDocumentLength();
+
     if (waveformCacheChanged)
     {
-        state->document.updateWaveformCache();
+        doc.updateWaveformCache();
     }
 
-    if (channelLayoutChanged || static_cast<int>(state->waveforms.size()) !=
-                                    state->document.getChannelCount())
+    if (channelLayoutChanged ||
+        static_cast<int>(state->waveforms.size()) != doc.getChannelCount())
     {
         rebuildWaveforms();
     }
@@ -202,6 +203,7 @@ void MainView::resized()
 void MainView::updateTriangleMarkerBounds() const
 
 {
+    const auto &session = state->activeDocumentSession;
     const auto borderWidth = computeBorderWidth();
     const float triHeight = borderWidth * 0.75f;
     const float halfBase = triHeight;
@@ -209,13 +211,13 @@ void MainView::updateTriangleMarkerBounds() const
     const auto sampleOffset = state->sampleOffset;
     const auto samplesPerPixel = state->samplesPerPixel;
 
-    if (state->selection.isActive())
+    if (session.selection.isActive())
     {
         cursorTop->setVisible(false);
         cursorBottom->setVisible(false);
 
         const int32_t startX = Waveform::getXPosForSampleIndex(
-            state->selection.getStartInt(), sampleOffset, samplesPerPixel);
+            session.selection.getStartInt(), sampleOffset, samplesPerPixel);
         if (startX >= 0 && startX <= waveforms->getWidth())
         {
             selStartTop->setVisible(true);
@@ -233,7 +235,7 @@ void MainView::updateTriangleMarkerBounds() const
             selStartBot->setVisible(false);
         }
 
-        const int64_t endInclusive = state->selection.getEndInt();
+        const int64_t endInclusive = session.selection.getEndInt();
         const int64_t endToUse = endInclusive + 1;
         const int32_t endX = Waveform::getXPosForSampleIndex(
             endToUse, sampleOffset, samplesPerPixel);
@@ -263,7 +265,7 @@ void MainView::updateTriangleMarkerBounds() const
         selEndBot->setVisible(false);
 
         const int32_t xPos = Waveform::getXPosForSampleIndex(
-            state->cursor, sampleOffset, samplesPerPixel);
+            session.cursor, sampleOffset, samplesPerPixel);
         if (xPos >= 0 && xPos <= waveforms->getWidth())
         {
             const int cursorX = xPos + borderWidth;
@@ -286,22 +288,23 @@ void MainView::updateTriangleMarkerBounds() const
 
 void MainView::timerCallback()
 {
+    const auto &session = state->activeDocumentSession;
     const bool consumedRecordedAudio = consumePendingRecordedAudio();
 
-    if (state->cursor != lastDrawnCursor ||
-        state->selection.isActive() != lastSelectionIsActive ||
+    if (session.cursor != lastDrawnCursor ||
+        session.selection.isActive() != lastSelectionIsActive ||
         state->samplesPerPixel != lastSamplesPerPixel ||
         state->sampleOffset != lastSampleOffset ||
-        state->selection.getStartInt() != lastSelectionStart ||
-        state->selection.getEndInt() != lastSelectionEnd ||
+        session.selection.getStartInt() != lastSelectionStart ||
+        session.selection.getEndInt() != lastSelectionEnd ||
         consumedRecordedAudio)
     {
-        lastDrawnCursor = state->cursor;
-        lastSelectionIsActive = state->selection.isActive();
+        lastDrawnCursor = session.cursor;
+        lastSelectionIsActive = session.selection.isActive();
         lastSamplesPerPixel = state->samplesPerPixel;
         lastSampleOffset = state->sampleOffset;
-        lastSelectionStart = state->selection.getStartInt();
-        lastSelectionEnd = state->selection.getEndInt();
+        lastSelectionStart = session.selection.getStartInt();
+        lastSelectionEnd = session.selection.getEndInt();
 
         updateTriangleMarkerBounds();
         setDirty();

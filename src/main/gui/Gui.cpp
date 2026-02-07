@@ -49,7 +49,8 @@ SDL_Rect computeVuMeterContainerBounds(const uint16_t canvasWidth,
                                        const SDL_Rect &statusBarRect)
 {
     const int transportWidth = canvasWidth / 3;
-    const SDL_Rect result{transportWidth, statusBarRect.y - vuMeterContainerHeight,
+    const SDL_Rect result{transportWidth,
+                          statusBarRect.y - vuMeterContainerHeight,
                           canvasWidth - transportWidth, vuMeterContainerHeight};
     return result;
 }

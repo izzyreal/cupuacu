@@ -15,7 +15,8 @@ namespace cupuacu::persistence
     namespace
     {
         constexpr int kFormatVersion = 1;
-        std::optional<AudioDevicePropertiesPersistence::Resolver> gResolverOverride;
+        std::optional<AudioDevicePropertiesPersistence::Resolver>
+            gResolverOverride;
 
         bool ensurePortAudioInitialized(bool &initializedHere)
         {
@@ -98,8 +99,8 @@ namespace cupuacu::persistence
             return -1;
         }
 
-        int resolveDeviceIndex(const std::string &deviceName, const bool isInput,
-                               const int hostApiIndex)
+        int resolveDeviceIndex(const std::string &deviceName,
+                               const bool isInput, const int hostApiIndex)
         {
             if (deviceName.empty())
             {
@@ -112,8 +113,8 @@ namespace cupuacu::persistence
                 return -1;
             }
 
-            const auto matches = [&](const PaDeviceInfo *info,
-                                     const bool checkHostApi)
+            const auto matches =
+                [&](const PaDeviceInfo *info, const bool checkHostApi)
             {
                 if (!info || !info->name)
                 {
@@ -182,22 +183,20 @@ namespace cupuacu::persistence
             const cupuacu::audio::AudioDevices::DeviceSelection &selection,
             const AudioDevicePropertiesPersistence::Resolver &resolver)
         {
-            return nlohmann::json{{"version", kFormatVersion},
-                                  {"hostApiName",
-                                   resolver.resolveHostApiName
-                                       ? resolver.resolveHostApiName(
-                                             selection.hostApiIndex)
-                                       : std::string{}},
-                                  {"outputDeviceName",
-                                   resolver.resolveDeviceName
-                                       ? resolver.resolveDeviceName(
-                                             selection.outputDeviceIndex)
-                                       : std::string{}},
-                                  {"inputDeviceName",
-                                   resolver.resolveDeviceName
-                                       ? resolver.resolveDeviceName(
-                                             selection.inputDeviceIndex)
-                                       : std::string{}}};
+            return nlohmann::json{
+                {"version", kFormatVersion},
+                {"hostApiName",
+                 resolver.resolveHostApiName
+                     ? resolver.resolveHostApiName(selection.hostApiIndex)
+                     : std::string{}},
+                {"outputDeviceName",
+                 resolver.resolveDeviceName
+                     ? resolver.resolveDeviceName(selection.outputDeviceIndex)
+                     : std::string{}},
+                {"inputDeviceName",
+                 resolver.resolveDeviceName
+                     ? resolver.resolveDeviceName(selection.inputDeviceIndex)
+                     : std::string{}}};
         }
 
         std::optional<cupuacu::audio::AudioDevices::DeviceSelection>
@@ -224,25 +223,27 @@ namespace cupuacu::persistence
             }
 
             cupuacu::audio::AudioDevices::DeviceSelection selection;
-            const std::string hostApiName = json.at("hostApiName").get<std::string>();
+            const std::string hostApiName =
+                json.at("hostApiName").get<std::string>();
             const std::string outputDeviceName =
                 json.at("outputDeviceName").get<std::string>();
             const std::string inputDeviceName =
                 json.at("inputDeviceName").get<std::string>();
 
-            selection.hostApiIndex = resolver.resolveHostApiIndex
-                                         ? resolver.resolveHostApiIndex(hostApiName)
-                                         : -1;
-            selection.outputDeviceIndex = resolver.resolveDeviceIndex
-                                              ? resolver.resolveDeviceIndex(
-                                                    outputDeviceName, false,
-                                                    selection.hostApiIndex)
-                                              : -1;
-            selection.inputDeviceIndex = resolver.resolveDeviceIndex
-                                             ? resolver.resolveDeviceIndex(
-                                                   inputDeviceName, true,
-                                                   selection.hostApiIndex)
-                                             : -1;
+            selection.hostApiIndex =
+                resolver.resolveHostApiIndex
+                    ? resolver.resolveHostApiIndex(hostApiName)
+                    : -1;
+            selection.outputDeviceIndex =
+                resolver.resolveDeviceIndex
+                    ? resolver.resolveDeviceIndex(outputDeviceName, false,
+                                                  selection.hostApiIndex)
+                    : -1;
+            selection.inputDeviceIndex =
+                resolver.resolveDeviceIndex
+                    ? resolver.resolveDeviceIndex(inputDeviceName, true,
+                                                  selection.hostApiIndex)
+                    : -1;
 
             return selection;
         }
@@ -328,7 +329,8 @@ namespace cupuacu::persistence
         }
     }
 
-    void AudioDevicePropertiesPersistence::setResolverForTesting(Resolver resolver)
+    void
+    AudioDevicePropertiesPersistence::setResolverForTesting(Resolver resolver)
     {
         gResolverOverride = std::move(resolver);
     }

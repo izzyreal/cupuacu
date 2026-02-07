@@ -21,7 +21,8 @@ void Waveforms::rebuildWaveforms()
 
     state->waveforms.clear();
 
-    const int numChannels = state->document.getChannelCount();
+    const int numChannels =
+        state->activeDocumentSession.document.getChannelCount();
 
     if (numChannels > 0)
     {

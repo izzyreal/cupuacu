@@ -70,19 +70,19 @@ namespace cupuacu::gui
 
         void timerCallback() override
         {
-            const bool isPlaying =
-                state->audioDevices->isPlaying();
+            const auto &session = state->activeDocumentSession;
+            const bool isPlaying = state->audioDevices->isPlaying();
 
             const int64_t currentPos =
                 isPlaying ? state->audioDevices->getPlaybackPosition()
-                          : state->cursor;
+                          : session.cursor;
 
             if (currentPos != lastDrawnPos)
             {
                 lastDrawnPos = currentPos;
                 posField->setValue(std::to_string(currentPos));
 
-                if (!state->selection.isActive())
+                if (!session.selection.isActive())
                 {
                     startField->setValue(std::to_string(currentPos));
                 }
@@ -105,10 +105,10 @@ namespace cupuacu::gui
                 }
             }
 
-            const bool currentSelectionActive = state->selection.isActive();
+            const bool currentSelectionActive = session.selection.isActive();
             const int64_t currentSelectionStart =
-                state->selection.getStartInt();
-            const int64_t currentSelectionEnd = state->selection.getEndInt();
+                session.selection.getStartInt();
+            const int64_t currentSelectionEnd = session.selection.getEndInt();
 
             if (currentSelectionActive != lastSelectionActive)
             {
@@ -119,15 +119,15 @@ namespace cupuacu::gui
                 if (currentSelectionActive)
                 {
                     startField->setValue(
-                        std::to_string(state->selection.getStartInt()));
+                        std::to_string(session.selection.getStartInt()));
                     endField->setValue(
-                        std::to_string(state->selection.getEndInt()));
+                        std::to_string(session.selection.getEndInt()));
                     lengthField->setValue(
-                        std::to_string(state->selection.getLengthInt()));
+                        std::to_string(session.selection.getLengthInt()));
                 }
                 else
                 {
-                    startField->setValue(std::to_string(state->cursor));
+                    startField->setValue(std::to_string(session.cursor));
                     endField->setValue("");
                     lengthField->setValue(std::to_string(0));
                 }
@@ -138,18 +138,18 @@ namespace cupuacu::gui
                 {
                     lastSelectionStart = currentSelectionStart;
                     startField->setValue(
-                        std::to_string(state->selection.getStartInt()));
+                        std::to_string(session.selection.getStartInt()));
                     lengthField->setValue(
-                        std::to_string(state->selection.getLengthInt()));
+                        std::to_string(session.selection.getLengthInt()));
                 }
 
                 if (currentSelectionEnd != lastSelectionEnd)
                 {
                     lastSelectionEnd = currentSelectionEnd;
                     endField->setValue(
-                        std::to_string(state->selection.getEndInt()));
+                        std::to_string(session.selection.getEndInt()));
                     lengthField->setValue(
-                        std::to_string(state->selection.getLengthInt()));
+                        std::to_string(session.selection.getLengthInt()));
                 }
             }
         }

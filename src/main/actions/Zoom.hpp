@@ -23,7 +23,8 @@ namespace cupuacu::actions
         else
         {
             state->samplesPerPixel =
-                state->document.getFrameCount() / (float)waveformWidth;
+                state->activeDocumentSession.document.getFrameCount() /
+                (float)waveformWidth;
         }
 
         state->verticalZoom = INITIAL_VERTICAL_ZOOM;
@@ -64,7 +65,9 @@ namespace cupuacu::actions
     {
         const auto waveformWidth = gui::Waveform::getWaveformWidth(state);
         const float maxSamplesPerPixel =
-            static_cast<float>(state->document.getFrameCount()) / waveformWidth;
+            static_cast<float>(
+                state->activeDocumentSession.document.getFrameCount()) /
+            waveformWidth;
 
         if (state->samplesPerPixel >= maxSamplesPerPixel)
         {
@@ -121,7 +124,8 @@ namespace cupuacu::actions
 
     static bool tryZoomSelection(cupuacu::State *state)
     {
-        if (!state->selection.isActive() || state->selection.getLengthInt() < 1)
+        if (!state->activeDocumentSession.selection.isActive() ||
+            state->activeDocumentSession.selection.getLengthInt() < 1)
         {
             return false;
         }
@@ -129,11 +133,13 @@ namespace cupuacu::actions
         state->verticalZoom = INITIAL_VERTICAL_ZOOM;
 
         const auto waveformWidth = gui::Waveform::getWaveformWidth(state);
-        const auto selectionLength = state->selection.getLengthInt();
+        const auto selectionLength =
+            state->activeDocumentSession.selection.getLengthInt();
 
         state->samplesPerPixel =
             selectionLength / static_cast<double>(waveformWidth);
-        state->sampleOffset = state->selection.getStartInt();
+        state->sampleOffset =
+            state->activeDocumentSession.selection.getStartInt();
         return true;
     }
 } // namespace cupuacu::actions

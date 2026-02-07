@@ -83,29 +83,30 @@ void TriangleMarker::onDraw(SDL_Renderer *r)
 
 bool TriangleMarker::mouseDown(const MouseEvent &e)
 {
+    auto &session = state->activeDocumentSession;
     const float mouseParentX = e.mouseXf + getXPos();
 
     if (type == TriangleMarkerType::SelectionStartTop ||
         type == TriangleMarkerType::SelectionStartBottom)
     {
-        dragStartSample = state->selection.getStart();
+        dragStartSample = session.selection.getStart();
     }
     else if (type == TriangleMarkerType::SelectionEndTop ||
              type == TriangleMarkerType::SelectionEndBottom)
     {
-        dragStartSample = state->selection.getEndInt();
+        dragStartSample = session.selection.getEndInt();
     }
     else
     {
-        dragStartSample = static_cast<double>(state->cursor);
+        dragStartSample = static_cast<double>(session.cursor);
     }
 
     const double mouseSample = mouseParentX * state->samplesPerPixel;
     dragMouseOffsetParentX = static_cast<float>(mouseSample - dragStartSample);
 
-    if (state->selection.isActive())
+    if (session.selection.isActive())
     {
-        state->selection.fixOrder();
+        session.selection.fixOrder();
     }
 
     return true;
@@ -118,6 +119,7 @@ bool TriangleMarker::mouseUp(const MouseEvent &e)
 
 bool TriangleMarker::mouseMove(const MouseEvent &e)
 {
+    auto &session = state->activeDocumentSession;
     if (!getWindow() || getWindow()->getCapturingComponent() != this ||
         !e.buttonState.left)
     {
@@ -128,7 +130,7 @@ bool TriangleMarker::mouseMove(const MouseEvent &e)
     const double mouseSample = mouseParentX * state->samplesPerPixel;
     const double newSamplePos = mouseSample - dragMouseOffsetParentX;
 
-    const bool selectionWasActive = state->selection.isActive();
+    const bool selectionWasActive = session.selection.isActive();
 
     switch (type)
     {
@@ -138,19 +140,19 @@ bool TriangleMarker::mouseMove(const MouseEvent &e)
             break;
         case TriangleMarkerType::SelectionStartTop:
         case TriangleMarkerType::SelectionStartBottom:
-            state->selection.setValue1(newSamplePos);
-            if (selectionWasActive && !state->selection.isActive())
+            session.selection.setValue1(newSamplePos);
+            if (selectionWasActive && !session.selection.isActive())
             {
-                state->selection.setValue1(newSamplePos + 1);
+                session.selection.setValue1(newSamplePos + 1);
             }
 
             break;
         case TriangleMarkerType::SelectionEndTop:
         case TriangleMarkerType::SelectionEndBottom:
-            state->selection.setValue2(newSamplePos + 1);
-            if (selectionWasActive && !state->selection.isActive())
+            session.selection.setValue2(newSamplePos + 1);
+            if (selectionWasActive && !session.selection.isActive())
             {
-                state->selection.setValue2(newSamplePos);
+                session.selection.setValue2(newSamplePos);
             }
             break;
     }

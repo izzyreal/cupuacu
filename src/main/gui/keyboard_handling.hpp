@@ -238,28 +238,32 @@ namespace cupuacu::gui
         else if (event->key.scancode == SDL_SCANCODE_X)
         {
 #if __APPLE__
-            if (event->key.mod & SDL_KMOD_GUI && state->selection.isActive())
+            if (event->key.mod & SDL_KMOD_GUI &&
+                state->activeDocumentSession.selection.isActive())
 #else
-            if ((event->key.mod & SDL_KMOD_CTRL) && state->selection.isActive())
+            if ((event->key.mod & SDL_KMOD_CTRL) &&
+                state->activeDocumentSession.selection.isActive())
 #endif
             {
                 const auto undoable = std::make_shared<actions::audio::Cut>(
-                    state, state->selection.getStartInt(),
-                    state->selection.getLengthInt());
+                    state, state->activeDocumentSession.selection.getStartInt(),
+                    state->activeDocumentSession.selection.getLengthInt());
                 state->addAndDoUndoable(undoable);
             }
         }
         else if (event->key.scancode == SDL_SCANCODE_C)
         {
 #if __APPLE__
-            if (event->key.mod & SDL_KMOD_GUI && state->selection.isActive())
+            if (event->key.mod & SDL_KMOD_GUI &&
+                state->activeDocumentSession.selection.isActive())
 #else
-            if ((event->key.mod & SDL_KMOD_CTRL) && state->selection.isActive())
+            if ((event->key.mod & SDL_KMOD_CTRL) &&
+                state->activeDocumentSession.selection.isActive())
 #endif
             {
                 const auto undoable = std::make_shared<actions::audio::Copy>(
-                    state, state->selection.getStartInt(),
-                    state->selection.getLengthInt());
+                    state, state->activeDocumentSession.selection.getStartInt(),
+                    state->activeDocumentSession.selection.getLengthInt());
                 state->addAndDoUndoable(undoable);
             }
         }
@@ -272,12 +276,14 @@ namespace cupuacu::gui
             if (event->key.mod & SDL_KMOD_CTRL)
 #endif
             {
-                const int64_t start = state->selection.isActive()
-                                          ? state->selection.getStartInt()
-                                          : state->cursor;
-                const int64_t end = state->selection.isActive()
-                                        ? state->selection.getEndInt()
-                                        : -1;
+                const int64_t start =
+                    state->activeDocumentSession.selection.isActive()
+                        ? state->activeDocumentSession.selection.getStartInt()
+                        : state->activeDocumentSession.cursor;
+                const int64_t end =
+                    state->activeDocumentSession.selection.isActive()
+                        ? state->activeDocumentSession.selection.getEndInt()
+                        : -1;
 
                 const auto undoable =
                     std::make_shared<actions::audio::Paste>(state, start, end);
@@ -287,14 +293,16 @@ namespace cupuacu::gui
         else if (event->key.scancode == SDL_SCANCODE_T)
         {
 #if __APPLE__
-            if (event->key.mod & SDL_KMOD_GUI && state->selection.isActive())
+            if (event->key.mod & SDL_KMOD_GUI &&
+                state->activeDocumentSession.selection.isActive())
 #else
-            if ((event->key.mod & SDL_KMOD_CTRL) && state->selection.isActive())
+            if ((event->key.mod & SDL_KMOD_CTRL) &&
+                state->activeDocumentSession.selection.isActive())
 #endif
             {
                 const auto undoable = std::make_shared<actions::audio::Trim>(
-                    state, state->selection.getStartInt(),
-                    state->selection.getLengthInt());
+                    state, state->activeDocumentSession.selection.getStartInt(),
+                    state->activeDocumentSession.selection.getLengthInt());
                 state->addAndDoUndoable(undoable);
             }
         }

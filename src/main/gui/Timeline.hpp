@@ -153,7 +153,8 @@ namespace cupuacu::gui
                 else
                 {
                     const double seconds =
-                        double(samplePos) / state->document.getSampleRate();
+                        double(samplePos) /
+                        state->activeDocumentSession.document.getSampleRate();
                     const int mm = int(seconds / 60);
                     const double ss = seconds - mm * 60;
                     std::ostringstream oss;

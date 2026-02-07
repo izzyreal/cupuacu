@@ -32,18 +32,20 @@ namespace cupuacu::actions::audio
 
         void redo() override
         {
-            state->document.setSample(channel, sampleIndex, newValue);
-            state->document.getWaveformCache(channel).invalidateSample(
-                sampleIndex);
-            state->document.updateWaveformCache();
+            state->activeDocumentSession.document.setSample(
+                channel, sampleIndex, newValue);
+            state->activeDocumentSession.document.getWaveformCache(channel)
+                .invalidateSample(sampleIndex);
+            state->activeDocumentSession.document.updateWaveformCache();
         }
 
         void undo() override
         {
-            state->document.setSample(channel, sampleIndex, oldValue);
-            state->document.getWaveformCache(channel).invalidateSample(
-                sampleIndex);
-            state->document.updateWaveformCache();
+            state->activeDocumentSession.document.setSample(
+                channel, sampleIndex, oldValue);
+            state->activeDocumentSession.document.getWaveformCache(channel)
+                .invalidateSample(sampleIndex);
+            state->activeDocumentSession.document.updateWaveformCache();
         }
 
         std::string getUndoDescription() override

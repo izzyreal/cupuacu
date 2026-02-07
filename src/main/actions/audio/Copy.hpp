@@ -20,12 +20,13 @@ namespace cupuacu::actions::audio
         Copy(State *state, int64_t start, int64_t count)
             : Undoable(state), startFrame(start), numFrames(count)
         {
-            if (state->selection.isActive())
+            auto &session = state->activeDocumentSession;
+            if (session.selection.isActive())
             {
-                oldSel1 = state->selection.getStart();
-                oldSel2 = state->selection.getEnd();
+                oldSel1 = session.selection.getStart();
+                oldSel2 = session.selection.getEnd();
             }
-            oldCursorPos = state->cursor;
+            oldCursorPos = session.cursor;
 
             updateGui = [state = state]
             {
@@ -35,7 +36,8 @@ namespace cupuacu::actions::audio
 
         void redo() override
         {
-            auto &doc = state->document;
+            auto &session = state->activeDocumentSession;
+            auto &doc = session.document;
             const int64_t ch = doc.getChannelCount();
             const int sr = doc.getSampleRate();
             const int64_t totalFrames = doc.getFrameCount();
@@ -60,22 +62,23 @@ namespace cupuacu::actions::audio
             }
 
             // Keep the same selection and cursor position
-            state->selection.setValue1(startFrame);
-            state->selection.setValue2(startFrame + maxCopy);
+            session.selection.setValue1(startFrame);
+            session.selection.setValue2(startFrame + maxCopy);
             updateCursorPos(state, startFrame);
         }
 
         void undo() override
         {
+            auto &session = state->activeDocumentSession;
             // Copy doesn’t modify audio data — just restore previous UI state
             if (oldSel1 != 0 && oldSel2 != 0)
             {
-                state->selection.setValue1(oldSel1);
-                state->selection.setValue2(oldSel2);
+                session.selection.setValue1(oldSel1);
+                session.selection.setValue2(oldSel2);
             }
             else
             {
-                state->selection.reset();
+                session.selection.reset();
             }
             updateCursorPos(state, oldCursorPos);
         }

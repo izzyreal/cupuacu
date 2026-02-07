@@ -39,7 +39,8 @@ namespace cupuacu::actions::audio
 
         void redo() override
         {
-            auto &doc = state->document;
+            auto &session = state->activeDocumentSession;
+            auto &doc = session.document;
             const int64_t ch = doc.getChannelCount();
             sampleRate = doc.getSampleRate();
             format = doc.getSampleFormat();
@@ -84,15 +85,17 @@ namespace cupuacu::actions::audio
             doc.removeFrames(endFrame, afterCount);
             doc.removeFrames(0, beforeCount);
             doc.updateWaveformCache();
+            session.syncSelectionAndCursorToDocumentLength();
 
             updateCursorPos(state, 0);
-            state->selection.setValue1(0);
-            state->selection.setValue2(middleCount);
+            session.selection.setValue1(0);
+            session.selection.setValue2(middleCount);
         }
 
         void undo() override
         {
-            auto &doc = state->document;
+            auto &session = state->activeDocumentSession;
+            auto &doc = session.document;
             const int64_t ch = doc.getChannelCount();
 
             doc.insertFrames(0, beforeCount);
@@ -115,10 +118,11 @@ namespace cupuacu::actions::audio
             }
 
             doc.updateWaveformCache();
+            session.syncSelectionAndCursorToDocumentLength();
 
             updateCursorPos(state, beforeCount);
-            state->selection.setValue1(beforeCount);
-            state->selection.setValue2(beforeCount + middleCount);
+            session.selection.setValue1(beforeCount);
+            session.selection.setValue2(beforeCount + middleCount);
         }
 
         std::string getUndoDescription() override

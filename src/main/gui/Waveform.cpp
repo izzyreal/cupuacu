@@ -66,6 +66,8 @@ int getYPosForSampleValue(const float sampleValue,
 
 std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
 {
+    const auto &session = state->activeDocumentSession;
+    const auto &doc = session.document;
     const double samplesPerPixel = state->samplesPerPixel;
     const int64_t sampleOffset = state->sampleOffset;
     const uint8_t pixelScale = state->pixelScale;
@@ -74,8 +76,7 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
 
     const int64_t neededInputSamples =
         static_cast<int64_t>(std::round(getWidth() * samplesPerPixel));
-    const int64_t availableSamples =
-        state->document.getFrameCount() - sampleOffset;
+    const int64_t availableSamples = doc.getFrameCount() - sampleOffset;
     const int64_t actualInputSamples =
         std::min(neededInputSamples, availableSamples);
 
@@ -95,7 +96,7 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
     const uint16_t samplePointSize = getSamplePointSize(pixelScale);
 
     const auto sampleData =
-        state->document.getAudioBuffer()->getImmutableChannelData(channelIndex);
+        doc.getAudioBuffer()->getImmutableChannelData(channelIndex);
 
     for (int i = 0; i < actualInputSamples; ++i)
     {
@@ -138,12 +139,14 @@ void Waveform::drawHorizontalLines(SDL_Renderer *renderer) const
 
 void Waveform::renderSmoothWaveform(SDL_Renderer *renderer) const
 {
+    const auto &session = state->activeDocumentSession;
+    const auto &doc = session.document;
     const auto samplesPerPixel = state->samplesPerPixel;
     const double halfSampleWidth = 0.5 / samplesPerPixel;
     const int64_t sampleOffset = state->sampleOffset;
     const auto sampleData =
-        state->document.getAudioBuffer()->getImmutableChannelData(channelIndex);
-    const auto frameCount = state->document.getFrameCount();
+        doc.getAudioBuffer()->getImmutableChannelData(channelIndex);
+    const auto frameCount = doc.getFrameCount();
     const auto verticalZoom = state->verticalZoom;
     const auto widthToUse = getWidth();
     const auto heightToUse = getHeight();
@@ -226,6 +229,8 @@ void Waveform::renderSmoothWaveform(SDL_Renderer *renderer) const
 
 void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
 {
+    auto &session = state->activeDocumentSession;
+    auto &doc = session.document;
     SDL_SetRenderDrawColor(renderer, waveformColor.r, waveformColor.g,
                            waveformColor.b, waveformColor.a);
 
@@ -240,12 +245,12 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
     const int centerY = heightToUse / 2;
 
     const auto sampleData =
-        state->document.getAudioBuffer()->getImmutableChannelData(channelIndex);
-    const int64_t frameCount = state->document.getFrameCount();
+        doc.getAudioBuffer()->getImmutableChannelData(channelIndex);
+    const int64_t frameCount = doc.getFrameCount();
 
     const bool bypassCache = samplesPerPixel < WaveformCache::BASE_BLOCK_SIZE;
 
-    auto &waveformCache = state->document.getWaveformCache(channelIndex);
+    auto &waveformCache = doc.getWaveformCache(channelIndex);
 
     if (!bypassCache && waveformCache.levelsCount() == 0)
     {
@@ -361,16 +366,17 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
 
 void Waveform::drawSelection(SDL_Renderer *renderer) const
 {
+    const auto &session = state->activeDocumentSession;
     const double samplesPerPixel = state->samplesPerPixel;
 
     const bool isSelected =
-        state->selection.isActive() &&
+        session.selection.isActive() &&
         (state->selectedChannels == BOTH ||
          (channelIndex == 0 && state->selectedChannels == LEFT) ||
          (channelIndex == 1 && state->selectedChannels == RIGHT));
 
-    const int64_t firstSample = state->selection.getStartInt();
-    const int64_t lastSample = state->selection.getEndInt() + 1;
+    const int64_t firstSample = session.selection.getStartInt();
+    const int64_t lastSample = session.selection.getEndInt() + 1;
     const int64_t sampleOffset = state->sampleOffset;
 
     if (isSelected && lastSample >= sampleOffset)
@@ -415,6 +421,7 @@ void Waveform::drawHighlight(SDL_Renderer *renderer) const
         samplePosUnderCursor.has_value())
     {
         const auto sampleOffset = state->sampleOffset;
+        const auto &doc = state->activeDocumentSession.document;
 
         const auto samplePoint = dynamic_cast<SamplePoint *>(
             window ? window->getCapturingComponent() : nullptr);
@@ -422,7 +429,7 @@ void Waveform::drawHighlight(SDL_Renderer *renderer) const
                                         ? *samplePosUnderCursor
                                         : samplePoint->getSampleIndex();
 
-        if (sampleIndex < state->document.getFrameCount())
+        if (sampleIndex < doc.getFrameCount())
         {
             const float xPos = getXPosForSampleIndex(sampleIndex, sampleOffset,
                                                      samplesPerPixel);
@@ -481,13 +488,14 @@ void Waveform::drawPlaybackPosition(SDL_Renderer *renderer) const
 
 void Waveform::drawCursor(SDL_Renderer *renderer) const
 {
-    if (state->selection.isActive())
+    const auto &session = state->activeDocumentSession;
+    if (session.selection.isActive())
     {
         return;
     }
 
     const int32_t cursorXPos = getXPosForSampleIndex(
-        state->cursor, state->sampleOffset, state->samplesPerPixel);
+        session.cursor, state->sampleOffset, state->samplesPerPixel);
 
     if (cursorXPos >= 0 && cursorXPos <= getWidth())
     {

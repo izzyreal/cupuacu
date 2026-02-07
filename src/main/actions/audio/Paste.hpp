@@ -29,13 +29,14 @@ namespace cupuacu::actions::audio
         Paste(State *state, int64_t start, int64_t end = -1)
             : Undoable(state), startFrame(start), endFrame(end)
         {
-            if (state->selection.isActive())
+            auto &session = state->activeDocumentSession;
+            if (session.selection.isActive())
             {
-                oldSel1 = state->selection.getStart();
-                oldSel2 = state->selection.getEnd();
+                oldSel1 = session.selection.getStart();
+                oldSel2 = session.selection.getEnd();
             }
 
-            oldCursorPos = state->cursor;
+            oldCursorPos = session.cursor;
 
             updateGui = [state = state]
             {
@@ -46,13 +47,14 @@ namespace cupuacu::actions::audio
 
         void redo() override
         {
+            auto &session = state->activeDocumentSession;
             const auto &clip = state->clipboard;
             if (clip.getFrameCount() == 0)
             {
                 return;
             }
 
-            auto &doc = state->document;
+            auto &doc = session.document;
             const int64_t ch = doc.getChannelCount();
             const int64_t clipFrames = clip.getFrameCount();
             const int64_t docFrames = doc.getFrameCount();
@@ -119,15 +121,17 @@ namespace cupuacu::actions::audio
             }
 
             doc.updateWaveformCache();
+            session.syncSelectionAndCursorToDocumentLength();
 
-            state->selection.setValue1(startFrame);
-            state->selection.setValue2(startFrame + insertedFrameCount);
+            session.selection.setValue1(startFrame);
+            session.selection.setValue2(startFrame + insertedFrameCount);
             updateCursorPos(state, startFrame);
         }
 
         void undo() override
         {
-            auto &doc = state->document;
+            auto &session = state->activeDocumentSession;
+            auto &doc = session.document;
             const int64_t ch = doc.getChannelCount();
             const int64_t docFrames = doc.getFrameCount();
 
@@ -157,15 +161,16 @@ namespace cupuacu::actions::audio
             }
 
             doc.updateWaveformCache();
+            session.syncSelectionAndCursorToDocumentLength();
 
             if (oldSel1 != 0 && oldSel2 != 0)
             {
-                state->selection.setValue1(oldSel1);
-                state->selection.setValue2(oldSel2);
+                session.selection.setValue1(oldSel1);
+                session.selection.setValue2(oldSel2);
             }
             else
             {
-                state->selection.reset();
+                session.selection.reset();
             }
             updateCursorPos(state, oldCursorPos);
         }

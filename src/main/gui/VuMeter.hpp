@@ -164,10 +164,12 @@ namespace cupuacu::gui
 
         void timerCallback() override
         {
-            if (state->document.getChannelCount() > 0 &&
-                numChannels != state->document.getChannelCount())
+            if (state->activeDocumentSession.document.getChannelCount() > 0 &&
+                numChannels !=
+                    state->activeDocumentSession.document.getChannelCount())
             {
-                setNumChannels(state->document.getChannelCount());
+                setNumChannels(
+                    state->activeDocumentSession.document.getChannelCount());
             }
 
             if (isDecaying.load(std::memory_order_relaxed))

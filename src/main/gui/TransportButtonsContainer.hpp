@@ -19,10 +19,10 @@ namespace cupuacu::gui
         explicit TransportButtonsContainer(State *state)
             : Component(state, "TransportButtonsContainer")
         {
-            playButton = emplaceChild<TextButton>(state, "Play",
-                                                  ButtonType::Momentary);
-            stopButton = emplaceChild<TextButton>(state, "Stop",
-                                                  ButtonType::Momentary);
+            playButton =
+                emplaceChild<TextButton>(state, "Play", ButtonType::Momentary);
+            stopButton =
+                emplaceChild<TextButton>(state, "Stop", ButtonType::Momentary);
             recordButton = emplaceChild<TextButton>(state, "Record",
                                                     ButtonType::Momentary);
 
@@ -53,8 +53,10 @@ namespace cupuacu::gui
         void resized() override
         {
             const SDL_Rect bounds = getLocalBounds();
-            const int padding = std::max(4, static_cast<int>(8 / state->pixelScale));
-            const int gap = std::max(4, static_cast<int>(6 / state->pixelScale));
+            const int padding =
+                std::max(4, static_cast<int>(8 / state->pixelScale));
+            const int gap =
+                std::max(4, static_cast<int>(6 / state->pixelScale));
 
             const int contentW = std::max(0, bounds.w - 2 * padding);
             const int contentH = std::max(0, bounds.h - 2 * padding);

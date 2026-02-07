@@ -44,7 +44,7 @@ namespace cupuacu::actions
 
         auto state = (cupuacu::State *)userdata;
 
-        state->currentFile = absoluteFilePath;
+        state->activeDocumentSession.currentFile = absoluteFilePath;
 
         file::loadSampleData(state);
         state->mainView->rebuildWaveforms();
@@ -55,8 +55,9 @@ namespace cupuacu::actions
 
         if (state->mainWindow)
         {
-            SDL_SetWindowTitle(state->mainWindow->getSdlWindow(),
-                               state->currentFile.c_str());
+            SDL_SetWindowTitle(
+                state->mainWindow->getSdlWindow(),
+                state->activeDocumentSession.currentFile.c_str());
         }
     }
 

@@ -144,7 +144,7 @@ namespace cupuacu::gui
             return;
         }
 
-        if (state->selection.isActive())
+        if (state->activeDocumentSession.selection.isActive())
         {
             return;
         }
@@ -274,7 +274,7 @@ namespace cupuacu::gui
 
         if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
         {
-            // state->selection.printInfo();
+            // state->activeDocumentSession.selection.printInfo();
         }
 
         return SDL_APP_CONTINUE;

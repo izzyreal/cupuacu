@@ -12,7 +12,7 @@ namespace
     constexpr SDL_Color kHoverColor{96, 96, 96, 255};
     constexpr SDL_Color kPressedColor{66, 92, 134, 255};
     constexpr SDL_Color kToggledColor{74, 110, 170, 255};
-}
+} // namespace
 
 using namespace cupuacu::gui;
 

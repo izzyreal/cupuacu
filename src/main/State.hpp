@@ -5,7 +5,7 @@
 #include "gui/Selection.hpp"
 
 #include "SelectedChannels.hpp"
-#include "Document.hpp"
+#include "DocumentSession.hpp"
 #include "Paths.hpp"
 
 #include <cstdint>
@@ -48,21 +48,16 @@ namespace cupuacu
         std::deque<std::shared_ptr<actions::Undoable>> redoables;
         uint8_t menuFontSize = 40;
         uint8_t pixelScale = 1;
-        std::string currentFile =
-            "/Users/izmar/Documents/VMPC2000XL/Volumes/MPC2000XL.bk2/BOAT.WAV";
-        Document document;
+        DocumentSession activeDocumentSession;
         Document clipboard;
 
         double samplesPerPixel = 1;
         double verticalZoom;
         int64_t sampleOffset;
-        gui::Selection<double> selection = gui::Selection<double>(0.0);
         SelectedChannels selectedChannels;
         SelectedChannels hoveringOverChannels;
         double samplesToScroll;
         std::optional<float> sampleValueUnderMouseCursor;
-
-        int64_t cursor = 0;
 
         std::vector<gui::Waveform *> waveforms;
         std::vector<gui::Window *> windows;
@@ -106,7 +101,7 @@ static void resetWaveformState(cupuacu::State *state)
 {
     state->verticalZoom = 1;
     state->sampleOffset = 0;
-    state->selection.reset();
+    state->activeDocumentSession.selection.reset();
     state->selectedChannels = cupuacu::SelectedChannels::BOTH;
     state->samplesToScroll = 0;
 }
@@ -122,8 +117,9 @@ static void updateSampleOffset(cupuacu::State *state,
 
 static bool updateCursorPos(cupuacu::State *state, const int64_t cursorPos)
 {
-    const int64_t oldCursor = state->cursor;
-    state->cursor =
-        std::clamp(cursorPos, int64_t{0}, state->document.getFrameCount());
-    return state->cursor != oldCursor;
+    const int64_t oldCursor = state->activeDocumentSession.cursor;
+    state->activeDocumentSession.cursor =
+        std::clamp(cursorPos, int64_t{0},
+                   state->activeDocumentSession.document.getFrameCount());
+    return state->activeDocumentSession.cursor != oldCursor;
 }

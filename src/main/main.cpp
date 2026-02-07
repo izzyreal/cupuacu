@@ -25,6 +25,7 @@ const uint16_t initialDimensions[] = {1280, 720};
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 {
     cupuacu::State *state = new cupuacu::State();
+    auto &session = state->activeDocumentSession;
 
     state->audioDevices = std::make_shared<cupuacu::audio::AudioDevices>();
     if (const auto persistedSelection =
@@ -68,15 +69,15 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     cupuacu::gui::initCursors();
 
-    if (std::filesystem::exists(state->currentFile))
+    if (std::filesystem::exists(session.currentFile))
     {
         cupuacu::file::loadSampleData(state);
         SDL_SetWindowTitle(state->mainWindow->getSdlWindow(),
-                           state->currentFile.c_str());
+                           session.currentFile.c_str());
     }
     else
     {
-        state->currentFile = "";
+        session.currentFile = "";
     }
 
     cupuacu::gui::buildComponents(state, state->mainWindow.get());
