@@ -1,6 +1,7 @@
 #include "DevicePropertiesWindow.h"
 
 #include "../PaUtil.hpp"
+#include "../AudioDevices.hpp"
 #include "Colors.h"
 #include "text.h"
 
@@ -14,6 +15,29 @@ namespace
 {
     constexpr int kWindowWidth = 500;
     constexpr int kWindowHeight = 500;
+
+    int findIndex(const std::vector<int> &indices, const int value)
+    {
+        const auto it = std::find(indices.begin(), indices.end(), value);
+        return it == indices.end()
+                   ? -1
+                   : static_cast<int>(it - indices.begin());
+    }
+
+    int getDefaultDeviceIndexForHostApi(const int hostApiIndex,
+                                        const bool isInput)
+    {
+        if (hostApiIndex < 0)
+        {
+            return -1;
+        }
+        const PaHostApiInfo *info = Pa_GetHostApiInfo(hostApiIndex);
+        if (!info)
+        {
+            return -1;
+        }
+        return isInput ? info->defaultInputDevice : info->defaultOutputDevice;
+    }
 } // namespace
 
 DevicePropertiesWindow::DevicePropertiesWindow(State *stateToUse)
@@ -79,9 +103,33 @@ DevicePropertiesWindow::DevicePropertiesWindow(State *stateToUse)
     inputDeviceDropdown->setExpanded(false);
 
     populateHostApis();
+
+    int preferredHostApiIndex = -1;
+    int preferredOutputDeviceIndex = -1;
+    int preferredInputDeviceIndex = -1;
+    if (state->audioDevices)
+    {
+        const auto selection = state->audioDevices->getDeviceSelection();
+        preferredHostApiIndex = selection.hostApiIndex;
+        preferredOutputDeviceIndex = selection.outputDeviceIndex;
+        preferredInputDeviceIndex = selection.inputDeviceIndex;
+    }
+
+    int hostApiDropdownIndex = findIndex(hostApiIndices, preferredHostApiIndex);
+    if (hostApiDropdownIndex < 0)
+    {
+        hostApiDropdownIndex = 0;
+    }
+    deviceTypeDropdown->setSelectedIndex(hostApiDropdownIndex);
+
     const int hostApiIndex =
-        hostApiIndices.empty() ? -1 : hostApiIndices.front();
-    populateDevices(hostApiIndex);
+        hostApiDropdownIndex >= 0 &&
+                hostApiDropdownIndex < (int)hostApiIndices.size()
+            ? hostApiIndices[hostApiDropdownIndex]
+            : -1;
+    populateDevices(hostApiIndex, preferredOutputDeviceIndex,
+                    preferredInputDeviceIndex);
+    syncSelectionToAudioDevices();
 
     deviceTypeDropdown->setOnSelectionChanged(
         [this](const int index)
@@ -91,9 +139,30 @@ DevicePropertiesWindow::DevicePropertiesWindow(State *stateToUse)
             {
                 hostApiIndexToUse = hostApiIndices[index];
             }
-            populateDevices(hostApiIndexToUse);
+            int preferredOutputDeviceIndex = -1;
+            int preferredInputDeviceIndex = -1;
+            if (state && state->audioDevices)
+            {
+                const auto selection =
+                    state->audioDevices->getDeviceSelection();
+                preferredOutputDeviceIndex = selection.outputDeviceIndex;
+                preferredInputDeviceIndex = selection.inputDeviceIndex;
+            }
+            populateDevices(hostApiIndexToUse, preferredOutputDeviceIndex,
+                            preferredInputDeviceIndex);
+            syncSelectionToAudioDevices();
             layoutComponents();
             renderOnce();
+        });
+    outputDeviceDropdown->setOnSelectionChanged(
+        [this](const int)
+        {
+            syncSelectionToAudioDevices();
+        });
+    inputDeviceDropdown->setOnSelectionChanged(
+        [this](const int)
+        {
+            syncSelectionToAudioDevices();
         });
 
     window->setOnResize(
@@ -187,7 +256,9 @@ void DevicePropertiesWindow::populateHostApis()
     deviceTypeDropdown->setSelectedIndex(0);
 }
 
-void DevicePropertiesWindow::populateDevices(const int hostApiIndex)
+void DevicePropertiesWindow::populateDevices(
+    const int hostApiIndex, const int preferredOutputDeviceIndex,
+    const int preferredInputDeviceIndex)
 {
     outputDeviceIndices.clear();
     inputDeviceIndices.clear();
@@ -243,10 +314,82 @@ void DevicePropertiesWindow::populateDevices(const int hostApiIndex)
     }
 
     outputDeviceDropdown->setItems(outputItems);
-    outputDeviceDropdown->setSelectedIndex(0);
+    int outputSelectionIndex =
+        findIndex(outputDeviceIndices, preferredOutputDeviceIndex);
+    if (outputSelectionIndex < 0)
+    {
+        const int defaultOutputDeviceIndex =
+            getDefaultDeviceIndexForHostApi(hostApiIndex, false);
+        outputSelectionIndex =
+            findIndex(outputDeviceIndices, defaultOutputDeviceIndex);
+    }
+    if (outputSelectionIndex < 0)
+    {
+        outputSelectionIndex = 0;
+    }
+    outputDeviceDropdown->setSelectedIndex(outputSelectionIndex);
 
     inputDeviceDropdown->setItems(inputItems);
-    inputDeviceDropdown->setSelectedIndex(0);
+    int inputSelectionIndex =
+        findIndex(inputDeviceIndices, preferredInputDeviceIndex);
+    if (inputSelectionIndex < 0)
+    {
+        const int defaultInputDeviceIndex =
+            getDefaultDeviceIndexForHostApi(hostApiIndex, true);
+        inputSelectionIndex =
+            findIndex(inputDeviceIndices, defaultInputDeviceIndex);
+    }
+    if (inputSelectionIndex < 0)
+    {
+        inputSelectionIndex = 0;
+    }
+    inputDeviceDropdown->setSelectedIndex(inputSelectionIndex);
+}
+
+int DevicePropertiesWindow::getSelectedHostApiIndex() const
+{
+    if (!deviceTypeDropdown)
+    {
+        return -1;
+    }
+    const int selectedIndex = deviceTypeDropdown->getSelectedIndex();
+    if (selectedIndex >= 0 && selectedIndex < (int)hostApiIndices.size())
+    {
+        return hostApiIndices[selectedIndex];
+    }
+    return -1;
+}
+
+int DevicePropertiesWindow::getSelectedDeviceIndex(
+    const DropdownMenu *dropdown, const std::vector<int> &indices) const
+{
+    if (!dropdown)
+    {
+        return -1;
+    }
+    const int selectedIndex = dropdown->getSelectedIndex();
+    if (selectedIndex >= 0 && selectedIndex < (int)indices.size())
+    {
+        return indices[selectedIndex];
+    }
+    return -1;
+}
+
+void DevicePropertiesWindow::syncSelectionToAudioDevices()
+{
+    if (!state || !state->audioDevices)
+    {
+        return;
+    }
+
+    cupuacu::AudioDevices::DeviceSelection selection;
+    selection.hostApiIndex = getSelectedHostApiIndex();
+    selection.outputDeviceIndex =
+        getSelectedDeviceIndex(outputDeviceDropdown, outputDeviceIndices);
+    selection.inputDeviceIndex =
+        getSelectedDeviceIndex(inputDeviceDropdown, inputDeviceIndices);
+
+    state->audioDevices->setDeviceSelection(selection);
 }
 
 void DevicePropertiesWindow::layoutComponents() const

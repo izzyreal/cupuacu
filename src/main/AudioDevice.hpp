@@ -5,6 +5,8 @@
 #include "AudioDeviceView.hpp"
 #include "AudioDeviceState.hpp"
 
+#include <mutex>
+
 typedef void PaStream;
 struct PaStreamCallbackTimeInfo;
 typedef unsigned long PaStreamCallbackFlags;
@@ -19,7 +21,7 @@ namespace cupuacu
         AudioDevice();
         ~AudioDevice();
 
-        void openDevice();
+        void openDevice(int inputDeviceIndex, int outputDeviceIndex);
         void closeDevice();
 
         bool isPlaying() const;
@@ -35,6 +37,11 @@ namespace cupuacu
                               PaStreamCallbackFlags statusFlags,
                               void *userData);
 
+        void closeDeviceLocked();
+
+        std::mutex streamMutex;
+        int currentInputDeviceIndex = -1;
+        int currentOutputDeviceIndex = -1;
         PaStream *stream = nullptr;
     };
 } // namespace cupuacu

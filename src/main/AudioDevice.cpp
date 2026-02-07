@@ -134,50 +134,89 @@ AudioDevice::~AudioDevice()
     closeDevice();
 }
 
-void AudioDevice::openDevice()
+void AudioDevice::openDevice(const int inputDeviceIndex,
+                             const int outputDeviceIndex)
 {
-    PaError err;
+    std::lock_guard<std::mutex> lock(streamMutex);
 
-    err = Pa_OpenDefaultStream(&stream, 0, /* no input channels */
-                               2,          /* stereo output */
-                               paFloat32,  /* 32 bit floating point output */
-                               SAMPLE_RATE, 256, /* frames per buffer */
-                               paCallback, &data);
+    const bool outputChanged = outputDeviceIndex != currentOutputDeviceIndex;
+    currentInputDeviceIndex = inputDeviceIndex;
+    currentOutputDeviceIndex = outputDeviceIndex;
+
+    if (!outputChanged && stream)
+    {
+        return;
+    }
+
+    closeDeviceLocked();
+
+    if (outputDeviceIndex < 0)
+    {
+        return;
+    }
+
+    const PaDeviceInfo *outputInfo = Pa_GetDeviceInfo(outputDeviceIndex);
+    if (!outputInfo)
+    {
+        return;
+    }
+
+    PaStreamParameters outputParameters{};
+    outputParameters.device = outputDeviceIndex;
+    outputParameters.channelCount = 2;
+    outputParameters.sampleFormat = paFloat32;
+    outputParameters.suggestedLatency = outputInfo->defaultLowOutputLatency;
+    outputParameters.hostApiSpecificStreamInfo = nullptr;
+
+    PaError err = Pa_OpenStream(
+        &stream, nullptr, &outputParameters, SAMPLE_RATE, 256, paNoFlag,
+        paCallback, &data);
     if (err != paNoError)
     {
         PaUtil::handlePaError(err);
+        stream = nullptr;
         return;
     }
 
     data.device = this;
 
     err = Pa_StartStream(stream);
-
     if (err != paNoError)
     {
         PaUtil::handlePaError(err);
+        Pa_CloseStream(stream);
+        stream = nullptr;
         return;
     }
 }
 
 void AudioDevice::closeDevice()
 {
-    PaError err;
-    err = Pa_StopStream(stream);
+    std::lock_guard<std::mutex> lock(streamMutex);
+    closeDeviceLocked();
+    currentInputDeviceIndex = -1;
+    currentOutputDeviceIndex = -1;
+}
 
-    if (err != paNoError)
+void AudioDevice::closeDeviceLocked()
+{
+    if (!stream)
+    {
+        return;
+    }
+
+    PaError err = Pa_StopStream(stream);
+    if (err != paNoError && err != paStreamIsStopped)
     {
         PaUtil::handlePaError(err);
-        return;
     }
 
     err = Pa_CloseStream(stream);
-
     if (err != paNoError)
     {
         PaUtil::handlePaError(err);
-        return;
     }
+    stream = nullptr;
 }
 
 void AudioDevice::applyMessage(const AudioMessage &msg) noexcept

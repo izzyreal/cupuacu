@@ -18,7 +18,43 @@ AudioDevices::AudioDevices()
     }
 
     outputDevice = std::make_shared<AudioDevice>();
-    outputDevice->openDevice();
+
+    DeviceSelection initialSelection{};
+    const PaDeviceIndex defaultOutput = Pa_GetDefaultOutputDevice();
+    if (defaultOutput != paNoDevice)
+    {
+        initialSelection.outputDeviceIndex = defaultOutput;
+        const PaDeviceInfo *outputInfo = Pa_GetDeviceInfo(defaultOutput);
+        if (outputInfo)
+        {
+            initialSelection.hostApiIndex = outputInfo->hostApi;
+        }
+    }
+
+    const PaDeviceIndex defaultInput = Pa_GetDefaultInputDevice();
+    if (defaultInput != paNoDevice)
+    {
+        initialSelection.inputDeviceIndex = defaultInput;
+        if (initialSelection.hostApiIndex < 0)
+        {
+            const PaDeviceInfo *inputInfo = Pa_GetDeviceInfo(defaultInput);
+            if (inputInfo)
+            {
+                initialSelection.hostApiIndex = inputInfo->hostApi;
+            }
+        }
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(selectionMutex);
+        deviceSelection = initialSelection;
+    }
+
+    if (initialSelection.outputDeviceIndex >= 0)
+    {
+        outputDevice->openDevice(initialSelection.inputDeviceIndex,
+                                 initialSelection.outputDeviceIndex);
+    }
 }
 
 AudioDevices::~AudioDevices()
@@ -29,4 +65,28 @@ AudioDevices::~AudioDevices()
 AudioDevicePtr AudioDevices::getOutputDevice()
 {
     return outputDevice;
+}
+
+AudioDevices::DeviceSelection AudioDevices::getDeviceSelection() const
+{
+    std::lock_guard<std::mutex> lock(selectionMutex);
+    return deviceSelection;
+}
+
+void AudioDevices::setDeviceSelection(const DeviceSelection &selection)
+{
+    {
+        std::lock_guard<std::mutex> lock(selectionMutex);
+        if (selection == deviceSelection)
+        {
+            return;
+        }
+        deviceSelection = selection;
+    }
+
+    if (outputDevice)
+    {
+        outputDevice->openDevice(selection.inputDeviceIndex,
+                                 selection.outputDeviceIndex);
+    }
 }
