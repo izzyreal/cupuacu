@@ -23,8 +23,16 @@ const uint16_t initialDimensions[] = {1280, 720};
 #include "audio/AudioDevices.hpp"
 #include "persistence/AudioDevicePropertiesPersistence.hpp"
 
+#if CUPUACU_RTSAN_LIBS_ENABLED
+#include <rtsan_standalone/rtsan_standalone.h>
+#endif
+
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 {
+#if CUPUACU_RTSAN_LIBS_ENABLED
+    __rtsan::Initialize();
+#endif
+
     cupuacu::State *state = new cupuacu::State();
     auto &session = state->activeDocumentSession;
 

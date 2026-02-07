@@ -10,6 +10,10 @@
 #include <algorithm>
 #include <cmath>
 
+#if CUPUACU_RTSAN_LIBS_ENABLED
+#include <rtsan_standalone/rtsan_standalone.h>
+#endif
+
 using namespace cupuacu;
 using namespace cupuacu::audio;
 using namespace cupuacu::utils;
@@ -249,6 +253,10 @@ int AudioDevices::paCallback(const void *inputBuffer, void *outputBuffer,
                              const PaStreamCallbackTimeInfo *timeInfo,
                              PaStreamCallbackFlags statusFlags, void *userData)
 {
+#if CUPUACU_RTSAN_LIBS_ENABLED
+    __rtsan::ScopedSanitizeRealtime realtimeScope;
+#endif
+
     (void)timeInfo;
     (void)statusFlags;
 

@@ -9,6 +9,8 @@ set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "Prevent FetchContent from r
 option(CUPUACU_CODE_SIGNING_ENABLED "Enable post-build code signing on macOS" OFF)
 option(CUPUACU_ENABLE_XCODE_TSAN_SUPPRESSIONS
     "Inject TSAN_OPTIONS suppressions into CMake-generated Xcode schemes" ON)
+option(CUPUACU_ENABLE_RTSAN_LIBS
+    "Enable RTSan standalone runtime via rtsan-libs-cmake" OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
@@ -125,6 +127,19 @@ target_include_directories(cupuacu-tests PRIVATE ${readerwriterqueue_SOURCE_DIR}
 
 _bundle_resources(Cupuacu)
 target_link_libraries(cupuacu-tests PUBLIC cupuacu::rc)
+
+if(CUPUACU_ENABLE_RTSAN_LIBS)
+    FetchContent_Declare(
+        rtsan
+        GIT_REPOSITORY https://github.com/izzyreal/rtsan-libs-cmake.git
+        GIT_TAG main
+    )
+    FetchContent_MakeAvailable(rtsan)
+    rtsan_libs_enable(TARGET Cupuacu)
+    target_compile_definitions(Cupuacu PRIVATE CUPUACU_RTSAN_LIBS_ENABLED=1)
+else()
+    target_compile_definitions(Cupuacu PRIVATE CUPUACU_RTSAN_LIBS_ENABLED=0)
+endif()
 
 if(CMAKE_GENERATOR STREQUAL "Xcode" AND CUPUACU_ENABLE_XCODE_TSAN_SUPPRESSIONS)
     set(_cupuacu_tsan_env "TSAN_OPTIONS=suppressions=\$(SRCROOT)/tsan.supp")
