@@ -1,9 +1,9 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "gui/Component.h"
-#include "gui/DevicePropertiesWindow.h"
-#include "gui/Window.h"
-#include "State.h"
+#include "gui/Component.hpp"
+#include "gui/DevicePropertiesWindow.hpp"
+#include "gui/Window.hpp"
+#include "State.hpp"
 
 #include <algorithm>
 

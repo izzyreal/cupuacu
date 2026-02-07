@@ -1,9 +1,9 @@
-#include "DevicePropertiesWindow.h"
+#include "DevicePropertiesWindow.hpp"
 
 #include "../PaUtil.hpp"
 #include "../AudioDevices.hpp"
-#include "Colors.h"
-#include "text.h"
+#include "Colors.hpp"
+#include "text.hpp"
 
 #include <portaudio.h>
 #include <algorithm>

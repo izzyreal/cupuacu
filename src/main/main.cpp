@@ -4,11 +4,11 @@
 #include <SDL3/SDL_main.h>
 #include <SDL3_ttf/SDL_ttf.h>
 
-#include "State.h"
-#include "gui/EventHandling.h"
-#include "gui/Gui.h"
-#include "gui/DevicePropertiesWindow.h"
-#include "gui/Window.h"
+#include "State.hpp"
+#include "gui/EventHandling.hpp"
+#include "gui/Gui.hpp"
+#include "gui/DevicePropertiesWindow.hpp"
+#include "gui/Window.hpp"
 
 const uint16_t initialDimensions[] = {1280, 720};
 
@@ -17,7 +17,7 @@ const uint16_t initialDimensions[] = {1280, 720};
 #include <filesystem>
 #include <algorithm>
 
-#include "file/file_loading.h"
+#include "file/file_loading.hpp"
 
 #include "AudioDevices.hpp"
 

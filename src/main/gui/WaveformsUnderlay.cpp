@@ -1,7 +1,7 @@
-#include "WaveformsUnderlay.h"
+#include "WaveformsUnderlay.hpp"
 
-#include "Waveform.h"
-#include "Window.h"
+#include "Waveform.hpp"
+#include "Window.hpp"
 #include <algorithm>
 
 #include <cassert>

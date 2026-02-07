@@ -1,8 +1,8 @@
-#include "SamplePoint.h"
+#include "SamplePoint.hpp"
 
-#include "../actions/audio/SetSampleValue.h"
-#include "MainView.h"
-#include "Waveform.h"
+#include "../actions/audio/SetSampleValue.hpp"
+#include "MainView.hpp"
+#include "Waveform.hpp"
 
 using namespace cupuacu::gui;
 using namespace cupuacu::actions::audio;

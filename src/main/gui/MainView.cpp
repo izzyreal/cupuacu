@@ -1,10 +1,10 @@
-#include "MainView.h"
-#include "../State.h"
-#include "Waveforms.h"
-#include "Waveform.h"
-#include "TriangleMarker.h"
-#include "OpaqueRect.h"
-#include "Timeline.h"
+#include "MainView.hpp"
+#include "../State.hpp"
+#include "Waveforms.hpp"
+#include "Waveform.hpp"
+#include "TriangleMarker.hpp"
+#include "OpaqueRect.hpp"
+#include "Timeline.hpp"
 
 using namespace cupuacu::gui;
 

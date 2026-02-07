@@ -1,13 +1,13 @@
-#include "Gui.h"
+#include "Gui.hpp"
 
-#include "../State.h"
-#include "../actions/Zoom.h"
+#include "../State.hpp"
+#include "../actions/Zoom.hpp"
 
-#include "MenuBar.h"
-#include "StatusBar.h"
-#include "MainView.h"
-#include "VuMeterContainer.h"
-#include "Window.h"
+#include "MenuBar.hpp"
+#include "StatusBar.hpp"
+#include "MainView.hpp"
+#include "VuMeterContainer.hpp"
+#include "Window.hpp"
 
 SDL_Rect computeMainViewBounds(const uint16_t canvasWidth,
                                const uint16_t canvasHeight,

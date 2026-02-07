@@ -1,9 +1,9 @@
-#include "Waveforms.h"
+#include "Waveforms.hpp"
 
-#include "Waveform.h"
-#include "WaveformsUnderlay.h"
+#include "Waveform.hpp"
+#include "WaveformsUnderlay.hpp"
 
-#include "../State.h"
+#include "../State.hpp"
 
 using namespace cupuacu::gui;
 

@@ -1,12 +1,12 @@
-#include "Waveform.h"
+#include "Waveform.hpp"
 
 #include "AudioDevice.hpp"
 #include "AudioDevices.hpp"
-#include "WaveformsUnderlay.h"
-#include "WaveformCache.h"
-#include "Window.h"
+#include "WaveformsUnderlay.hpp"
+#include "WaveformCache.hpp"
+#include "Window.hpp"
 
-#include "smooth_line.h"
+#include "smooth_line.hpp"
 
 #include <limits>
 #include <cmath>

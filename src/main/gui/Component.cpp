@@ -1,7 +1,7 @@
-#include "Component.h"
-#include "../State.h"
-#include "MenuBar.h"
-#include "Window.h"
+#include "Component.hpp"
+#include "../State.hpp"
+#include "MenuBar.hpp"
+#include "Window.hpp"
 #include <ranges>
 #include <cmath>
 

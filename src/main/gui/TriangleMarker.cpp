@@ -1,8 +1,8 @@
-#include "gui/TriangleMarker.h"
+#include "gui/TriangleMarker.hpp"
 
-#include "State.h"
+#include "State.hpp"
 
-#include "gui/Window.h"
+#include "gui/Window.hpp"
 
 using namespace cupuacu::gui;
 

@@ -1,7 +1,7 @@
-#include "Play.h"
+#include "Play.hpp"
 
-#include "../State.h"
-#include "../gui/VuMeter.h"
+#include "../State.hpp"
+#include "../gui/VuMeter.hpp"
 
 #include "AudioDevice.hpp"
 #include "AudioMessage.hpp"

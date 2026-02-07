@@ -1,6 +1,6 @@
-#include "Label.h"
-#include "../State.h"
-#include "text.h"
+#include "Label.hpp"
+#include "../State.hpp"
+#include "text.hpp"
 
 #include <cmath>
 

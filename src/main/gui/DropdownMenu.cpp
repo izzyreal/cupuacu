@@ -1,10 +1,10 @@
-#include "DropdownMenu.h"
+#include "DropdownMenu.hpp"
 
-#include "Colors.h"
-#include "Helpers.h"
-#include "RoundedRect.h"
-#include "Window.h"
-#include "text.h"
+#include "Colors.hpp"
+#include "Helpers.hpp"
+#include "RoundedRect.hpp"
+#include "Window.hpp"
+#include "text.hpp"
 
 #include <algorithm>
 #include <utility>

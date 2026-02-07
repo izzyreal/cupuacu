@@ -1,7 +1,7 @@
-#include "Window.h"
+#include "Window.hpp"
 
-#include "../State.h"
-#include "MenuBar.h"
+#include "../State.hpp"
+#include "MenuBar.hpp"
 
 #include <cmath>
 

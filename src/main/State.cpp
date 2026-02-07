@@ -1,7 +1,7 @@
-#include "State.h"
+#include "State.hpp"
 
-#include "gui/Waveform.h"
-#include "actions/Undoable.h"
+#include "gui/Waveform.hpp"
+#include "actions/Undoable.hpp"
 
 int64_t getMaxSampleOffset(const cupuacu::State *state)
 {

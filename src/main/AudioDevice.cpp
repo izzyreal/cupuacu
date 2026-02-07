@@ -1,12 +1,12 @@
 #include "AudioDevice.hpp"
 
 #include "PaUtil.hpp"
-#include "Document.h"
+#include "Document.hpp"
 #include "concurrency/AtomicStateExchange.hpp"
 
 #include "utils/VariantUtils.hpp"
-#include "gui/VuMeter.h"
-#include "State.h"
+#include "gui/VuMeter.hpp"
+#include "State.hpp"
 
 #include <portaudio.h>
 
