@@ -97,8 +97,17 @@ namespace cupuacu
         {
             for (int ch = 0; ch < getChannelCount(); ++ch)
             {
-                waveformCache[ch].rebuildDirty(
-                    getAudioBuffer()->getImmutableChannelData(ch).data());
+                const auto channelData =
+                    getAudioBuffer()->getImmutableChannelData(ch);
+                if (waveformCache[ch].levelsCount() == 0)
+                {
+                    waveformCache[ch].rebuildAll(channelData.data(),
+                                                 getFrameCount());
+                }
+                else
+                {
+                    waveformCache[ch].rebuildDirty(channelData.data());
+                }
             }
         }
 

@@ -1,5 +1,6 @@
 #include "MainView.hpp"
 #include "../State.hpp"
+#include "../actions/audio/RecordEdit.hpp"
 #include "audio/AudioDevices.hpp"
 #include "Waveforms.hpp"
 #include "Waveform.hpp"
@@ -10,6 +11,188 @@
 #include <algorithm>
 
 using namespace cupuacu::gui;
+
+void MainView::beginRecordingUndoCaptureIfNeeded(const int64_t startFrame)
+{
+    if (recordingUndoCapture.active)
+    {
+        return;
+    }
+
+    auto &session = state->activeDocumentSession;
+    auto &doc = session.document;
+
+    recordingUndoCapture = {};
+    recordingUndoCapture.active = true;
+    recordingUndoCapture.startFrame =
+        std::clamp<int64_t>(startFrame, 0, doc.getFrameCount());
+    recordingUndoCapture.endFrame = recordingUndoCapture.startFrame;
+    recordingUndoCapture.oldFrameCount = doc.getFrameCount();
+    recordingUndoCapture.oldChannelCount = doc.getChannelCount();
+    recordingUndoCapture.targetChannelCount = doc.getChannelCount();
+    recordingUndoCapture.oldSampleRate = doc.getSampleRate();
+    recordingUndoCapture.oldFormat = static_cast<int>(doc.getSampleFormat());
+    recordingUndoCapture.hadOldSelection = session.selection.isActive();
+    recordingUndoCapture.oldCursor = session.cursor;
+    if (recordingUndoCapture.hadOldSelection)
+    {
+        recordingUndoCapture.oldSelectionStart = session.selection.getStart();
+        recordingUndoCapture.oldSelectionEnd = session.selection.getEnd();
+    }
+
+    recordingUndoCapture.overwrittenOldSamples.assign(
+        recordingUndoCapture.oldChannelCount, {});
+}
+
+void MainView::capturePreOverwriteSamples(const int64_t overlapEndFrame)
+{
+    if (!recordingUndoCapture.active || recordingUndoCapture.oldChannelCount <= 0)
+    {
+        return;
+    }
+
+    const int64_t boundedOverlapEnd = std::clamp<int64_t>(
+        overlapEndFrame, recordingUndoCapture.startFrame,
+        recordingUndoCapture.oldFrameCount);
+    const int64_t requiredFrames =
+        boundedOverlapEnd - recordingUndoCapture.startFrame;
+    if (requiredFrames <= recordingUndoCapture.capturedOverwriteFrames)
+    {
+        return;
+    }
+
+    auto &doc = state->activeDocumentSession.document;
+
+    for (int ch = 0; ch < recordingUndoCapture.oldChannelCount; ++ch)
+    {
+        auto &samples = recordingUndoCapture.overwrittenOldSamples[ch];
+        samples.resize(requiredFrames);
+        for (int64_t i = recordingUndoCapture.capturedOverwriteFrames;
+             i < requiredFrames; ++i)
+        {
+            samples[i] = doc.getSample(ch, recordingUndoCapture.startFrame + i);
+        }
+    }
+
+    recordingUndoCapture.capturedOverwriteFrames = requiredFrames;
+}
+
+void MainView::captureRecordedChunk(
+    const cupuacu::audio::AudioDevices::RecordedChunk &chunk)
+{
+    if (!recordingUndoCapture.active || chunk.frameCount == 0)
+    {
+        return;
+    }
+
+    auto &doc = state->activeDocumentSession.document;
+
+    const int64_t chunkStart = chunk.startFrame;
+    const int64_t chunkEnd = chunk.startFrame + static_cast<int64_t>(chunk.frameCount);
+    recordingUndoCapture.endFrame =
+        std::max(recordingUndoCapture.endFrame, chunkEnd);
+    recordingUndoCapture.targetChannelCount =
+        std::max(recordingUndoCapture.targetChannelCount,
+                 static_cast<int>(doc.getChannelCount()));
+    recordingUndoCapture.newSampleRate = doc.getSampleRate();
+    recordingUndoCapture.newFormat = static_cast<int>(doc.getSampleFormat());
+
+    const int64_t recordedFrameCount =
+        recordingUndoCapture.endFrame - recordingUndoCapture.startFrame;
+    if (recordingUndoCapture.targetChannelCount > 0)
+    {
+        if ((int)recordingUndoCapture.recordedSamples.size() <
+            recordingUndoCapture.targetChannelCount)
+        {
+            recordingUndoCapture.recordedSamples.resize(
+                recordingUndoCapture.targetChannelCount);
+        }
+
+        for (int ch = 0; ch < recordingUndoCapture.targetChannelCount; ++ch)
+        {
+            recordingUndoCapture.recordedSamples[ch].resize(recordedFrameCount);
+        }
+    }
+
+    for (uint32_t frame = 0; frame < chunk.frameCount; ++frame)
+    {
+        const int64_t absoluteFrame = chunkStart + static_cast<int64_t>(frame);
+        if (absoluteFrame < recordingUndoCapture.startFrame)
+        {
+            continue;
+        }
+        const int64_t relativeFrame =
+            absoluteFrame - recordingUndoCapture.startFrame;
+        if (relativeFrame >= recordedFrameCount)
+        {
+            continue;
+        }
+
+        const std::size_t base =
+            static_cast<std::size_t>(frame) *
+            cupuacu::audio::AudioDevices::kMaxRecordedChannels;
+        const float sampleL = chunk.interleavedSamples[base];
+        const float sampleR = chunk.interleavedSamples[base + 1];
+
+        if (recordingUndoCapture.targetChannelCount >= 1)
+        {
+            recordingUndoCapture.recordedSamples[0][relativeFrame] = sampleL;
+        }
+        if (recordingUndoCapture.targetChannelCount >= 2)
+        {
+            recordingUndoCapture.recordedSamples[1][relativeFrame] = sampleR;
+        }
+    }
+}
+
+void MainView::finalizeRecordingUndoCaptureIfComplete()
+{
+    if (!recordingUndoCapture.active)
+    {
+        return;
+    }
+    if (!state->audioDevices || state->audioDevices->isRecording())
+    {
+        return;
+    }
+
+    auto &session = state->activeDocumentSession;
+    if (recordingUndoCapture.endFrame <= recordingUndoCapture.startFrame)
+    {
+        recordingUndoCapture = {};
+        return;
+    }
+
+    cupuacu::actions::audio::RecordEditData data;
+    data.startFrame = recordingUndoCapture.startFrame;
+    data.endFrame = recordingUndoCapture.endFrame;
+    data.oldFrameCount = recordingUndoCapture.oldFrameCount;
+    data.oldChannelCount = recordingUndoCapture.oldChannelCount;
+    data.targetChannelCount = recordingUndoCapture.targetChannelCount;
+    data.oldSampleRate = recordingUndoCapture.oldSampleRate;
+    data.newSampleRate = recordingUndoCapture.newSampleRate;
+    data.oldFormat =
+        static_cast<SampleFormat>(recordingUndoCapture.oldFormat);
+    data.newFormat =
+        static_cast<SampleFormat>(recordingUndoCapture.newFormat);
+    data.hadOldSelection = recordingUndoCapture.hadOldSelection;
+    data.oldSelectionStart = recordingUndoCapture.oldSelectionStart;
+    data.oldSelectionEnd = recordingUndoCapture.oldSelectionEnd;
+    data.oldCursor = recordingUndoCapture.oldCursor;
+    data.hadNewSelection = session.selection.isActive();
+    if (data.hadNewSelection)
+    {
+        data.newSelectionStart = session.selection.getStart();
+        data.newSelectionEnd = session.selection.getEnd();
+    }
+    data.newCursor = session.cursor;
+    data.overwrittenOldSamples = std::move(recordingUndoCapture.overwrittenOldSamples);
+    data.recordedSamples = std::move(recordingUndoCapture.recordedSamples);
+
+    state->addUndoable(
+        std::make_shared<cupuacu::actions::audio::RecordEdit>(state, std::move(data)));
+    recordingUndoCapture = {};
+}
 
 bool MainView::consumePendingRecordedAudio()
 {
@@ -33,6 +216,7 @@ bool MainView::consumePendingRecordedAudio()
         }
 
         consumedAny = true;
+        beginRecordingUndoCaptureIfNeeded(chunk.startFrame);
         const int oldChannelCount = static_cast<int>(doc.getChannelCount());
         const int64_t oldFrameCount = doc.getFrameCount();
         const int chunkChannelCount = static_cast<int>(chunk.channelCount);
@@ -77,6 +261,7 @@ bool MainView::consumePendingRecordedAudio()
             std::clamp<int64_t>(chunk.startFrame, 0, oldFrameCount);
         const int64_t overwriteEnd =
             std::min<int64_t>(requiredFrameCount, oldFrameCount) - 1;
+        capturePreOverwriteSamples(overwriteEnd + 1);
         if (overwriteEnd >= overwriteStart)
         {
             for (int ch = 0; ch < doc.getChannelCount(); ++ch)
@@ -106,6 +291,7 @@ bool MainView::consumePendingRecordedAudio()
                               chunk.interleavedSamples[base + 1]);
             }
         }
+        captureRecordedChunk(chunk);
 
         session.cursor = std::max(session.cursor, requiredFrameCount);
     }
@@ -292,6 +478,13 @@ void MainView::timerCallback()
     const auto &session = state->activeDocumentSession;
     const auto &viewState = state->mainDocumentSessionWindow->getViewState();
     const bool consumedRecordedAudio = consumePendingRecordedAudio();
+    const bool isRecordingNow =
+        state->audioDevices && state->audioDevices->isRecording();
+    if (!isRecordingNow && wasRecordingLastTick)
+    {
+        finalizeRecordingUndoCaptureIfComplete();
+    }
+    wasRecordingLastTick = isRecordingNow;
 
     if (session.cursor != lastDrawnCursor ||
         session.selection.isActive() != lastSelectionIsActive ||
