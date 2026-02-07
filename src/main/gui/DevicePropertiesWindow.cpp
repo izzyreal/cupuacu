@@ -19,9 +19,8 @@ namespace
     int findIndex(const std::vector<int> &indices, const int value)
     {
         const auto it = std::find(indices.begin(), indices.end(), value);
-        return it == indices.end()
-                   ? -1
-                   : static_cast<int>(it - indices.begin());
+        return it == indices.end() ? -1
+                                   : static_cast<int>(it - indices.begin());
     }
 
     int getDefaultDeviceIndexForHostApi(const int hostApiIndex,

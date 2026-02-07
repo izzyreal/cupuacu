@@ -168,9 +168,8 @@ void AudioDevice::openDevice(const int inputDeviceIndex,
     outputParameters.suggestedLatency = outputInfo->defaultLowOutputLatency;
     outputParameters.hostApiSpecificStreamInfo = nullptr;
 
-    PaError err = Pa_OpenStream(
-        &stream, nullptr, &outputParameters, SAMPLE_RATE, 256, paNoFlag,
-        paCallback, &data);
+    PaError err = Pa_OpenStream(&stream, nullptr, &outputParameters,
+                                SAMPLE_RATE, 256, paNoFlag, paCallback, &data);
     if (err != paNoError)
     {
         PaUtil::handlePaError(err);
