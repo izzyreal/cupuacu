@@ -16,6 +16,7 @@ namespace cupuacu::gui
     class TriangleMarker;
     class OpaqueRect;
     class Timeline;
+    class ScrollBar;
 
     class MainView : public Component
     {
@@ -79,5 +80,6 @@ namespace cupuacu::gui
         Waveforms *waveforms = nullptr;
         OpaqueRect *borders[4];
         Timeline *timeline = nullptr;
+        ScrollBar *horizontalScrollBar = nullptr;
     };
 } // namespace cupuacu::gui

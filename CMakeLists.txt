@@ -65,6 +65,7 @@ add_executable(Cupuacu
     src/main/gui/Label.cpp
     src/main/gui/DropdownMenu.cpp
     src/main/gui/DevicePropertiesWindow.cpp
+    src/main/gui/ScrollBar.cpp
     src/main/gui/WaveformsUnderlay.cpp
     src/main/gui/Waveforms.cpp
     src/main/gui/Waveform.cpp
@@ -93,6 +94,7 @@ add_executable(cupuacu-tests
     src/main/gui/Label.cpp
     src/main/gui/DropdownMenu.cpp
     src/main/gui/DevicePropertiesWindow.cpp
+    src/main/gui/ScrollBar.cpp
     src/main/gui/WaveformsUnderlay.cpp
     src/main/gui/Waveforms.cpp
     src/main/gui/Waveform.cpp

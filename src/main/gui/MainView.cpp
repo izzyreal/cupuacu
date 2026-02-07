@@ -7,6 +7,7 @@
 #include "Waveform.hpp"
 #include "TriangleMarker.hpp"
 #include "OpaqueRect.hpp"
+#include "ScrollBar.hpp"
 #include "Timeline.hpp"
 
 #include <SDL3/SDL.h>
@@ -371,6 +372,44 @@ MainView::MainView(State *state) : Component(state, "MainView")
         borders[i] = emplaceChild<OpaqueRect>(state, Colors::border);
     }
 
+    horizontalScrollBar = borders[0]->emplaceChild<ScrollBar>(
+        state, ScrollBar::Orientation::Horizontal,
+        [state]()
+        {
+            return static_cast<double>(
+                state->mainDocumentSessionWindow->getViewState().sampleOffset);
+        },
+        []() { return 0.0; },
+        [state]() { return static_cast<double>(getMaxSampleOffset(state)); },
+        [this, state]()
+        {
+            return std::max(
+                1.0, static_cast<double>(waveforms->getWidth()) *
+                         state->mainDocumentSessionWindow->getViewState()
+                             .samplesPerPixel);
+        },
+        [state](const double value)
+        {
+            auto &viewState = state->mainDocumentSessionWindow->getViewState();
+            const int64_t oldOffset = viewState.sampleOffset;
+            updateSampleOffset(state, static_cast<int64_t>(std::llround(value)));
+            if (oldOffset == viewState.sampleOffset)
+            {
+                return;
+            }
+
+            resetSampleValueUnderMouseCursor(state);
+            for (auto *waveform : state->waveforms)
+            {
+                waveform->clearHighlight();
+            }
+            for (auto *waveform : state->waveforms)
+            {
+                waveform->updateSamplePoints();
+                waveform->setDirty();
+            }
+        });
+
     waveforms = emplaceChild<Waveforms>(state);
     timeline = emplaceChild<Timeline>(state);
     rebuildWaveforms();
@@ -408,16 +447,22 @@ void MainView::resized()
     const int height = getHeight();
 
     const int timelineHeight = static_cast<int>(60 / state->pixelScale);
+    const int scrollBarHeight = std::max(8, static_cast<int>(14 / state->pixelScale));
 
-    waveforms->setBounds(borderWidth, borderWidth, width - 2 * borderWidth,
-                         height - 2 * borderWidth - timelineHeight);
+    horizontalScrollBar->setBounds(borderWidth, 0,
+                                   width - 2 * borderWidth, scrollBarHeight);
+    waveforms->setBounds(borderWidth, borderWidth + scrollBarHeight,
+                         width - 2 * borderWidth,
+                         height - 2 * borderWidth - timelineHeight -
+                             scrollBarHeight);
 
-    borders[0]->setBounds(0, 0, width, borderWidth);
+    borders[0]->setBounds(0, 0, width, borderWidth + scrollBarHeight);
     borders[1]->setBounds(0, height - borderWidth, width, borderWidth);
-    borders[2]->setBounds(0, borderWidth, borderWidth,
-                          height - 2 * borderWidth);
-    borders[3]->setBounds(width - borderWidth, borderWidth, borderWidth,
-                          height - 2 * borderWidth);
+    borders[2]->setBounds(0, borderWidth + scrollBarHeight, borderWidth,
+                          height - 2 * borderWidth - scrollBarHeight);
+    borders[3]->setBounds(width - borderWidth, borderWidth + scrollBarHeight,
+                          borderWidth,
+                          height - 2 * borderWidth - scrollBarHeight);
 
     timeline->setBounds(borderWidth, height - borderWidth - timelineHeight,
                         width - 2 * borderWidth, timelineHeight);
@@ -431,6 +476,8 @@ void MainView::updateTriangleMarkerBounds() const
     const auto &session = state->activeDocumentSession;
     const auto &viewState = state->mainDocumentSessionWindow->getViewState();
     const auto borderWidth = computeBorderWidth();
+    const int scrollBarHeight =
+        std::max(8, static_cast<int>(14 / state->pixelScale));
     const float triHeight = borderWidth * 0.75f;
     const float halfBase = triHeight;
 
@@ -448,7 +495,7 @@ void MainView::updateTriangleMarkerBounds() const
         {
             selStartTop->setVisible(true);
             selStartBot->setVisible(true);
-            selStartTop->setBounds(startX + borderWidth, 0,
+            selStartTop->setBounds(startX + borderWidth, scrollBarHeight,
                                    static_cast<int>(triHeight + 1.f),
                                    static_cast<int>(triHeight));
             selStartBot->setBounds(startX + borderWidth, 0,
@@ -471,7 +518,7 @@ void MainView::updateTriangleMarkerBounds() const
             selEndTop->setVisible(true);
             selEndBot->setVisible(true);
             selEndTop->setBounds(
-                endX + borderWidth - static_cast<int>(triHeight), 0,
+                endX + borderWidth - static_cast<int>(triHeight), scrollBarHeight,
                 static_cast<int>(triHeight), static_cast<int>(triHeight));
             selEndBot->setBounds(
                 endX + borderWidth - static_cast<int>(triHeight), 0,
@@ -497,7 +544,8 @@ void MainView::updateTriangleMarkerBounds() const
             const int cursorX = xPos + borderWidth;
             cursorTop->setVisible(true);
             cursorBottom->setVisible(true);
-            cursorTop->setBounds(cursorX - static_cast<int>(halfBase) + 1, 0,
+            cursorTop->setBounds(cursorX - static_cast<int>(halfBase) + 1,
+                                 scrollBarHeight,
                                  static_cast<int>(halfBase * 2),
                                  static_cast<int>(triHeight));
             cursorBottom->setBounds(cursorX - static_cast<int>(halfBase) + 1, 0,
