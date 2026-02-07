@@ -40,6 +40,11 @@ bool Window::hasFocus() const
 void Window::setRootComponent(std::unique_ptr<Component> rootToUse)
 {
     rootComponent = std::move(rootToUse);
+    contentLayer = nullptr;
+    overlayLayer = nullptr;
+    menuBar = nullptr;
+    capturingComponent = nullptr;
+    componentUnderMouse = nullptr;
     if (rootComponent)
     {
         rootComponent->setWindow(this);
@@ -401,6 +406,13 @@ void Window::renderFrameIfDirty()
     if (!renderer || !rootComponent || !canvas || dirtyRects.empty())
     {
         return;
+    }
+
+    // Overlay must repaint whenever anything below changes so popups stay on
+    // top even when underlying content (e.g. waveforms) is animating.
+    if (overlayLayer)
+    {
+        overlayLayer->setDirty();
     }
 
     SDL_SetRenderTarget(renderer, canvas);

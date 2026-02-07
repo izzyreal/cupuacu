@@ -6,6 +6,7 @@ include(cmake/ClangFormat.cmake)
 project(Cupuacu)
 
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "Prevent FetchContent from re-downloading sources" FORCE)
+option(CUPUACU_CODE_SIGNING_ENABLED "Enable post-build code signing on macOS" OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
@@ -64,12 +65,16 @@ add_executable(Cupuacu
 
 add_executable(cupuacu-tests
     src/main/State.cpp
+    src/main/AudioDevices.cpp
+    src/main/AudioDevice.cpp
+    src/main/AudioDeviceView.cpp
     src/main/gui/Gui.cpp
     src/main/gui/MainView.cpp
     src/main/gui/TriangleMarker.cpp
     src/main/gui/Component.cpp
     src/main/gui/Label.cpp
     src/main/gui/DropdownMenu.cpp
+    src/main/gui/DevicePropertiesWindow.cpp
     src/main/gui/WaveformsUnderlay.cpp
     src/main/gui/Waveforms.cpp
     src/main/gui/Waveform.cpp
@@ -89,11 +94,13 @@ target_link_libraries(Cupuacu PRIVATE portaudio)
 
 target_link_libraries(cupuacu-tests PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf)
 target_link_libraries(cupuacu-tests PRIVATE SndFile::sndfile)
+target_link_libraries(cupuacu-tests PRIVATE portaudio)
 target_link_libraries(cupuacu-tests PRIVATE Catch2::Catch2WithMain)
 
 target_include_directories(Cupuacu PRIVATE src/main/)
 target_include_directories(Cupuacu PRIVATE ${readerwriterqueue_SOURCE_DIR})
 target_include_directories(cupuacu-tests PRIVATE src/main/)
+target_include_directories(cupuacu-tests PRIVATE ${readerwriterqueue_SOURCE_DIR})
 
 _bundle_resources(Cupuacu)
 target_link_libraries(cupuacu-tests PUBLIC cupuacu::rc)
@@ -106,7 +113,7 @@ if (PROJECT_IS_TOP_LEVEL)
     )
 endif()
 
-if (APPLE)
+if (APPLE AND CUPUACU_CODE_SIGNING_ENABLED)
     execute_process(
         COMMAND python3 macos-codesign-details-extractor.py
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}

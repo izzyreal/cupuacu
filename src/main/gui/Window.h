@@ -63,6 +63,23 @@ namespace cupuacu::gui
             return menuBar;
         }
 
+        void setOverlayLayer(Component *overlayLayerToUse)
+        {
+            overlayLayer = overlayLayerToUse;
+        }
+        Component *getOverlayLayer() const
+        {
+            return overlayLayer;
+        }
+        void setContentLayer(Component *contentLayerToUse)
+        {
+            contentLayer = contentLayerToUse;
+        }
+        Component *getContentLayer() const
+        {
+            return contentLayer;
+        }
+
         std::vector<SDL_Rect> &getDirtyRects()
         {
             return dirtyRects;
@@ -118,6 +135,8 @@ namespace cupuacu::gui
         Component *capturingComponent = nullptr;
         Component *componentUnderMouse = nullptr;
         MenuBar *menuBar = nullptr;
+        Component *contentLayer = nullptr;
+        Component *overlayLayer = nullptr;
 
         std::function<void()> onResize;
         std::function<void()> onClose;

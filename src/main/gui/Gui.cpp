@@ -70,19 +70,30 @@ void cupuacu::gui::buildComponents(State *state, Window *window)
     auto rootComponent = std::make_unique<Component>(state, "RootComponent");
     rootComponent->setVisible(true);
 
+    auto contentLayer = std::make_unique<Component>(state, "ContentLayer");
+    contentLayer->setInterceptMouseEnabled(false);
+    auto *contentLayerPtr = rootComponent->addChild(contentLayer);
+
+    auto overlayLayer = std::make_unique<Component>(state, "OverlayLayer");
+    overlayLayer->setInterceptMouseEnabled(false);
+    auto *overlayLayerPtr = rootComponent->addChild(overlayLayer);
+
     auto mainView = std::make_unique<MainView>(state);
-    state->mainView = rootComponent->addChild(mainView);
+    state->mainView = contentLayerPtr->addChild(mainView);
 
     auto vuMeterContainer = std::make_unique<VuMeterContainer>(state);
-    state->vuMeterContainer = rootComponent->addChild(vuMeterContainer);
+    state->vuMeterContainer = contentLayerPtr->addChild(vuMeterContainer);
 
     auto statusBar = std::make_unique<StatusBar>(state);
-    state->statusBar = rootComponent->addChild(statusBar);
+    state->statusBar = contentLayerPtr->addChild(statusBar);
 
     auto menuBar = std::make_unique<MenuBar>(state);
-    window->setMenuBar(rootComponent->addChild(menuBar));
+    auto *menuBarPtr = overlayLayerPtr->addChild(menuBar);
 
     window->setRootComponent(std::move(rootComponent));
+    window->setContentLayer(contentLayerPtr);
+    window->setOverlayLayer(overlayLayerPtr);
+    window->setMenuBar(menuBarPtr);
     window->refreshForScaleOrResize();
 }
 
@@ -99,6 +110,14 @@ void cupuacu::gui::resizeComponents(State *state, Window *window)
     const int newCanvasW = (int)currentCanvasW;
     const int newCanvasH = (int)currentCanvasH;
     window->getRootComponent()->setSize(newCanvasW, newCanvasH);
+    if (window->getContentLayer())
+    {
+        window->getContentLayer()->setBounds(0, 0, newCanvasW, newCanvasH);
+    }
+    if (window->getOverlayLayer())
+    {
+        window->getOverlayLayer()->setBounds(0, 0, newCanvasW, newCanvasH);
+    }
 
     const SDL_Rect menuBarRect = computeMenuBarBounds(
         newCanvasW, newCanvasH, state->pixelScale, state->menuFontSize);
