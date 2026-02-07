@@ -1,4 +1,5 @@
 #include "audio/AudioDevices.hpp"
+#include "audio/AudioCallbackCore.hpp"
 
 #include "Document.hpp"
 #include "PaUtil.hpp"
@@ -23,24 +24,17 @@ namespace
     constexpr int SAMPLE_RATE = 44100;
     constexpr unsigned long BUFFER_SIZE = 256;
 
-    int getRecordingChannelCount(const int inputDeviceIndex)
+    bool enqueueRecordedChunk(void *userdata,
+                              const cupuacu::audio::RecordedChunk &chunk)
     {
-        if (inputDeviceIndex < 0)
-        {
-            return 0;
-        }
-
-        const PaDeviceInfo *inputInfo = Pa_GetDeviceInfo(inputDeviceIndex);
-        if (!inputInfo)
-        {
-            return 0;
-        }
-
-        return std::clamp(inputInfo->maxInputChannels, 0, 2);
+        auto *queue =
+            static_cast<moodycamel::ReaderWriterQueue<cupuacu::audio::RecordedChunk> *>(
+                userdata);
+        return queue->try_enqueue(chunk);
     }
 } // namespace
 
-AudioDevices::AudioDevices()
+AudioDevices::AudioDevices(const bool openDefaultDevice)
     : concurrency::AtomicStateExchange<AudioDeviceState, AudioDeviceView,
                                        AudioMessage>([](AudioDeviceState &) {})
 {
@@ -83,7 +77,7 @@ AudioDevices::AudioDevices()
         deviceSelection = initialSelection;
     }
 
-    if (initialSelection.outputDeviceIndex >= 0)
+    if (openDefaultDevice && initialSelection.outputDeviceIndex >= 0)
     {
         openDevice(initialSelection.inputDeviceIndex,
                    initialSelection.outputDeviceIndex);
@@ -98,82 +92,22 @@ AudioDevices::~AudioDevices()
 
 void AudioDevices::writeSilenceToOutput(float *out, const unsigned long frames)
 {
-    if (!out)
-    {
-        return;
-    }
-
-    for (unsigned long i = 0; i < frames; ++i)
-    {
-        *out++ = 0.0f;
-        *out++ = 0.0f;
-    }
+    callback_core::writeSilenceToOutput(out, frames);
 }
 
 bool AudioDevices::fillOutputBuffer(PaData &data, float *out,
                                     const unsigned long framesPerBuffer,
                                     float &peakLeft, float &peakRight)
 {
-    if (!out)
-    {
-        return false;
-    }
-
     AudioDeviceState *state = &data.device->activeState;
-    const Document *document = data.playbackDocument;
-
-    if (!document ||
-        (document->getChannelCount() != 1 && document->getChannelCount() != 2))
+    const bool playedAnyFrame = callback_core::fillOutputBuffer(
+        data.playbackDocument, data.selectionIsActive, data.selectedChannels,
+        state->playbackPosition, data.playbackEndPos, state->isPlaying, out,
+        framesPerBuffer, peakLeft, peakRight);
+    if (!state->isPlaying)
     {
-        writeSilenceToOutput(out, framesPerBuffer);
-        return false;
+        data.playbackDocument = nullptr;
     }
-
-    const auto docBuf = document->getAudioBuffer();
-    const auto chBufL = docBuf->getImmutableChannelData(0);
-    const auto chBufR =
-        docBuf->getImmutableChannelData(docBuf->getChannelCount() == 2 ? 1 : 0);
-
-    const bool selectionIsActive = data.selectionIsActive;
-    const auto selectedChannels = data.selectedChannels;
-
-    const bool shouldPlayChannelL =
-        !selectionIsActive || selectedChannels == SelectedChannels::BOTH ||
-        selectedChannels == SelectedChannels::LEFT;
-
-    const bool shouldPlayChannelR =
-        !selectionIsActive || selectedChannels == SelectedChannels::BOTH ||
-        selectedChannels == SelectedChannels::RIGHT;
-
-    bool playedAnyFrame = false;
-
-    for (unsigned long i = 0; i < framesPerBuffer; ++i)
-    {
-        if (state->playbackPosition >=
-            static_cast<int64_t>(data.playbackEndPos))
-        {
-            data.playbackDocument = nullptr;
-            state->isPlaying = false;
-            state->playbackPosition = -1;
-            *out++ = 0.f;
-            *out++ = 0.f;
-            continue;
-        }
-
-        const float outL =
-            shouldPlayChannelL ? chBufL[state->playbackPosition] : 0.0f;
-        const float outR =
-            shouldPlayChannelR ? chBufR[state->playbackPosition] : 0.0f;
-
-        *out++ = outL;
-        *out++ = outR;
-
-        peakLeft = std::max(peakLeft, std::abs(outL));
-        peakRight = std::max(peakRight, std::abs(outR));
-        ++state->playbackPosition;
-        playedAnyFrame = true;
-    }
-
     return playedAnyFrame;
 }
 
@@ -187,44 +121,21 @@ void AudioDevices::recordInputIntoQueue(PaData &data, const float *input,
         return;
     }
 
-    const int recordingChannels =
-        getRecordingChannelCount(data.device->currentInputDeviceIndex);
+    int recordingChannels = data.recordingChannelCount;
+    if (recordingChannels <= 0)
+    {
+        recordingChannels = static_cast<int>(std::clamp<int64_t>(
+            data.recordingDocument->getChannelCount(), 1, 2));
+    }
     if (recordingChannels <= 0)
     {
         return;
     }
-
-    unsigned long frameOffset = 0;
-    while (frameOffset < framesPerBuffer)
-    {
-        RecordedChunk chunk{};
-        chunk.startFrame = state->recordingPosition;
-        chunk.channelCount = static_cast<uint8_t>(recordingChannels);
-        chunk.frameCount = static_cast<uint32_t>(std::min<unsigned long>(
-            kRecordedChunkFrames, framesPerBuffer - frameOffset));
-
-        for (uint32_t frame = 0; frame < chunk.frameCount; ++frame)
-        {
-            const std::size_t sourceBase =
-                static_cast<std::size_t>(frameOffset + frame) *
-                static_cast<std::size_t>(recordingChannels);
-            const float inL = input[sourceBase];
-            const float inR =
-                recordingChannels > 1 ? input[sourceBase + 1] : inL;
-
-            const std::size_t targetBase =
-                static_cast<std::size_t>(frame) * kMaxRecordedChannels;
-            chunk.interleavedSamples[targetBase] = inL;
-            chunk.interleavedSamples[targetBase + 1] = inR;
-
-            peakLeft = std::max(peakLeft, std::abs(inL));
-            peakRight = std::max(peakRight, std::abs(inR));
-        }
-
-        data.device->recordedChunkQueue.try_enqueue(chunk);
-        state->recordingPosition += static_cast<int64_t>(chunk.frameCount);
-        frameOffset += chunk.frameCount;
-    }
+    callback_core::recordInputIntoChunks(
+        input, framesPerBuffer, static_cast<uint8_t>(recordingChannels),
+        state->recordingPosition,
+        static_cast<void *>(&data.device->recordedChunkQueue),
+        enqueueRecordedChunk, peakLeft, peakRight);
 }
 
 void AudioDevices::pushPeaksToVuMeter(PaData &data, const float peakLeft,
@@ -261,21 +172,28 @@ int AudioDevices::paCallback(const void *inputBuffer, void *outputBuffer,
     (void)statusFlags;
 
     auto *data = static_cast<PaData *>(userData);
-    data->device->drainQueue();
+    return data->device->processCallbackCycle(
+        static_cast<const float *>(inputBuffer), outputBuffer, framesPerBuffer);
+}
+
+int AudioDevices::processCallbackCycle(const float *inputBuffer, void *outputBuffer,
+                                       const unsigned long framesPerBuffer) noexcept
+{
+    drainQueue();
 
     float peakLeft = 0.0f;
     float peakRight = 0.0f;
 
     const bool isPlaying =
-        fillOutputBuffer(*data, static_cast<float *>(outputBuffer),
+        fillOutputBuffer(paData, static_cast<float *>(outputBuffer),
                          framesPerBuffer, peakLeft, peakRight);
-    recordInputIntoQueue(*data, static_cast<const float *>(inputBuffer),
-                         framesPerBuffer, peakLeft, peakRight);
+    recordInputIntoQueue(paData, inputBuffer, framesPerBuffer, peakLeft,
+                         peakRight);
 
-    pushPeaksToVuMeter(*data, peakLeft, peakRight, isPlaying,
-                       data->device->activeState.isRecording);
+    pushPeaksToVuMeter(paData, peakLeft, peakRight, isPlaying,
+                       activeState.isRecording);
 
-    data->device->publishState();
+    publishState();
     return 0;
 }
 
@@ -316,6 +234,7 @@ void AudioDevices::openDevice(const int inputDeviceIndex,
 
     PaStreamParameters inputParameters{};
     PaStreamParameters *inputParametersPtr = nullptr;
+    paData.recordingChannelCount = 0;
     if (inputDeviceIndex >= 0)
     {
         const PaDeviceInfo *inputInfo = Pa_GetDeviceInfo(inputDeviceIndex);
@@ -329,6 +248,8 @@ void AudioDevices::openDevice(const int inputDeviceIndex,
                 inputInfo->defaultLowInputLatency;
             inputParameters.hostApiSpecificStreamInfo = nullptr;
             inputParametersPtr = &inputParameters;
+            paData.recordingChannelCount =
+                static_cast<uint8_t>(inputParameters.channelCount);
         }
     }
 
@@ -359,6 +280,7 @@ void AudioDevices::closeDevice()
     closeDeviceLocked();
     currentInputDeviceIndex = -1;
     currentOutputDeviceIndex = -1;
+    paData.recordingChannelCount = 0;
 }
 
 void AudioDevices::closeDeviceLocked()

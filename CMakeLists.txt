@@ -53,6 +53,7 @@ add_executable(Cupuacu
     src/main/Paths.cpp
     src/main/persistence/AudioDevicePropertiesPersistence.cpp
     src/main/audio/AudioDevices.cpp
+    src/main/audio/AudioCallbackCore.cpp
     src/main/audio/AudioDeviceView.cpp
     src/main/gui/Gui.cpp
     src/main/gui/DocumentSessionWindow.cpp
@@ -80,6 +81,7 @@ add_executable(cupuacu-tests
     src/main/Paths.cpp
     src/main/persistence/AudioDevicePropertiesPersistence.cpp
     src/main/audio/AudioDevices.cpp
+    src/main/audio/AudioCallbackCore.cpp
     src/main/audio/AudioDeviceView.cpp
     src/main/gui/Gui.cpp
     src/main/gui/DocumentSessionWindow.cpp
@@ -107,6 +109,12 @@ add_executable(cupuacu-tests
     src/test/test_audio_device_properties_persistence.cpp
 )
 
+if(APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_sources(cupuacu-tests PRIVATE
+        src/test/test_rtsan.cpp
+    )
+endif()
+
 target_link_libraries(Cupuacu PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf)
 target_link_libraries(Cupuacu PRIVATE SndFile::sndfile)
 target_link_libraries(Cupuacu PRIVATE portaudio)
@@ -128,17 +136,32 @@ target_include_directories(cupuacu-tests PRIVATE ${readerwriterqueue_SOURCE_DIR}
 _bundle_resources(Cupuacu)
 target_link_libraries(cupuacu-tests PUBLIC cupuacu::rc)
 
-if(CUPUACU_ENABLE_RTSAN_LIBS)
+set(CUPUACU_RTSAN_SUPPORTED OFF)
+if(APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(CUPUACU_RTSAN_SUPPORTED ON)
+endif()
+
+if(CUPUACU_ENABLE_RTSAN_LIBS OR CUPUACU_RTSAN_SUPPORTED)
     FetchContent_Declare(
         rtsan
         GIT_REPOSITORY https://github.com/izzyreal/rtsan-libs-cmake.git
         GIT_TAG main
     )
     FetchContent_MakeAvailable(rtsan)
+endif()
+
+if(CUPUACU_ENABLE_RTSAN_LIBS)
     rtsan_libs_enable(TARGET Cupuacu)
     target_compile_definitions(Cupuacu PRIVATE CUPUACU_RTSAN_LIBS_ENABLED=1)
 else()
     target_compile_definitions(Cupuacu PRIVATE CUPUACU_RTSAN_LIBS_ENABLED=0)
+endif()
+
+if(CUPUACU_RTSAN_SUPPORTED)
+    rtsan_libs_enable(TARGET cupuacu-tests)
+    target_compile_definitions(cupuacu-tests PRIVATE CUPUACU_RTSAN_LIBS_ENABLED=1)
+else()
+    target_compile_definitions(cupuacu-tests PRIVATE CUPUACU_RTSAN_LIBS_ENABLED=0)
 endif()
 
 if(CMAKE_GENERATOR STREQUAL "Xcode" AND CUPUACU_ENABLE_XCODE_TSAN_SUPPRESSIONS)

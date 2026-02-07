@@ -1,6 +1,7 @@
 #include "MainView.hpp"
 #include "../State.hpp"
 #include "../actions/audio/RecordEdit.hpp"
+#include "../actions/audio/RecordedChunkApplier.hpp"
 #include "audio/AudioDevices.hpp"
 #include "Waveforms.hpp"
 #include "Waveform.hpp"
@@ -247,78 +248,23 @@ bool MainView::consumePendingRecordedAudio()
         ++chunksThisTick;
         consumedAny = true;
         beginRecordingUndoCaptureIfNeeded(chunk.startFrame);
-        const int oldChannelCount = static_cast<int>(doc.getChannelCount());
         const int64_t oldFrameCount = doc.getFrameCount();
-        const int chunkChannelCount = static_cast<int>(chunk.channelCount);
         const int64_t requiredFrameCount =
             chunk.startFrame + static_cast<int64_t>(chunk.frameCount);
 
-        if (doc.getChannelCount() == 0)
-        {
-            doc.initialize(cupuacu::SampleFormat::FLOAT32, 44100,
-                           chunk.channelCount, 0);
-        }
-        else if (doc.getChannelCount() < chunkChannelCount)
-        {
-            doc.resizeBuffer(chunkChannelCount, doc.getFrameCount());
-
-            for (int ch = oldChannelCount; ch < chunkChannelCount; ++ch)
-            {
-                auto &cache = doc.getWaveformCache(ch);
-                cache.clear();
-                cache.applyInsert(0, doc.getFrameCount());
-                if (doc.getFrameCount() > 0)
-                {
-                    cache.invalidateSamples(0, doc.getFrameCount() - 1);
-                }
-            }
-            waveformCacheChanged = true;
-        }
-        const int64_t appendCount =
-            std::max<int64_t>(0, requiredFrameCount - oldFrameCount);
-        if (appendCount > 0)
-        {
-            doc.insertFrames(oldFrameCount, appendCount);
-            waveformCacheChanged = true;
-        }
-
-        const int64_t overwriteStart =
-            std::clamp<int64_t>(chunk.startFrame, 0, oldFrameCount);
         const int64_t overwriteEnd =
             std::min<int64_t>(requiredFrameCount, oldFrameCount) - 1;
         capturePreOverwriteSamples(overwriteEnd + 1);
-        if (overwriteEnd >= overwriteStart)
-        {
-            for (int ch = 0; ch < doc.getChannelCount(); ++ch)
-            {
-                doc.getWaveformCache(ch).invalidateSamples(overwriteStart,
-                                                           overwriteEnd);
-            }
-            waveformCacheChanged = true;
-        }
 
-        if (oldChannelCount != doc.getChannelCount())
-        {
-            channelLayoutChanged = true;
-        }
-
-        for (uint32_t frame = 0; frame < chunk.frameCount; ++frame)
-        {
-            const int64_t writeFrame = chunk.startFrame + frame;
-            const std::size_t base =
-                static_cast<std::size_t>(frame) *
-                cupuacu::audio::AudioDevices::kMaxRecordedChannels;
-
-            doc.setSample(0, writeFrame, chunk.interleavedSamples[base]);
-            if (doc.getChannelCount() > 1)
-            {
-                doc.setSample(1, writeFrame,
-                              chunk.interleavedSamples[base + 1]);
-            }
-        }
+        const auto applyResult =
+            cupuacu::actions::audio::applyRecordedChunk(doc, chunk);
+        waveformCacheChanged =
+            waveformCacheChanged || applyResult.waveformCacheChanged;
+        channelLayoutChanged =
+            channelLayoutChanged || applyResult.channelLayoutChanged;
         captureRecordedChunk(chunk);
 
-        session.cursor = std::max(session.cursor, requiredFrameCount);
+        session.cursor = std::max(session.cursor, applyResult.requiredFrameCount);
     }
 
     if (!consumedAny)

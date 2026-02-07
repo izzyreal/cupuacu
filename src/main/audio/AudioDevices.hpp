@@ -4,8 +4,8 @@
 #include "audio/AudioDeviceState.hpp"
 #include "audio/AudioDeviceView.hpp"
 #include "audio/AudioMessage.hpp"
+#include "audio/RecordedChunk.hpp"
 
-#include <array>
 #include <cstdint>
 #include <mutex>
 
@@ -32,17 +32,11 @@ namespace cupuacu::audio
                                                   AudioDeviceView, AudioMessage>
     {
     public:
-        static constexpr std::size_t kMaxRecordedChannels = 2;
-        static constexpr std::size_t kRecordedChunkFrames = 256;
-
-        struct RecordedChunk
-        {
-            int64_t startFrame = 0;
-            uint32_t frameCount = 0;
-            uint8_t channelCount = 0;
-            std::array<float, kRecordedChunkFrames * kMaxRecordedChannels>
-                interleavedSamples{};
-        };
+        static constexpr std::size_t kMaxRecordedChannels =
+            cupuacu::audio::kMaxRecordedChannels;
+        static constexpr std::size_t kRecordedChunkFrames =
+            cupuacu::audio::kRecordedChunkFrames;
+        using RecordedChunk = cupuacu::audio::RecordedChunk;
 
         struct DeviceSelection
         {
@@ -62,7 +56,7 @@ namespace cupuacu::audio
             }
         };
 
-        AudioDevices();
+        explicit AudioDevices(bool openDefaultDevice = true);
         ~AudioDevices();
 
         void openDevice(int inputDeviceIndex, int outputDeviceIndex);
@@ -74,6 +68,8 @@ namespace cupuacu::audio
         int64_t getRecordingPosition() const;
         bool popRecordedChunk(RecordedChunk &outChunk);
         void clearRecordedChunks();
+        int processCallbackCycle(const float *inputBuffer, void *outputBuffer,
+                                 unsigned long framesPerBuffer) noexcept;
 
         DeviceSelection getDeviceSelection() const;
         bool setDeviceSelection(const DeviceSelection &selection);
@@ -87,9 +83,11 @@ namespace cupuacu::audio
             cupuacu::Document *playbackDocument = nullptr;
             cupuacu::Document *recordingDocument = nullptr;
             bool selectionIsActive = false;
-            cupuacu::SelectedChannels selectedChannels;
+            cupuacu::SelectedChannels selectedChannels =
+                cupuacu::SelectedChannels::BOTH;
             AudioDevices *device = nullptr;
             uint64_t playbackEndPos = 0;
+            uint8_t recordingChannelCount = 0;
             gui::VuMeter *vuMeter = nullptr;
         };
 
