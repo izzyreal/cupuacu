@@ -7,6 +7,7 @@
 #include "audio/RecordedChunk.hpp"
 
 #include <cstdint>
+#include <limits>
 #include <mutex>
 
 #include <readerwriterqueue.h>
@@ -86,7 +87,14 @@ namespace cupuacu::audio
             cupuacu::SelectedChannels selectedChannels =
                 cupuacu::SelectedChannels::BOTH;
             AudioDevices *device = nullptr;
+            uint64_t playbackStartPos = 0;
             uint64_t playbackEndPos = 0;
+            bool playbackLoopEnabled = false;
+            bool playbackHasPendingSwitch = false;
+            uint64_t playbackPendingStartPos = 0;
+            uint64_t playbackPendingEndPos = 0;
+            uint64_t recordingEndPos = std::numeric_limits<uint64_t>::max();
+            bool recordingBoundedToEnd = false;
             uint8_t recordingChannelCount = 0;
             gui::VuMeter *vuMeter = nullptr;
         };

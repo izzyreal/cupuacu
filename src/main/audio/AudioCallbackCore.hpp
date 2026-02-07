@@ -16,8 +16,11 @@ namespace cupuacu::audio::callback_core
     bool fillOutputBuffer(const cupuacu::Document *document,
                           bool selectionIsActive,
                           cupuacu::SelectedChannels selectedChannels,
-                          int64_t &playbackPosition,
-                          uint64_t playbackEndPos, bool &isPlaying, float *out,
+                          int64_t &playbackPosition, uint64_t &playbackStartPos,
+                          uint64_t &playbackEndPos, bool playbackLoopEnabled,
+                          bool &playbackHasPendingSwitch,
+                          uint64_t &playbackPendingStartPos,
+                          uint64_t &playbackPendingEndPos, bool &isPlaying, float *out,
                           unsigned long framesPerBuffer, float &peakLeft,
                           float &peakRight);
 

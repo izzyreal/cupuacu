@@ -70,6 +70,11 @@ namespace cupuacu::gui
         double lastSamplesPerPixel = 0.0;
         int64_t lastSelectionStart = -1;
         int64_t lastSelectionEnd = -1;
+        bool lastPlaybackLoopEnabled = false;
+        uint64_t lastPlaybackUpdateStart = 0;
+        uint64_t lastPlaybackUpdateEnd = 0;
+        bool lastPlaybackUpdateSelectionActive = false;
+        SelectedChannels lastPlaybackUpdateChannels = SelectedChannels::BOTH;
         bool wasRecordingLastTick = false;
         RecordingUndoCapture recordingUndoCapture;
 

@@ -34,6 +34,7 @@ TEST_CASE("playback path is safe", "[rtsan]")
     playMsg.document = &doc;
     playMsg.startPos = 0;
     playMsg.endPos = 4;
+    playMsg.loopEnabled = false;
     playMsg.selectionIsActive = false;
     playMsg.selectedChannels = cupuacu::SelectedChannels::BOTH;
     playMsg.vuMeter = nullptr;
@@ -70,6 +71,8 @@ TEST_CASE("recording overwrite scenario is safe", "[rtsan]")
     cupuacu::audio::Record recordMsg{};
     recordMsg.document = &doc;
     recordMsg.startPos = static_cast<uint64_t>(recordingPos);
+    recordMsg.endPos = 0;
+    recordMsg.boundedToEnd = false;
     recordMsg.vuMeter = nullptr;
     devices.enqueue(recordMsg);
 
@@ -113,6 +116,8 @@ TEST_CASE("recording append scenario is safe", "[rtsan]")
     cupuacu::audio::Record recordMsg{};
     recordMsg.document = &doc;
     recordMsg.startPos = static_cast<uint64_t>(recordingPos);
+    recordMsg.endPos = 0;
+    recordMsg.boundedToEnd = false;
     recordMsg.vuMeter = nullptr;
     devices.enqueue(recordMsg);
 

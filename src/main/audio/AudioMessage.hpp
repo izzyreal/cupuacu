@@ -21,9 +21,19 @@ namespace cupuacu::audio
         cupuacu::Document *document;
         uint64_t startPos;
         uint64_t endPos;
+        bool loopEnabled;
         bool selectionIsActive;
         SelectedChannels selectedChannels;
         gui::VuMeter *vuMeter;
+    };
+
+    struct UpdatePlayback
+    {
+        uint64_t startPos;
+        uint64_t endPos;
+        bool loopEnabled;
+        bool selectionIsActive;
+        SelectedChannels selectedChannels;
     };
 
     struct Stop
@@ -34,8 +44,10 @@ namespace cupuacu::audio
     {
         cupuacu::Document *document;
         uint64_t startPos;
+        uint64_t endPos;
+        bool boundedToEnd;
         gui::VuMeter *vuMeter;
     };
 
-    using AudioMessage = std::variant<Play, Stop, Record>;
+    using AudioMessage = std::variant<Play, Stop, Record, UpdatePlayback>;
 } // namespace cupuacu::audio

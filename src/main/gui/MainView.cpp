@@ -315,7 +315,7 @@ bool MainView::followTransportHead()
         return false;
     }
 
-    bool changed = updateCursorPos(state, transportHead);
+    bool changed = false;
 
     auto &viewState = state->mainDocumentSessionWindow->getViewState();
     if (viewState.samplesPerPixel <= 0.0 || waveforms->getWidth() <= 0)
@@ -562,12 +562,68 @@ void MainView::updateTriangleMarkerBounds() const
 
 void MainView::timerCallback()
 {
-    const auto &session = state->activeDocumentSession;
-    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    auto &session = state->activeDocumentSession;
+    auto &viewState = state->mainDocumentSessionWindow->getViewState();
     const bool consumedRecordedAudio = consumePendingRecordedAudio();
     const bool followedTransport = followTransportHead();
+    const bool isPlayingNow =
+        state->audioDevices && state->audioDevices->isPlaying();
     const bool isRecordingNow =
         state->audioDevices && state->audioDevices->isRecording();
+
+    if (isPlayingNow && state->audioDevices)
+    {
+        const auto &doc = session.document;
+        const uint64_t totalFrames = std::max<int64_t>(0, doc.getFrameCount());
+        uint64_t start = state->playbackRangeStart;
+        uint64_t end = state->playbackRangeEnd > 0 ? state->playbackRangeEnd : totalFrames;
+        if (session.selection.isActive())
+        {
+            start = static_cast<uint64_t>(
+                std::max<int64_t>(0, session.selection.getStartInt()));
+            end = static_cast<uint64_t>(
+                std::max<int64_t>(start, session.selection.getEndInt() + 1));
+        }
+        else if (state->loopPlaybackEnabled)
+        {
+            start = 0;
+            end = totalFrames;
+        }
+        start = std::min(start, totalFrames);
+        end = std::min(std::max(end, start), totalFrames);
+
+        const bool shouldUpdatePlayback =
+            start != lastPlaybackUpdateStart || end != lastPlaybackUpdateEnd ||
+            session.selection.isActive() != lastPlaybackUpdateSelectionActive ||
+            viewState.selectedChannels != lastPlaybackUpdateChannels ||
+            state->loopPlaybackEnabled != lastPlaybackLoopEnabled;
+
+        if (shouldUpdatePlayback)
+        {
+            cupuacu::audio::UpdatePlayback updateMsg{};
+            updateMsg.startPos = start;
+            updateMsg.endPos = end;
+            updateMsg.loopEnabled = state->loopPlaybackEnabled;
+            updateMsg.selectionIsActive = session.selection.isActive();
+            updateMsg.selectedChannels = viewState.selectedChannels;
+            state->audioDevices->enqueue(updateMsg);
+
+            lastPlaybackUpdateStart = start;
+            lastPlaybackUpdateEnd = end;
+            lastPlaybackUpdateSelectionActive = session.selection.isActive();
+            lastPlaybackUpdateChannels = viewState.selectedChannels;
+            lastPlaybackLoopEnabled = state->loopPlaybackEnabled;
+        }
+    }
+    else
+    {
+        lastPlaybackUpdateStart = state->playbackRangeStart;
+        lastPlaybackUpdateEnd = state->playbackRangeEnd;
+        lastPlaybackUpdateSelectionActive = session.selection.isActive();
+        lastPlaybackUpdateChannels = viewState.selectedChannels;
+        lastPlaybackLoopEnabled = state->loopPlaybackEnabled;
+    }
+
     if (!isRecordingNow && wasRecordingLastTick)
     {
         finalizeRecordingUndoCaptureIfComplete();

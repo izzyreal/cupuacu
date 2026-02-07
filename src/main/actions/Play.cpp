@@ -47,7 +47,11 @@ void cupuacu::actions::play(cupuacu::State *state)
     if (session.selection.isActive())
     {
         start = session.selection.getStartInt();
-        end = session.selection.getEndInt();
+        end = std::min<uint64_t>(totalSamples, session.selection.getEndInt() + 1);
+    }
+    else if (state->loopPlaybackEnabled)
+    {
+        start = std::clamp<uint64_t>(session.cursor, 0, totalSamples);
     }
     else
     {
@@ -59,11 +63,15 @@ void cupuacu::actions::play(cupuacu::State *state)
         playMsg.document = &doc;
         playMsg.startPos = start;
         playMsg.endPos = end;
+        playMsg.loopEnabled = state->loopPlaybackEnabled;
         playMsg.selectedChannels = viewState.selectedChannels;
         playMsg.selectionIsActive = session.selection.isActive();
         playMsg.vuMeter = state->vuMeter;
         state->audioDevices->enqueue(std::move(playMsg));
     }
+
+    state->playbackRangeStart = start;
+    state->playbackRangeEnd = end;
 }
 
 void cupuacu::actions::requestStop(cupuacu::State *state)

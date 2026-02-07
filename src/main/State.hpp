@@ -48,6 +48,9 @@ namespace cupuacu
         std::deque<std::shared_ptr<actions::Undoable>> redoables;
         uint8_t menuFontSize = 40;
         uint8_t pixelScale = 1;
+        bool loopPlaybackEnabled = false;
+        uint64_t playbackRangeStart = 0;
+        uint64_t playbackRangeEnd = 0;
         DocumentSession activeDocumentSession;
         Document clipboard;
 

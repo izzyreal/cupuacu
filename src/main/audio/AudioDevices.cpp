@@ -102,8 +102,10 @@ bool AudioDevices::fillOutputBuffer(PaData &data, float *out,
     AudioDeviceState *state = &data.device->activeState;
     const bool playedAnyFrame = callback_core::fillOutputBuffer(
         data.playbackDocument, data.selectionIsActive, data.selectedChannels,
-        state->playbackPosition, data.playbackEndPos, state->isPlaying, out,
-        framesPerBuffer, peakLeft, peakRight);
+        state->playbackPosition, data.playbackStartPos, data.playbackEndPos,
+        data.playbackLoopEnabled, data.playbackHasPendingSwitch,
+        data.playbackPendingStartPos, data.playbackPendingEndPos,
+        state->isPlaying, out, framesPerBuffer, peakLeft, peakRight);
     if (!state->isPlaying)
     {
         data.playbackDocument = nullptr;
@@ -131,11 +133,41 @@ void AudioDevices::recordInputIntoQueue(PaData &data, const float *input,
     {
         return;
     }
+
+    unsigned long framesToRecord = framesPerBuffer;
+    if (data.recordingBoundedToEnd)
+    {
+        if (state->recordingPosition >= static_cast<int64_t>(data.recordingEndPos))
+        {
+            state->isRecording = false;
+            data.recordingDocument = nullptr;
+            return;
+        }
+        const uint64_t remaining =
+            data.recordingEndPos - static_cast<uint64_t>(state->recordingPosition);
+        framesToRecord = std::min<unsigned long>(
+            framesPerBuffer, static_cast<unsigned long>(remaining));
+    }
+
+    if (framesToRecord == 0)
+    {
+        state->isRecording = false;
+        data.recordingDocument = nullptr;
+        return;
+    }
+
     callback_core::recordInputIntoChunks(
-        input, framesPerBuffer, static_cast<uint8_t>(recordingChannels),
+        input, framesToRecord, static_cast<uint8_t>(recordingChannels),
         state->recordingPosition,
         static_cast<void *>(&data.device->recordedChunkQueue),
         enqueueRecordedChunk, peakLeft, peakRight);
+
+    if (data.recordingBoundedToEnd &&
+        state->recordingPosition >= static_cast<int64_t>(data.recordingEndPos))
+    {
+        state->isRecording = false;
+        data.recordingDocument = nullptr;
+    }
 }
 
 void AudioDevices::pushPeaksToVuMeter(PaData &data, const float peakLeft,
@@ -311,7 +343,10 @@ void AudioDevices::applyMessage(const AudioMessage &msg) noexcept
                                 paData.playbackDocument = m.document;
                                 paData.device = this;
                                 activeState.playbackPosition = m.startPos;
+                                paData.playbackStartPos = m.startPos;
                                 paData.playbackEndPos = m.endPos;
+                                paData.playbackLoopEnabled = m.loopEnabled;
+                                paData.playbackHasPendingSwitch = false;
                                 activeState.isPlaying = true;
                                 paData.selectedChannels = m.selectedChannels;
                                 paData.selectionIsActive = m.selectionIsActive;
@@ -321,6 +356,9 @@ void AudioDevices::applyMessage(const AudioMessage &msg) noexcept
                             {
                                 paData.playbackDocument = nullptr;
                                 paData.recordingDocument = nullptr;
+                                paData.playbackLoopEnabled = false;
+                                paData.playbackHasPendingSwitch = false;
+                                paData.recordingBoundedToEnd = false;
                                 activeState.playbackPosition = -1;
                                 activeState.recordingPosition = -1;
                                 activeState.isPlaying = false;
@@ -331,8 +369,61 @@ void AudioDevices::applyMessage(const AudioMessage &msg) noexcept
                                 paData.recordingDocument = m.document;
                                 paData.device = this;
                                 activeState.recordingPosition = m.startPos;
+                                paData.recordingEndPos = m.endPos;
+                                paData.recordingBoundedToEnd = m.boundedToEnd;
                                 activeState.isRecording = true;
                                 paData.vuMeter = m.vuMeter;
+                            },
+                            [&](const UpdatePlayback &m)
+                            {
+                                if (!activeState.isPlaying)
+                                {
+                                    return;
+                                }
+                                paData.selectionIsActive = m.selectionIsActive;
+                                paData.selectedChannels = m.selectedChannels;
+
+                                if (m.endPos <= m.startPos)
+                                {
+                                    paData.playbackDocument = nullptr;
+                                    activeState.isPlaying = false;
+                                    activeState.playbackPosition = -1;
+                                    return;
+                                }
+
+                                const bool wasLooping = paData.playbackLoopEnabled;
+                                const bool wantsLooping = m.loopEnabled;
+                                paData.playbackLoopEnabled = wantsLooping;
+
+                                if (wasLooping && wantsLooping)
+                                {
+                                    if (m.endPos > paData.playbackEndPos)
+                                    {
+                                        paData.playbackEndPos = m.endPos;
+                                    }
+                                    paData.playbackPendingStartPos = m.startPos;
+                                    paData.playbackPendingEndPos = m.endPos;
+                                    paData.playbackHasPendingSwitch = true;
+                                    return;
+                                }
+
+                                paData.playbackStartPos = m.startPos;
+                                paData.playbackEndPos = m.endPos;
+                                paData.playbackHasPendingSwitch = false;
+
+                                const int64_t startPos =
+                                    static_cast<int64_t>(m.startPos);
+                                const int64_t endPos = static_cast<int64_t>(m.endPos);
+                                if (activeState.playbackPosition < startPos)
+                                {
+                                    activeState.playbackPosition = startPos;
+                                }
+                                if (activeState.playbackPosition >= endPos)
+                                {
+                                    paData.playbackDocument = nullptr;
+                                    activeState.isPlaying = false;
+                                    activeState.playbackPosition = -1;
+                                }
                             }};
 
     std::visit(visitor, msg);

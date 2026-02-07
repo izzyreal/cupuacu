@@ -3,6 +3,7 @@
 #include "Component.hpp"
 
 #include <functional>
+#include <optional>
 
 namespace cupuacu::gui
 {
@@ -29,6 +30,8 @@ namespace cupuacu::gui
         {
             return toggled;
         }
+        void setToggled(bool toggledToUse);
+        void setForcedFillColor(const std::optional<SDL_Color> &color);
 
         bool mouseDown(const MouseEvent &e) override;
         bool mouseUp(const MouseEvent &e) override;
@@ -45,6 +48,7 @@ namespace cupuacu::gui
         bool pressed = false;
         bool pointerInsideWhilePressed = false;
         bool toggled = false;
+        std::optional<SDL_Color> forcedFillColor;
         std::function<void()> onPress;
         std::function<void(bool)> onToggle;
     };

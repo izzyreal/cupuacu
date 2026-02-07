@@ -45,6 +45,31 @@ void Button::setEnabled(const bool enabledToUse)
     setDirty();
 }
 
+void Button::setToggled(const bool toggledToUse)
+{
+    if (toggled == toggledToUse)
+    {
+        return;
+    }
+    toggled = toggledToUse;
+    setDirty();
+}
+
+void Button::setForcedFillColor(const std::optional<SDL_Color> &color)
+{
+    const bool bothEmpty = !forcedFillColor.has_value() && !color.has_value();
+    const bool bothEqual =
+        forcedFillColor.has_value() && color.has_value() &&
+        forcedFillColor->r == color->r && forcedFillColor->g == color->g &&
+        forcedFillColor->b == color->b && forcedFillColor->a == color->a;
+    if (bothEmpty || bothEqual)
+    {
+        return;
+    }
+    forcedFillColor = color;
+    setDirty();
+}
+
 bool Button::isInside(const MouseEvent &e) const
 {
     return e.mouseXi >= 0 && e.mouseYi >= 0 && e.mouseXi < getWidth() &&
@@ -135,6 +160,10 @@ void Button::onDraw(SDL_Renderer *renderer)
     else if (pressed && pointerInsideWhilePressed)
     {
         fillColor = kPressedColor;
+    }
+    else if (forcedFillColor.has_value())
+    {
+        fillColor = *forcedFillColor;
     }
     else if (type == ButtonType::Toggle && toggled)
     {

@@ -21,7 +21,10 @@ void cupuacu::audio::callback_core::writeSilenceToOutput(
 bool cupuacu::audio::callback_core::fillOutputBuffer(
     const cupuacu::Document *document, const bool selectionIsActive,
     const cupuacu::SelectedChannels selectedChannels, int64_t &playbackPosition,
-    const uint64_t playbackEndPos, bool &isPlaying, float *out,
+    uint64_t &playbackStartPos, uint64_t &playbackEndPos,
+    const bool playbackLoopEnabled, bool &playbackHasPendingSwitch,
+    uint64_t &playbackPendingStartPos, uint64_t &playbackPendingEndPos,
+    bool &isPlaying, float *out,
     const unsigned long framesPerBuffer, float &peakLeft, float &peakRight)
 {
     if (!out)
@@ -50,16 +53,30 @@ bool cupuacu::audio::callback_core::fillOutputBuffer(
         selectedChannels == cupuacu::SelectedChannels::RIGHT;
 
     bool playedAnyFrame = false;
-
     for (unsigned long i = 0; i < framesPerBuffer; ++i)
     {
         if (playbackPosition >= static_cast<int64_t>(playbackEndPos))
         {
-            isPlaying = false;
-            playbackPosition = -1;
-            *out++ = 0.f;
-            *out++ = 0.f;
-            continue;
+            const bool canLoop =
+                playbackLoopEnabled && playbackEndPos > playbackStartPos;
+            if (canLoop)
+            {
+                if (playbackHasPendingSwitch)
+                {
+                    playbackStartPos = playbackPendingStartPos;
+                    playbackEndPos = playbackPendingEndPos;
+                    playbackHasPendingSwitch = false;
+                }
+                playbackPosition = static_cast<int64_t>(playbackStartPos);
+            }
+            else
+            {
+                isPlaying = false;
+                playbackPosition = -1;
+                *out++ = 0.f;
+                *out++ = 0.f;
+                continue;
+            }
         }
 
         const float outL = shouldPlayChannelL ? chBufL[playbackPosition] : 0.0f;

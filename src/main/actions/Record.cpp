@@ -30,7 +30,20 @@ void cupuacu::actions::record(cupuacu::State *state)
 
     cupuacu::audio::Record recordMessage;
     recordMessage.document = &session.document;
-    recordMessage.startPos = std::max<int64_t>(0, session.cursor);
+    if (session.selection.isActive())
+    {
+        recordMessage.startPos =
+            std::max<int64_t>(0, session.selection.getStartInt());
+        recordMessage.endPos = std::max<uint64_t>(
+            recordMessage.startPos, session.selection.getEndInt() + 1);
+        recordMessage.boundedToEnd = true;
+    }
+    else
+    {
+        recordMessage.startPos = std::max<int64_t>(0, session.cursor);
+        recordMessage.endPos = 0;
+        recordMessage.boundedToEnd = false;
+    }
     recordMessage.vuMeter = state->vuMeter;
     state->audioDevices->enqueue(std::move(recordMessage));
 }
