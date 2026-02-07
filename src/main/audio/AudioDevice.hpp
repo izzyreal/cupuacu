@@ -1,9 +1,9 @@
 #pragma once
 
 #include "concurrency/AtomicStateExchange.hpp"
-#include "AudioMessage.hpp"
-#include "AudioDeviceView.hpp"
-#include "AudioDeviceState.hpp"
+#include "audio/AudioMessage.hpp"
+#include "audio/AudioDeviceView.hpp"
+#include "audio/AudioDeviceState.hpp"
 
 #include <mutex>
 
@@ -11,7 +11,7 @@ typedef void PaStream;
 struct PaStreamCallbackTimeInfo;
 typedef unsigned long PaStreamCallbackFlags;
 
-namespace cupuacu
+namespace cupuacu::audio
 {
     class AudioDevice
         : public concurrency::AtomicStateExchange<AudioDeviceState,
@@ -44,4 +44,4 @@ namespace cupuacu
         int currentOutputDeviceIndex = -1;
         PaStream *stream = nullptr;
     };
-} // namespace cupuacu
+} // namespace cupuacu::audio

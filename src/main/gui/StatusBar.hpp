@@ -1,7 +1,7 @@
 #pragma once
 
-#include "AudioDevice.hpp"
-#include "AudioDevices.hpp"
+#include "audio/AudioDevice.hpp"
+#include "audio/AudioDevices.hpp"
 
 #include "gui/Component.hpp"
 #include "gui/LabeledField.hpp"

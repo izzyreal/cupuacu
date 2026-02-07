@@ -1,7 +1,7 @@
 #include "Waveform.hpp"
 
-#include "AudioDevice.hpp"
-#include "AudioDevices.hpp"
+#include "audio/AudioDevice.hpp"
+#include "audio/AudioDevices.hpp"
 #include "WaveformsUnderlay.hpp"
 #include "WaveformCache.hpp"
 #include "Window.hpp"

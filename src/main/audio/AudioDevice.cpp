@@ -1,4 +1,4 @@
-#include "AudioDevice.hpp"
+#include "audio/AudioDevice.hpp"
 
 #include "PaUtil.hpp"
 #include "Document.hpp"
@@ -11,13 +11,14 @@
 #include <portaudio.h>
 
 using namespace cupuacu;
+using namespace cupuacu::audio;
 using namespace cupuacu::utils;
 
 typedef struct PaData
 {
-    Document *document = nullptr;
+    cupuacu::Document *document = nullptr;
     bool selectionIsActive = false;
-    SelectedChannels selectedChannels;
+    cupuacu::SelectedChannels selectedChannels;
     AudioDevice *device;
     uint64_t endPos;
     gui::VuMeter *vuMeter;

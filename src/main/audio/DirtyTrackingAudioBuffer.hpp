@@ -1,10 +1,10 @@
 #pragma once
 
-#include "AudioBuffer.hpp"
+#include "audio/AudioBuffer.hpp"
 #include <vector>
 #include <cstdint>
 
-namespace cupuacu
+namespace cupuacu::audio
 {
 
     class DirtyTrackingAudioBuffer : public AudioBuffer
@@ -120,4 +120,4 @@ namespace cupuacu
             dirtyFlags = std::move(newFlags);
         }
     };
-} // namespace cupuacu
+} // namespace cupuacu::audio

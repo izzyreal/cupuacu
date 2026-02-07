@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace cupuacu
+namespace cupuacu::audio
 {
     class AudioDeviceState;
     class AudioDeviceView
@@ -16,4 +16,4 @@ namespace cupuacu
     private:
         const AudioDeviceState *state;
     };
-} // namespace cupuacu
+} // namespace cupuacu::audio

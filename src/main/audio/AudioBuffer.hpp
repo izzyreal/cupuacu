@@ -3,7 +3,7 @@
 #include <vector>
 #include <span>
 
-namespace cupuacu
+namespace cupuacu::audio
 {
     class AudioBuffer
     {
@@ -74,4 +74,4 @@ namespace cupuacu
             return channels[channel];
         }
     };
-} // namespace cupuacu
+} // namespace cupuacu::audio

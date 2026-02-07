@@ -163,8 +163,8 @@ namespace cupuacu::file
             auto buf = state->document.getAudioBuffer();
 
             const bool shouldCheckForDirtiness =
-                std::dynamic_pointer_cast<cupuacu::DirtyTrackingAudioBuffer>(
-                    buf) != nullptr;
+                std::dynamic_pointer_cast<
+                    cupuacu::audio::DirtyTrackingAudioBuffer>(buf) != nullptr;
 
             for (size_t f = 0; f < frames; ++f)
             {

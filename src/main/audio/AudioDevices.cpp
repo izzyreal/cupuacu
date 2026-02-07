@@ -1,11 +1,11 @@
-#include "AudioDevices.hpp"
+#include "audio/AudioDevices.hpp"
 
-#include "AudioDevice.hpp"
+#include "audio/AudioDevice.hpp"
 #include "PaUtil.hpp"
 
 #include <portaudio.h>
 
-using namespace cupuacu;
+using namespace cupuacu::audio;
 
 AudioDevices::AudioDevices()
 {
@@ -13,7 +13,7 @@ AudioDevices::AudioDevices()
 
     if (err != paNoError)
     {
-        PaUtil::handlePaError(err);
+        cupuacu::PaUtil::handlePaError(err);
         return;
     }
 

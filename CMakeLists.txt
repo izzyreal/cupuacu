@@ -43,9 +43,9 @@ AddDependency(portaudio "https://github.com/PortAudio/portaudio.git" "master")
 add_executable(Cupuacu
     src/main/main.cpp
     src/main/State.cpp
-    src/main/AudioDevices.cpp
-    src/main/AudioDevice.cpp
-    src/main/AudioDeviceView.cpp
+    src/main/audio/AudioDevices.cpp
+    src/main/audio/AudioDevice.cpp
+    src/main/audio/AudioDeviceView.cpp
     src/main/gui/Gui.cpp
     src/main/gui/MainView.cpp
     src/main/gui/TriangleMarker.cpp
@@ -65,9 +65,9 @@ add_executable(Cupuacu
 
 add_executable(cupuacu-tests
     src/main/State.cpp
-    src/main/AudioDevices.cpp
-    src/main/AudioDevice.cpp
-    src/main/AudioDeviceView.cpp
+    src/main/audio/AudioDevices.cpp
+    src/main/audio/AudioDevice.cpp
+    src/main/audio/AudioDeviceView.cpp
     src/main/gui/Gui.cpp
     src/main/gui/MainView.cpp
     src/main/gui/TriangleMarker.cpp

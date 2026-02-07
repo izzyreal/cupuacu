@@ -1,7 +1,7 @@
 #include <SDL3/SDL.h>
 #include "../State.hpp"
-#include "AudioDevice.hpp"
-#include "AudioDevices.hpp"
+#include "audio/AudioDevice.hpp"
+#include "audio/AudioDevices.hpp"
 #include "Waveform.hpp"
 #include "Window.hpp"
 #include "../actions/ShowOpenFileDialog.hpp"

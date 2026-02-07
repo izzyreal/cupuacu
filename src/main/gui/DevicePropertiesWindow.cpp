@@ -1,7 +1,7 @@
 #include "DevicePropertiesWindow.hpp"
 
 #include "../PaUtil.hpp"
-#include "../AudioDevices.hpp"
+#include "../audio/AudioDevices.hpp"
 #include "Colors.hpp"
 #include "text.hpp"
 
@@ -381,7 +381,7 @@ void DevicePropertiesWindow::syncSelectionToAudioDevices()
         return;
     }
 
-    cupuacu::AudioDevices::DeviceSelection selection;
+    cupuacu::audio::AudioDevices::DeviceSelection selection;
     selection.hostApiIndex = getSelectedHostApiIndex();
     selection.outputDeviceIndex =
         getSelectedDeviceIndex(outputDeviceDropdown, outputDeviceIndices);

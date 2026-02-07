@@ -12,10 +12,13 @@ namespace cupuacu::gui
 namespace cupuacu
 {
     class Document;
+}
 
+namespace cupuacu::audio
+{
     struct Play
     {
-        Document *document;
+        cupuacu::Document *document;
         uint64_t startPos;
         uint64_t endPos;
         bool selectionIsActive;
@@ -28,4 +31,4 @@ namespace cupuacu
     };
 
     using AudioMessage = std::variant<Play, Stop>;
-} // namespace cupuacu
+} // namespace cupuacu::audio

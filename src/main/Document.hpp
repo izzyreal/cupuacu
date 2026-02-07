@@ -1,7 +1,7 @@
 #pragma once
 
-#include "AudioBuffer.hpp"
-#include "DirtyTrackingAudioBuffer.hpp"
+#include "audio/AudioBuffer.hpp"
+#include "audio/DirtyTrackingAudioBuffer.hpp"
 #include "SampleFormat.hpp"
 #include "gui/WaveformCache.hpp"
 
@@ -13,8 +13,8 @@ namespace cupuacu
     class Document
     {
     private:
-        std::shared_ptr<cupuacu::AudioBuffer> buffer =
-            std::make_shared<cupuacu::AudioBuffer>();
+        std::shared_ptr<cupuacu::audio::AudioBuffer> buffer =
+            std::make_shared<cupuacu::audio::AudioBuffer>();
         int sampleRate = 0;
         SampleFormat format = SampleFormat::Unknown;
         std::vector<gui::WaveformCache> waveformCache =
@@ -28,8 +28,9 @@ namespace cupuacu
             format = sampleFormatToUse;
             sampleRate = sampleRateToUse;
             buffer = format == SampleFormat::PCM_S16
-                         ? std::make_shared<cupuacu::DirtyTrackingAudioBuffer>()
-                         : std::make_shared<cupuacu::AudioBuffer>();
+                         ? std::make_shared<
+                               cupuacu::audio::DirtyTrackingAudioBuffer>()
+                         : std::make_shared<cupuacu::audio::AudioBuffer>();
             buffer->resize(channelCount, frameCount);
         }
 
@@ -101,7 +102,8 @@ namespace cupuacu
             }
         }
 
-        const std::shared_ptr<cupuacu::AudioBuffer> getAudioBuffer() const
+        const std::shared_ptr<cupuacu::audio::AudioBuffer>
+        getAudioBuffer() const
         {
             return buffer;
         }

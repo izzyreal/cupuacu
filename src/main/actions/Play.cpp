@@ -3,11 +3,12 @@
 #include "../State.hpp"
 #include "../gui/VuMeter.hpp"
 
-#include "AudioDevice.hpp"
-#include "AudioMessage.hpp"
-#include "AudioDevices.hpp"
+#include "audio/AudioDevice.hpp"
+#include "audio/AudioMessage.hpp"
+#include "audio/AudioDevices.hpp"
 
 using namespace cupuacu;
+using namespace cupuacu::audio;
 
 void performStop(cupuacu::State *state)
 {

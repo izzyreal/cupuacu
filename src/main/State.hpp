@@ -16,7 +16,10 @@
 
 namespace cupuacu
 {
-    class AudioDevices;
+    namespace audio
+    {
+        class AudioDevices;
+    } // namespace audio
 
     namespace actions
     {
@@ -37,7 +40,7 @@ namespace cupuacu
 
     struct State
     {
-        std::shared_ptr<AudioDevices> audioDevices;
+        std::shared_ptr<audio::AudioDevices> audioDevices;
         std::deque<std::shared_ptr<actions::Undoable>> undoables;
         std::deque<std::shared_ptr<actions::Undoable>> redoables;
         uint8_t menuFontSize = 40;

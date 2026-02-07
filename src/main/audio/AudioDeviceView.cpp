@@ -1,9 +1,9 @@
-#include "AudioDeviceView.hpp"
+#include "audio/AudioDeviceView.hpp"
 
-#include "AudioDeviceState.hpp"
+#include "audio/AudioDeviceState.hpp"
 
 using namespace cupuacu;
-
+using namespace cupuacu::audio;
 AudioDeviceView::AudioDeviceView(const AudioDeviceState *s) noexcept : state(s)
 {
 }

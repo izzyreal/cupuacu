@@ -3,7 +3,7 @@
 #include <memory>
 #include <mutex>
 
-namespace cupuacu
+namespace cupuacu::audio
 {
     class AudioDevice;
 
@@ -42,4 +42,4 @@ namespace cupuacu
         mutable std::mutex selectionMutex;
         DeviceSelection deviceSelection;
     };
-} // namespace cupuacu
+} // namespace cupuacu::audio
