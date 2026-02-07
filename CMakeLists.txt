@@ -7,6 +7,8 @@ project(Cupuacu)
 
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "Prevent FetchContent from re-downloading sources" FORCE)
 option(CUPUACU_CODE_SIGNING_ENABLED "Enable post-build code signing on macOS" OFF)
+option(CUPUACU_ENABLE_XCODE_TSAN_SUPPRESSIONS
+    "Inject TSAN_OPTIONS suppressions into CMake-generated Xcode schemes" ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
@@ -123,6 +125,14 @@ target_include_directories(cupuacu-tests PRIVATE ${readerwriterqueue_SOURCE_DIR}
 
 _bundle_resources(Cupuacu)
 target_link_libraries(cupuacu-tests PUBLIC cupuacu::rc)
+
+if(CMAKE_GENERATOR STREQUAL "Xcode" AND CUPUACU_ENABLE_XCODE_TSAN_SUPPRESSIONS)
+    set(_cupuacu_tsan_env "TSAN_OPTIONS=suppressions=\$(SRCROOT)/tsan.supp")
+    set_property(TARGET Cupuacu PROPERTY XCODE_GENERATE_SCHEME YES)
+    set_property(TARGET cupuacu-tests PROPERTY XCODE_GENERATE_SCHEME YES)
+    set_property(TARGET Cupuacu PROPERTY XCODE_SCHEME_ENVIRONMENT "${_cupuacu_tsan_env}")
+    set_property(TARGET cupuacu-tests PROPERTY XCODE_SCHEME_ENVIRONMENT "${_cupuacu_tsan_env}")
+endif()
 
 if (PROJECT_IS_TOP_LEVEL)
     execute_process(

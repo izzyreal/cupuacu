@@ -1,0 +1,5 @@
+# PortAudio/CoreAudio callback-thread races observed under TSAN.
+# Keep these rules narrow to avoid hiding app-level races.
+race:AudioIOProc
+race:PaUtil_BeginCpuLoadMeasurement
+race:PaUtil_EndCpuLoadMeasurement
