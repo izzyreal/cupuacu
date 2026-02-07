@@ -1,9 +1,12 @@
-#include "TriangleMarker.h"
-#include "../State.h"
+#include "gui/TriangleMarker.h"
+
+#include "State.h"
+
+#include "gui/Window.h"
 
 using namespace cupuacu::gui;
 
-TriangleMarker::TriangleMarker(cupuacu::State *state, TriangleMarkerType typeIn)
+TriangleMarker::TriangleMarker(State *state, TriangleMarkerType typeIn)
     : Component(state,
                 [typeIn]()
                 {
@@ -28,7 +31,7 @@ TriangleMarker::TriangleMarker(cupuacu::State *state, TriangleMarkerType typeIn)
 {
 }
 
-SDL_FColor TriangleMarker::getColor() const
+SDL_FColor TriangleMarker::getColor()
 {
     return SDL_FColor{188 / 255.f, 188 / 255.f, 0.f, 1.f};
 }
@@ -45,7 +48,7 @@ void TriangleMarker::drawTriangle(SDL_Renderer *r, const SDL_FPoint (&pts)[3],
         verts[i].tex_coord = {0.f, 0.f};
     }
 
-    const int indices[3] = {0, 1, 2};
+    constexpr int indices[3] = {0, 1, 2};
     SDL_RenderGeometry(r, nullptr, verts, 3, indices, 3);
 }
 
@@ -115,7 +118,8 @@ bool TriangleMarker::mouseUp(const MouseEvent &e)
 
 bool TriangleMarker::mouseMove(const MouseEvent &e)
 {
-    if (state->capturingComponent != this || !e.buttonState.left)
+    if (!getWindow() || getWindow()->getCapturingComponent() != this ||
+        !e.buttonState.left)
     {
         return false;
     }

@@ -8,11 +8,11 @@ namespace cupuacu::gui
     class Waveforms : public Component
     {
     public:
-        Waveforms(cupuacu::State *);
+        Waveforms(State *);
 
         void rebuildWaveforms();
 
-        void resizeWaveforms();
+        void resizeWaveforms() const;
 
         void resized() override;
 

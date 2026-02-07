@@ -7,7 +7,7 @@
 using namespace cupuacu::gui;
 using namespace cupuacu::actions::audio;
 
-SamplePoint::SamplePoint(cupuacu::State *state, const uint8_t channelIndexToUse,
+SamplePoint::SamplePoint(State *state, const uint8_t channelIndexToUse,
                          const int64_t sampleIndexToUse)
     : Component(state, "Sample point idx " + std::to_string(sampleIndexToUse)),
       sampleIndex(sampleIndexToUse), channelIndex(channelIndexToUse)
@@ -102,13 +102,13 @@ bool SamplePoint::mouseMove(const MouseEvent &e)
     dragYPos += e.mouseRelY;
 
     // Clamp y-position to allow sample point to reach drawable area edges
-    const float minY = 0.0f; // Top edge of sample point can reach 0
+    constexpr float minY = 0.0f; // Top edge of sample point can reach 0
     const float maxY =
         parentHeight - samplePointSize; // Bottom edge can reach drawableHeight
     dragYPos = std::clamp(dragYPos, minY, maxY);
 
     // Calculate the new sample value based on the clamped y-position
-    const float vertCenter = dragYPos + (samplePointSize * 0.5f);
+    const float vertCenter = dragYPos + samplePointSize * 0.5f;
     float newSampleValue = getSampleValueForYPos(vertCenter, parentHeight,
                                                  verticalZoom, samplePointSize);
 
@@ -125,8 +125,8 @@ bool SamplePoint::mouseMove(const MouseEvent &e)
 
 void SamplePoint::onDraw(SDL_Renderer *r)
 {
-    SDL_SetRenderDrawColor(r, 0, (isMouseOver() || isDragging) ? 255 : 185, 0,
+    SDL_SetRenderDrawColor(r, 0, isMouseOver() || isDragging ? 255 : 185, 0,
                            255);
-    SDL_FRect rectToFill{0, 0, (float)getWidth(), (float)getHeight()};
+    const SDL_FRect rectToFill{0, 0, (float)getWidth(), (float)getHeight()};
     SDL_RenderFillRect(r, &rectToFill);
 }

@@ -21,7 +21,7 @@ namespace cupuacu::gui
             Samples
         };
 
-        explicit Timeline(cupuacu::State *state) : Component(state, "Timeline")
+        explicit Timeline(State *state) : Component(state, "Timeline")
         {
             ruler = emplaceChild<Ruler>(state, getComponentName());
             ruler->setCenterFirstLabel(false);
@@ -30,7 +30,7 @@ namespace cupuacu::gui
             lastSamplesPerPixel = state->samplesPerPixel;
         }
 
-        void setMode(Mode m)
+        void setMode(const Mode m)
         {
             mode = m;
             ruler->setMandatoryEndLabel("smpl");
@@ -59,7 +59,7 @@ namespace cupuacu::gui
             }
         }
 
-        void updateLabels()
+        void updateLabels() const
         {
             if (getWidth() <= 0)
             {
@@ -68,16 +68,16 @@ namespace cupuacu::gui
 
             const int waveformWidth = Waveform::getWaveformWidth(state);
 
-            double maxTicks = (waveformWidth * state->pixelScale) / 85.f;
+            double maxTicks = waveformWidth * state->pixelScale / 85.f;
             maxTicks = std::max(1.0, maxTicks);
 
-            int totalVisibleSamples =
+            const int totalVisibleSamples =
                 Waveform::getSampleIndexForXPos(waveformWidth - 1,
                                                 state->sampleOffset,
                                                 state->samplesPerPixel) -
                 state->sampleOffset;
 
-            int rawSamplesPerTick = std::max(
+            const int rawSamplesPerTick = std::max(
                 1, int(std::ceil(double(totalVisibleSamples) / maxTicks)));
 
             static const std::vector<int> niceSteps = {
@@ -87,7 +87,7 @@ namespace cupuacu::gui
                 800'000, 1'600'000, 3'200'000, 6'400'000, 12'800'000};
 
             int samplesPerTick = niceSteps.back();
-            for (int step : niceSteps)
+            for (const int step : niceSteps)
             {
                 if (step >= rawSamplesPerTick)
                 {
@@ -96,11 +96,11 @@ namespace cupuacu::gui
                 }
             }
 
-            bool highZoom = Waveform::shouldShowSamplePoints(
+            const bool highZoom = Waveform::shouldShowSamplePoints(
                 state->samplesPerPixel, state->pixelScale);
 
             int firstSampleWithTick =
-                ((state->sampleOffset + samplesPerTick - 1) / samplesPerTick) *
+                (state->sampleOffset + samplesPerTick - 1) / samplesPerTick *
                 samplesPerTick;
             firstSampleWithTick =
                 std::max(0, firstSampleWithTick - samplesPerTick);
@@ -108,8 +108,8 @@ namespace cupuacu::gui
             const int lastVisibleSample = Waveform::getSampleIndexForXPos(
                 waveformWidth - 1, state->sampleOffset, state->samplesPerPixel);
 
-            int lastSampleWithTick =
-                ((lastVisibleSample + samplesPerTick - 1) / samplesPerTick) *
+            const int lastSampleWithTick =
+                (lastVisibleSample + samplesPerTick - 1) / samplesPerTick *
                 samplesPerTick;
 
             const float firstTickX =
@@ -132,7 +132,7 @@ namespace cupuacu::gui
 
             const int visibleTickCount =
                 (lastSampleWithTick - firstSampleWithTick) / samplesPerTick;
-            float tickSpacingPx =
+            const float tickSpacingPx =
                 visibleTickCount > 0
                     ? (lastTickX - firstTickX) / visibleTickCount
                     : samplesPerTick;
@@ -152,10 +152,10 @@ namespace cupuacu::gui
                 }
                 else
                 {
-                    double seconds =
+                    const double seconds =
                         double(samplePos) / state->document.getSampleRate();
-                    int mm = int(seconds / 60);
-                    double ss = seconds - mm * 60;
+                    const int mm = int(seconds / 60);
+                    const double ss = seconds - mm * 60;
                     std::ostringstream oss;
                     oss << mm << ":" << std::fixed << std::setprecision(3)
                         << ss;
@@ -177,7 +177,7 @@ namespace cupuacu::gui
                 {
                     temp /= 10;
                 }
-                subdivisions = (temp == 2) ? 2 : 5;
+                subdivisions = temp == 2 ? 2 : 5;
             }
 
             ruler->setLongTickSubdivisions(subdivisions);

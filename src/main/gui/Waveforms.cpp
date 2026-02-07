@@ -7,21 +7,21 @@
 
 using namespace cupuacu::gui;
 
-Waveforms::Waveforms(cupuacu::State *state) : Component(state, "Waveforms")
+Waveforms::Waveforms(State *state) : Component(state, "Waveforms")
 {
     waveformsUnderlay = emplaceChild<WaveformsUnderlay>(state);
 }
 
 void Waveforms::rebuildWaveforms()
 {
-    for (auto &w : state->waveforms)
+    for (const auto &w : state->waveforms)
     {
         removeChild(w);
     }
 
     state->waveforms.clear();
 
-    int numChannels = state->document.getChannelCount();
+    const int numChannels = state->document.getChannelCount();
 
     if (numChannels > 0)
     {
@@ -34,7 +34,7 @@ void Waveforms::rebuildWaveforms()
     }
 }
 
-void Waveforms::resizeWaveforms()
+void Waveforms::resizeWaveforms() const
 {
     const int numChannels = static_cast<int>(state->waveforms.size());
     const float channelHeight = numChannels > 0 ? getHeight() / numChannels : 0;

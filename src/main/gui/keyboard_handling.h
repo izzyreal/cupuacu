@@ -3,6 +3,7 @@
 #include "AudioDevice.hpp"
 #include "AudioDevices.hpp"
 #include "Waveform.h"
+#include "Window.h"
 #include "../actions/ShowOpenFileDialog.h"
 #include "../actions/Play.h"
 #include "../actions/Zoom.h"
@@ -15,19 +16,19 @@
 namespace cupuacu::gui
 {
 
-    static void updateWaveforms(cupuacu::State *state)
+    static void updateWaveforms(State *state)
     {
-        for (auto waveform : state->waveforms)
+        for (const auto waveform : state->waveforms)
         {
             waveform->setDirty();
             waveform->updateSamplePoints();
         }
     }
 
-    static void handleKeyDown(SDL_Event *event, cupuacu::State *state)
+    static void handleKeyDown(SDL_Event *event, State *state)
     {
         uint8_t multiplier = 1;
-        uint8_t multiplierFactor = 12 / state->pixelScale;
+        const uint8_t multiplierFactor = 12 / state->pixelScale;
 
         if (event->key.scancode == SDL_SCANCODE_ESCAPE)
         {
@@ -122,7 +123,7 @@ namespace cupuacu::gui
 
             resetSampleValueUnderMouseCursor(state);
 
-            for (auto w : state->waveforms)
+            for (const auto w : state->waveforms)
             {
                 w->clearHighlight();
             }
@@ -144,7 +145,7 @@ namespace cupuacu::gui
 
             resetSampleValueUnderMouseCursor(state);
 
-            for (auto w : state->waveforms)
+            for (const auto w : state->waveforms)
             {
                 w->clearHighlight();
             }
@@ -184,7 +185,7 @@ namespace cupuacu::gui
             actions::play(state);
         }
         else if (event->key.scancode == SDL_SCANCODE_PERIOD &&
-                 (event->key.mod & SDL_KMOD_SHIFT))
+                 event->key.mod & SDL_KMOD_SHIFT)
         {
             if (state->pixelScale < 4)
             {
@@ -192,18 +193,25 @@ namespace cupuacu::gui
 
                 const double newSamplesPerPixel = state->samplesPerPixel * 2;
 
-                buildComponents(state);
+                buildComponents(state, state->mainWindow.get());
+                for (auto *window : state->windows)
+                {
+                    if (window && window != state->mainWindow.get())
+                    {
+                        window->refreshForScaleOrResize();
+                    }
+                }
 
                 state->samplesPerPixel = newSamplesPerPixel;
 
-                for (auto &w : state->waveforms)
+                for (const auto &w : state->waveforms)
                 {
                     w->setDirty();
                 }
             }
         }
         else if (event->key.scancode == SDL_SCANCODE_COMMA &&
-                 (event->key.mod & SDL_KMOD_SHIFT))
+                 event->key.mod & SDL_KMOD_SHIFT)
         {
             if (state->pixelScale > 1)
             {
@@ -211,11 +219,18 @@ namespace cupuacu::gui
 
                 const double newSamplesPerPixel = state->samplesPerPixel / 2;
 
-                buildComponents(state);
+                buildComponents(state, state->mainWindow.get());
+                for (auto *window : state->windows)
+                {
+                    if (window && window != state->mainWindow.get())
+                    {
+                        window->refreshForScaleOrResize();
+                    }
+                }
 
                 state->samplesPerPixel = newSamplesPerPixel;
 
-                for (auto &w : state->waveforms)
+                for (const auto &w : state->waveforms)
                 {
                     w->setDirty();
                 }
@@ -224,12 +239,12 @@ namespace cupuacu::gui
         else if (event->key.scancode == SDL_SCANCODE_X)
         {
 #if __APPLE__
-            if ((event->key.mod & SDL_KMOD_GUI) && state->selection.isActive())
+            if (event->key.mod & SDL_KMOD_GUI && state->selection.isActive())
 #else
             if ((event->key.mod & SDL_KMOD_CTRL) && state->selection.isActive())
 #endif
             {
-                auto undoable = std::make_shared<actions::audio::Cut>(
+                const auto undoable = std::make_shared<actions::audio::Cut>(
                     state, state->selection.getStartInt(),
                     state->selection.getLengthInt());
                 state->addAndDoUndoable(undoable);
@@ -238,12 +253,12 @@ namespace cupuacu::gui
         else if (event->key.scancode == SDL_SCANCODE_C)
         {
 #if __APPLE__
-            if ((event->key.mod & SDL_KMOD_GUI) && state->selection.isActive())
+            if (event->key.mod & SDL_KMOD_GUI && state->selection.isActive())
 #else
             if ((event->key.mod & SDL_KMOD_CTRL) && state->selection.isActive())
 #endif
             {
-                auto undoable = std::make_shared<actions::audio::Copy>(
+                const auto undoable = std::make_shared<actions::audio::Copy>(
                     state, state->selection.getStartInt(),
                     state->selection.getLengthInt());
                 state->addAndDoUndoable(undoable);
@@ -265,7 +280,7 @@ namespace cupuacu::gui
                                         ? state->selection.getEndInt()
                                         : -1;
 
-                auto undoable =
+                const auto undoable =
                     std::make_shared<actions::audio::Paste>(state, start, end);
                 state->addAndDoUndoable(undoable);
             }
@@ -273,12 +288,12 @@ namespace cupuacu::gui
         else if (event->key.scancode == SDL_SCANCODE_T)
         {
 #if __APPLE__
-            if ((event->key.mod & SDL_KMOD_GUI) && state->selection.isActive())
+            if (event->key.mod & SDL_KMOD_GUI && state->selection.isActive())
 #else
             if ((event->key.mod & SDL_KMOD_CTRL) && state->selection.isActive())
 #endif
             {
-                auto undoable = std::make_shared<actions::audio::Trim>(
+                const auto undoable = std::make_shared<actions::audio::Trim>(
                     state, state->selection.getStartInt(),
                     state->selection.getLengthInt());
                 state->addAndDoUndoable(undoable);

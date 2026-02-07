@@ -34,16 +34,15 @@ namespace cupuacu::gui
 
         bool isFirstLevel() const;
 
-        std::string getMenuName();
+        std::string getMenuName() const;
 
     public:
-        Menu(cupuacu::State *, const std::string menuNameToUse,
-             const std::function<void()> actionToUse = {});
-        Menu(cupuacu::State *,
-             const std::function<std::string()> menuNameGetterToUse,
-             const std::function<void()> actionToUse = {});
+        Menu(State *, const std::string &menuNameToUse,
+             const std::function<void()> &actionToUse = {});
+        Menu(State *, const std::function<std::string()> &menuNameGetterToUse,
+             const std::function<void()> &actionToUse = {});
 
-        void setIsAvailable(std::function<bool()>);
+        void setIsAvailable(const std::function<bool()> &);
 
         template <typename... Args> Menu *addSubMenu(Args &&...args)
         {
@@ -56,7 +55,7 @@ namespace cupuacu::gui
         void showSubMenus();
         void hideSubMenus();
 
-        bool isOpen()
+        bool isOpen() const
         {
             return currentlyOpen;
         }
@@ -67,5 +66,9 @@ namespace cupuacu::gui
         bool mouseUp(const MouseEvent &) override;
         void mouseLeave() override;
         void mouseEnter() override;
+        bool shouldCaptureMouse() const override
+        {
+            return false;
+        }
     };
 } // namespace cupuacu::gui

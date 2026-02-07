@@ -25,9 +25,9 @@ namespace cupuacu::gui
         void
         setOpenSubMenuOnMouseOver(const bool openSubMenuOnMouseOverEnabled);
         bool shouldOpenSubMenuOnMouseOver() const;
-        MenuBar(cupuacu::State *);
+        MenuBar(State *);
         bool hasMenuOpen();
-        Menu *getOpenMenu();
+        Menu *getOpenMenu() const;
         void hideSubMenus();
         void resized() override;
         bool mouseDown(const MouseEvent &) override;

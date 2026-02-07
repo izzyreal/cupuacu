@@ -6,6 +6,7 @@
 #include "../gui/MainView.h"
 #include "../gui/Gui.h"
 #include "../gui/Waveform.h"
+#include "../gui/Window.h"
 #include "Zoom.h"
 
 #include <string>
@@ -52,7 +53,11 @@ namespace cupuacu::actions
         gui::Waveform::updateAllSamplePoints(state);
         gui::Waveform::setAllWaveformsDirty(state);
 
-        SDL_SetWindowTitle(state->window, state->currentFile.c_str());
+        if (state->mainWindow)
+        {
+            SDL_SetWindowTitle(state->mainWindow->getSdlWindow(),
+                               state->currentFile.c_str());
+        }
     }
 
     static void ShowDialogMainThreadCallback(void *userdata)

@@ -1,6 +1,7 @@
 #include "WaveformsUnderlay.h"
 
 #include "Waveform.h"
+#include "Window.h"
 #include <algorithm>
 
 #include <cassert>
@@ -18,7 +19,7 @@ int64_t getValidSampleIndexUnderMouseCursor(const int32_t mouseX,
     return std::clamp(sampleIndex, int64_t{0}, frameCount - 1);
 }
 
-WaveformsUnderlay::WaveformsUnderlay(cupuacu::State *stateToUse)
+WaveformsUnderlay::WaveformsUnderlay(State *stateToUse)
     : Component(stateToUse, "WaveformsUnderlay")
 {
 }
@@ -41,7 +42,7 @@ bool WaveformsUnderlay::mouseDown(const MouseEvent &e)
 
     if (e.numClicks >= 2)
     {
-        double startSample = state->sampleOffset;
+        const double startSample = state->sampleOffset;
         double endSample = state->sampleOffset + getWidth() * samplesPerPixel;
 
         endSample =
@@ -49,8 +50,8 @@ bool WaveformsUnderlay::mouseDown(const MouseEvent &e)
 
         if (samplesPerPixel < 1.0)
         {
-            double endFloor = std::floor(endSample);
-            double coverage = endSample - endFloor;
+            const double endFloor = std::floor(endSample);
+            const double coverage = endSample - endFloor;
 
             if (coverage < 1.0)
             {
@@ -113,8 +114,8 @@ void WaveformsUnderlay::handleChannelSelection(
     for (size_t i = 0; i < state->waveforms.size(); ++i)
     {
         auto *wf = state->waveforms[i];
-        uint16_t yStart = i * channelHeight();
-        uint16_t yEnd = yStart + channelHeight();
+        const uint16_t yStart = i * channelHeight();
+        const uint16_t yEnd = yStart + channelHeight();
 
         if (i == 0 && mouseY < yStart + channelHeight() / 4)
         {
@@ -131,18 +132,19 @@ void WaveformsUnderlay::handleChannelSelection(
 
     if (isLeftOnly)
     {
-        state->hoveringOverChannels = SelectedChannels::LEFT;
+        state->hoveringOverChannels = LEFT;
     }
     else if (isRightOnly)
     {
-        state->hoveringOverChannels = SelectedChannels::RIGHT;
+        state->hoveringOverChannels = RIGHT;
     }
     else
     {
-        state->hoveringOverChannels = SelectedChannels::BOTH;
+        state->hoveringOverChannels = BOTH;
     }
 
-    if (state->capturingComponent == this || isMouseDownEvent)
+    if ((getWindow() && getWindow()->getCapturingComponent() == this) ||
+        isMouseDownEvent)
     {
         state->selectedChannels = state->hoveringOverChannels;
     }
@@ -180,7 +182,8 @@ bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
 
     handleChannelSelection(e.mouseYi, false);
 
-    if (state->capturingComponent != this || !e.buttonState.left)
+    if (!getWindow() || getWindow()->getCapturingComponent() != this ||
+        !e.buttonState.left)
     {
         return false;
     }
@@ -228,7 +231,10 @@ void WaveformsUnderlay::timerCallback()
 
     if (oldOffset != state->sampleOffset)
     {
-        state->componentUnderMouse = nullptr;
+        if (getWindow())
+        {
+            getWindow()->setComponentUnderMouse(nullptr);
+        }
         for (auto *wf : state->waveforms)
         {
             wf->updateSamplePoints();
@@ -244,12 +250,12 @@ uint16_t WaveformsUnderlay::channelHeight() const
 
 uint8_t WaveformsUnderlay::channelAt(const uint16_t y) const
 {
-    int ch = y / channelHeight();
-    int maxCh = static_cast<int>(state->waveforms.size()) - 1;
+    const int ch = y / channelHeight();
+    const int maxCh = static_cast<int>(state->waveforms.size()) - 1;
     return std::clamp(ch, 0, maxCh);
 }
 
-void WaveformsUnderlay::markAllWaveformsDirty()
+void WaveformsUnderlay::markAllWaveformsDirty() const
 {
     for (auto *wf : state->waveforms)
     {
@@ -257,13 +263,14 @@ void WaveformsUnderlay::markAllWaveformsDirty()
     }
 }
 
-void WaveformsUnderlay::handleScroll(const int32_t mouseX, const int32_t mouseY)
+void WaveformsUnderlay::handleScroll(const int32_t mouseX,
+                                     const int32_t mouseY) const
 {
     if (mouseX > getWidth() || mouseX < 0)
     {
         const auto samplesPerPixel = state->samplesPerPixel;
-        auto diff = (mouseX < 0) ? mouseX : mouseX - getWidth();
-        auto samplesToScroll = diff * samplesPerPixel;
+        const auto diff = mouseX < 0 ? mouseX : mouseX - getWidth();
+        const auto samplesToScroll = diff * samplesPerPixel;
         state->samplesToScroll = samplesToScroll;
     }
     else

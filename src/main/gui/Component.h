@@ -2,9 +2,6 @@
 
 #include "MouseEvent.h"
 
-#include "Helpers.h"
-#include "Colors.h"
-
 #include <SDL3/SDL.h>
 
 #include <algorithm>
@@ -13,10 +10,14 @@
 #include <string>
 #include <cstdint>
 
+namespace cupuacu
+{
+    struct State;
+}
+
 namespace cupuacu::gui
 {
-
-    struct State;
+    class Window;
 
     class Component
     {
@@ -32,14 +33,22 @@ namespace cupuacu::gui
         std::vector<std::unique_ptr<Component>> children;
 
         void setParent(Component *parentToUse);
+        void clearWindowPointersForSubtree(Component *subtreeRoot) const;
 
     protected:
-        cupuacu::State *state;
+        State *state;
+        Window *window = nullptr;
         void removeAllChildren();
         Component *getParent() const;
 
     public:
-        Component(cupuacu::State *, const std::string componentName);
+        virtual ~Component() = default;
+        Component(State *, const std::string &componentName);
+        void setWindow(Window *windowToUse);
+        Window *getWindow() const
+        {
+            return window;
+        }
         void setVisible(bool shouldBeVisible);
         bool isVisible() const
         {
@@ -55,7 +64,7 @@ namespace cupuacu::gui
 
         static bool isComponentOrChildOf(Component *, Component *);
 
-        bool hasChild(Component *component)
+        bool hasChild(Component *component) const
         {
             for (auto &c : children)
             {
@@ -73,17 +82,17 @@ namespace cupuacu::gui
 
         const bool isMouseOver() const;
 
-        SDL_Rect getBounds()
+        SDL_Rect getBounds() const
         {
             return {xPos, yPos, width, height};
         }
 
-        SDL_Rect getLocalBounds()
+        SDL_Rect getLocalBounds() const
         {
             return {0, 0, width, height};
         }
 
-        SDL_FRect getLocalBoundsF()
+        SDL_FRect getLocalBoundsF() const
         {
             return {0.0f, 0.0f, (float)width, (float)height};
         }
@@ -101,13 +110,21 @@ namespace cupuacu::gui
         {
             parentClippingEnabled = false;
         }
-        bool isParentClippingEnabled()
+        bool isParentClippingEnabled() const
         {
             return parentClippingEnabled;
         }
 
         template <typename T> void removeChildrenOfType()
         {
+            for (const auto &child : children)
+            {
+                if (dynamic_cast<T *>(child.get()) != nullptr)
+                {
+                    clearWindowPointersForSubtree(child.get());
+                }
+            }
+
             children.erase(
                 std::remove_if(children.begin(), children.end(),
                                [](const std::unique_ptr<Component> &child)
@@ -141,8 +158,8 @@ namespace cupuacu::gui
 
         const std::string getComponentName() const;
 
-        void sendToBack();
-        void bringToFront();
+        void sendToBack() const;
+        void bringToFront() const;
         void setBounds(const SDL_Rect);
         void setBounds(int32_t xPosToUse, int32_t yPosToUse, int32_t widthToUse,
                        int32_t heightToUse);
@@ -166,6 +183,10 @@ namespace cupuacu::gui
         {
             return false;
         }
+        virtual bool shouldCaptureMouse() const
+        {
+            return true;
+        }
         virtual void timerCallback() {}
         virtual void resized() {}
 
@@ -174,20 +195,20 @@ namespace cupuacu::gui
         int32_t getHeight() const;
         int32_t getXPos() const;
         int32_t getYPos() const;
-        std::pair<int, int> getAbsolutePosition();
+        std::pair<int, int> getAbsolutePosition() const;
         bool containsAbsoluteCoordinate(int x, int y);
         Component *findComponentAt(int x, int y);
 
         void timerCallbackRecursive()
         {
             timerCallback();
-            for (auto &c : children)
+            for (const auto &c : children)
             {
                 c->timerCallbackRecursive();
             }
         }
 
-        void printTree(int depth = 0) const
+        void printTree(const int depth = 0) const
         {
             for (int i = 0; i < depth; ++i)
             {

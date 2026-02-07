@@ -15,7 +15,7 @@ namespace cupuacu::gui
                                            const uint8_t pixelScale);
 
         static void
-        clearHighlightIfNotChannel(cupuacu::State *state,
+        clearHighlightIfNotChannel(State *state,
                                    const uint8_t channelIndexNotToClear)
         {
             for (int64_t waveformChannel = 0;
@@ -30,7 +30,7 @@ namespace cupuacu::gui
             }
         }
 
-        static uint16_t getWaveformWidth(const cupuacu::State *state)
+        static uint16_t getWaveformWidth(const State *state)
         {
             if (state->waveforms.empty())
             {
@@ -40,17 +40,17 @@ namespace cupuacu::gui
             return state->waveforms[0]->getWidth();
         }
 
-        static void updateAllSamplePoints(cupuacu::State *state)
+        static void updateAllSamplePoints(State *state)
         {
-            for (auto &waveform : state->waveforms)
+            for (const auto &waveform : state->waveforms)
             {
                 waveform->updateSamplePoints();
             }
         }
 
-        static void setAllWaveformsDirty(cupuacu::State *state)
+        static void setAllWaveformsDirty(State *state)
         {
-            for (auto &waveform : state->waveforms)
+            for (const auto &waveform : state->waveforms)
             {
                 waveform->setDirty();
             }
@@ -90,7 +90,7 @@ namespace cupuacu::gui
                                                          samplesPerPixel)));
         }
 
-        Waveform(cupuacu::State *, const uint8_t channelIndex);
+        Waveform(State *, const uint8_t channelIndex);
 
         void onDraw(SDL_Renderer *) override;
         void timerCallback() override;
@@ -116,13 +116,13 @@ namespace cupuacu::gui
 
         std::vector<std::unique_ptr<SamplePoint>> computeSamplePoints();
 
-        void drawHorizontalLines(SDL_Renderer *);
-        void drawSelection(SDL_Renderer *);
-        void drawHighlight(SDL_Renderer *);
-        void renderBlockWaveform(SDL_Renderer *);
-        void renderSmoothWaveform(SDL_Renderer *);
+        void drawHorizontalLines(SDL_Renderer *) const;
+        void drawSelection(SDL_Renderer *) const;
+        void drawHighlight(SDL_Renderer *) const;
+        void renderBlockWaveform(SDL_Renderer *) const;
+        void renderSmoothWaveform(SDL_Renderer *) const;
 
-        void drawPlaybackPosition(SDL_Renderer *);
-        void drawCursor(SDL_Renderer *);
+        void drawPlaybackPosition(SDL_Renderer *) const;
+        void drawCursor(SDL_Renderer *) const;
     };
 } // namespace cupuacu::gui

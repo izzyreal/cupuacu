@@ -13,12 +13,12 @@ namespace cupuacu::gui
     class MainView : public Component
     {
     public:
-        MainView(cupuacu::State *);
+        MainView(State *);
 
-        void rebuildWaveforms();
+        void rebuildWaveforms() const;
         void resized() override;
         void timerCallback() override;
-        void updateTriangleMarkerBounds();
+        void updateTriangleMarkerBounds() const;
 
     private:
         TriangleMarker *cursorTop;

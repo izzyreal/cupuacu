@@ -26,7 +26,8 @@ namespace cupuacu
 
     namespace gui
     {
-        class MenuBar;
+        class DevicePropertiesWindow;
+        class Window;
         class Component;
         class Waveform;
         class MainView;
@@ -46,8 +47,6 @@ namespace cupuacu
         Document document;
         Document clipboard;
 
-        std::vector<SDL_Rect> dirtyRects;
-
         double samplesPerPixel = 1;
         double verticalZoom;
         int64_t sampleOffset;
@@ -59,17 +58,10 @@ namespace cupuacu
 
         int64_t cursor = 0;
 
-        SDL_Window *window = NULL;
-        SDL_Renderer *renderer = NULL;
-        SDL_Texture *canvas = NULL;
-        SDL_Texture *textTexture = NULL;
-
-        gui::Component *capturingComponent = nullptr;
-        gui::Component *componentUnderMouse = nullptr;
-
         std::vector<gui::Waveform *> waveforms;
-        std::unique_ptr<gui::Component> rootComponent;
-        gui::MenuBar *menuBar;
+        std::vector<gui::Window *> windows;
+        std::unique_ptr<gui::Window> mainWindow;
+        std::unique_ptr<gui::DevicePropertiesWindow> devicePropertiesWindow;
         gui::MainView *mainView;
         gui::Component *statusBar;
         gui::VuMeterContainer *vuMeterContainer;

@@ -4,6 +4,7 @@
 #include <string>
 
 #include "Component.h"
+#include "State.h"
 
 namespace cupuacu::gui
 {
@@ -30,7 +31,7 @@ namespace cupuacu::gui
         uint8_t opacity = 255;
 
     public:
-        Label(cupuacu::State *state, const std::string &textToUse = "");
+        Label(State *state, const std::string &textToUse = "");
 
         ~Label();
 
@@ -45,17 +46,17 @@ namespace cupuacu::gui
             text = newText;
             setDirty();
         }
-        void setMargin(int m)
+        void setMargin(const int m)
         {
             margin = m;
             setDirty();
         }
-        void setFontSize(int p)
+        void setFontSize(const int p)
         {
             pointSize = p;
             setDirty();
         }
-        uint8_t getEffectiveFontSize()
+        uint8_t getEffectiveFontSize() const
         {
             return (float)pointSize / state->pixelScale;
         }

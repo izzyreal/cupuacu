@@ -8,7 +8,7 @@ namespace cupuacu::gui
     class WaveformsUnderlay : public Component
     {
     public:
-        WaveformsUnderlay(cupuacu::State *);
+        WaveformsUnderlay(State *);
 
         void mouseLeave() override;
 
@@ -27,9 +27,9 @@ namespace cupuacu::gui
 
         uint8_t channelAt(const uint16_t y) const;
 
-        void markAllWaveformsDirty();
+        void markAllWaveformsDirty() const;
 
-        void handleScroll(const int32_t mouseX, const int32_t mouseY);
+        void handleScroll(const int32_t mouseX, const int32_t mouseY) const;
 
         void handleChannelSelection(const int32_t mouseY,
                                     const bool isMouseDownEvent) const;

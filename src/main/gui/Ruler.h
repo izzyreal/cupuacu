@@ -1,23 +1,25 @@
 #pragma once
 
-#include "Component.h"
-#include "Label.h"
+#include "gui/Component.h"
+#include "gui/Label.h"
+#include "gui/Helpers.h"
+#include "gui/Colors.h"
+#include "gui/text.h"
+
 #include <vector>
 #include <string>
 
-#include "text.h"
-
 namespace cupuacu::gui
 {
-    class Ruler : public Component
+    class Ruler final : public Component
     {
     public:
-        explicit Ruler(cupuacu::State *state, const std::string parentName)
+        explicit Ruler(State *state, const std::string &parentName)
             : Component(state, "Ruler for " + parentName)
         {
         }
 
-        void setMandatoryEndLabel(const std::string mandatoryEndLabelToUse)
+        void setMandatoryEndLabel(const std::string &mandatoryEndLabelToUse)
         {
             mandatoryEndLabel = mandatoryEndLabelToUse;
             setDirty();
@@ -67,12 +69,12 @@ namespace cupuacu::gui
             centerFirstLabel = shouldCenter;
         }
 
-        void setHorizontalMargin(float margin)
+        void setHorizontalMargin(const float margin)
         {
             baseHorizontalMargin = margin;
         }
 
-        void setScrollOffsetPx(int px)
+        void setScrollOffsetPx(const int px)
         {
             scrollOffsetPx = px;
         }
@@ -106,21 +108,19 @@ namespace cupuacu::gui
                 numLabels++;
             }
 
-            int labelHeight =
+            const int labelHeight =
                 static_cast<int>(baseLabelAreaHeight / state->pixelScale);
-            int labelY = getTickAreaHeight();
+            const int labelY = getTickAreaHeight();
 
             for (int i = 0; i < numLabels; ++i)
             {
-                const auto labelText =
-                    mandatoryEndLabel.empty()
-                        ? labelTexts[i]
-                        : (i == numLabels - 1 ? mandatoryEndLabel
-                                              : labelTexts[i]);
+                const auto labelText = mandatoryEndLabel.empty() ? labelTexts[i]
+                                       : i == numLabels - 1 ? mandatoryEndLabel
+                                                            : labelTexts[i];
                 auto [labelWidth, th] =
                     measureText(labelText, labels[i]->getEffectiveFontSize());
-                int labelX = ((longTickSpacingPx * i) + scrollOffsetPx) -
-                             (labelWidth * 0.5f);
+                int labelX =
+                    longTickSpacingPx * i + scrollOffsetPx - labelWidth * 0.5f;
 
                 if (baseHorizontalMargin != 0.f)
                 {
@@ -151,7 +151,7 @@ namespace cupuacu::gui
 
             if (!mandatoryEndLabel.empty())
             {
-                auto mandatoryLabel = labels.back();
+                const auto mandatoryLabel = labels.back();
                 const auto labelBounds = mandatoryLabel->getBounds();
                 mandatoryLabel->setBounds(
                     getWidth() - mandatoryLabel->getWidth(),
@@ -174,7 +174,7 @@ namespace cupuacu::gui
                 if (lastVisibleNonEndLabelIndex != -1 &&
                     lastVisibleNonEndLabelIndex > 1)
                 {
-                    auto lastVisibleNonEndLabel =
+                    const auto lastVisibleNonEndLabel =
                         labels[lastVisibleNonEndLabelIndex];
                     if (Helpers::intersects(lastVisibleNonEndLabel->getBounds(),
                                             mandatoryLabel->getBounds()))
@@ -185,7 +185,7 @@ namespace cupuacu::gui
                 if (lastVisibleNonEndLabelIndex != -1 &&
                     lastVisibleNonEndLabelIndex > 1 && labels.size() > 3)
                 {
-                    auto lastVisibleNonEndLabel =
+                    const auto lastVisibleNonEndLabel =
                         labels[lastVisibleNonEndLabelIndex - 1];
                     if (Helpers::intersects(lastVisibleNonEndLabel->getBounds(),
                                             mandatoryLabel->getBounds()))
@@ -198,17 +198,17 @@ namespace cupuacu::gui
 
         void onDraw(SDL_Renderer *renderer) override
         {
-            SDL_Rect bounds = getLocalBounds();
+            const SDL_Rect bounds = getLocalBounds();
 
-            int tickHeightLong = std::max(1.f, 14.f / state->pixelScale);
-            int tickHeightShort = std::max(1.f, 3.f / state->pixelScale);
+            const int tickHeightLong = std::max(1.f, 14.f / state->pixelScale);
+            const int tickHeightShort = std::max(1.f, 3.f / state->pixelScale);
 
             bool logFirstTick = true;
 
-            int numLongTicks =
+            const int numLongTicks =
                 static_cast<int>(bounds.w / longTickSpacingPx) + 2;
 
-            int noTicksAfterXPos =
+            const int noTicksAfterXPos =
                 noTicksAfterLastLabel ? labels.back()->getCenterX() : bounds.w;
 
             for (int i = -1; i < numLongTicks + 1; ++i)
@@ -245,15 +245,16 @@ namespace cupuacu::gui
                         }
                     }
 
-                    int height = (t == 0) ? tickHeightLong : tickHeightShort;
+                    const int height =
+                        t == 0 ? tickHeightLong : tickHeightShort;
 
-                    SDL_Rect tickRect{tickX, bounds.y, 1, height};
+                    const SDL_Rect tickRect{tickX, bounds.y, 1, height};
                     Helpers::fillRect(renderer, tickRect, Colors::white);
                 }
             }
         }
 
-        void setLongTickSpacingPx(float spacing)
+        void setLongTickSpacingPx(const float spacing)
         {
             longTickSpacingPx = spacing;
             setDirty();

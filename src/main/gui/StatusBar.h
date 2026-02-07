@@ -2,11 +2,15 @@
 
 #include "AudioDevice.hpp"
 #include "AudioDevices.hpp"
-#include "Component.h"
-#include "LabeledField.h"
-#include "../State.h"
+
+#include "gui/Component.h"
+#include "gui/LabeledField.h"
+#include "gui/Colors.h"
+
+#include "State.h"
 
 #include <SDL3/SDL.h>
+
 #include <limits>
 #include <optional>
 #include <string>
@@ -33,8 +37,7 @@ namespace cupuacu::gui
         std::optional<float> lastSampleValueUnderMouseCursor;
 
     public:
-        StatusBar(cupuacu::State *stateToUse)
-            : Component(stateToUse, "StatusBar")
+        StatusBar(State *stateToUse) : Component(stateToUse, "StatusBar")
         {
             posField =
                 emplaceChild<LabeledField>(state, "Pos", Colors::background);

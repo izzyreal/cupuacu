@@ -4,6 +4,7 @@
 #include "AudioDevices.hpp"
 #include "WaveformsUnderlay.h"
 #include "WaveformCache.h"
+#include "Window.h"
 
 #include "smooth_line.h"
 
@@ -13,7 +14,7 @@
 
 using namespace cupuacu::gui;
 
-Waveform::Waveform(cupuacu::State *state, const uint8_t channelIndexToUse)
+Waveform::Waveform(State *state, const uint8_t channelIndexToUse)
     : Component(state, "Waveform"), channelIndex(channelIndexToUse)
 {
 }
@@ -51,7 +52,7 @@ void Waveform::updateSamplePoints()
 bool Waveform::shouldShowSamplePoints(const double samplesPerPixel,
                                       const uint8_t pixelScale)
 {
-    return samplesPerPixel < ((float)pixelScale / 40.f);
+    return samplesPerPixel < (float)pixelScale / 40.f;
 }
 
 int getYPosForSampleValue(const float sampleValue,
@@ -60,8 +61,8 @@ int getYPosForSampleValue(const float sampleValue,
                           const uint16_t samplePointSize)
 {
     const float drawableHeight = waveformHeight - samplePointSize;
-    return (waveformHeight * 0.5f) -
-           (sampleValue * verticalZoom * drawableHeight * 0.5f);
+    return waveformHeight * 0.5f -
+           sampleValue * verticalZoom * drawableHeight * 0.5f;
 }
 
 std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
@@ -88,13 +89,13 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
 
     for (int i = 0; i < actualInputSamples; ++i)
     {
-        x[i] = (i / samplesPerPixel) + halfSampleWidth;
+        x[i] = i / samplesPerPixel + halfSampleWidth;
     }
 
     std::vector<std::unique_ptr<SamplePoint>> result;
     const uint16_t samplePointSize = getSamplePointSize(pixelScale);
 
-    auto sampleData =
+    const auto sampleData =
         state->document.getAudioBuffer()->getImmutableChannelData(channelIndex);
 
     for (int i = 0; i < actualInputSamples; ++i)
@@ -106,8 +107,8 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
 
         auto samplePoint = std::make_unique<SamplePoint>(state, channelIndex,
                                                          sampleOffset + i);
-        samplePoint->setBounds(std::max(0, xPos - (samplePointSize / 2)),
-                               yPos - (samplePointSize / 2), samplePointSize,
+        samplePoint->setBounds(std::max(0, xPos - samplePointSize / 2),
+                               yPos - samplePointSize / 2, samplePointSize,
                                samplePointSize);
         result.push_back(std::move(samplePoint));
     }
@@ -115,7 +116,7 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
     return result;
 }
 
-void Waveform::drawHorizontalLines(SDL_Renderer *renderer)
+void Waveform::drawHorizontalLines(SDL_Renderer *renderer) const
 {
     const auto samplePointSize = getSamplePointSize(state->pixelScale);
     const auto verticalZoom = state->verticalZoom;
@@ -136,12 +137,12 @@ void Waveform::drawHorizontalLines(SDL_Renderer *renderer)
     }
 }
 
-void Waveform::renderSmoothWaveform(SDL_Renderer *renderer)
+void Waveform::renderSmoothWaveform(SDL_Renderer *renderer) const
 {
     const auto samplesPerPixel = state->samplesPerPixel;
     const double halfSampleWidth = 0.5 / samplesPerPixel;
     const int64_t sampleOffset = state->sampleOffset;
-    auto sampleData =
+    const auto sampleData =
         state->document.getAudioBuffer()->getImmutableChannelData(channelIndex);
     const auto frameCount = state->document.getFrameCount();
     const auto verticalZoom = state->verticalZoom;
@@ -166,11 +167,11 @@ void Waveform::renderSmoothWaveform(SDL_Renderer *renderer)
 
     for (int i = 0; i < actualInputSamples; ++i)
     {
-        x[i] = (i / samplesPerPixel) + halfSampleWidth;
+        x[i] = i / samplesPerPixel + halfSampleWidth;
         y[i] = static_cast<double>(sampleData[sampleOffset + i]);
     }
 
-    int numPoints = widthToUse + 1;
+    const int numPoints = widthToUse + 1;
     std::vector<double> xq(numPoints);
 
     for (int i = 0; i < numPoints; ++i)
@@ -178,23 +179,24 @@ void Waveform::renderSmoothWaveform(SDL_Renderer *renderer)
         xq[i] = static_cast<double>(i);
     }
 
-    auto smoothened = splineInterpolateNonUniform(x, y, xq);
+    const auto smoothened = splineInterpolateNonUniform(x, y, xq);
 
     for (int i = 0; i < numPoints - 1; ++i)
     {
-        float x1 = static_cast<float>(xq[i]);
-        float x2 = static_cast<float>(xq[i + 1]);
+        const float x1 = static_cast<float>(xq[i]);
+        const float x2 = static_cast<float>(xq[i + 1]);
 
-        float y1f = heightToUse / 2.0f -
-                    (smoothened[i] * verticalZoom * drawableHeight / 2.0f);
-        float y2f = heightToUse / 2.0f -
-                    (smoothened[i + 1] * verticalZoom * drawableHeight / 2.0f);
+        const float y1f = heightToUse / 2.0f -
+                          smoothened[i] * verticalZoom * drawableHeight / 2.0f;
+        const float y2f = heightToUse / 2.0f - smoothened[i + 1] *
+                                                   verticalZoom *
+                                                   drawableHeight / 2.0f;
 
-        float thickness = 1.0f;
+        constexpr float thickness = 1.0f;
 
         float dx = x2 - x1;
         float dy = y2f - y1f;
-        float len = std::sqrt(dx * dx + dy * dy);
+        const float len = std::sqrt(dx * dx + dy * dy);
         if (len == 0.0f)
         {
             continue;
@@ -203,8 +205,8 @@ void Waveform::renderSmoothWaveform(SDL_Renderer *renderer)
         dx /= len;
         dy /= len;
 
-        float px = -dy * thickness * 0.5f;
-        float py = dx * thickness * 0.5f;
+        const float px = -dy * thickness * 0.5f;
+        const float py = dx * thickness * 0.5f;
 
         SDL_Vertex verts[4];
         verts[0].position = {x1 - px, y1f - py};
@@ -218,12 +220,12 @@ void Waveform::renderSmoothWaveform(SDL_Renderer *renderer)
             verts[j].tex_coord = {0, 0};
         }
 
-        int indices[6] = {0, 1, 2, 0, 2, 3};
+        const int indices[6] = {0, 1, 2, 0, 2, 3};
         SDL_RenderGeometry(renderer, nullptr, verts, 4, indices, 6);
     }
 }
 
-void Waveform::renderBlockWaveform(SDL_Renderer *renderer)
+void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
 {
     SDL_SetRenderDrawColor(renderer, waveformColor.r, waveformColor.g,
                            waveformColor.b, waveformColor.a);
@@ -238,7 +240,7 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer)
     const float scale = (float)(verticalZoom * drawableHeight * 0.5f);
     const int centerY = heightToUse / 2;
 
-    auto sampleData =
+    const auto sampleData =
         state->document.getAudioBuffer()->getImmutableChannelData(channelIndex);
     const int64_t frameCount = state->document.getFrameCount();
 
@@ -268,7 +270,7 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer)
     const auto &peaks = bypassCache ? *(const std::vector<Peak> *)nullptr
                                     : waveformCache.getLevel(samplesPerPixel);
 
-    auto getPeakForPixel = [&](int x, Peak &out) -> bool
+    auto getPeakForPixel = [&](const int x, Peak &out) -> bool
     {
         const double aD = (double)sampleOffset + (double)x * samplesPerPixel;
         const double bD =
@@ -358,17 +360,15 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer)
     }
 }
 
-void Waveform::drawSelection(SDL_Renderer *renderer)
+void Waveform::drawSelection(SDL_Renderer *renderer) const
 {
     const double samplesPerPixel = state->samplesPerPixel;
 
     const bool isSelected =
         state->selection.isActive() &&
-        (state->selectedChannels == SelectedChannels::BOTH ||
-         (channelIndex == 0 &&
-          state->selectedChannels == SelectedChannels::LEFT) ||
-         (channelIndex == 1 &&
-          state->selectedChannels == SelectedChannels::RIGHT));
+        (state->selectedChannels == BOTH ||
+         (channelIndex == 0 && state->selectedChannels == LEFT) ||
+         (channelIndex == 1 && state->selectedChannels == RIGHT));
 
     const int64_t firstSample = state->selection.getStartInt();
     const int64_t lastSample = state->selection.getEndInt() + 1;
@@ -393,17 +393,18 @@ void Waveform::drawSelection(SDL_Renderer *renderer)
             selectionWidth = -selectionWidth;
         }
 
-        SDL_FRect selectionRect = {startX, 0.0f, selectionWidth,
-                                   (float)getHeight()};
+        const SDL_FRect selectionRect = {startX, 0.0f, selectionWidth,
+                                         (float)getHeight()};
 
         SDL_RenderFillRect(renderer, &selectionRect);
     }
 }
 
-void Waveform::drawHighlight(SDL_Renderer *renderer)
+void Waveform::drawHighlight(SDL_Renderer *renderer) const
 {
-    if (const auto waveformsUnderlay =
-            dynamic_cast<WaveformsUnderlay *>(state->capturingComponent);
+    const auto window = getWindow();
+    if (const auto waveformsUnderlay = dynamic_cast<WaveformsUnderlay *>(
+            window ? window->getCapturingComponent() : nullptr);
         waveformsUnderlay != nullptr)
     {
         return;
@@ -416,8 +417,8 @@ void Waveform::drawHighlight(SDL_Renderer *renderer)
     {
         const auto sampleOffset = state->sampleOffset;
 
-        const auto samplePoint =
-            dynamic_cast<SamplePoint *>(state->capturingComponent);
+        const auto samplePoint = dynamic_cast<SamplePoint *>(
+            window ? window->getCapturingComponent() : nullptr);
         const int64_t sampleIndex = samplePoint == nullptr
                                         ? *samplePosUnderCursor
                                         : samplePoint->getSampleIndex();
@@ -430,8 +431,8 @@ void Waveform::drawHighlight(SDL_Renderer *renderer)
 
             SDL_SetRenderDrawColor(renderer, 0, 128, 255, 100);
             SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-            SDL_FRect sampleRect = {xPos, 0.0f, sampleWidth,
-                                    (float)getHeight()};
+            const SDL_FRect sampleRect = {xPos, 0.0f, sampleWidth,
+                                          (float)getHeight()};
             SDL_RenderFillRect(renderer, &sampleRect);
         }
     }
@@ -462,7 +463,7 @@ void Waveform::onDraw(SDL_Renderer *renderer)
     drawPlaybackPosition(renderer);
 }
 
-void Waveform::drawPlaybackPosition(SDL_Renderer *renderer)
+void Waveform::drawPlaybackPosition(SDL_Renderer *renderer) const
 {
     if (playbackPosition == -1)
     {
@@ -479,7 +480,7 @@ void Waveform::drawPlaybackPosition(SDL_Renderer *renderer)
     }
 }
 
-void Waveform::drawCursor(SDL_Renderer *renderer)
+void Waveform::drawCursor(SDL_Renderer *renderer) const
 {
     if (state->selection.isActive())
     {
@@ -522,13 +523,13 @@ void Waveform::timerCallback()
 
 void Waveform::mouseLeave()
 {
-    state->hoveringOverChannels = SelectedChannels::BOTH;
+    state->hoveringOverChannels = BOTH;
 
     for (auto &c : getChildren())
     {
         // Mouse just entered a sample point.
         // We don't want to clear the highlight in this case.
-        if (state->componentUnderMouse == c.get())
+        if (window && window->getComponentUnderMouse() == c.get())
         {
             return;
         }

@@ -32,14 +32,14 @@ namespace cupuacu::gui
             dirtyToBlock = -1;
         }
 
-        void init(int64_t n)
+        void init(const int64_t n)
         {
             numSamples = std::max<int64_t>(0, n);
             buildStorage();
             markAllDirty();
         }
 
-        void rebuildAll(const float *samples, int64_t n)
+        void rebuildAll(const float *samples, const int64_t n)
         {
             numSamples = std::max<int64_t>(0, n);
             buildStorage();
@@ -62,29 +62,29 @@ namespace cupuacu::gui
             startSample = std::clamp<int64_t>(startSample, 0, numSamples - 1);
             endSample = std::clamp<int64_t>(endSample, 0, numSamples - 1);
 
-            int64_t b0 = startSample / BASE_BLOCK_SIZE;
-            int64_t b1 = endSample / BASE_BLOCK_SIZE;
+            const int64_t b0 = startSample / BASE_BLOCK_SIZE;
+            const int64_t b1 = endSample / BASE_BLOCK_SIZE;
             markDirtyBlocks(b0, b1);
         }
 
-        void invalidateSample(int64_t sample)
+        void invalidateSample(const int64_t sample)
         {
             invalidateSamples(sample, sample);
         }
 
-        int getLevelIndex(double samplesPerPixel) const
+        int getLevelIndex(const double samplesPerPixel) const
         {
             if (levels.empty())
             {
                 return 0;
             }
-            double eff =
+            const double eff =
                 std::max(1.0, samplesPerPixel / (double)BASE_BLOCK_SIZE);
-            int level = (int)std::floor(std::log2(eff));
+            const int level = (int)std::floor(std::log2(eff));
             return std::clamp(level, 0, (int)levels.size() - 1);
         }
 
-        int64_t samplesPerPeakForLevel(int level) const
+        static int64_t samplesPerPeakForLevel(int level)
         {
             level = std::clamp(level, 0, MAX_LEVEL_COUNT - 1);
             return (int64_t)BASE_BLOCK_SIZE << level;
@@ -100,7 +100,7 @@ namespace cupuacu::gui
             return levels[level];
         }
 
-        void applyInsert(int64_t posSample, int64_t countSamples)
+        void applyInsert(int64_t posSample, const int64_t countSamples)
         {
             if (countSamples <= 0)
             {
@@ -116,13 +116,13 @@ namespace cupuacu::gui
             }
             else
             {
-                int64_t oldL0 = (int64_t)levels[0].size();
-                int64_t newL0 = level0Size();
+                const int64_t oldL0 = (int64_t)levels[0].size();
+                const int64_t newL0 = level0Size();
 
                 levels[0].resize(newL0);
 
-                int64_t insertBlock = posSample / BASE_BLOCK_SIZE;
-                int64_t shift = newL0 - oldL0;
+                const int64_t insertBlock = posSample / BASE_BLOCK_SIZE;
+                const int64_t shift = newL0 - oldL0;
                 if (shift > 0 && insertBlock < oldL0)
                 {
                     std::move_backward(levels[0].begin() + insertBlock,
@@ -205,7 +205,7 @@ namespace cupuacu::gui
             dirtyToBlock = level0Size() - 1;
         }
 
-        const std::vector<Peak> &getLevel(double samplesPerPixel) const
+        const std::vector<Peak> &getLevel(const double samplesPerPixel) const
         {
             return getLevelByIndex(getLevelIndex(samplesPerPixel));
         }
@@ -228,7 +228,7 @@ namespace cupuacu::gui
                 return;
             }
 
-            int64_t max0 = level0Size() - 1;
+            const int64_t max0 = level0Size() - 1;
             if (max0 < 0)
             {
                 dirtyFromBlock = INT64_MAX;
@@ -236,13 +236,13 @@ namespace cupuacu::gui
                 return;
             }
 
-            int64_t from0 = std::clamp<int64_t>(dirtyFromBlock, 0, max0);
-            int64_t to0 = std::clamp<int64_t>(dirtyToBlock, 0, max0);
+            const int64_t from0 = std::clamp<int64_t>(dirtyFromBlock, 0, max0);
+            const int64_t to0 = std::clamp<int64_t>(dirtyToBlock, 0, max0);
 
             for (int64_t blk = from0; blk <= to0; ++blk)
             {
-                int64_t s0 = blk * (int64_t)BASE_BLOCK_SIZE;
-                int64_t s1 =
+                const int64_t s0 = blk * (int64_t)BASE_BLOCK_SIZE;
+                const int64_t s1 =
                     std::min<int64_t>(s0 + BASE_BLOCK_SIZE, numSamples);
                 if (s0 >= s1)
                 {
@@ -282,8 +282,8 @@ namespace cupuacu::gui
 
                 for (int64_t i = cFrom; i <= cTo; ++i)
                 {
-                    int64_t a = i * 2;
-                    int64_t b = a + 1;
+                    const int64_t a = i * 2;
+                    const int64_t b = a + 1;
 
                     float minv = prev[a].min;
                     float maxv = prev[a].max;
@@ -313,13 +313,13 @@ namespace cupuacu::gui
             levels.clear();
             levels.resize(MAX_LEVEL_COUNT);
 
-            int64_t sz0 = level0Size();
+            const int64_t sz0 = level0Size();
             levels[0].resize(sz0);
 
             for (int l = 1; l < MAX_LEVEL_COUNT; ++l)
             {
-                int64_t prev = (int64_t)levels[l - 1].size();
-                int64_t cur = (prev + 1) / 2;
+                const int64_t prev = (int64_t)levels[l - 1].size();
+                const int64_t cur = (prev + 1) / 2;
                 levels[l].resize(cur);
                 if (cur <= 1)
                 {
@@ -329,7 +329,7 @@ namespace cupuacu::gui
             }
         }
 
-        int64_t level0SizeFromSamples(int64_t ns) const
+        static int64_t level0SizeFromSamples(const int64_t ns)
         {
             if (ns <= 0)
             {
@@ -343,7 +343,7 @@ namespace cupuacu::gui
             return level0SizeFromSamples(numSamples);
         }
 
-        int64_t levelSize(int level) const
+        int64_t levelSize(const int level) const
         {
             int64_t sz = level0Size();
             for (int l = 1; l <= level; ++l)
@@ -365,7 +365,7 @@ namespace cupuacu::gui
             {
                 return;
             }
-            int64_t max0 = level0Size() - 1;
+            const int64_t max0 = level0Size() - 1;
             if (max0 < 0)
             {
                 return;

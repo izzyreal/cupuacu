@@ -12,7 +12,7 @@ static std::vector<float> splineInterpolateNonUniform(
     const std::vector<double> &y,  // sample values at those positions
     const std::vector<double> &xq) // query x positions to evaluate spline at
 {
-    int n = static_cast<int>(x.size()) - 1;
+    const int n = static_cast<int>(x.size()) - 1;
     if (n < 1 || xq.empty())
     {
         return {};
@@ -28,8 +28,8 @@ static std::vector<float> splineInterpolateNonUniform(
     std::vector<double> alpha(n);
     for (int i = 1; i < n; ++i)
     {
-        alpha[i] = (3.0 / h[i]) * (y[i + 1] - y[i]) -
-                   (3.0 / h[i - 1]) * (y[i] - y[i - 1]);
+        alpha[i] =
+            3.0 / h[i] * (y[i + 1] - y[i]) - 3.0 / h[i - 1] * (y[i] - y[i - 1]);
     }
 
     std::vector<double> l(n + 1), mu(n + 1), z(n + 1);
@@ -60,7 +60,7 @@ static std::vector<float> splineInterpolateNonUniform(
     std::vector<float> result;
     result.reserve(xq.size());
 
-    for (double xi : xq)
+    for (const double xi : xq)
     {
         // Find the right interval i so that x[i] <= xi <= x[i+1]
         int i = n - 1; // fallback to last interval
@@ -78,7 +78,7 @@ static std::vector<float> splineInterpolateNonUniform(
             int low = 0, high = n;
             while (low <= high)
             {
-                int mid = (low + high) / 2;
+                const int mid = (low + high) / 2;
                 if (x[mid] <= xi && xi <= x[mid + 1])
                 {
                     i = mid;
@@ -95,7 +95,7 @@ static std::vector<float> splineInterpolateNonUniform(
             }
         }
 
-        double dx = xi - x[i];
+        const double dx = xi - x[i];
         double val = y[i] + b[i] * dx + c[i] * dx * dx + d[i] * dx * dx * dx;
         val = std::clamp(val, -32768.0, 32767.0);
         result.push_back(static_cast<float>(val));
@@ -107,9 +107,9 @@ static std::vector<float> splineInterpolateNonUniform(
 static std::vector<float>
 splineInterpolate(const std::vector<int16_t>::const_iterator begin,
                   const std::vector<int16_t>::const_iterator end,
-                  int newNumberOfDataPoints)
+                  const int newNumberOfDataPoints)
 {
-    int n =
+    const int n =
         static_cast<int>(std::distance(begin, end)) - 1; // number of intervals
     if (n < 1 || newNumberOfDataPoints < 2)
     {
@@ -155,19 +155,19 @@ splineInterpolate(const std::vector<int16_t>::const_iterator begin,
     for (int j = n - 1; j >= 0; --j)
     {
         c[j] = z[j] - mu[j] * c[j + 1];
-        b[j] = (y[j + 1] - y[j]) - (c[j + 1] + 2.0 * c[j]) / 3.0;
+        b[j] = y[j + 1] - y[j] - (c[j + 1] + 2.0 * c[j]) / 3.0;
         d[j] = (c[j + 1] - c[j]) / 3.0;
         a[j] = y[j];
     }
 
     std::vector<float> result(newNumberOfDataPoints);
-    double scale = static_cast<double>(n) / (newNumberOfDataPoints - 1);
+    const double scale = static_cast<double>(n) / (newNumberOfDataPoints - 1);
 
     for (int i = 0; i < newNumberOfDataPoints; ++i)
     {
-        double x = i * scale;
-        int interval = std::min(static_cast<int>(std::floor(x)), n - 1);
-        double t = x - interval;
+        const double x = i * scale;
+        const int interval = std::min(static_cast<int>(std::floor(x)), n - 1);
+        const double t = x - interval;
 
         double val = a[interval] + b[interval] * t + c[interval] * t * t +
                      d[interval] * t * t * t;
@@ -180,20 +180,21 @@ splineInterpolate(const std::vector<int16_t>::const_iterator begin,
     return result;
 }
 
-static float cubicInterpolate(float p0, float p1, float p2, float p3, float t)
+static float cubicInterpolate(const float p0, const float p1, const float p2,
+                              const float p3, const float t)
 {
-    float a0 = -0.5f * p0 + 1.5f * p1 - 1.5f * p2 + 0.5f * p3;
-    float a1 = p0 - 2.5f * p1 + 2.0f * p2 - 0.5f * p3;
-    float a2 = -0.5f * p0 + 0.5f * p2;
-    float a3 = p1;
+    const float a0 = -0.5f * p0 + 1.5f * p1 - 1.5f * p2 + 0.5f * p3;
+    const float a1 = p0 - 2.5f * p1 + 2.0f * p2 - 0.5f * p3;
+    const float a2 = -0.5f * p0 + 0.5f * p2;
+    const float a3 = p1;
 
     return ((a0 * t + a1) * t + a2) * t + a3;
 }
 
 static std::vector<float>
-smoothenCubic(std::vector<int16_t>::const_iterator begin,
-              std::vector<int16_t>::const_iterator end,
-              int newNumberOfDataPoints)
+smoothenCubic(const std::vector<int16_t>::const_iterator begin,
+              const std::vector<int16_t>::const_iterator end,
+              const int newNumberOfDataPoints)
 {
     const int sourceSize = static_cast<int>(std::distance(begin, end));
 
@@ -208,14 +209,14 @@ smoothenCubic(std::vector<int16_t>::const_iterator begin,
 
     for (int i = 0; i < newNumberOfDataPoints; ++i)
     {
-        float pos = i * scale;
+        const float pos = i * scale;
         int idx = static_cast<int>(std::floor(pos));
-        float t = pos - idx;
+        const float t = pos - idx;
 
-        int idx0 = std::clamp(idx - 1, 0, sourceSize - 1);
-        int idx1 = std::clamp(idx, 0, sourceSize - 1);
-        int idx2 = std::clamp(idx + 1, 0, sourceSize - 1);
-        int idx3 = std::clamp(idx + 2, 0, sourceSize - 1);
+        const int idx0 = std::clamp(idx - 1, 0, sourceSize - 1);
+        const int idx1 = std::clamp(idx, 0, sourceSize - 1);
+        const int idx2 = std::clamp(idx + 1, 0, sourceSize - 1);
+        const int idx3 = std::clamp(idx + 2, 0, sourceSize - 1);
 
         float y = cubicInterpolate(static_cast<float>(*(begin + idx0)),
                                    static_cast<float>(*(begin + idx1)),
