@@ -331,14 +331,7 @@ bool Window::handleEvent(const SDL_Event &event)
                 break;
             }
             const MouseEvent mouseEvent = makeMouseEvent(event);
-            if (capturingComponent == nullptr)
-            {
-                rootComponent->handleMouseEvent(mouseEvent);
-            }
-            else
-            {
-                capturingComponent->handleMouseEvent(mouseEvent);
-            }
+            rootComponent->handleMouseEvent(mouseEvent);
             break;
         }
         case SDL_EVENT_MOUSE_BUTTON_UP:
@@ -350,18 +343,19 @@ bool Window::handleEvent(const SDL_Event &event)
             const MouseEvent mouseEvent = makeMouseEvent(event);
             updateComponentUnderMouse(mouseEvent.mouseXi, mouseEvent.mouseYi);
 
-            if (capturingComponent == nullptr)
+            if (capturingComponent != nullptr &&
+                !capturingComponent->containsAbsoluteCoordinate(
+                    mouseEvent.mouseXi, mouseEvent.mouseYi))
             {
-                rootComponent->handleMouseEvent(mouseEvent);
+                capturingComponent->mouseLeave();
             }
-            else
+
+            rootComponent->handleMouseEvent(mouseEvent);
+
+            // Ensure drag/capture interaction ends on mouse-up even when
+            // the captured component chooses not to consume the release event.
+            if (capturingComponent != nullptr)
             {
-                if (!capturingComponent->containsAbsoluteCoordinate(
-                        mouseEvent.mouseXi, mouseEvent.mouseYi))
-                {
-                    capturingComponent->mouseLeave();
-                }
-                capturingComponent->handleMouseEvent(mouseEvent);
                 capturingComponent = nullptr;
             }
             break;

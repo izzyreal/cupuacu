@@ -49,12 +49,13 @@ add_executable(Cupuacu
     src/main/Paths.cpp
     src/main/persistence/AudioDevicePropertiesPersistence.cpp
     src/main/audio/AudioDevices.cpp
-    src/main/audio/AudioDevice.cpp
     src/main/audio/AudioDeviceView.cpp
     src/main/gui/Gui.cpp
     src/main/gui/MainView.cpp
     src/main/gui/TriangleMarker.cpp
     src/main/gui/Component.cpp
+    src/main/gui/Button.cpp
+    src/main/gui/TextButton.cpp
     src/main/gui/Label.cpp
     src/main/gui/DropdownMenu.cpp
     src/main/gui/DevicePropertiesWindow.cpp
@@ -66,6 +67,7 @@ add_executable(Cupuacu
     src/main/gui/MenuBar.cpp
     src/main/gui/Window.cpp
     src/main/actions/Play.cpp
+    src/main/actions/Record.cpp
 )
 
 add_executable(cupuacu-tests
@@ -73,12 +75,13 @@ add_executable(cupuacu-tests
     src/main/Paths.cpp
     src/main/persistence/AudioDevicePropertiesPersistence.cpp
     src/main/audio/AudioDevices.cpp
-    src/main/audio/AudioDevice.cpp
     src/main/audio/AudioDeviceView.cpp
     src/main/gui/Gui.cpp
     src/main/gui/MainView.cpp
     src/main/gui/TriangleMarker.cpp
     src/main/gui/Component.cpp
+    src/main/gui/Button.cpp
+    src/main/gui/TextButton.cpp
     src/main/gui/Label.cpp
     src/main/gui/DropdownMenu.cpp
     src/main/gui/DevicePropertiesWindow.cpp
@@ -90,6 +93,7 @@ add_executable(cupuacu-tests
     src/main/gui/MenuBar.cpp
     src/main/gui/Window.cpp
     src/main/actions/Play.cpp
+    src/main/actions/Record.cpp
     src/test/test.cpp
     src/test/dummy_menu_bar_test.cpp
     src/test/test_component_redraws.cpp

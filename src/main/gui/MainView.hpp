@@ -21,6 +21,7 @@ namespace cupuacu::gui
         void updateTriangleMarkerBounds() const;
 
     private:
+        bool consumePendingRecordedAudio();
         TriangleMarker *cursorTop;
         TriangleMarker *cursorBottom;
         TriangleMarker *selStartTop;

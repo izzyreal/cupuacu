@@ -30,5 +30,12 @@ namespace cupuacu::audio
     {
     };
 
-    using AudioMessage = std::variant<Play, Stop>;
+    struct Record
+    {
+        cupuacu::Document *document;
+        uint64_t startPos;
+        gui::VuMeter *vuMeter;
+    };
+
+    using AudioMessage = std::variant<Play, Stop, Record>;
 } // namespace cupuacu::audio

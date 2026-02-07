@@ -3,7 +3,6 @@
 #include "../State.hpp"
 #include "../gui/VuMeter.hpp"
 
-#include "audio/AudioDevice.hpp"
 #include "audio/AudioMessage.hpp"
 #include "audio/AudioDevices.hpp"
 
@@ -12,7 +11,7 @@ using namespace cupuacu::audio;
 
 void performStop(cupuacu::State *state)
 {
-    state->audioDevices->getOutputDevice()->enqueue(Stop{});
+    state->audioDevices->enqueue(Stop{});
 
     if (state->vuMeter)
     {
@@ -22,6 +21,11 @@ void performStop(cupuacu::State *state)
 
 void cupuacu::actions::play(cupuacu::State *state)
 {
+    if (state->audioDevices->isRecording())
+    {
+        performStop(state);
+    }
+
     uint32_t channelCount = state->document.getChannelCount();
     if (channelCount == 0)
     {
@@ -47,7 +51,6 @@ void cupuacu::actions::play(cupuacu::State *state)
     }
 
     {
-        auto device = state->audioDevices->getOutputDevice();
         Play playMsg;
         playMsg.document = &state->document;
         playMsg.startPos = start;
@@ -55,7 +58,7 @@ void cupuacu::actions::play(cupuacu::State *state)
         playMsg.selectedChannels = state->selectedChannels;
         playMsg.selectionIsActive = state->selection.isActive();
         playMsg.vuMeter = state->vuMeter;
-        device->enqueue(std::move(playMsg));
+        state->audioDevices->enqueue(std::move(playMsg));
     }
 }
 

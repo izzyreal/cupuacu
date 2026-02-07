@@ -1,12 +1,142 @@
 #include "MainView.hpp"
 #include "../State.hpp"
+#include "audio/AudioDevices.hpp"
 #include "Waveforms.hpp"
 #include "Waveform.hpp"
 #include "TriangleMarker.hpp"
 #include "OpaqueRect.hpp"
 #include "Timeline.hpp"
 
+#include <algorithm>
+
 using namespace cupuacu::gui;
+
+bool MainView::consumePendingRecordedAudio()
+{
+    if (!state->audioDevices)
+    {
+        return false;
+    }
+
+    cupuacu::audio::AudioDevices::RecordedChunk chunk{};
+    bool consumedAny = false;
+    bool channelLayoutChanged = false;
+    bool waveformCacheChanged = false;
+
+    while (state->audioDevices->popRecordedChunk(chunk))
+    {
+        if (chunk.frameCount == 0 || chunk.channelCount == 0)
+        {
+            continue;
+        }
+
+        consumedAny = true;
+        const int oldChannelCount =
+            static_cast<int>(state->document.getChannelCount());
+        const int64_t oldFrameCount = state->document.getFrameCount();
+        const int chunkChannelCount = static_cast<int>(chunk.channelCount);
+        const int64_t requiredFrameCount =
+            chunk.startFrame + static_cast<int64_t>(chunk.frameCount);
+
+        if (state->document.getChannelCount() == 0)
+        {
+            state->document.initialize(cupuacu::SampleFormat::FLOAT32, 44100,
+                                       chunk.channelCount, 0);
+        }
+        else if (state->document.getChannelCount() < chunkChannelCount)
+        {
+            state->document.resizeBuffer(
+                chunkChannelCount, state->document.getFrameCount());
+
+            for (int ch = oldChannelCount; ch < chunkChannelCount; ++ch)
+            {
+                auto &cache = state->document.getWaveformCache(ch);
+                cache.clear();
+                cache.applyInsert(0, state->document.getFrameCount());
+                if (state->document.getFrameCount() > 0)
+                {
+                    cache.invalidateSamples(0, state->document.getFrameCount() - 1);
+                }
+            }
+            waveformCacheChanged = true;
+        }
+        else if (requiredFrameCount > state->document.getFrameCount())
+        {
+            state->document.resizeBuffer(state->document.getChannelCount(),
+                                         requiredFrameCount);
+        }
+
+        const int64_t appendCount =
+            std::max<int64_t>(0, requiredFrameCount - oldFrameCount);
+        if (appendCount > 0)
+        {
+            state->document.insertFrames(oldFrameCount, appendCount);
+            waveformCacheChanged = true;
+        }
+
+        const int64_t overwriteStart =
+            std::clamp<int64_t>(chunk.startFrame, 0, oldFrameCount);
+        const int64_t overwriteEnd =
+            std::min<int64_t>(requiredFrameCount, oldFrameCount) - 1;
+        if (overwriteEnd >= overwriteStart)
+        {
+            for (int ch = 0; ch < state->document.getChannelCount(); ++ch)
+            {
+                state->document.getWaveformCache(ch).invalidateSamples(
+                    overwriteStart, overwriteEnd);
+            }
+            waveformCacheChanged = true;
+        }
+
+        if (oldChannelCount != state->document.getChannelCount())
+        {
+            channelLayoutChanged = true;
+        }
+
+        for (uint32_t frame = 0; frame < chunk.frameCount; ++frame)
+        {
+            const int64_t writeFrame = chunk.startFrame + frame;
+            const std::size_t base =
+                static_cast<std::size_t>(frame) *
+                cupuacu::audio::AudioDevices::kMaxRecordedChannels;
+
+            state->document.setSample(0, writeFrame, chunk.interleavedSamples[base]);
+            if (state->document.getChannelCount() > 1)
+            {
+                state->document.setSample(1, writeFrame,
+                                          chunk.interleavedSamples[base + 1]);
+            }
+        }
+
+        state->cursor = std::max(state->cursor, requiredFrameCount);
+    }
+
+    if (!consumedAny)
+    {
+        return false;
+    }
+
+    if (waveformCacheChanged)
+    {
+        state->document.updateWaveformCache();
+    }
+
+    if (channelLayoutChanged || static_cast<int>(state->waveforms.size()) !=
+                                    state->document.getChannelCount())
+    {
+        rebuildWaveforms();
+    }
+    else
+    {
+        for (const auto waveform : state->waveforms)
+        {
+            waveform->updateSamplePoints();
+            waveform->setDirty();
+        }
+    }
+
+    return true;
+}
 
 MainView::MainView(State *state) : Component(state, "MainView")
 {
@@ -156,12 +286,15 @@ void MainView::updateTriangleMarkerBounds() const
 
 void MainView::timerCallback()
 {
+    const bool consumedRecordedAudio = consumePendingRecordedAudio();
+
     if (state->cursor != lastDrawnCursor ||
         state->selection.isActive() != lastSelectionIsActive ||
         state->samplesPerPixel != lastSamplesPerPixel ||
         state->sampleOffset != lastSampleOffset ||
         state->selection.getStartInt() != lastSelectionStart ||
-        state->selection.getEndInt() != lastSelectionEnd)
+        state->selection.getEndInt() != lastSelectionEnd ||
+        consumedRecordedAudio)
     {
         lastDrawnCursor = state->cursor;
         lastSelectionIsActive = state->selection.isActive();

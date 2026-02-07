@@ -1,6 +1,5 @@
 #include "Waveform.hpp"
 
-#include "audio/AudioDevice.hpp"
 #include "audio/AudioDevices.hpp"
 #include "WaveformsUnderlay.hpp"
 #include "WaveformCache.hpp"
@@ -513,7 +512,7 @@ void Waveform::timerCallback()
     }
 
     if (const auto newPlaybackPosition =
-            state->audioDevices->getOutputDevice()->getPlaybackPosition();
+            state->audioDevices->getPlaybackPosition();
         newPlaybackPosition != playbackPosition)
     {
         playbackPosition = newPlaybackPosition;

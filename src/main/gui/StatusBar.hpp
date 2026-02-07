@@ -1,6 +1,5 @@
 #pragma once
 
-#include "audio/AudioDevice.hpp"
 #include "audio/AudioDevices.hpp"
 
 #include "gui/Component.hpp"
@@ -72,11 +71,10 @@ namespace cupuacu::gui
         void timerCallback() override
         {
             const bool isPlaying =
-                state->audioDevices->getOutputDevice()->isPlaying();
+                state->audioDevices->isPlaying();
 
             const int64_t currentPos =
-                isPlaying ? state->audioDevices->getOutputDevice()
-                                ->getPlaybackPosition()
+                isPlaying ? state->audioDevices->getPlaybackPosition()
                           : state->cursor;
 
             if (currentPos != lastDrawnPos)

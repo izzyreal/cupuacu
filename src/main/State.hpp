@@ -37,6 +37,7 @@ namespace cupuacu
         class MainView;
         class VuMeter;
         class VuMeterContainer;
+        class TransportButtonsContainer;
     } // namespace gui
 
     struct State
@@ -70,6 +71,7 @@ namespace cupuacu
         gui::MainView *mainView;
         gui::Component *statusBar;
         gui::VuMeterContainer *vuMeterContainer;
+        gui::TransportButtonsContainer *transportButtonsContainer = nullptr;
         gui::VuMeter *vuMeter;
 
         void addUndoable(std::shared_ptr<actions::Undoable>);

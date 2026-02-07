@@ -6,6 +6,7 @@
 #include "MenuBar.hpp"
 #include "StatusBar.hpp"
 #include "MainView.hpp"
+#include "TransportButtonsContainer.hpp"
 #include "VuMeterContainer.hpp"
 #include "Window.hpp"
 
@@ -47,8 +48,19 @@ SDL_Rect computeVuMeterContainerBounds(const uint16_t canvasWidth,
                                        const uint8_t vuMeterContainerHeight,
                                        const SDL_Rect &statusBarRect)
 {
+    const int transportWidth = canvasWidth / 3;
+    const SDL_Rect result{transportWidth, statusBarRect.y - vuMeterContainerHeight,
+                          canvasWidth - transportWidth, vuMeterContainerHeight};
+    return result;
+}
+
+SDL_Rect computeTransportButtonsContainerBounds(
+    const uint16_t canvasWidth, const uint16_t canvasHeight,
+    const uint8_t vuMeterContainerHeight, const SDL_Rect &statusBarRect)
+{
+    const int transportWidth = canvasWidth / 3;
     const SDL_Rect result{0, statusBarRect.y - vuMeterContainerHeight,
-                          canvasWidth, vuMeterContainerHeight};
+                          transportWidth, vuMeterContainerHeight};
     return result;
 }
 
@@ -83,6 +95,11 @@ void cupuacu::gui::buildComponents(State *state, Window *window)
 
     auto vuMeterContainer = std::make_unique<VuMeterContainer>(state);
     state->vuMeterContainer = contentLayerPtr->addChild(vuMeterContainer);
+
+    auto transportButtonsContainer =
+        std::make_unique<TransportButtonsContainer>(state);
+    state->transportButtonsContainer =
+        contentLayerPtr->addChild(transportButtonsContainer);
 
     auto statusBar = std::make_unique<StatusBar>(state);
     state->statusBar = contentLayerPtr->addChild(statusBar);
@@ -126,6 +143,9 @@ void cupuacu::gui::resizeComponents(State *state, Window *window)
         newCanvasW, newCanvasH, state->pixelScale, state->menuFontSize);
 
     const int vuMeterContainerHeight = 80 / state->pixelScale;
+    const SDL_Rect transportButtonsContainerRect =
+        computeTransportButtonsContainerBounds(
+            newCanvasW, newCanvasH, vuMeterContainerHeight, statusBarRect);
     const SDL_Rect vuMeterContainerRect = computeVuMeterContainerBounds(
         newCanvasW, newCanvasH, vuMeterContainerHeight, statusBarRect);
 
@@ -145,6 +165,9 @@ void cupuacu::gui::resizeComponents(State *state, Window *window)
     state->vuMeterContainer->setBounds(
         vuMeterContainerRect.x, vuMeterContainerRect.y, vuMeterContainerRect.w,
         vuMeterContainerRect.h);
+    state->transportButtonsContainer->setBounds(
+        transportButtonsContainerRect.x, transportButtonsContainerRect.y,
+        transportButtonsContainerRect.w, transportButtonsContainerRect.h);
 
     state->statusBar->setBounds(statusBarRect.x, statusBarRect.y,
                                 statusBarRect.w, statusBarRect.h);

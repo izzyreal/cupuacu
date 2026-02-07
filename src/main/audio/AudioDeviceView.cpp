@@ -13,7 +13,17 @@ bool AudioDeviceView::isPlaying() const
     return state->isPlaying;
 }
 
+bool AudioDeviceView::isRecording() const
+{
+    return state->isRecording;
+}
+
 int64_t AudioDeviceView::getPlaybackPosition() const
 {
     return state->playbackPosition;
+}
+
+int64_t AudioDeviceView::getRecordingPosition() const
+{
+    return state->recordingPosition;
 }
