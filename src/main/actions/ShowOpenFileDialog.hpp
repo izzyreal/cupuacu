@@ -44,6 +44,11 @@ namespace cupuacu::actions
 
         auto state = (cupuacu::State *)userdata;
 
+        if (state->audioDevices)
+        {
+            state->audioDevices->clearRecordedChunks();
+        }
+
         state->activeDocumentSession.currentFile = absoluteFilePath;
 
         file::loadSampleData(state);

@@ -73,6 +73,7 @@ namespace cupuacu::audio
         int64_t getPlaybackPosition() const;
         int64_t getRecordingPosition() const;
         bool popRecordedChunk(RecordedChunk &outChunk);
+        void clearRecordedChunks();
 
         DeviceSelection getDeviceSelection() const;
         bool setDeviceSelection(const DeviceSelection &selection);

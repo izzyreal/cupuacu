@@ -32,6 +32,7 @@ namespace cupuacu
                                cupuacu::audio::DirtyTrackingAudioBuffer>()
                          : std::make_shared<cupuacu::audio::AudioBuffer>();
             buffer->resize(channelCount, frameCount);
+            waveformCache.assign(channelCount, gui::WaveformCache{});
         }
 
         gui::WaveformCache &getWaveformCache(const int channel)

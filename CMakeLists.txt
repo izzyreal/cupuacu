@@ -97,6 +97,7 @@ add_executable(cupuacu-tests
     src/main/actions/Play.cpp
     src/main/actions/Record.cpp
     src/test/test.cpp
+    src/test/test_session_init.cpp
     src/test/dummy_menu_bar_test.cpp
     src/test/test_component_redraws.cpp
     src/test/test_audio_device_properties_persistence.cpp

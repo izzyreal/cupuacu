@@ -77,6 +77,8 @@ namespace cupuacu::file
         // Done with file
         sf_close(snd);
 
+        session.selection.reset();
+        session.cursor = 0;
         session.syncSelectionAndCursorToDocumentLength();
     }
 } // namespace cupuacu::file

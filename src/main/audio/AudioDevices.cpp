@@ -433,6 +433,14 @@ bool AudioDevices::popRecordedChunk(RecordedChunk &outChunk)
     return recordedChunkQueue.try_dequeue(outChunk);
 }
 
+void AudioDevices::clearRecordedChunks()
+{
+    RecordedChunk chunk{};
+    while (recordedChunkQueue.try_dequeue(chunk))
+    {
+    }
+}
+
 AudioDevices::DeviceSelection AudioDevices::getDeviceSelection() const
 {
     std::lock_guard<std::mutex> lock(selectionMutex);
