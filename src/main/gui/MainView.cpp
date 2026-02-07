@@ -8,6 +8,7 @@
 #include "OpaqueRect.hpp"
 #include "Timeline.hpp"
 
+#include <SDL3/SDL.h>
 #include <algorithm>
 
 using namespace cupuacu::gui;
@@ -200,6 +201,9 @@ bool MainView::consumePendingRecordedAudio()
     {
         return false;
     }
+    const uint64_t perfStart = SDL_GetPerformanceCounter();
+    const uint64_t perfFreq = SDL_GetPerformanceFrequency();
+    constexpr double kRecordConsumeBudgetMs = 3.0;
     auto &session = state->activeDocumentSession;
     auto &doc = session.document;
 
@@ -207,14 +211,40 @@ bool MainView::consumePendingRecordedAudio()
     bool consumedAny = false;
     bool channelLayoutChanged = false;
     bool waveformCacheChanged = false;
+    const bool isRecordingNow = state->audioDevices->isRecording();
+    const uint64_t maxChunksThisTick = isRecordingNow ? 12 : UINT64_MAX;
+    uint64_t chunksThisTick = 0;
 
-    while (state->audioDevices->popRecordedChunk(chunk))
+    while (true)
     {
+        if (chunksThisTick >= maxChunksThisTick)
+        {
+            break;
+        }
+        if (isRecordingNow && chunksThisTick > 0)
+        {
+            const uint64_t now = SDL_GetPerformanceCounter();
+            const double elapsedMs =
+                perfFreq > 0
+                    ? (1000.0 * static_cast<double>(now - perfStart) /
+                       static_cast<double>(perfFreq))
+                    : 0.0;
+            if (elapsedMs >= kRecordConsumeBudgetMs)
+            {
+                break;
+            }
+        }
+        if (!state->audioDevices->popRecordedChunk(chunk))
+        {
+            break;
+        }
+
         if (chunk.frameCount == 0 || chunk.channelCount == 0)
         {
             continue;
         }
 
+        ++chunksThisTick;
         consumedAny = true;
         beginRecordingUndoCaptureIfNeeded(chunk.startFrame);
         const int oldChannelCount = static_cast<int>(doc.getChannelCount());
@@ -244,11 +274,6 @@ bool MainView::consumePendingRecordedAudio()
             }
             waveformCacheChanged = true;
         }
-        else if (requiredFrameCount > doc.getFrameCount())
-        {
-            doc.resizeBuffer(doc.getChannelCount(), requiredFrameCount);
-        }
-
         const int64_t appendCount =
             std::max<int64_t>(0, requiredFrameCount - oldFrameCount);
         if (appendCount > 0)
@@ -300,7 +325,6 @@ bool MainView::consumePendingRecordedAudio()
     {
         return false;
     }
-
     session.syncSelectionAndCursorToDocumentLength();
 
     if (waveformCacheChanged)

@@ -50,7 +50,6 @@ namespace cupuacu::gui
             std::vector<std::vector<float>> overwrittenOldSamples;
             std::vector<std::vector<float>> recordedSamples;
         };
-
         bool consumePendingRecordedAudio();
         void beginRecordingUndoCaptureIfNeeded(int64_t startFrame);
         void capturePreOverwriteSamples(int64_t overlapEndFrame);

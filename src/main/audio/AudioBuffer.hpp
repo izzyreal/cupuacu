@@ -33,10 +33,27 @@ namespace cupuacu::audio
 
         virtual void insertFrames(int64_t frameIndex, int64_t numFrames)
         {
-            int64_t chCount = channels.size();
+            if (numFrames <= 0)
+            {
+                return;
+            }
             for (auto &ch : channels)
             {
-                ch.insert(ch.begin() + frameIndex, numFrames, 0.0f);
+                if (frameIndex == static_cast<int64_t>(ch.size()))
+                {
+                    const int64_t newSize = static_cast<int64_t>(ch.size()) + numFrames;
+                    if (newSize > static_cast<int64_t>(ch.capacity()))
+                    {
+                        const int64_t grown =
+                            std::max<int64_t>(newSize, static_cast<int64_t>(ch.capacity()) * 2);
+                        ch.reserve(grown);
+                    }
+                    ch.insert(ch.end(), numFrames, 0.0f);
+                }
+                else
+                {
+                    ch.insert(ch.begin() + frameIndex, numFrames, 0.0f);
+                }
             }
         }
 
