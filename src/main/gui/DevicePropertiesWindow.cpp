@@ -61,10 +61,11 @@ DevicePropertiesWindow::DevicePropertiesWindow(State *stateToUse)
         state->windows.push_back(window.get());
     }
 
-    if (state->mainWindow && state->mainWindow->getSdlWindow())
+    auto *mainWindow = state->mainDocumentSessionWindow->getWindow();
+    if (mainWindow && mainWindow->getSdlWindow())
     {
         if (!SDL_SetWindowParent(window->getSdlWindow(),
-                                 state->mainWindow->getSdlWindow()))
+                                 mainWindow->getSdlWindow()))
         {
             SDL_Log("DevicePropertiesWindow: SDL_SetWindowParent failed: %s",
                     SDL_GetError());
@@ -194,9 +195,14 @@ DevicePropertiesWindow::DevicePropertiesWindow(State *stateToUse)
     window->setOnClose(
         [this]
         {
-            if (state && state->mainWindow && state->mainWindow->getSdlWindow())
+            if (!state)
             {
-                SDL_RaiseWindow(state->mainWindow->getSdlWindow());
+                return;
+            }
+            auto *mainWindow = state->mainDocumentSessionWindow->getWindow();
+            if (mainWindow && mainWindow->getSdlWindow())
+            {
+                SDL_RaiseWindow(mainWindow->getSdlWindow());
             }
         });
 

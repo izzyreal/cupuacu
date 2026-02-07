@@ -8,6 +8,7 @@
 #include "gui/EventHandling.hpp"
 #include "gui/Gui.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
+#include "gui/DocumentSessionWindow.hpp"
 #include "gui/Window.hpp"
 
 const uint16_t initialDimensions[] = {1280, 720};
@@ -36,9 +37,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
         state->audioDevices->setDeviceSelection(*persistedSelection);
     }
 
-    resetWaveformState(state);
-    resetSampleValueUnderMouseCursor(state);
-
     *appstate = state;
 
     SDL_SetAppMetadata("Cupuacu -- A minimalist audio editor by Izmar", "0.1",
@@ -58,21 +56,27 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
 
-    state->mainWindow = std::make_unique<cupuacu::gui::Window>(
-        state, "", initialDimensions[0], initialDimensions[1],
-        SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
-    if (!state->mainWindow->isOpen())
+    state->mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            state, &session, "", initialDimensions[0], initialDimensions[1],
+            SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+
+    auto *mainWindow = state->mainDocumentSessionWindow->getWindow();
+    if (!mainWindow || !mainWindow->isOpen())
     {
         return SDL_APP_FAILURE;
     }
-    state->windows.push_back(state->mainWindow.get());
+    state->windows.push_back(mainWindow);
+
+    resetWaveformState(state);
+    resetSampleValueUnderMouseCursor(state);
 
     cupuacu::gui::initCursors();
 
     if (std::filesystem::exists(session.currentFile))
     {
         cupuacu::file::loadSampleData(state);
-        SDL_SetWindowTitle(state->mainWindow->getSdlWindow(),
+        SDL_SetWindowTitle(mainWindow->getSdlWindow(),
                            session.currentFile.c_str());
     }
     else
@@ -80,21 +84,24 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
         session.currentFile = "";
     }
 
-    cupuacu::gui::buildComponents(state, state->mainWindow.get());
+    cupuacu::gui::buildComponents(state, mainWindow);
 
     cupuacu::actions::resetZoom(state);
 
-    state->mainWindow->renderFrame();
+    mainWindow->renderFrame();
     return SDL_APP_CONTINUE;
 }
 
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
     cupuacu::State *state = (cupuacu::State *)appstate;
+    auto *mainWindow = state->mainDocumentSessionWindow
+                           ? state->mainDocumentSessionWindow->getWindow()
+                           : nullptr;
 
-    if (state->mainWindow && state->mainWindow->getRootComponent())
+    if (mainWindow && mainWindow->getRootComponent())
     {
-        state->mainWindow->getRootComponent()->timerCallbackRecursive();
+        mainWindow->getRootComponent()->timerCallbackRecursive();
     }
 
     for (auto *window : state->windows)
@@ -133,7 +140,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
     TTF_Quit();
     cupuacu::State *state = (cupuacu::State *)appstate;
     state->devicePropertiesWindow.reset();
-    state->mainWindow.reset();
+    state->mainDocumentSessionWindow.reset();
     state->windows.clear();
     SDL_Quit();
 }

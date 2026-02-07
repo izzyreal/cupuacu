@@ -71,6 +71,8 @@ namespace cupuacu::gui
         void timerCallback() override
         {
             const auto &session = state->activeDocumentSession;
+            const auto &viewState =
+                state->mainDocumentSessionWindow->getViewState();
             const bool isPlaying = state->audioDevices->isPlaying();
 
             const int64_t currentPos =
@@ -89,15 +91,15 @@ namespace cupuacu::gui
             }
 
             if (lastSampleValueUnderMouseCursor !=
-                state->sampleValueUnderMouseCursor)
+                viewState.sampleValueUnderMouseCursor)
             {
                 lastSampleValueUnderMouseCursor =
-                    state->sampleValueUnderMouseCursor;
+                    viewState.sampleValueUnderMouseCursor;
 
-                if (state->sampleValueUnderMouseCursor.has_value())
+                if (viewState.sampleValueUnderMouseCursor.has_value())
                 {
                     valueField->setValue(
-                        std::to_string(*state->sampleValueUnderMouseCursor));
+                        std::to_string(*viewState.sampleValueUnderMouseCursor));
                 }
                 else
                 {

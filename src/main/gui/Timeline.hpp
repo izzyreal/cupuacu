@@ -23,11 +23,13 @@ namespace cupuacu::gui
 
         explicit Timeline(State *state) : Component(state, "Timeline")
         {
+            const auto &viewState =
+                state->mainDocumentSessionWindow->getViewState();
             ruler = emplaceChild<Ruler>(state, getComponentName());
             ruler->setCenterFirstLabel(false);
             setMode(Mode::Samples);
 
-            lastSamplesPerPixel = state->samplesPerPixel;
+            lastSamplesPerPixel = viewState.samplesPerPixel;
         }
 
         void setMode(const Mode m)
@@ -50,17 +52,21 @@ namespace cupuacu::gui
 
         void timerCallback() override
         {
-            if (state->samplesPerPixel != lastSamplesPerPixel ||
-                state->sampleOffset != lastSampleOffset)
+            const auto &viewState =
+                state->mainDocumentSessionWindow->getViewState();
+            if (viewState.samplesPerPixel != lastSamplesPerPixel ||
+                viewState.sampleOffset != lastSampleOffset)
             {
-                lastSamplesPerPixel = state->samplesPerPixel;
-                lastSampleOffset = state->sampleOffset;
+                lastSamplesPerPixel = viewState.samplesPerPixel;
+                lastSampleOffset = viewState.sampleOffset;
                 updateLabels();
             }
         }
 
         void updateLabels() const
         {
+            const auto &viewState =
+                state->mainDocumentSessionWindow->getViewState();
             if (getWidth() <= 0)
             {
                 return;
@@ -73,9 +79,9 @@ namespace cupuacu::gui
 
             const int totalVisibleSamples =
                 Waveform::getSampleIndexForXPos(waveformWidth - 1,
-                                                state->sampleOffset,
-                                                state->samplesPerPixel) -
-                state->sampleOffset;
+                                                viewState.sampleOffset,
+                                                viewState.samplesPerPixel) -
+                viewState.sampleOffset;
 
             const int rawSamplesPerTick = std::max(
                 1, int(std::ceil(double(totalVisibleSamples) / maxTicks)));
@@ -97,16 +103,17 @@ namespace cupuacu::gui
             }
 
             const bool highZoom = Waveform::shouldShowSamplePoints(
-                state->samplesPerPixel, state->pixelScale);
+                viewState.samplesPerPixel, state->pixelScale);
 
             int firstSampleWithTick =
-                (state->sampleOffset + samplesPerTick - 1) / samplesPerTick *
+                (viewState.sampleOffset + samplesPerTick - 1) / samplesPerTick *
                 samplesPerTick;
             firstSampleWithTick =
                 std::max(0, firstSampleWithTick - samplesPerTick);
 
             const int lastVisibleSample = Waveform::getSampleIndexForXPos(
-                waveformWidth - 1, state->sampleOffset, state->samplesPerPixel);
+                waveformWidth - 1, viewState.sampleOffset,
+                viewState.samplesPerPixel);
 
             const int lastSampleWithTick =
                 (lastVisibleSample + samplesPerTick - 1) / samplesPerTick *
@@ -115,20 +122,20 @@ namespace cupuacu::gui
             const float firstTickX =
                 highZoom
                     ? Waveform::getXPosForSampleIndex(firstSampleWithTick,
-                                                      state->sampleOffset,
-                                                      state->samplesPerPixel)
+                                                      viewState.sampleOffset,
+                                                      viewState.samplesPerPixel)
                     : Waveform::getDoubleXPosForSampleIndex(
-                          firstSampleWithTick, state->sampleOffset,
-                          state->samplesPerPixel);
+                          firstSampleWithTick, viewState.sampleOffset,
+                          viewState.samplesPerPixel);
 
             const float lastTickX =
                 highZoom
                     ? Waveform::getXPosForSampleIndex(lastSampleWithTick,
-                                                      state->sampleOffset,
-                                                      state->samplesPerPixel)
+                                                      viewState.sampleOffset,
+                                                      viewState.samplesPerPixel)
                     : Waveform::getDoubleXPosForSampleIndex(
-                          lastSampleWithTick, state->sampleOffset,
-                          state->samplesPerPixel);
+                          lastSampleWithTick, viewState.sampleOffset,
+                          viewState.samplesPerPixel);
 
             const int visibleTickCount =
                 (lastSampleWithTick - firstSampleWithTick) / samplesPerTick;
@@ -167,7 +174,7 @@ namespace cupuacu::gui
             }
 
             int subdivisions;
-            if (state->samplesPerPixel < 1 / 200.0f)
+            if (viewState.samplesPerPixel < 1 / 200.0f)
             {
                 subdivisions = 1;
             }

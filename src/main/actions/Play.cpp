@@ -22,6 +22,7 @@ void performStop(cupuacu::State *state)
 void cupuacu::actions::play(cupuacu::State *state)
 {
     auto &session = state->activeDocumentSession;
+    auto &viewState = state->mainDocumentSessionWindow->getViewState();
     auto &doc = session.document;
 
     if (state->audioDevices->isRecording())
@@ -58,7 +59,7 @@ void cupuacu::actions::play(cupuacu::State *state)
         playMsg.document = &doc;
         playMsg.startPos = start;
         playMsg.endPos = end;
-        playMsg.selectedChannels = state->selectedChannels;
+        playMsg.selectedChannels = viewState.selectedChannels;
         playMsg.selectionIsActive = session.selection.isActive();
         playMsg.vuMeter = state->vuMeter;
         state->audioDevices->enqueue(std::move(playMsg));

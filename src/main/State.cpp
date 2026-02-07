@@ -5,16 +5,17 @@
 
 int64_t getMaxSampleOffset(const cupuacu::State *state)
 {
-    if (state->waveforms.empty() ||
+    if (!state->mainDocumentSessionWindow || state->waveforms.empty() ||
         state->activeDocumentSession.document.getFrameCount() == 0)
     {
         return 0;
     }
+    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
 
     const double waveformWidth =
         static_cast<double>(state->waveforms.front()->getWidth());
-    const int64_t visibleSampleCount =
-        static_cast<int64_t>(std::ceil(waveformWidth * state->samplesPerPixel));
+    const int64_t visibleSampleCount = static_cast<int64_t>(
+        std::ceil(waveformWidth * viewState.samplesPerPixel));
     const int64_t frameCount =
         state->activeDocumentSession.document.getFrameCount();
     const int64_t maxOffset = frameCount - visibleSampleCount;

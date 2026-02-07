@@ -99,7 +99,8 @@ bool SamplePoint::mouseMove(const MouseEvent &e)
 
     const auto samplePointSize = getHeight();
     const auto parentHeight = getParent()->getHeight();
-    const auto verticalZoom = state->verticalZoom;
+    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    const auto verticalZoom = viewState.verticalZoom;
 
     // Update y-position based on mouse movement
     dragYPos += e.mouseRelY;

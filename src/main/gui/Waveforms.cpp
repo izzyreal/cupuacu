@@ -37,6 +37,7 @@ void Waveforms::rebuildWaveforms()
 
 void Waveforms::resizeWaveforms() const
 {
+    auto &viewState = state->mainDocumentSessionWindow->getViewState();
     const int numChannels = static_cast<int>(state->waveforms.size());
     const float channelHeight = numChannels > 0 ? getHeight() / numChannels : 0;
 
@@ -49,9 +50,9 @@ void Waveforms::resizeWaveforms() const
     if (previousWidth != 0)
     {
         const auto oldSamplesPerPixelFactor =
-            previousWidth * state->samplesPerPixel;
+            previousWidth * viewState.samplesPerPixel;
         const auto newSamplesPerPixel = oldSamplesPerPixelFactor / getWidth();
-        state->samplesPerPixel = newSamplesPerPixel;
+        viewState.samplesPerPixel = newSamplesPerPixel;
     }
 }
 

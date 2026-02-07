@@ -84,6 +84,8 @@ namespace cupuacu::gui
         {
             return;
         }
+        const auto &viewState =
+            state->mainDocumentSessionWindow->getViewState();
 
         SDL_Cursor *newCursor = defaultCursor;
         const SDL_Window *focus = SDL_GetKeyboardFocus();
@@ -104,11 +106,11 @@ namespace cupuacu::gui
         else if (dynamic_cast<const Waveform *>(
                      window->getComponentUnderMouse()))
         {
-            if (state->hoveringOverChannels == LEFT)
+            if (viewState.hoveringOverChannels == LEFT)
             {
                 newCursor = selectLCursor;
             }
-            else if (state->hoveringOverChannels == RIGHT)
+            else if (viewState.hoveringOverChannels == RIGHT)
             {
                 newCursor = selectRCursor;
             }
@@ -198,6 +200,7 @@ namespace cupuacu::gui
 
     inline SDL_AppResult handleAppEvent(State *state, SDL_Event *event)
     {
+        auto *mainWindow = state->mainDocumentSessionWindow->getWindow();
         Window *eventWindow = findWindowForEvent(state, event);
         switch (event->type)
         {
@@ -214,16 +217,15 @@ namespace cupuacu::gui
             case SDL_EVENT_WINDOW_MOUSE_LEAVE:
                 if (eventWindow && eventWindow->hasFocus())
                 {
-                    if (state->mainWindow &&
-                        eventWindow == state->mainWindow.get())
+                    if (mainWindow && eventWindow == mainWindow)
                     {
                         handleWindowMouseLeave(state, eventWindow);
                     }
                 }
                 break;
             case SDL_EVENT_KEY_DOWN:
-                if (eventWindow && eventWindow->hasFocus() &&
-                    state->mainWindow && eventWindow == state->mainWindow.get())
+                if (eventWindow && eventWindow->hasFocus() && mainWindow &&
+                    eventWindow == mainWindow)
                 {
                     handleKeyDown(event, state);
                 }
@@ -251,8 +253,7 @@ namespace cupuacu::gui
                 if (eventWindow && eventWindow->hasFocus())
                 {
                     eventWindow->handleEvent(*event);
-                    if (state->mainWindow &&
-                        eventWindow == state->mainWindow.get())
+                    if (mainWindow && eventWindow == mainWindow)
                     {
                         cleanupCursors();
                         return SDL_APP_SUCCESS;
@@ -267,9 +268,9 @@ namespace cupuacu::gui
                 break;
         }
 
-        if (state->mainWindow)
+        if (mainWindow)
         {
-            updateMouseCursor(state, state->mainWindow.get());
+            updateMouseCursor(state, mainWindow);
         }
 
         if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)

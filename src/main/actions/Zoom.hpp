@@ -15,19 +15,20 @@ namespace cupuacu::actions
 
     static void resetZoom(cupuacu::State *state)
     {
+        auto &viewState = state->mainDocumentSessionWindow->getViewState();
         const auto waveformWidth = gui::Waveform::getWaveformWidth(state);
         if (waveformWidth == 0)
         {
-            state->samplesPerPixel = 0;
+            viewState.samplesPerPixel = 0;
         }
         else
         {
-            state->samplesPerPixel =
+            viewState.samplesPerPixel =
                 state->activeDocumentSession.document.getFrameCount() /
                 (float)waveformWidth;
         }
 
-        state->verticalZoom = INITIAL_VERTICAL_ZOOM;
+        viewState.verticalZoom = INITIAL_VERTICAL_ZOOM;
 
         resetSampleValueUnderMouseCursor(state);
 
@@ -36,20 +37,21 @@ namespace cupuacu::actions
             w->clearHighlight();
         }
 
-        state->sampleOffset = 0;
+        viewState.sampleOffset = 0;
     }
 
     static bool tryZoomInHorizontally(cupuacu::State *state)
     {
+        auto &viewState = state->mainDocumentSessionWindow->getViewState();
         const double minSamplesPerPixel = getMinSamplesPerPixel(state);
 
-        if (state->samplesPerPixel <= minSamplesPerPixel)
+        if (viewState.samplesPerPixel <= minSamplesPerPixel)
         {
             return false;
         }
 
-        state->samplesPerPixel =
-            std::max(state->samplesPerPixel / 2.0, minSamplesPerPixel);
+        viewState.samplesPerPixel =
+            std::max(viewState.samplesPerPixel / 2.0, minSamplesPerPixel);
 
         resetSampleValueUnderMouseCursor(state);
 
@@ -63,28 +65,29 @@ namespace cupuacu::actions
 
     static bool tryZoomOutHorizontally(cupuacu::State *state)
     {
+        auto &viewState = state->mainDocumentSessionWindow->getViewState();
         const auto waveformWidth = gui::Waveform::getWaveformWidth(state);
         const float maxSamplesPerPixel =
             static_cast<float>(
                 state->activeDocumentSession.document.getFrameCount()) /
             waveformWidth;
 
-        if (state->samplesPerPixel >= maxSamplesPerPixel)
+        if (viewState.samplesPerPixel >= maxSamplesPerPixel)
         {
             return false;
         }
 
         const auto centerSampleIndex =
-            ((waveformWidth / 2.0 + 0.5) * state->samplesPerPixel) +
-            state->sampleOffset;
+            ((waveformWidth / 2.0 + 0.5) * viewState.samplesPerPixel) +
+            viewState.sampleOffset;
 
-        state->samplesPerPixel =
-            std::min(state->samplesPerPixel * 2.0,
+        viewState.samplesPerPixel =
+            std::min(viewState.samplesPerPixel * 2.0,
                      static_cast<double>(maxSamplesPerPixel));
 
         const auto newSampleOffset =
             centerSampleIndex -
-            ((waveformWidth / 2.0 + 0.5) * state->samplesPerPixel);
+            ((waveformWidth / 2.0 + 0.5) * viewState.samplesPerPixel);
 
         updateSampleOffset(state, newSampleOffset);
 
@@ -101,22 +104,24 @@ namespace cupuacu::actions
     static void zoomInVertically(cupuacu::State *state,
                                  const uint8_t multiplier)
     {
-        state->verticalZoom += 0.3 * multiplier;
+        auto &viewState = state->mainDocumentSessionWindow->getViewState();
+        viewState.verticalZoom += 0.3 * multiplier;
     }
 
     static bool tryZoomOutVertically(cupuacu::State *state,
                                      const uint8_t multiplier)
     {
-        if (state->verticalZoom <= 1)
+        auto &viewState = state->mainDocumentSessionWindow->getViewState();
+        if (viewState.verticalZoom <= 1)
         {
             return false;
         }
 
-        state->verticalZoom -= 0.3 * multiplier;
+        viewState.verticalZoom -= 0.3 * multiplier;
 
-        if (state->verticalZoom < 1)
+        if (viewState.verticalZoom < 1)
         {
-            state->verticalZoom = 1;
+            viewState.verticalZoom = 1;
         }
 
         return true;
@@ -124,21 +129,22 @@ namespace cupuacu::actions
 
     static bool tryZoomSelection(cupuacu::State *state)
     {
+        auto &viewState = state->mainDocumentSessionWindow->getViewState();
         if (!state->activeDocumentSession.selection.isActive() ||
             state->activeDocumentSession.selection.getLengthInt() < 1)
         {
             return false;
         }
 
-        state->verticalZoom = INITIAL_VERTICAL_ZOOM;
+        viewState.verticalZoom = INITIAL_VERTICAL_ZOOM;
 
         const auto waveformWidth = gui::Waveform::getWaveformWidth(state);
         const auto selectionLength =
             state->activeDocumentSession.selection.getLengthInt();
 
-        state->samplesPerPixel =
+        viewState.samplesPerPixel =
             selectionLength / static_cast<double>(waveformWidth);
-        state->sampleOffset =
+        viewState.sampleOffset =
             state->activeDocumentSession.selection.getStartInt();
         return true;
     }

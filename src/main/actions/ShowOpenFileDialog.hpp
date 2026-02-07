@@ -53,10 +53,11 @@ namespace cupuacu::actions
         gui::Waveform::updateAllSamplePoints(state);
         gui::Waveform::setAllWaveformsDirty(state);
 
-        if (state->mainWindow)
+        auto *mainWindow = state->mainDocumentSessionWindow->getWindow();
+        if (mainWindow)
         {
             SDL_SetWindowTitle(
-                state->mainWindow->getSdlWindow(),
+                mainWindow->getSdlWindow(),
                 state->activeDocumentSession.currentFile.c_str());
         }
     }

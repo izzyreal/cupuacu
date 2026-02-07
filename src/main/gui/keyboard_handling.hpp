@@ -26,6 +26,8 @@ namespace cupuacu::gui
 
     static void handleKeyDown(SDL_Event *event, State *state)
     {
+        auto &viewState = state->mainDocumentSessionWindow->getViewState();
+        auto *mainWindow = state->mainDocumentSessionWindow->getWindow();
         uint8_t multiplier = 1;
         const uint8_t multiplierFactor = 12 / state->pixelScale;
 
@@ -104,18 +106,19 @@ namespace cupuacu::gui
         }
         else if (event->key.scancode == SDL_SCANCODE_LEFT)
         {
-            if (state->sampleOffset == 0)
+            if (viewState.sampleOffset == 0)
             {
                 return;
             }
 
-            const int64_t oldSampleOffset = state->sampleOffset;
+            const int64_t oldSampleOffset = viewState.sampleOffset;
 
-            updateSampleOffset(
-                state, state->sampleOffset -
-                           std::max(state->samplesPerPixel, 1.0) * multiplier);
+            updateSampleOffset(state,
+                               viewState.sampleOffset -
+                                   std::max(viewState.samplesPerPixel, 1.0) *
+                                       multiplier);
 
-            if (oldSampleOffset == state->sampleOffset)
+            if (oldSampleOffset == viewState.sampleOffset)
             {
                 return;
             }
@@ -131,13 +134,14 @@ namespace cupuacu::gui
         }
         else if (event->key.scancode == SDL_SCANCODE_RIGHT)
         {
-            const int64_t oldSampleOffset = state->sampleOffset;
+            const int64_t oldSampleOffset = viewState.sampleOffset;
 
-            updateSampleOffset(
-                state, state->sampleOffset +
-                           std::max(state->samplesPerPixel, 1.0) * multiplier);
+            updateSampleOffset(state,
+                               viewState.sampleOffset +
+                                   std::max(viewState.samplesPerPixel, 1.0) *
+                                       multiplier);
 
-            if (oldSampleOffset == state->sampleOffset)
+            if (oldSampleOffset == viewState.sampleOffset)
             {
                 return;
             }
@@ -190,18 +194,18 @@ namespace cupuacu::gui
             {
                 state->pixelScale = std::min<uint8_t>(state->pixelScale * 2, 4);
 
-                const double newSamplesPerPixel = state->samplesPerPixel * 2;
+                const double newSamplesPerPixel = viewState.samplesPerPixel * 2;
 
-                buildComponents(state, state->mainWindow.get());
+                buildComponents(state, mainWindow);
                 for (auto *window : state->windows)
                 {
-                    if (window && window != state->mainWindow.get())
+                    if (window && window != mainWindow)
                     {
                         window->refreshForScaleOrResize();
                     }
                 }
 
-                state->samplesPerPixel = newSamplesPerPixel;
+                viewState.samplesPerPixel = newSamplesPerPixel;
 
                 for (const auto &w : state->waveforms)
                 {
@@ -216,18 +220,18 @@ namespace cupuacu::gui
             {
                 state->pixelScale = std::max<uint8_t>(state->pixelScale / 2, 1);
 
-                const double newSamplesPerPixel = state->samplesPerPixel / 2;
+                const double newSamplesPerPixel = viewState.samplesPerPixel / 2;
 
-                buildComponents(state, state->mainWindow.get());
+                buildComponents(state, mainWindow);
                 for (auto *window : state->windows)
                 {
-                    if (window && window != state->mainWindow.get())
+                    if (window && window != mainWindow)
                     {
                         window->refreshForScaleOrResize();
                     }
                 }
 
-                state->samplesPerPixel = newSamplesPerPixel;
+                viewState.samplesPerPixel = newSamplesPerPixel;
 
                 for (const auto &w : state->waveforms)
                 {

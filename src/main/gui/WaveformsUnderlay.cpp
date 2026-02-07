@@ -33,20 +33,22 @@ bool WaveformsUnderlay::mouseDown(const MouseEvent &e)
 {
     auto &session = state->activeDocumentSession;
     auto &doc = session.document;
+    auto &viewState = state->mainDocumentSessionWindow->getViewState();
 
     lastNumClicks = e.numClicks;
 
     handleChannelSelection(e.mouseYi, true);
 
-    const auto samplesPerPixel = state->samplesPerPixel;
+    const auto samplesPerPixel = viewState.samplesPerPixel;
     const int channel = channelAt(e.mouseYi);
     const double selectionCenter =
         (session.selection.getStart() + session.selection.getEnd()) * 0.5;
 
     if (e.numClicks >= 2)
     {
-        const double startSample = state->sampleOffset;
-        double endSample = state->sampleOffset + getWidth() * samplesPerPixel;
+        const double startSample = viewState.sampleOffset;
+        double endSample =
+            viewState.sampleOffset + getWidth() * samplesPerPixel;
 
         endSample = std::min((double)doc.getFrameCount(), endSample);
 
@@ -77,7 +79,8 @@ bool WaveformsUnderlay::mouseDown(const MouseEvent &e)
     const bool shiftPressed =
         keyboard[SDL_SCANCODE_LSHIFT] || keyboard[SDL_SCANCODE_RSHIFT];
 
-    const double samplePos = state->sampleOffset + e.mouseXf * samplesPerPixel;
+    const double samplePos =
+        viewState.sampleOffset + e.mouseXf * samplesPerPixel;
 
     if (shiftPressed)
     {
@@ -110,6 +113,7 @@ bool WaveformsUnderlay::mouseDown(const MouseEvent &e)
 void WaveformsUnderlay::handleChannelSelection(
     const int32_t mouseY, const bool isMouseDownEvent) const
 {
+    auto &viewState = state->mainDocumentSessionWindow->getViewState();
     bool isLeftOnly = false;
     bool isRightOnly = false;
 
@@ -134,21 +138,21 @@ void WaveformsUnderlay::handleChannelSelection(
 
     if (isLeftOnly)
     {
-        state->hoveringOverChannels = LEFT;
+        viewState.hoveringOverChannels = LEFT;
     }
     else if (isRightOnly)
     {
-        state->hoveringOverChannels = RIGHT;
+        viewState.hoveringOverChannels = RIGHT;
     }
     else
     {
-        state->hoveringOverChannels = BOTH;
+        viewState.hoveringOverChannels = BOTH;
     }
 
     if ((getWindow() && getWindow()->getCapturingComponent() == this) ||
         isMouseDownEvent)
     {
-        state->selectedChannels = state->hoveringOverChannels;
+        viewState.selectedChannels = viewState.hoveringOverChannels;
     }
 }
 
@@ -156,8 +160,9 @@ bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
 {
     auto &session = state->activeDocumentSession;
     auto &doc = session.document;
+    auto &viewState = state->mainDocumentSessionWindow->getViewState();
 
-    if (Waveform::shouldShowSamplePoints(state->samplesPerPixel,
+    if (Waveform::shouldShowSamplePoints(viewState.samplesPerPixel,
                                          state->pixelScale))
     {
         const int channel = channelAt(e.mouseYi);
@@ -166,8 +171,8 @@ bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
         {
             auto *wf = state->waveforms[channel];
             const int64_t sampleIndex =
-                static_cast<int64_t>(e.mouseXi * state->samplesPerPixel) +
-                state->sampleOffset;
+                static_cast<int64_t>(e.mouseXi * viewState.samplesPerPixel) +
+                viewState.sampleOffset;
 
             wf->setSamplePosUnderCursor(sampleIndex);
 
@@ -176,7 +181,7 @@ bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
     }
 
     const int64_t sampleIndex = getValidSampleIndexUnderMouseCursor(
-        e.mouseXi, state->samplesPerPixel, state->sampleOffset,
+        e.mouseXi, viewState.samplesPerPixel, viewState.sampleOffset,
         doc.getFrameCount());
 
     const uint8_t channel = channelAt(e.mouseYi);
@@ -198,7 +203,7 @@ bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
     if (lastNumClicks == 1)
     {
         const double samplePos =
-            state->sampleOffset + e.mouseXi * state->samplesPerPixel;
+            viewState.sampleOffset + e.mouseXi * viewState.samplesPerPixel;
         const bool selectionWasActive = session.selection.isActive();
 
         session.selection.setValue2(samplePos);
@@ -215,26 +220,29 @@ bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
 
 bool WaveformsUnderlay::mouseUp(const MouseEvent &e)
 {
-    state->samplesToScroll = 0.0f;
+    auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    viewState.samplesToScroll = 0.0f;
 
     return true;
 }
 
 void WaveformsUnderlay::timerCallback()
 {
-    if (state->samplesToScroll == 0.0)
+    auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    if (viewState.samplesToScroll == 0.0)
     {
         return;
     }
 
-    const double samplesToScroll = state->samplesToScroll < 0.0
-                                       ? std::min(-1.0, state->samplesToScroll)
-                                       : std::max(1.0, state->samplesToScroll);
-    const int64_t oldOffset = state->sampleOffset;
+    const double samplesToScroll =
+        viewState.samplesToScroll < 0.0
+            ? std::min(-1.0, viewState.samplesToScroll)
+            : std::max(1.0, viewState.samplesToScroll);
+    const int64_t oldOffset = viewState.sampleOffset;
 
-    updateSampleOffset(state, state->sampleOffset + samplesToScroll);
+    updateSampleOffset(state, viewState.sampleOffset + samplesToScroll);
 
-    if (oldOffset != state->sampleOffset)
+    if (oldOffset != viewState.sampleOffset)
     {
         if (getWindow())
         {
@@ -271,15 +279,16 @@ void WaveformsUnderlay::markAllWaveformsDirty() const
 void WaveformsUnderlay::handleScroll(const int32_t mouseX,
                                      const int32_t mouseY) const
 {
+    auto &viewState = state->mainDocumentSessionWindow->getViewState();
     if (mouseX > getWidth() || mouseX < 0)
     {
-        const auto samplesPerPixel = state->samplesPerPixel;
+        const auto samplesPerPixel = viewState.samplesPerPixel;
         const auto diff = mouseX < 0 ? mouseX : mouseX - getWidth();
         const auto samplesToScroll = diff * samplesPerPixel;
-        state->samplesToScroll = samplesToScroll;
+        viewState.samplesToScroll = samplesToScroll;
     }
     else
     {
-        state->samplesToScroll = 0;
+        viewState.samplesToScroll = 0;
     }
 }

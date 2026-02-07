@@ -84,6 +84,7 @@ void TriangleMarker::onDraw(SDL_Renderer *r)
 bool TriangleMarker::mouseDown(const MouseEvent &e)
 {
     auto &session = state->activeDocumentSession;
+    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
     const float mouseParentX = e.mouseXf + getXPos();
 
     if (type == TriangleMarkerType::SelectionStartTop ||
@@ -101,7 +102,7 @@ bool TriangleMarker::mouseDown(const MouseEvent &e)
         dragStartSample = static_cast<double>(session.cursor);
     }
 
-    const double mouseSample = mouseParentX * state->samplesPerPixel;
+    const double mouseSample = mouseParentX * viewState.samplesPerPixel;
     dragMouseOffsetParentX = static_cast<float>(mouseSample - dragStartSample);
 
     if (session.selection.isActive())
@@ -120,6 +121,7 @@ bool TriangleMarker::mouseUp(const MouseEvent &e)
 bool TriangleMarker::mouseMove(const MouseEvent &e)
 {
     auto &session = state->activeDocumentSession;
+    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
     if (!getWindow() || getWindow()->getCapturingComponent() != this ||
         !e.buttonState.left)
     {
@@ -127,7 +129,7 @@ bool TriangleMarker::mouseMove(const MouseEvent &e)
     }
 
     const float mouseParentX = e.mouseXf + getXPos();
-    const double mouseSample = mouseParentX * state->samplesPerPixel;
+    const double mouseSample = mouseParentX * viewState.samplesPerPixel;
     const double newSamplePos = mouseSample - dragMouseOffsetParentX;
 
     const bool selectionWasActive = session.selection.isActive();

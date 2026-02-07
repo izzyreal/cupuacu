@@ -175,7 +175,8 @@ void cupuacu::gui::resizeComponents(State *state, Window *window)
 
     window->getRootComponent()->setDirty();
 
-    if (state->samplesPerPixel == 0)
+    auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    if (viewState.samplesPerPixel == 0)
     {
         actions::resetZoom(state);
     }

@@ -204,12 +204,13 @@ void MainView::updateTriangleMarkerBounds() const
 
 {
     const auto &session = state->activeDocumentSession;
+    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
     const auto borderWidth = computeBorderWidth();
     const float triHeight = borderWidth * 0.75f;
     const float halfBase = triHeight;
 
-    const auto sampleOffset = state->sampleOffset;
-    const auto samplesPerPixel = state->samplesPerPixel;
+    const auto sampleOffset = viewState.sampleOffset;
+    const auto samplesPerPixel = viewState.samplesPerPixel;
 
     if (session.selection.isActive())
     {
@@ -289,20 +290,21 @@ void MainView::updateTriangleMarkerBounds() const
 void MainView::timerCallback()
 {
     const auto &session = state->activeDocumentSession;
+    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
     const bool consumedRecordedAudio = consumePendingRecordedAudio();
 
     if (session.cursor != lastDrawnCursor ||
         session.selection.isActive() != lastSelectionIsActive ||
-        state->samplesPerPixel != lastSamplesPerPixel ||
-        state->sampleOffset != lastSampleOffset ||
+        viewState.samplesPerPixel != lastSamplesPerPixel ||
+        viewState.sampleOffset != lastSampleOffset ||
         session.selection.getStartInt() != lastSelectionStart ||
         session.selection.getEndInt() != lastSelectionEnd ||
         consumedRecordedAudio)
     {
         lastDrawnCursor = session.cursor;
         lastSelectionIsActive = session.selection.isActive();
-        lastSamplesPerPixel = state->samplesPerPixel;
-        lastSampleOffset = state->sampleOffset;
+        lastSamplesPerPixel = viewState.samplesPerPixel;
+        lastSampleOffset = viewState.sampleOffset;
         lastSelectionStart = session.selection.getStartInt();
         lastSelectionEnd = session.selection.getEndInt();
 

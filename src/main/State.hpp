@@ -7,6 +7,7 @@
 #include "SelectedChannels.hpp"
 #include "DocumentSession.hpp"
 #include "Paths.hpp"
+#include "gui/DocumentSessionWindow.hpp"
 
 #include <cstdint>
 #include <vector>
@@ -31,7 +32,6 @@ namespace cupuacu
     namespace gui
     {
         class DevicePropertiesWindow;
-        class Window;
         class Component;
         class Waveform;
         class MainView;
@@ -51,17 +51,9 @@ namespace cupuacu
         DocumentSession activeDocumentSession;
         Document clipboard;
 
-        double samplesPerPixel = 1;
-        double verticalZoom;
-        int64_t sampleOffset;
-        SelectedChannels selectedChannels;
-        SelectedChannels hoveringOverChannels;
-        double samplesToScroll;
-        std::optional<float> sampleValueUnderMouseCursor;
-
         std::vector<gui::Waveform *> waveforms;
         std::vector<gui::Window *> windows;
-        std::unique_ptr<gui::Window> mainWindow;
+        std::unique_ptr<gui::DocumentSessionWindow> mainDocumentSessionWindow;
         std::unique_ptr<gui::DevicePropertiesWindow> devicePropertiesWindow;
         gui::MainView *mainView;
         gui::Component *statusBar;
@@ -88,22 +80,34 @@ namespace cupuacu
 
 static void resetSampleValueUnderMouseCursor(cupuacu::State *state)
 {
-    state->sampleValueUnderMouseCursor.reset();
+    if (state->mainDocumentSessionWindow)
+    {
+        state->mainDocumentSessionWindow->getViewState()
+            .sampleValueUnderMouseCursor.reset();
+    }
 }
 
 static void updateSampleValueUnderMouseCursor(cupuacu::State *state,
                                               const float sampleValue)
 {
-    state->sampleValueUnderMouseCursor.emplace(sampleValue);
+    if (state->mainDocumentSessionWindow)
+    {
+        state->mainDocumentSessionWindow->getViewState()
+            .sampleValueUnderMouseCursor.emplace(sampleValue);
+    }
 }
 
 static void resetWaveformState(cupuacu::State *state)
 {
-    state->verticalZoom = 1;
-    state->sampleOffset = 0;
+    if (state->mainDocumentSessionWindow)
+    {
+        auto &viewState = state->mainDocumentSessionWindow->getViewState();
+        viewState.verticalZoom = 1;
+        viewState.sampleOffset = 0;
+        viewState.selectedChannels = cupuacu::SelectedChannels::BOTH;
+        viewState.samplesToScroll = 0;
+    }
     state->activeDocumentSession.selection.reset();
-    state->selectedChannels = cupuacu::SelectedChannels::BOTH;
-    state->samplesToScroll = 0;
 }
 
 int64_t getMaxSampleOffset(const cupuacu::State *);
@@ -111,7 +115,12 @@ int64_t getMaxSampleOffset(const cupuacu::State *);
 static void updateSampleOffset(cupuacu::State *state,
                                const int64_t sampleOffset)
 {
-    state->sampleOffset =
+    if (!state->mainDocumentSessionWindow)
+    {
+        return;
+    }
+    auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    viewState.sampleOffset =
         std::clamp(sampleOffset, int64_t{0}, getMaxSampleOffset(state));
 }
 
