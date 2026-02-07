@@ -56,6 +56,7 @@ namespace cupuacu::gui
         void captureRecordedChunk(
             const cupuacu::audio::AudioDevices::RecordedChunk &chunk);
         void finalizeRecordingUndoCaptureIfComplete();
+        bool followTransportHead();
         TriangleMarker *cursorTop;
         TriangleMarker *cursorBottom;
         TriangleMarker *selStartTop;

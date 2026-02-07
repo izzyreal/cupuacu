@@ -11,6 +11,7 @@
 
 #include <SDL3/SDL.h>
 #include <algorithm>
+#include <cmath>
 
 using namespace cupuacu::gui;
 
@@ -295,6 +296,74 @@ bool MainView::consumePendingRecordedAudio()
     return true;
 }
 
+bool MainView::followTransportHead()
+{
+    if (!state->audioDevices || !state->mainDocumentSessionWindow || !waveforms)
+    {
+        return false;
+    }
+
+    const auto snapshot = state->audioDevices->getSnapshot();
+    const int64_t transportHead =
+        snapshot.isRecording()
+            ? snapshot.getRecordingPosition()
+            : (snapshot.isPlaying() ? snapshot.getPlaybackPosition() : -1);
+
+    if (transportHead < 0)
+    {
+        return false;
+    }
+
+    bool changed = updateCursorPos(state, transportHead);
+
+    auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    if (viewState.samplesPerPixel <= 0.0 || waveforms->getWidth() <= 0)
+    {
+        return changed;
+    }
+
+    const int64_t oldOffset = viewState.sampleOffset;
+    const int waveformWidth = waveforms->getWidth();
+    int64_t newOffset = oldOffset;
+    const int32_t xPos = Waveform::getXPosForSampleIndex(
+        transportHead, oldOffset, viewState.samplesPerPixel);
+
+    if (xPos < 0)
+    {
+        const int32_t deficitPixels = -xPos;
+        const int64_t deltaSamples = std::max<int64_t>(
+            1, static_cast<int64_t>(
+                   std::ceil(static_cast<double>(deficitPixels) *
+                             viewState.samplesPerPixel)));
+        newOffset = oldOffset - deltaSamples;
+    }
+    else if (xPos >= waveformWidth)
+    {
+        const int32_t overflowPixels = xPos - (waveformWidth - 1);
+        const int64_t deltaSamples = std::max<int64_t>(
+            1, static_cast<int64_t>(
+                   std::ceil(static_cast<double>(overflowPixels) *
+                             viewState.samplesPerPixel)));
+        newOffset = oldOffset + deltaSamples;
+    }
+
+    if (newOffset != oldOffset)
+    {
+        updateSampleOffset(state, newOffset);
+    }
+
+    if (viewState.sampleOffset != oldOffset)
+    {
+        changed = true;
+        for (auto *wf : state->waveforms)
+        {
+            wf->setDirty();
+        }
+    }
+
+    return changed;
+}
+
 MainView::MainView(State *state) : Component(state, "MainView")
 {
     for (int i = 0; i < 4; ++i)
@@ -448,6 +517,7 @@ void MainView::timerCallback()
     const auto &session = state->activeDocumentSession;
     const auto &viewState = state->mainDocumentSessionWindow->getViewState();
     const bool consumedRecordedAudio = consumePendingRecordedAudio();
+    const bool followedTransport = followTransportHead();
     const bool isRecordingNow =
         state->audioDevices && state->audioDevices->isRecording();
     if (!isRecordingNow && wasRecordingLastTick)
@@ -462,7 +532,7 @@ void MainView::timerCallback()
         viewState.sampleOffset != lastSampleOffset ||
         session.selection.getStartInt() != lastSelectionStart ||
         session.selection.getEndInt() != lastSelectionEnd ||
-        consumedRecordedAudio)
+        consumedRecordedAudio || followedTransport)
     {
         lastDrawnCursor = session.cursor;
         lastSelectionIsActive = session.selection.isActive();
