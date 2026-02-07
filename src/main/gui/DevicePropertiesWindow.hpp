@@ -51,7 +51,7 @@ namespace cupuacu::gui
         int getSelectedHostApiIndex() const;
         int getSelectedDeviceIndex(const DropdownMenu *dropdown,
                                    const std::vector<int> &indices) const;
-        void syncSelectionToAudioDevices();
+        bool syncSelectionToAudioDevices();
         void layoutComponents() const;
         void renderOnce() const;
     };

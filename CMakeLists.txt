@@ -39,10 +39,15 @@ AddDependency(libsndfile "https://github.com/libsndfile/libsndfile.git" "master"
 AddDependency(Catch2 "https://github.com/catchorg/Catch2.git" "v3.8.1")
 AddDependency(readerwriterqueue "https://github.com/cameron314/readerwriterqueue.git" "master")
 AddDependency(portaudio "https://github.com/PortAudio/portaudio.git" "master")
+AddDependency(PlatformFolders "https://github.com/sago007/PlatformFolders.git" "master")
+FetchContent_Declare(json URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_MakeAvailable(json)
 
 add_executable(Cupuacu
     src/main/main.cpp
     src/main/State.cpp
+    src/main/Paths.cpp
+    src/main/persistence/AudioDevicePropertiesPersistence.cpp
     src/main/audio/AudioDevices.cpp
     src/main/audio/AudioDevice.cpp
     src/main/audio/AudioDeviceView.cpp
@@ -65,6 +70,8 @@ add_executable(Cupuacu
 
 add_executable(cupuacu-tests
     src/main/State.cpp
+    src/main/Paths.cpp
+    src/main/persistence/AudioDevicePropertiesPersistence.cpp
     src/main/audio/AudioDevices.cpp
     src/main/audio/AudioDevice.cpp
     src/main/audio/AudioDeviceView.cpp
@@ -86,15 +93,20 @@ add_executable(cupuacu-tests
     src/test/test.cpp
     src/test/dummy_menu_bar_test.cpp
     src/test/test_component_redraws.cpp
+    src/test/test_audio_device_properties_persistence.cpp
 )
 
 target_link_libraries(Cupuacu PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf)
 target_link_libraries(Cupuacu PRIVATE SndFile::sndfile)
 target_link_libraries(Cupuacu PRIVATE portaudio)
+target_link_libraries(Cupuacu PRIVATE platform_folders)
+target_link_libraries(Cupuacu PRIVATE nlohmann_json::nlohmann_json)
 
 target_link_libraries(cupuacu-tests PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf)
 target_link_libraries(cupuacu-tests PRIVATE SndFile::sndfile)
 target_link_libraries(cupuacu-tests PRIVATE portaudio)
+target_link_libraries(cupuacu-tests PRIVATE platform_folders)
+target_link_libraries(cupuacu-tests PRIVATE nlohmann_json::nlohmann_json)
 target_link_libraries(cupuacu-tests PRIVATE Catch2::Catch2WithMain)
 
 target_include_directories(Cupuacu PRIVATE src/main/)

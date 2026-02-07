@@ -73,13 +73,13 @@ AudioDevices::DeviceSelection AudioDevices::getDeviceSelection() const
     return deviceSelection;
 }
 
-void AudioDevices::setDeviceSelection(const DeviceSelection &selection)
+bool AudioDevices::setDeviceSelection(const DeviceSelection &selection)
 {
     {
         std::lock_guard<std::mutex> lock(selectionMutex);
         if (selection == deviceSelection)
         {
-            return;
+            return false;
         }
         deviceSelection = selection;
     }
@@ -89,4 +89,6 @@ void AudioDevices::setDeviceSelection(const DeviceSelection &selection)
         outputDevice->openDevice(selection.inputDeviceIndex,
                                  selection.outputDeviceIndex);
     }
+
+    return true;
 }

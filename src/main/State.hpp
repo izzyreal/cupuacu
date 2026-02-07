@@ -6,6 +6,7 @@
 
 #include "SelectedChannels.hpp"
 #include "Document.hpp"
+#include "Paths.hpp"
 
 #include <cstdint>
 #include <vector>
@@ -41,6 +42,7 @@ namespace cupuacu
     struct State
     {
         std::shared_ptr<audio::AudioDevices> audioDevices;
+        std::unique_ptr<Paths> paths = std::make_unique<Paths>();
         std::deque<std::shared_ptr<actions::Undoable>> undoables;
         std::deque<std::shared_ptr<actions::Undoable>> redoables;
         uint8_t menuFontSize = 40;

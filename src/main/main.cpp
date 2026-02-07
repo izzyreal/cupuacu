@@ -20,12 +20,20 @@ const uint16_t initialDimensions[] = {1280, 720};
 #include "file/file_loading.hpp"
 
 #include "audio/AudioDevices.hpp"
+#include "persistence/AudioDevicePropertiesPersistence.hpp"
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 {
     cupuacu::State *state = new cupuacu::State();
 
     state->audioDevices = std::make_shared<cupuacu::audio::AudioDevices>();
+    if (const auto persistedSelection =
+            cupuacu::persistence::AudioDevicePropertiesPersistence::load(
+                state->paths->audioDevicePropertiesPath());
+        persistedSelection.has_value())
+    {
+        state->audioDevices->setDeviceSelection(*persistedSelection);
+    }
 
     resetWaveformState(state);
     resetSampleValueUnderMouseCursor(state);

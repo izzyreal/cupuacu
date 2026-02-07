@@ -35,7 +35,7 @@ namespace cupuacu::audio
 
         AudioDevicePtr getOutputDevice();
         DeviceSelection getDeviceSelection() const;
-        void setDeviceSelection(const DeviceSelection &selection);
+        bool setDeviceSelection(const DeviceSelection &selection);
 
     private:
         AudioDevicePtr outputDevice;

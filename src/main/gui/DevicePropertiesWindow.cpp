@@ -2,6 +2,7 @@
 
 #include "../PaUtil.hpp"
 #include "../audio/AudioDevices.hpp"
+#include "../persistence/AudioDevicePropertiesPersistence.hpp"
 #include "Colors.hpp"
 #include "text.hpp"
 
@@ -128,7 +129,12 @@ DevicePropertiesWindow::DevicePropertiesWindow(State *stateToUse)
             : -1;
     populateDevices(hostApiIndex, preferredOutputDeviceIndex,
                     preferredInputDeviceIndex);
-    syncSelectionToAudioDevices();
+    if (syncSelectionToAudioDevices())
+    {
+        persistence::AudioDevicePropertiesPersistence::save(
+            state->paths->audioDevicePropertiesPath(),
+            state->audioDevices->getDeviceSelection());
+    }
 
     deviceTypeDropdown->setOnSelectionChanged(
         [this](const int index)
@@ -149,19 +155,34 @@ DevicePropertiesWindow::DevicePropertiesWindow(State *stateToUse)
             }
             populateDevices(hostApiIndexToUse, preferredOutputDeviceIndex,
                             preferredInputDeviceIndex);
-            syncSelectionToAudioDevices();
+            if (syncSelectionToAudioDevices())
+            {
+                persistence::AudioDevicePropertiesPersistence::save(
+                    state->paths->audioDevicePropertiesPath(),
+                    state->audioDevices->getDeviceSelection());
+            }
             layoutComponents();
             renderOnce();
         });
     outputDeviceDropdown->setOnSelectionChanged(
         [this](const int)
         {
-            syncSelectionToAudioDevices();
+            if (syncSelectionToAudioDevices())
+            {
+                persistence::AudioDevicePropertiesPersistence::save(
+                    state->paths->audioDevicePropertiesPath(),
+                    state->audioDevices->getDeviceSelection());
+            }
         });
     inputDeviceDropdown->setOnSelectionChanged(
         [this](const int)
         {
-            syncSelectionToAudioDevices();
+            if (syncSelectionToAudioDevices())
+            {
+                persistence::AudioDevicePropertiesPersistence::save(
+                    state->paths->audioDevicePropertiesPath(),
+                    state->audioDevices->getDeviceSelection());
+            }
         });
 
     window->setOnResize(
@@ -374,11 +395,11 @@ int DevicePropertiesWindow::getSelectedDeviceIndex(
     return -1;
 }
 
-void DevicePropertiesWindow::syncSelectionToAudioDevices()
+bool DevicePropertiesWindow::syncSelectionToAudioDevices()
 {
     if (!state || !state->audioDevices)
     {
-        return;
+        return false;
     }
 
     cupuacu::audio::AudioDevices::DeviceSelection selection;
@@ -388,7 +409,7 @@ void DevicePropertiesWindow::syncSelectionToAudioDevices()
     selection.inputDeviceIndex =
         getSelectedDeviceIndex(inputDeviceDropdown, inputDeviceIndices);
 
-    state->audioDevices->setDeviceSelection(selection);
+    return state->audioDevices->setDeviceSelection(selection);
 }
 
 void DevicePropertiesWindow::layoutComponents() const
