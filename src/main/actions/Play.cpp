@@ -2,6 +2,7 @@
 
 #include "../State.hpp"
 #include "../gui/VuMeter.hpp"
+#include "playback/PlaybackRange.hpp"
 
 #include "audio/AudioMessage.hpp"
 #include "audio/AudioDevices.hpp"
@@ -40,23 +41,11 @@ void cupuacu::actions::play(cupuacu::State *state)
         channelCount = 2;
     }
 
-    uint64_t totalSamples = doc.getFrameCount();
-    uint64_t start = 0;
-    uint64_t end = totalSamples;
-
-    if (session.selection.isActive())
-    {
-        start = session.selection.getStartInt();
-        end = std::min<uint64_t>(totalSamples, session.selection.getEndInt() + 1);
-    }
-    else if (state->loopPlaybackEnabled)
-    {
-        start = std::clamp<uint64_t>(session.cursor, 0, totalSamples);
-    }
-    else
-    {
-        start = session.cursor;
-    }
+    const auto range =
+        cupuacu::playback::computeRangeForPlay(session,
+                                               state->loopPlaybackEnabled);
+    const uint64_t start = range.start;
+    const uint64_t end = range.end;
 
     {
         Play playMsg;

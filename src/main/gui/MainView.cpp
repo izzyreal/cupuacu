@@ -10,6 +10,8 @@
 #include "OpaqueRect.hpp"
 #include "ScrollBar.hpp"
 #include "Timeline.hpp"
+#include "WaveformRefresh.hpp"
+#include "playback/PlaybackRange.hpp"
 
 #include <SDL3/SDL.h>
 #include <algorithm>
@@ -357,10 +359,7 @@ bool MainView::followTransportHead()
     if (viewState.sampleOffset != oldOffset)
     {
         changed = true;
-        for (auto *wf : state->waveforms)
-        {
-            wf->setDirty();
-        }
+        refreshWaveforms(state, false, true);
     }
 
     return changed;
@@ -400,15 +399,8 @@ MainView::MainView(State *state) : Component(state, "MainView")
             }
 
             resetSampleValueUnderMouseCursor(state);
-            for (auto *waveform : state->waveforms)
-            {
-                waveform->clearHighlight();
-            }
-            for (auto *waveform : state->waveforms)
-            {
-                waveform->updateSamplePoints();
-                waveform->setDirty();
-            }
+            clearWaveformHighlights(state);
+            refreshWaveforms(state, true, true);
         });
 
     waveforms = emplaceChild<Waveforms>(state);
@@ -571,6 +563,14 @@ void MainView::timerCallback()
         state->audioDevices && state->audioDevices->isPlaying();
     const bool isRecordingNow =
         state->audioDevices && state->audioDevices->isRecording();
+    const int64_t playbackPositionNow =
+        (isPlayingNow && state->audioDevices)
+            ? state->audioDevices->getPlaybackPosition()
+            : -1;
+    for (auto *waveform : state->waveforms)
+    {
+        waveform->setPlaybackPosition(playbackPositionNow);
+    }
     bool selectionInteractionActive = false;
     if (state->mainDocumentSessionWindow &&
         state->mainDocumentSessionWindow->getWindow())
@@ -582,30 +582,21 @@ void MainView::timerCallback()
             dynamic_cast<TriangleMarker *>(capturing) != nullptr;
     }
 
+    const bool selectionActive = session.selection.isActive();
+    const int64_t selectionStart = session.selection.getStartInt();
+    const int64_t selectionEnd = session.selection.getEndInt();
+
     if (isPlayingNow && state->audioDevices && !selectionInteractionActive)
     {
-        const auto &doc = session.document;
-        const uint64_t totalFrames = std::max<int64_t>(0, doc.getFrameCount());
-        uint64_t start = state->playbackRangeStart;
-        uint64_t end = state->playbackRangeEnd > 0 ? state->playbackRangeEnd : totalFrames;
-        if (session.selection.isActive())
-        {
-            start = static_cast<uint64_t>(
-                std::max<int64_t>(0, session.selection.getStartInt()));
-            end = static_cast<uint64_t>(
-                std::max<int64_t>(start, session.selection.getEndInt() + 1));
-        }
-        else if (state->loopPlaybackEnabled)
-        {
-            start = 0;
-            end = totalFrames;
-        }
-        start = std::min(start, totalFrames);
-        end = std::min(std::max(end, start), totalFrames);
+        const auto range = cupuacu::playback::computeRangeForLiveUpdate(
+            session, state->loopPlaybackEnabled, state->playbackRangeStart,
+            state->playbackRangeEnd);
+        const uint64_t start = range.start;
+        const uint64_t end = range.end;
 
         const bool shouldUpdatePlayback =
             start != lastPlaybackUpdateStart || end != lastPlaybackUpdateEnd ||
-            session.selection.isActive() != lastPlaybackUpdateSelectionActive ||
+            selectionActive != lastPlaybackUpdateSelectionActive ||
             viewState.selectedChannels != lastPlaybackUpdateChannels ||
             state->loopPlaybackEnabled != lastPlaybackLoopEnabled;
 
@@ -615,13 +606,13 @@ void MainView::timerCallback()
             updateMsg.startPos = start;
             updateMsg.endPos = end;
             updateMsg.loopEnabled = state->loopPlaybackEnabled;
-            updateMsg.selectionIsActive = session.selection.isActive();
+            updateMsg.selectionIsActive = selectionActive;
             updateMsg.selectedChannels = viewState.selectedChannels;
             state->audioDevices->enqueue(updateMsg);
 
             lastPlaybackUpdateStart = start;
             lastPlaybackUpdateEnd = end;
-            lastPlaybackUpdateSelectionActive = session.selection.isActive();
+            lastPlaybackUpdateSelectionActive = selectionActive;
             lastPlaybackUpdateChannels = viewState.selectedChannels;
             lastPlaybackLoopEnabled = state->loopPlaybackEnabled;
         }
@@ -630,7 +621,7 @@ void MainView::timerCallback()
     {
         lastPlaybackUpdateStart = state->playbackRangeStart;
         lastPlaybackUpdateEnd = state->playbackRangeEnd;
-        lastPlaybackUpdateSelectionActive = session.selection.isActive();
+        lastPlaybackUpdateSelectionActive = selectionActive;
         lastPlaybackUpdateChannels = viewState.selectedChannels;
         lastPlaybackLoopEnabled = state->loopPlaybackEnabled;
     }
@@ -642,19 +633,18 @@ void MainView::timerCallback()
     wasRecordingLastTick = isRecordingNow;
 
     if (session.cursor != lastDrawnCursor ||
-        session.selection.isActive() != lastSelectionIsActive ||
+        selectionActive != lastSelectionIsActive ||
         viewState.samplesPerPixel != lastSamplesPerPixel ||
         viewState.sampleOffset != lastSampleOffset ||
-        session.selection.getStartInt() != lastSelectionStart ||
-        session.selection.getEndInt() != lastSelectionEnd ||
+        selectionStart != lastSelectionStart || selectionEnd != lastSelectionEnd ||
         consumedRecordedAudio || followedTransport)
     {
         lastDrawnCursor = session.cursor;
-        lastSelectionIsActive = session.selection.isActive();
+        lastSelectionIsActive = selectionActive;
         lastSamplesPerPixel = viewState.samplesPerPixel;
         lastSampleOffset = viewState.sampleOffset;
-        lastSelectionStart = session.selection.getStartInt();
-        lastSelectionEnd = session.selection.getEndInt();
+        lastSelectionStart = selectionStart;
+        lastSelectionEnd = selectionEnd;
 
         updateTriangleMarkerBounds();
         setDirty();

@@ -106,6 +106,7 @@ add_executable(cupuacu-tests
     src/main/actions/Record.cpp
     src/test/test.cpp
     src/test/test_document_session.cpp
+    src/test/test_playback_helpers.cpp
     src/test/test_session_init.cpp
     src/test/dummy_menu_bar_test.cpp
     src/test/test_component_redraws.cpp

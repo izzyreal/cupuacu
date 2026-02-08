@@ -57,6 +57,14 @@ namespace cupuacu::actions::audio
             middleCount = endFrame - startFrame;
             afterCount = oldTotal - endFrame;
 
+            if (beforeCount == 0 && afterCount == 0)
+            {
+                updateCursorPos(state, 0);
+                session.selection.setValue1(0);
+                session.selection.setValue2(middleCount);
+                return;
+            }
+
             before.assign((size_t)ch, {});
             after.assign((size_t)ch, {});
 
@@ -97,6 +105,14 @@ namespace cupuacu::actions::audio
             auto &session = state->activeDocumentSession;
             auto &doc = session.document;
             const int64_t ch = doc.getChannelCount();
+
+            if (beforeCount == 0 && afterCount == 0)
+            {
+                updateCursorPos(state, beforeCount);
+                session.selection.setValue1(beforeCount);
+                session.selection.setValue2(beforeCount + middleCount);
+                return;
+            }
 
             doc.insertFrames(0, beforeCount);
             for (int64_t c = 0; c < ch; ++c)

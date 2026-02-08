@@ -37,7 +37,7 @@ namespace cupuacu::actions
             w->clearHighlight();
         }
 
-        viewState.sampleOffset = 0;
+        updateSampleOffset(state, 0);
     }
 
     static bool tryZoomInHorizontally(cupuacu::State *state)
@@ -144,8 +144,8 @@ namespace cupuacu::actions
 
         viewState.samplesPerPixel =
             selectionLength / static_cast<double>(waveformWidth);
-        viewState.sampleOffset =
-            state->activeDocumentSession.selection.getStartInt();
+        updateSampleOffset(
+            state, state->activeDocumentSession.selection.getStartInt());
         return true;
     }
 } // namespace cupuacu::actions

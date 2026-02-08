@@ -32,7 +32,7 @@ namespace cupuacu::gui
 
         void markAllWaveformsDirty() const;
 
-        void handleScroll(const int32_t mouseX, const int32_t mouseY) const;
+        void handleScroll(const int32_t mouseX) const;
 
         void handleChannelSelection(const int32_t mouseY,
                                     const bool isMouseDownEvent) const;

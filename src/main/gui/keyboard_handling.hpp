@@ -2,6 +2,7 @@
 #include "../State.hpp"
 #include "audio/AudioDevices.hpp"
 #include "Waveform.hpp"
+#include "WaveformRefresh.hpp"
 #include "Window.hpp"
 #include "../actions/ShowOpenFileDialog.hpp"
 #include "../actions/Play.hpp"
@@ -11,17 +12,14 @@
 #include "../actions/audio/Cut.hpp"
 #include "../actions/audio/Paste.hpp"
 #include "../actions/audio/Trim.hpp"
+#include "../actions/audio/EditCommands.hpp"
 
 namespace cupuacu::gui
 {
 
     static void updateWaveforms(State *state)
     {
-        for (const auto waveform : state->waveforms)
-        {
-            waveform->setDirty();
-            waveform->updateSamplePoints();
-        }
+        refreshWaveforms(state, true, true);
     }
 
     static void handleKeyDown(SDL_Event *event, State *state)
@@ -125,11 +123,7 @@ namespace cupuacu::gui
 
             resetSampleValueUnderMouseCursor(state);
 
-            for (const auto w : state->waveforms)
-            {
-                w->clearHighlight();
-            }
-
+            clearWaveformHighlights(state);
             updateWaveforms(state);
         }
         else if (event->key.scancode == SDL_SCANCODE_RIGHT)
@@ -148,11 +142,7 @@ namespace cupuacu::gui
 
             resetSampleValueUnderMouseCursor(state);
 
-            for (const auto w : state->waveforms)
-            {
-                w->clearHighlight();
-            }
-
+            clearWaveformHighlights(state);
             updateWaveforms(state);
         }
         else if (event->key.scancode == SDL_SCANCODE_O)
@@ -249,10 +239,7 @@ namespace cupuacu::gui
                 state->activeDocumentSession.selection.isActive())
 #endif
             {
-                const auto undoable = std::make_shared<actions::audio::Cut>(
-                    state, state->activeDocumentSession.selection.getStartInt(),
-                    state->activeDocumentSession.selection.getLengthInt());
-                state->addAndDoUndoable(undoable);
+                actions::audio::performCut(state);
             }
         }
         else if (event->key.scancode == SDL_SCANCODE_C)
@@ -265,10 +252,7 @@ namespace cupuacu::gui
                 state->activeDocumentSession.selection.isActive())
 #endif
             {
-                const auto undoable = std::make_shared<actions::audio::Copy>(
-                    state, state->activeDocumentSession.selection.getStartInt(),
-                    state->activeDocumentSession.selection.getLengthInt());
-                state->addAndDoUndoable(undoable);
+                actions::audio::performCopy(state);
             }
         }
         else if (event->key.scancode == SDL_SCANCODE_V &&
@@ -280,18 +264,7 @@ namespace cupuacu::gui
             if (event->key.mod & SDL_KMOD_CTRL)
 #endif
             {
-                const int64_t start =
-                    state->activeDocumentSession.selection.isActive()
-                        ? state->activeDocumentSession.selection.getStartInt()
-                        : state->activeDocumentSession.cursor;
-                const int64_t end =
-                    state->activeDocumentSession.selection.isActive()
-                        ? state->activeDocumentSession.selection.getEndInt()
-                        : -1;
-
-                const auto undoable =
-                    std::make_shared<actions::audio::Paste>(state, start, end);
-                state->addAndDoUndoable(undoable);
+                actions::audio::performPaste(state);
             }
         }
         else if (event->key.scancode == SDL_SCANCODE_T)
@@ -304,10 +277,7 @@ namespace cupuacu::gui
                 state->activeDocumentSession.selection.isActive())
 #endif
             {
-                const auto undoable = std::make_shared<actions::audio::Trim>(
-                    state, state->activeDocumentSession.selection.getStartInt(),
-                    state->activeDocumentSession.selection.getLengthInt());
-                state->addAndDoUndoable(undoable);
+                actions::audio::performTrim(state);
             }
         }
     }

@@ -8,6 +8,7 @@
 
 #include "../actions/Play.hpp"
 #include "../actions/Record.hpp"
+#include "playback/PlaybackRange.hpp"
 
 #include <algorithm>
 #include <optional>
@@ -64,32 +65,14 @@ namespace cupuacu::gui
                     auto &session = state->activeDocumentSession;
                     auto &viewState =
                         state->mainDocumentSessionWindow->getViewState();
-                    const auto &doc = session.document;
-                    const uint64_t totalFrames =
-                        std::max<int64_t>(0, doc.getFrameCount());
-                    uint64_t start = state->playbackRangeStart;
-                    uint64_t end = state->playbackRangeEnd > 0
-                                       ? state->playbackRangeEnd
-                                       : totalFrames;
-                    if (session.selection.isActive())
-                    {
-                        start = static_cast<uint64_t>(
-                            std::max<int64_t>(0, session.selection.getStartInt()));
-                        end = static_cast<uint64_t>(
-                            std::max<int64_t>(start, session.selection.getEndInt() + 1));
-                    }
-                    else if (state->loopPlaybackEnabled)
-                    {
-                        start = 0;
-                        end = totalFrames;
-                    }
-
-                    start = std::min(start, totalFrames);
-                    end = std::min(std::max(end, start), totalFrames);
+                    const auto range =
+                        cupuacu::playback::computeRangeForLiveUpdate(
+                            session, state->loopPlaybackEnabled,
+                            state->playbackRangeStart, state->playbackRangeEnd);
 
                     cupuacu::audio::UpdatePlayback updateMsg{};
-                    updateMsg.startPos = start;
-                    updateMsg.endPos = end;
+                    updateMsg.startPos = range.start;
+                    updateMsg.endPos = range.end;
                     updateMsg.loopEnabled = state->loopPlaybackEnabled;
                     updateMsg.selectionIsActive = session.selection.isActive();
                     updateMsg.selectedChannels = viewState.selectedChannels;

@@ -99,6 +99,7 @@ namespace cupuacu::gui
         void updateSamplePoints();
         void clearHighlight();
         uint8_t getChannelIndex() const;
+        void setPlaybackPosition(const int64_t newPlaybackPosition);
 
         std::optional<int64_t> getSamplePosUnderCursor() const;
         void setSamplePosUnderCursor(const int64_t samplePosUnderCursor);
@@ -113,6 +114,9 @@ namespace cupuacu::gui
         std::optional<int64_t> samplePosUnderCursor;
         const uint8_t channelIndex;
         int64_t playbackPosition = -1;
+        mutable std::vector<double> smoothXBuffer;
+        mutable std::vector<double> smoothYBuffer;
+        mutable std::vector<double> smoothQueryBuffer;
 
         std::vector<std::unique_ptr<SamplePoint>> computeSamplePoints();
 

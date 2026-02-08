@@ -16,6 +16,7 @@
 #include "actions/audio/Trim.hpp"
 #include "actions/audio/Cut.hpp"
 #include "actions/audio/Paste.hpp"
+#include "actions/audio/EditCommands.hpp"
 
 #include <memory>
 
@@ -152,10 +153,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
         state, trimText,
         [&]
         {
-            const auto undoable = std::make_shared<actions::audio::Trim>(
-                state, state->activeDocumentSession.selection.getStartInt(),
-                state->activeDocumentSession.selection.getLengthInt());
-            state->addAndDoUndoable(undoable);
+            actions::audio::performTrim(state);
         });
     trimMenu->setIsAvailable(
         [&]
@@ -167,10 +165,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
         state, cutText,
         [&]
         {
-            const auto undoable = std::make_shared<actions::audio::Cut>(
-                state, state->activeDocumentSession.selection.getStartInt(),
-                state->activeDocumentSession.selection.getLengthInt());
-            state->addAndDoUndoable(undoable);
+            actions::audio::performCut(state);
         });
     cutMenu->setIsAvailable(
         [&]
@@ -182,10 +177,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
         state, copyText,
         [&]
         {
-            const auto undoable = std::make_shared<actions::audio::Copy>(
-                state, state->activeDocumentSession.selection.getStartInt(),
-                state->activeDocumentSession.selection.getLengthInt());
-            state->addAndDoUndoable(undoable);
+            actions::audio::performCopy(state);
         });
     copyMenu->setIsAvailable(
         [&]
@@ -197,18 +189,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
         state, pasteText,
         [&]
         {
-            const int64_t start =
-                state->activeDocumentSession.selection.isActive()
-                    ? state->activeDocumentSession.selection.getStartInt()
-                    : state->activeDocumentSession.cursor;
-            const int64_t end =
-                state->activeDocumentSession.selection.isActive()
-                    ? state->activeDocumentSession.selection.getEndInt()
-                    : -1;
-
-            const auto undoable =
-                std::make_shared<actions::audio::Paste>(state, start, end);
-            state->addAndDoUndoable(undoable);
+            actions::audio::performPaste(state);
         });
     pasteMenu->setIsAvailable(
         [&]

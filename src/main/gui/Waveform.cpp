@@ -87,13 +87,6 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
         return {};
     }
 
-    std::vector<double> x(actualInputSamples);
-
-    for (int i = 0; i < actualInputSamples; ++i)
-    {
-        x[i] = i / samplesPerPixel + halfSampleWidth;
-    }
-
     std::vector<std::unique_ptr<SamplePoint>> result;
     const uint16_t samplePointSize = getSamplePointSize(pixelScale);
 
@@ -102,7 +95,8 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
 
     for (int i = 0; i < actualInputSamples; ++i)
     {
-        const int xPos = x[i];
+        const int xPos =
+            static_cast<int>(i / samplesPerPixel + halfSampleWidth);
         const int yPos =
             getYPosForSampleValue(sampleData[sampleOffset + i], getHeight(),
                                   verticalZoom, samplePointSize);
@@ -168,29 +162,34 @@ void Waveform::renderSmoothWaveform(SDL_Renderer *renderer) const
         return;
     }
 
-    std::vector<double> x(actualInputSamples);
-    std::vector<double> y(actualInputSamples);
+    smoothXBuffer.resize(static_cast<std::size_t>(actualInputSamples));
+    smoothYBuffer.resize(static_cast<std::size_t>(actualInputSamples));
 
     for (int i = 0; i < actualInputSamples; ++i)
     {
-        x[i] = i / samplesPerPixel + halfSampleWidth;
-        y[i] = static_cast<double>(sampleData[sampleOffset + i]);
+        smoothXBuffer[static_cast<std::size_t>(i)] =
+            i / samplesPerPixel + halfSampleWidth;
+        smoothYBuffer[static_cast<std::size_t>(i)] =
+            static_cast<double>(sampleData[sampleOffset + i]);
     }
 
     const int numPoints = widthToUse + 1;
-    std::vector<double> xq(numPoints);
+    smoothQueryBuffer.resize(static_cast<std::size_t>(numPoints));
 
     for (int i = 0; i < numPoints; ++i)
     {
-        xq[i] = static_cast<double>(i);
+        smoothQueryBuffer[static_cast<std::size_t>(i)] =
+            static_cast<double>(i);
     }
 
-    const auto smoothened = splineInterpolateNonUniform(x, y, xq);
+    const auto smoothened = splineInterpolateNonUniform(
+        smoothXBuffer, smoothYBuffer, smoothQueryBuffer);
 
     for (int i = 0; i < numPoints - 1; ++i)
     {
-        const float x1 = static_cast<float>(xq[i]);
-        const float x2 = static_cast<float>(xq[i + 1]);
+        const float x1 = static_cast<float>(smoothQueryBuffer[static_cast<std::size_t>(i)]);
+        const float x2 = static_cast<float>(
+            smoothQueryBuffer[static_cast<std::size_t>(i + 1)]);
 
         const float y1f = heightToUse / 2.0f -
                           smoothened[i] * verticalZoom * drawableHeight / 2.0f;
@@ -529,15 +528,16 @@ void Waveform::timerCallback()
         lastDrawnSamplePosUnderCursor = samplePosUnderCursor;
         setDirty();
     }
+}
 
-    const auto snapshot = state->audioDevices->getSnapshot();
-    const auto newPlaybackPosition =
-        snapshot.isPlaying() ? snapshot.getPlaybackPosition() : int64_t{-1};
-    if (newPlaybackPosition != playbackPosition)
+void Waveform::setPlaybackPosition(const int64_t newPlaybackPosition)
+{
+    if (playbackPosition == newPlaybackPosition)
     {
-        playbackPosition = newPlaybackPosition;
-        setDirty();
+        return;
     }
+    playbackPosition = newPlaybackPosition;
+    setDirty();
 }
 
 void Waveform::mouseLeave()

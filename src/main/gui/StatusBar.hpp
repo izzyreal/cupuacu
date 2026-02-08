@@ -111,6 +111,8 @@ namespace cupuacu::gui
             const int64_t currentSelectionStart =
                 session.selection.getStartInt();
             const int64_t currentSelectionEnd = session.selection.getEndInt();
+            const int64_t currentSelectionLength =
+                session.selection.getLengthInt();
 
             if (currentSelectionActive != lastSelectionActive)
             {
@@ -120,12 +122,9 @@ namespace cupuacu::gui
 
                 if (currentSelectionActive)
                 {
-                    startField->setValue(
-                        std::to_string(session.selection.getStartInt()));
-                    endField->setValue(
-                        std::to_string(session.selection.getEndInt()));
-                    lengthField->setValue(
-                        std::to_string(session.selection.getLengthInt()));
+                    startField->setValue(std::to_string(currentSelectionStart));
+                    endField->setValue(std::to_string(currentSelectionEnd));
+                    lengthField->setValue(std::to_string(currentSelectionLength));
                 }
                 else
                 {
@@ -139,19 +138,17 @@ namespace cupuacu::gui
                 if (currentSelectionStart != lastSelectionStart)
                 {
                     lastSelectionStart = currentSelectionStart;
-                    startField->setValue(
-                        std::to_string(session.selection.getStartInt()));
+                    startField->setValue(std::to_string(currentSelectionStart));
                     lengthField->setValue(
-                        std::to_string(session.selection.getLengthInt()));
+                        std::to_string(currentSelectionLength));
                 }
 
                 if (currentSelectionEnd != lastSelectionEnd)
                 {
                     lastSelectionEnd = currentSelectionEnd;
-                    endField->setValue(
-                        std::to_string(session.selection.getEndInt()));
+                    endField->setValue(std::to_string(currentSelectionEnd));
                     lengthField->setValue(
-                        std::to_string(session.selection.getLengthInt()));
+                        std::to_string(currentSelectionLength));
                 }
             }
         }

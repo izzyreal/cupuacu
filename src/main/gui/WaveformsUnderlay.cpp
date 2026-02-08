@@ -1,6 +1,7 @@
 #include "WaveformsUnderlay.hpp"
 
 #include "Waveform.hpp"
+#include "WaveformRefresh.hpp"
 #include "Window.hpp"
 #include <algorithm>
 #include <cmath>
@@ -41,10 +42,6 @@ bool WaveformsUnderlay::mouseDown(const MouseEvent &e)
     handleChannelSelection(e.mouseYi, true);
 
     const auto samplesPerPixel = viewState.samplesPerPixel;
-    const int channel = channelAt(e.mouseYi);
-    const double selectionCenter =
-        (session.selection.getStart() + session.selection.getEnd()) * 0.5;
-
     if (e.numClicks >= 2)
     {
         const double startSample = viewState.sampleOffset;
@@ -85,6 +82,8 @@ bool WaveformsUnderlay::mouseDown(const MouseEvent &e)
 
     if (shiftPressed)
     {
+        const double selectionCenter =
+            (session.selection.getStart() + session.selection.getEnd()) * 0.5;
         const double start = session.selection.getStart();
         const double end = session.selection.getEnd();
 
@@ -120,7 +119,6 @@ void WaveformsUnderlay::handleChannelSelection(
 
     for (size_t i = 0; i < state->waveforms.size(); ++i)
     {
-        auto *wf = state->waveforms[i];
         const uint16_t yStart = i * channelHeight();
         const uint16_t yEnd = yStart + channelHeight();
 
@@ -199,7 +197,7 @@ bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
         return false;
     }
 
-    handleScroll(e.mouseXi, e.mouseYi);
+    handleScroll(e.mouseXi);
 
     if (lastNumClicks == 1)
     {
@@ -268,11 +266,7 @@ bool WaveformsUnderlay::mouseWheel(const MouseEvent &e)
     {
         getWindow()->setComponentUnderMouse(nullptr);
     }
-    for (auto *wf : state->waveforms)
-    {
-        wf->updateSamplePoints();
-        wf->setDirty();
-    }
+    refreshWaveforms(state, true, true);
 
     return true;
 }
@@ -300,10 +294,7 @@ void WaveformsUnderlay::timerCallback()
     {
         getWindow()->setComponentUnderMouse(nullptr);
     }
-    for (auto *wf : state->waveforms)
-    {
-        wf->updateSamplePoints();
-    }
+    refreshWaveforms(state, true, false);
 }
 
 uint16_t WaveformsUnderlay::channelHeight() const
@@ -327,8 +318,7 @@ void WaveformsUnderlay::markAllWaveformsDirty() const
     }
 }
 
-void WaveformsUnderlay::handleScroll(const int32_t mouseX,
-                                     const int32_t mouseY) const
+void WaveformsUnderlay::handleScroll(const int32_t mouseX) const
 {
     auto &viewState = state->mainDocumentSessionWindow->getViewState();
     if (mouseX > getWidth() || mouseX < 0)
