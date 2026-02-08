@@ -55,6 +55,13 @@ bool cupuacu::audio::callback_core::fillOutputBuffer(
     bool playedAnyFrame = false;
     for (unsigned long i = 0; i < framesPerBuffer; ++i)
     {
+        if (!isPlaying || playbackPosition < 0)
+        {
+            *out++ = 0.f;
+            *out++ = 0.f;
+            continue;
+        }
+
         if (playbackPosition >= static_cast<int64_t>(playbackEndPos))
         {
             const bool canLoop =

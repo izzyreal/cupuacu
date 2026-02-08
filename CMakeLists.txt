@@ -111,6 +111,7 @@ add_executable(cupuacu-tests
     src/test/dummy_menu_bar_test.cpp
     src/test/test_component_redraws.cpp
     src/test/test_audio_device_properties_persistence.cpp
+    src/test/test_audio_callback_core.cpp
 )
 
 if(APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
