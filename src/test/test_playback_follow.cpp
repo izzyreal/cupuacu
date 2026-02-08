@@ -1,11 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "State.hpp"
+#include "TestStateBuilders.hpp"
 #include "actions/Play.hpp"
-#include "audio/AudioDevices.hpp"
-#include "gui/DevicePropertiesWindow.hpp"
-#include "gui/DocumentSessionWindow.hpp"
-#include "gui/MainView.hpp"
+#include "gui/Waveform.hpp"
 #include "gui/WaveformsUnderlay.hpp"
 
 #include <vector>
@@ -14,28 +11,39 @@ TEST_CASE("Playback follow does not mutate DocumentSession cursor", "[session]")
 {
     cupuacu::State state{};
     auto &session = state.activeDocumentSession;
-    session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 64);
+    auto ui = cupuacu::test::createSessionUi(&state, 64, true);
     session.selection.reset();
     session.cursor = 10;
-
-    state.audioDevices = std::make_shared<cupuacu::audio::AudioDevices>(false);
-    state.mainDocumentSessionWindow =
-        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
-            &state, &session, "test", 800, 400, SDL_WINDOW_HIDDEN);
-
-    cupuacu::gui::MainView mainView(&state);
-    state.mainView = &mainView;
-    mainView.setBounds(0, 0, 800, 300);
 
     cupuacu::actions::play(&state);
 
     std::vector<float> output(8, 0.0f);
     state.audioDevices->processCallbackCycle(nullptr, output.data(), 4);
-    mainView.timerCallback();
+    ui.mainView->timerCallback();
 
     REQUIRE(state.audioDevices->isPlaying());
     REQUIRE(state.audioDevices->getPlaybackPosition() == 14);
     REQUIRE(session.cursor == 10);
+}
+
+TEST_CASE("Sample points are hidden during playback", "[session]")
+{
+    cupuacu::State state{};
+    auto &session = state.activeDocumentSession;
+    auto ui = cupuacu::test::createSessionUi(&state, 256, true);
+
+    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+    viewState.samplesPerPixel = 0.01;
+    cupuacu::gui::Waveform::updateAllSamplePoints(&state);
+    REQUIRE_FALSE(state.waveforms.empty());
+    REQUIRE(state.waveforms[0]->getChildren().size() > 0);
+
+    cupuacu::actions::play(&state);
+    std::vector<float> output(64, 0.0f);
+    state.audioDevices->processCallbackCycle(nullptr, output.data(), 4);
+    ui.mainView->timerCallback();
+    REQUIRE(state.audioDevices->isPlaying());
+    REQUIRE(state.waveforms[0]->getChildren().empty());
 }
 
 TEST_CASE("Playback range update while selecting matches release/end rules",
@@ -43,20 +51,11 @@ TEST_CASE("Playback range update while selecting matches release/end rules",
 {
     cupuacu::State state{};
     auto &session = state.activeDocumentSession;
-    session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 100);
+    auto ui = cupuacu::test::createSessionUi(&state, 100, true);
     session.selection.setValue1(10.0);
     session.selection.setValue2(31.0); // R1 => [10, 31)
     session.cursor = 0;
     state.loopPlaybackEnabled = false;
-
-    state.audioDevices = std::make_shared<cupuacu::audio::AudioDevices>(false);
-    state.mainDocumentSessionWindow =
-        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
-            &state, &session, "test", 800, 400, SDL_WINDOW_HIDDEN);
-
-    cupuacu::gui::MainView mainView(&state);
-    state.mainView = &mainView;
-    mainView.setBounds(0, 0, 800, 300);
 
     std::vector<float> output(64, 0.0f);
     auto *window = state.mainDocumentSessionWindow->getWindow();
@@ -71,14 +70,14 @@ TEST_CASE("Playback range update while selecting matches release/end rules",
         session.selection.setValue2(21.0); // R2 => end 21 (>14 now)
         cupuacu::gui::WaveformsUnderlay draggingSentinel(&state);
         window->setCapturingComponent(&draggingSentinel);
-        mainView.timerCallback(); // must not apply while dragging
+        ui.mainView->timerCallback(); // must not apply while dragging
 
         state.audioDevices->processCallbackCycle(nullptr, output.data(), 8); // pos 22
         REQUIRE(state.audioDevices->isPlaying());
         REQUIRE(state.audioDevices->getPlaybackPosition() == 22);
 
         window->setCapturingComponent(nullptr);
-        mainView.timerCallback(); // now applies, but 21 < current 22 => keep R1 end
+        ui.mainView->timerCallback(); // now applies, but 21 < current 22 => keep R1 end
 
         state.audioDevices->processCallbackCycle(nullptr, output.data(), 1);
         REQUIRE(state.audioDevices->isPlaying()); // would stop immediately if end switched to 21
@@ -96,7 +95,7 @@ TEST_CASE("Playback range update while selecting matches release/end rules",
         session.selection.setValue1(12.0);
         session.selection.setValue2(26.0); // R2 => end 26 (>14)
         window->setCapturingComponent(nullptr);
-        mainView.timerCallback();
+        ui.mainView->timerCallback();
 
         state.audioDevices->processCallbackCycle(nullptr, output.data(), 12); // pos 26
         REQUIRE(state.audioDevices->isPlaying());
@@ -110,20 +109,11 @@ TEST_CASE("Loop playback range update while selecting matches release/end rules"
 {
     cupuacu::State state{};
     auto &session = state.activeDocumentSession;
-    session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 100);
+    auto ui = cupuacu::test::createSessionUi(&state, 100, true);
     session.selection.setValue1(10.0);
     session.selection.setValue2(31.0); // R1 => [10, 31)
     session.cursor = 0;
     state.loopPlaybackEnabled = true;
-
-    state.audioDevices = std::make_shared<cupuacu::audio::AudioDevices>(false);
-    state.mainDocumentSessionWindow =
-        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
-            &state, &session, "test", 800, 400, SDL_WINDOW_HIDDEN);
-
-    cupuacu::gui::MainView mainView(&state);
-    state.mainView = &mainView;
-    mainView.setBounds(0, 0, 800, 300);
 
     std::vector<float> output(64, 0.0f);
     auto *window = state.mainDocumentSessionWindow->getWindow();
@@ -140,7 +130,7 @@ TEST_CASE("Loop playback range update while selecting matches release/end rules"
         session.selection.setValue2(51.0); // R2 => [40, 51)
         cupuacu::gui::WaveformsUnderlay draggingSentinel(&state);
         window->setCapturingComponent(&draggingSentinel);
-        mainView.timerCallback(); // must not apply while dragging
+        ui.mainView->timerCallback(); // must not apply while dragging
 
         const int64_t framesToLoopSample =
             (oldEndExclusive - state.audioDevices->getPlaybackPosition()) + 1;
@@ -162,7 +152,7 @@ TEST_CASE("Loop playback range update while selecting matches release/end rules"
         session.selection.setValue2(21.0); // R2 => [12, 21), end before pos
         const int64_t newStart = session.selection.getStartInt();
         window->setCapturingComponent(nullptr);
-        mainView.timerCallback(); // apply
+        ui.mainView->timerCallback(); // apply
 
         const int64_t framesBeforeOldEnd =
             (oldEndExclusive - state.audioDevices->getPlaybackPosition()) - 1;
@@ -188,7 +178,7 @@ TEST_CASE("Loop playback range update while selecting matches release/end rules"
         const int64_t newStart = session.selection.getStartInt();
         const int64_t newEndExclusive = session.selection.getEndInt() + 1;
         window->setCapturingComponent(nullptr);
-        mainView.timerCallback(); // apply
+        ui.mainView->timerCallback(); // apply
 
         const int64_t framesBeforeNewEnd =
             (newEndExclusive - state.audioDevices->getPlaybackPosition()) - 1;

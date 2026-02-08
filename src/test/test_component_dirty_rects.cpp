@@ -210,3 +210,31 @@ TEST_CASE(
 
     REQUIRE(child->containsAbsoluteCoordinate(testX, testY));
 }
+
+TEST_CASE("Menu bar area does not intersect unrelated dirty rect", "[dirty]")
+{
+    cupuacu::State state{};
+    state.pixelScale = 1;
+    state.menuFontSize = 12;
+
+    auto window =
+        std::make_unique<Window>(&state, "test", 800, 600, SDL_WINDOW_HIDDEN);
+
+    Component root(&state, "RootComponent");
+    root.setWindow(window.get());
+    root.setSize(800, 600);
+
+    auto menuBar = std::make_unique<Component>(&state, "MenuBar");
+    auto *mb = root.addChild(menuBar);
+    mb->setBounds(0, 0, 800, 20);
+
+    SDL_Rect dirtyRect{100, 100, 50, 50};
+    window->getDirtyRects().push_back(dirtyRect);
+
+    const SDL_Rect menuBounds = mb->getAbsoluteBounds();
+    SDL_Rect intersection{};
+    const bool hasIntersection =
+        SDL_GetRectIntersection(&menuBounds, &dirtyRect, &intersection);
+
+    REQUIRE(!hasIntersection);
+}

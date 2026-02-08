@@ -104,12 +104,12 @@ add_executable(cupuacu-tests
     src/main/gui/Window.cpp
     src/main/actions/Play.cpp
     src/main/actions/Record.cpp
-    src/test/test.cpp
-    src/test/test_document_session.cpp
-    src/test/test_playback_helpers.cpp
-    src/test/test_session_init.cpp
-    src/test/dummy_menu_bar_test.cpp
-    src/test/test_component_redraws.cpp
+    src/test/test_playback_follow.cpp
+    src/test/test_playback_range.cpp
+    src/test/test_edit_commands.cpp
+    src/test/test_zoom.cpp
+    src/test/test_session_loading.cpp
+    src/test/test_component_dirty_rects.cpp
     src/test/test_audio_device_properties_persistence.cpp
     src/test/test_audio_callback_core.cpp
 )
