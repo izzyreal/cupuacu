@@ -37,8 +37,10 @@ void Waveform::updateSamplePoints()
 {
     removeAllChildren();
     const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    const bool playbackActive = playbackPosition >= 0;
 
-    if (shouldShowSamplePoints(viewState.samplesPerPixel, state->pixelScale))
+    if (!playbackActive &&
+        shouldShowSamplePoints(viewState.samplesPerPixel, state->pixelScale))
     {
         auto samplePoints = computeSamplePoints();
 
@@ -532,11 +534,17 @@ void Waveform::timerCallback()
 
 void Waveform::setPlaybackPosition(const int64_t newPlaybackPosition)
 {
+    const bool wasPlaybackActive = playbackPosition >= 0;
+    const bool isPlaybackActive = newPlaybackPosition >= 0;
     if (playbackPosition == newPlaybackPosition)
     {
         return;
     }
     playbackPosition = newPlaybackPosition;
+    if (wasPlaybackActive != isPlaybackActive)
+    {
+        updateSamplePoints();
+    }
     setDirty();
 }
 

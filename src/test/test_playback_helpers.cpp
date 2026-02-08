@@ -3,6 +3,7 @@
 #include "DocumentSession.hpp"
 #include "State.hpp"
 #include "actions/audio/EditCommands.hpp"
+#include "actions/Play.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/DocumentSessionWindow.hpp"
 #include "gui/MainView.hpp"
@@ -153,5 +154,33 @@ TEST_CASE("Paste after zoom reset refreshes sample points", "[session]")
     cupuacu::actions::audio::performPaste(&state);
 
     REQUIRE(viewState.samplesPerPixel > 0.01);
+    REQUIRE(state.waveforms[0]->getChildren().empty());
+}
+
+TEST_CASE("Sample points are hidden during playback", "[session]")
+{
+    cupuacu::State state{};
+    auto &session = state.activeDocumentSession;
+    session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 256);
+    state.audioDevices = std::make_shared<cupuacu::audio::AudioDevices>(false);
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &session, "test", 800, 400, SDL_WINDOW_HIDDEN);
+
+    cupuacu::gui::MainView mainView(&state);
+    state.mainView = &mainView;
+    mainView.setBounds(0, 0, 800, 300);
+
+    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+    viewState.samplesPerPixel = 0.01; // sample points visible for pixelScale=1
+    cupuacu::gui::Waveform::updateAllSamplePoints(&state);
+    REQUIRE_FALSE(state.waveforms.empty());
+    REQUIRE(state.waveforms[0]->getChildren().size() > 0);
+
+    cupuacu::actions::play(&state);
+    std::vector<float> output(64, 0.0f);
+    state.audioDevices->processCallbackCycle(nullptr, output.data(), 4);
+    mainView.timerCallback();
+    REQUIRE(state.audioDevices->isPlaying());
     REQUIRE(state.waveforms[0]->getChildren().empty());
 }
