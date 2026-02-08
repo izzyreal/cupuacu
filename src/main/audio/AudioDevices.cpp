@@ -397,7 +397,11 @@ void AudioDevices::applyMessage(const AudioMessage &msg) noexcept
 
                                 if (wasLooping && wantsLooping)
                                 {
-                                    if (m.endPos > paData.playbackEndPos)
+                                    const int64_t currentPos =
+                                        activeState.playbackPosition;
+                                    const int64_t requestedEnd =
+                                        static_cast<int64_t>(m.endPos);
+                                    if (requestedEnd > currentPos)
                                     {
                                         paData.playbackEndPos = m.endPos;
                                     }
@@ -408,17 +412,34 @@ void AudioDevices::applyMessage(const AudioMessage &msg) noexcept
                                 }
 
                                 paData.playbackStartPos = m.startPos;
-                                paData.playbackEndPos = m.endPos;
                                 paData.playbackHasPendingSwitch = false;
 
-                                const int64_t startPos =
-                                    static_cast<int64_t>(m.startPos);
-                                const int64_t endPos = static_cast<int64_t>(m.endPos);
-                                if (activeState.playbackPosition < startPos)
+                                const int64_t currentPos = activeState.playbackPosition;
+                                const int64_t requestedEnd =
+                                    static_cast<int64_t>(m.endPos);
+
+                                if (!wantsLooping)
                                 {
-                                    activeState.playbackPosition = startPos;
+                                    // For non-loop playback:
+                                    // if new end is before/equal current playback pos,
+                                    // keep the old end; otherwise switch to new end.
+                                    if (requestedEnd > currentPos)
+                                    {
+                                        paData.playbackEndPos = m.endPos;
+                                    }
                                 }
-                                if (activeState.playbackPosition >= endPos)
+                                else
+                                {
+                                    paData.playbackEndPos = m.endPos;
+                                    if (currentPos >= requestedEnd)
+                                    {
+                                        activeState.playbackPosition =
+                                            static_cast<int64_t>(m.startPos);
+                                    }
+                                }
+
+                                if (activeState.playbackPosition >=
+                                    static_cast<int64_t>(paData.playbackEndPos))
                                 {
                                     paData.playbackDocument = nullptr;
                                     activeState.isPlaying = false;

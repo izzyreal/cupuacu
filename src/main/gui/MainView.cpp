@@ -5,6 +5,7 @@
 #include "audio/AudioDevices.hpp"
 #include "Waveforms.hpp"
 #include "Waveform.hpp"
+#include "WaveformsUnderlay.hpp"
 #include "TriangleMarker.hpp"
 #include "OpaqueRect.hpp"
 #include "ScrollBar.hpp"
@@ -570,8 +571,18 @@ void MainView::timerCallback()
         state->audioDevices && state->audioDevices->isPlaying();
     const bool isRecordingNow =
         state->audioDevices && state->audioDevices->isRecording();
+    bool selectionInteractionActive = false;
+    if (state->mainDocumentSessionWindow &&
+        state->mainDocumentSessionWindow->getWindow())
+    {
+        auto *capturing =
+            state->mainDocumentSessionWindow->getWindow()->getCapturingComponent();
+        selectionInteractionActive =
+            dynamic_cast<WaveformsUnderlay *>(capturing) != nullptr ||
+            dynamic_cast<TriangleMarker *>(capturing) != nullptr;
+    }
 
-    if (isPlayingNow && state->audioDevices)
+    if (isPlayingNow && state->audioDevices && !selectionInteractionActive)
     {
         const auto &doc = session.document;
         const uint64_t totalFrames = std::max<int64_t>(0, doc.getFrameCount());
