@@ -50,6 +50,7 @@ namespace cupuacu::actions
     static bool tryZoomInHorizontally(cupuacu::State *state)
     {
         auto &viewState = state->mainDocumentSessionWindow->getViewState();
+        const auto waveformWidth = gui::Waveform::getWaveformWidth(state);
         const double minSamplesPerPixel = getMinSamplesPerPixel(state);
 
         if (viewState.samplesPerPixel <= minSamplesPerPixel)
@@ -57,8 +58,18 @@ namespace cupuacu::actions
             return false;
         }
 
+        const auto centerSampleIndex =
+            ((waveformWidth / 2.0 + 0.5) * viewState.samplesPerPixel) +
+            viewState.sampleOffset;
+
         viewState.samplesPerPixel =
             std::max(viewState.samplesPerPixel / 2.0, minSamplesPerPixel);
+
+        const auto newSampleOffset =
+            centerSampleIndex -
+            ((waveformWidth / 2.0 + 0.5) * viewState.samplesPerPixel);
+
+        updateSampleOffset(state, newSampleOffset);
 
         resetSampleValueUnderMouseCursor(state);
 

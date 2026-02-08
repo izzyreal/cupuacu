@@ -299,3 +299,72 @@ TEST_CASE("Cut at fully zoomed-out view keeps sampleOffset at zero", "[session]"
         static_cast<double>(cupuacu::gui::Waveform::getWaveformWidth(&state));
     REQUIRE(std::abs(viewState.samplesPerPixel - expectedZoom) < 1e-6);
 }
+
+TEST_CASE("Horizontal zoom-in keeps visible center from full-file view",
+          "[session]")
+{
+    cupuacu::State state{};
+    auto &session = state.activeDocumentSession;
+    session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2,
+                                20000);
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &session, "test", 800, 400, SDL_WINDOW_HIDDEN);
+
+    cupuacu::gui::MainView mainView(&state);
+    state.mainView = &mainView;
+    mainView.setBounds(0, 0, 800, 300);
+
+    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+    cupuacu::actions::resetZoom(&state);
+    const int waveformWidth = cupuacu::gui::Waveform::getWaveformWidth(&state);
+    REQUIRE(waveformWidth > 0);
+
+    const double oldCenter =
+        ((waveformWidth / 2.0 + 0.5) * viewState.samplesPerPixel) +
+        viewState.sampleOffset;
+
+    REQUIRE(cupuacu::actions::tryZoomInHorizontally(&state));
+
+    const double newCenter =
+        ((waveformWidth / 2.0 + 0.5) * viewState.samplesPerPixel) +
+        viewState.sampleOffset;
+
+    REQUIRE(std::abs(newCenter - oldCenter) <= 1.0);
+    REQUIRE(viewState.sampleOffset > 0);
+}
+
+TEST_CASE("Horizontal zoom-in keeps visible center from arbitrary viewport",
+          "[session]")
+{
+    cupuacu::State state{};
+    auto &session = state.activeDocumentSession;
+    session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2,
+                                20000);
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &session, "test", 800, 400, SDL_WINDOW_HIDDEN);
+
+    cupuacu::gui::MainView mainView(&state);
+    state.mainView = &mainView;
+    mainView.setBounds(0, 0, 800, 300);
+
+    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+    viewState.samplesPerPixel = 4.0;
+    updateSampleOffset(&state, 2500);
+
+    const int waveformWidth = cupuacu::gui::Waveform::getWaveformWidth(&state);
+    REQUIRE(waveformWidth > 0);
+
+    const double oldCenter =
+        ((waveformWidth / 2.0 + 0.5) * viewState.samplesPerPixel) +
+        viewState.sampleOffset;
+
+    REQUIRE(cupuacu::actions::tryZoomInHorizontally(&state));
+
+    const double newCenter =
+        ((waveformWidth / 2.0 + 0.5) * viewState.samplesPerPixel) +
+        viewState.sampleOffset;
+
+    REQUIRE(std::abs(newCenter - oldCenter) <= 1.0);
+}
