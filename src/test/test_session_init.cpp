@@ -9,7 +9,9 @@
 #include <sndfile.h>
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
+#include <random>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -42,6 +44,35 @@ namespace
         std::filesystem::path root;
     };
 
+    std::filesystem::path makeUniqueTempDir(const std::string &prefix)
+    {
+        const auto tempRoot = std::filesystem::temp_directory_path();
+        std::random_device rd;
+        std::mt19937_64 gen(rd());
+        std::uniform_int_distribution<uint64_t> dis;
+
+        for (int attempt = 0; attempt < 32; ++attempt)
+        {
+            const auto now =
+                std::chrono::high_resolution_clock::now().time_since_epoch();
+            const auto tick =
+                static_cast<uint64_t>(std::chrono::duration_cast<
+                                          std::chrono::nanoseconds>(now)
+                                          .count());
+            const uint64_t nonce = dis(gen);
+            const auto candidate =
+                tempRoot / (prefix + "-" + std::to_string(tick) + "-" +
+                            std::to_string(nonce));
+            std::error_code ec;
+            if (!std::filesystem::exists(candidate, ec))
+            {
+                return candidate;
+            }
+        }
+
+        return tempRoot / (prefix + "-fallback");
+    }
+
     void writeTestWav(const std::filesystem::path &path, const int sampleRate,
                       const int channels,
                       const std::vector<float> &interleavedFrames)
@@ -69,8 +100,7 @@ namespace
 
 TEST_CASE("Loading a file resets session selection and cursor", "[session]")
 {
-    ScopedDirCleanup cleanup(std::filesystem::temp_directory_path() /
-                             "cupuacu-test-session-init-a");
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-session-init-a"));
 
     const auto wavPath = cleanup.path() / "session_a.wav";
     const std::vector<float> samples = {
@@ -105,8 +135,7 @@ TEST_CASE("Loading a file resets session selection and cursor", "[session]")
 TEST_CASE("Loading a second file fully reinitializes document cache and shape",
           "[session]")
 {
-    ScopedDirCleanup cleanup(std::filesystem::temp_directory_path() /
-                             "cupuacu-test-session-init-b");
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-session-init-b"));
 
     const auto firstPath = cleanup.path() / "first.wav";
     const auto secondPath = cleanup.path() / "second.wav";
