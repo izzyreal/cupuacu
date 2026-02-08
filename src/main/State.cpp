@@ -19,9 +19,7 @@ int64_t getMaxSampleOffset(const cupuacu::State *state)
     const int64_t frameCount =
         state->activeDocumentSession.document.getFrameCount();
     const int64_t maxOffset = frameCount - visibleSampleCount;
-    // printf("frame count: %lli, visibleSampleCount: %lli\n", frameCount,
-    // visibleSampleCount);
-    return maxOffset;
+    return std::max<int64_t>(0, maxOffset);
 }
 
 void cupuacu::State::addUndoable(

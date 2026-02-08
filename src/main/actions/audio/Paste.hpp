@@ -40,7 +40,8 @@ namespace cupuacu::actions::audio
 
             updateGui = [state = state]
             {
-                resetZoomAndRefreshWaveforms(state);
+                gui::Waveform::updateAllSamplePoints(state);
+                gui::Waveform::setAllWaveformsDirty(state);
                 state->mainView->setDirty();
             };
         }

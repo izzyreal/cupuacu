@@ -4,10 +4,14 @@
 #include "State.hpp"
 #include "actions/audio/EditCommands.hpp"
 #include "actions/Play.hpp"
+#include "actions/Zoom.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/DocumentSessionWindow.hpp"
 #include "gui/MainView.hpp"
 #include "playback/PlaybackRange.hpp"
+
+#include <cmath>
+#include <vector>
 
 TEST_CASE("Playback helper computes initial play range", "[session]")
 {
@@ -122,7 +126,7 @@ TEST_CASE("Edit command helpers derive selection and paste targets", "[session]"
     }
 }
 
-TEST_CASE("Paste after zoom reset refreshes sample points", "[session]")
+TEST_CASE("Paste keeps zoom level unchanged", "[session]")
 {
     cupuacu::State state{};
     auto &session = state.activeDocumentSession;
@@ -151,10 +155,9 @@ TEST_CASE("Paste after zoom reset refreshes sample points", "[session]")
 
     session.selection.reset();
     session.cursor = 16;
+    const double zoomBefore = viewState.samplesPerPixel;
     cupuacu::actions::audio::performPaste(&state);
-
-    REQUIRE(viewState.samplesPerPixel > 0.01);
-    REQUIRE(state.waveforms[0]->getChildren().empty());
+    REQUIRE(viewState.samplesPerPixel == zoomBefore);
 }
 
 TEST_CASE("Sample points are hidden during playback", "[session]")
@@ -183,4 +186,116 @@ TEST_CASE("Sample points are hidden during playback", "[session]")
     mainView.timerCallback();
     REQUIRE(state.audioDevices->isPlaying());
     REQUIRE(state.waveforms[0]->getChildren().empty());
+}
+
+TEST_CASE("Cut keeps zoom and only clamps offset when right gap would appear",
+          "[session]")
+{
+    cupuacu::State state{};
+    auto &session = state.activeDocumentSession;
+    session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 300);
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &session, "test", 800, 400, SDL_WINDOW_HIDDEN);
+
+    cupuacu::gui::MainView mainView(&state);
+    state.mainView = &mainView;
+    mainView.setBounds(0, 0, 800, 300);
+
+    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+    viewState.samplesPerPixel = 0.25;
+
+    SECTION("No right gap risk: offset unchanged")
+    {
+        viewState.samplesPerPixel = 0.25;
+        updateSampleOffset(&state, 20);
+        const int64_t offsetBefore = viewState.sampleOffset;
+        REQUIRE(offsetBefore >= 0);
+        const double zoomBefore = viewState.samplesPerPixel;
+
+        session.selection.setValue1(10.0);
+        session.selection.setValue2(20.0); // remove ~10 samples far from edge
+        cupuacu::actions::audio::performCut(&state);
+
+        REQUIRE(viewState.samplesPerPixel == zoomBefore);
+        REQUIRE(viewState.sampleOffset == offsetBefore);
+    }
+
+    SECTION("Right gap risk: offset clamped")
+    {
+        viewState.samplesPerPixel = 0.25;
+        const int64_t oldMaxOffset = getMaxSampleOffset(&state);
+        REQUIRE(oldMaxOffset > 0);
+        updateSampleOffset(&state, oldMaxOffset);
+        REQUIRE(viewState.sampleOffset == oldMaxOffset);
+        const double zoomBefore = viewState.samplesPerPixel;
+
+        session.selection.setValue1(0.0);
+        session.selection.setValue2(1.0); // tiny cut; should never require zoom reset
+        cupuacu::actions::audio::performCut(&state);
+
+        REQUIRE(viewState.samplesPerPixel == zoomBefore);
+        REQUIRE(viewState.sampleOffset <= oldMaxOffset);
+        REQUIRE(viewState.sampleOffset == getMaxSampleOffset(&state));
+    }
+}
+
+TEST_CASE("Sample offset clamp never goes negative when viewport exceeds document",
+          "[session]")
+{
+    cupuacu::State state{};
+    auto &session = state.activeDocumentSession;
+    session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 80);
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &session, "test", 800, 400, SDL_WINDOW_HIDDEN);
+
+    cupuacu::gui::MainView mainView(&state);
+    state.mainView = &mainView;
+    mainView.setBounds(0, 0, 800, 300);
+
+    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+    viewState.samplesPerPixel = 10.0; // visible span > total frames
+
+    updateSampleOffset(&state, 9999);
+    REQUIRE(viewState.sampleOffset == 0);
+}
+
+TEST_CASE("Cut at fully zoomed-out view keeps sampleOffset at zero", "[session]")
+{
+    cupuacu::State state{};
+    auto &session = state.activeDocumentSession;
+    session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 400);
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &session, "test", 800, 400, SDL_WINDOW_HIDDEN);
+
+    cupuacu::gui::MainView mainView(&state);
+    state.mainView = &mainView;
+    mainView.setBounds(0, 0, 800, 300);
+
+    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+    const int64_t framesBefore = session.document.getFrameCount();
+    cupuacu::actions::resetZoom(&state); // fully zoomed-out over whole document
+    const double zoomBefore = viewState.samplesPerPixel;
+    updateSampleOffset(&state, 0);
+    REQUIRE(viewState.sampleOffset == 0);
+
+    // Cut the right half.
+    session.selection.setValue1(200.0);
+    session.selection.setValue2(400.0);
+    cupuacu::actions::audio::performCut(&state);
+
+    const int64_t framesAfter = session.document.getFrameCount();
+    REQUIRE(framesAfter > 0);
+    REQUIRE(viewState.sampleOffset == 0);
+    REQUIRE(viewState.samplesPerPixel != zoomBefore);
+    REQUIRE(viewState.samplesPerPixel <
+            static_cast<double>(framesBefore) /
+                static_cast<double>(cupuacu::gui::Waveform::getWaveformWidth(
+                    &state)));
+    const double expectedZoom =
+        static_cast<double>(framesAfter) /
+        static_cast<double>(cupuacu::gui::Waveform::getWaveformWidth(&state));
+    REQUIRE(std::abs(viewState.samplesPerPixel - expectedZoom) < 1e-6);
 }
