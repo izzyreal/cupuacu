@@ -40,6 +40,13 @@ namespace cupuacu::actions
         updateSampleOffset(state, 0);
     }
 
+    static void resetZoomAndRefreshWaveforms(cupuacu::State *state)
+    {
+        resetZoom(state);
+        gui::Waveform::updateAllSamplePoints(state);
+        gui::Waveform::setAllWaveformsDirty(state);
+    }
+
     static bool tryZoomInHorizontally(cupuacu::State *state)
     {
         auto &viewState = state->mainDocumentSessionWindow->getViewState();

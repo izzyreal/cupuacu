@@ -4,6 +4,8 @@
 #include "State.hpp"
 #include "actions/audio/EditCommands.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
+#include "gui/DocumentSessionWindow.hpp"
+#include "gui/MainView.hpp"
 #include "playback/PlaybackRange.hpp"
 
 TEST_CASE("Playback helper computes initial play range", "[session]")
@@ -117,4 +119,39 @@ TEST_CASE("Edit command helpers derive selection and paste targets", "[session]"
         REQUIRE(target.start == 7);
         REQUIRE(target.end == 14);
     }
+}
+
+TEST_CASE("Paste after zoom reset refreshes sample points", "[session]")
+{
+    cupuacu::State state{};
+    auto &session = state.activeDocumentSession;
+    session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 256);
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &session, "test", 800, 400, SDL_WINDOW_HIDDEN);
+
+    cupuacu::gui::MainView mainView(&state);
+    state.mainView = &mainView;
+    mainView.setBounds(0, 0, 800, 300);
+
+    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+    viewState.samplesPerPixel = 0.01; // sample points visible for pixelScale=1
+    cupuacu::gui::Waveform::updateAllSamplePoints(&state);
+    REQUIRE_FALSE(state.waveforms.empty());
+    REQUIRE(state.waveforms[0]->getChildren().size() > 0);
+
+    // Prepare clipboard for paste.
+    state.clipboard.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 8);
+    for (int64_t i = 0; i < 8; ++i)
+    {
+        state.clipboard.setSample(0, i, 0.1f, false);
+        state.clipboard.setSample(1, i, -0.1f, false);
+    }
+
+    session.selection.reset();
+    session.cursor = 16;
+    cupuacu::actions::audio::performPaste(&state);
+
+    REQUIRE(viewState.samplesPerPixel > 0.01);
+    REQUIRE(state.waveforms[0]->getChildren().empty());
 }
