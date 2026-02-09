@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <optional>
+#include <cmath>
 
 namespace cupuacu::gui
 {
@@ -83,11 +84,15 @@ namespace cupuacu::gui
 
         void resized() override
         {
+            auto scaledPx = [this](const double basePx)
+            {
+                const int safeScale = std::max(1, static_cast<int>(state->pixelScale));
+                return std::max(1, static_cast<int>(std::lround(basePx / safeScale)));
+            };
+
             const SDL_Rect bounds = getLocalBounds();
-            const int padding =
-                std::max(4, static_cast<int>(8 / state->pixelScale));
-            const int gap =
-                std::max(4, static_cast<int>(6 / state->pixelScale));
+            const int padding = scaledPx(8.0);
+            const int gap = scaledPx(6.0);
 
             const int contentW = std::max(0, bounds.w - 2 * padding);
             const int contentH = std::max(0, bounds.h - 2 * padding);

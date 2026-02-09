@@ -1,9 +1,12 @@
 #include "Button.hpp"
 
+#include "../State.hpp"
 #include "Colors.hpp"
 #include "Helpers.hpp"
 
 #include <utility>
+#include <algorithm>
+#include <cmath>
 
 namespace
 {
@@ -12,6 +15,12 @@ namespace
     constexpr SDL_Color kHoverColor{96, 96, 96, 255};
     constexpr SDL_Color kPressedColor{66, 92, 134, 255};
     constexpr SDL_Color kToggledColor{74, 110, 170, 255};
+
+    int computeButtonBorderThicknessForScale(const uint8_t pixelScale)
+    {
+        const int safeScale = std::max(1, static_cast<int>(pixelScale));
+        return std::max(1, static_cast<int>(std::lround(4.0 / safeScale)));
+    }
 } // namespace
 
 using namespace cupuacu::gui;
@@ -176,8 +185,22 @@ void Button::onDraw(SDL_Renderer *renderer)
 
     Helpers::fillRect(renderer, bounds, fillColor);
 
-    const SDL_FRect borderRect{0.0f, 0.0f, static_cast<float>(bounds.w),
-                               static_cast<float>(bounds.h)};
-    Helpers::setRenderDrawColor(renderer, Colors::border);
-    SDL_RenderRect(renderer, &borderRect);
+    const int borderThickness = std::min(
+        computeButtonBorderThicknessForScale(state->pixelScale),
+        std::max(1, std::min(bounds.w, bounds.h) / 2));
+
+    Helpers::fillRect(renderer, SDL_Rect{0, 0, bounds.w, borderThickness},
+                      Colors::border);
+    Helpers::fillRect(renderer,
+                      SDL_Rect{0, bounds.h - borderThickness, bounds.w,
+                               borderThickness},
+                      Colors::border);
+    Helpers::fillRect(renderer,
+                      SDL_Rect{0, borderThickness, borderThickness,
+                               bounds.h - borderThickness * 2},
+                      Colors::border);
+    Helpers::fillRect(renderer,
+                      SDL_Rect{bounds.w - borderThickness, borderThickness,
+                               borderThickness, bounds.h - borderThickness * 2},
+                      Colors::border);
 }

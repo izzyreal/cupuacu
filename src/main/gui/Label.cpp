@@ -100,7 +100,8 @@ void Label::onDraw(SDL_Renderer *renderer)
     if (state->pixelScale > 1)
     {
         x = std::round(x);
-        rect.y = std::round(rect.y);
+        // Prefer top-biased snapping to avoid mid-scale downward jitter.
+        rect.y = std::floor(rect.y);
     }
 
     const SDL_FRect destRect = {x, rect.y, (float)cachedW, (float)cachedH};
