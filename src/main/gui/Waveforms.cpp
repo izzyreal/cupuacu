@@ -39,12 +39,19 @@ void Waveforms::resizeWaveforms() const
 {
     auto &viewState = state->mainDocumentSessionWindow->getViewState();
     const int numChannels = static_cast<int>(state->waveforms.size());
-    const float channelHeight = numChannels > 0 ? getHeight() / numChannels : 0;
-
-    for (int ch = 0; ch < numChannels; ++ch)
+    if (numChannels > 0)
     {
-        state->waveforms[ch]->setBounds(0, ch * channelHeight, getWidth(),
-                                        channelHeight);
+        const int totalHeight = getHeight();
+        const int baseHeight = totalHeight / numChannels;
+        const int remainder = totalHeight % numChannels;
+
+        int yPos = 0;
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+            const int channelHeight = baseHeight + (ch < remainder ? 1 : 0);
+            state->waveforms[ch]->setBounds(0, yPos, getWidth(), channelHeight);
+            yPos += channelHeight;
+        }
     }
 
     if (previousWidth != 0)

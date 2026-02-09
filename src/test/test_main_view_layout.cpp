@@ -2,6 +2,7 @@
 
 #include "TestStateBuilders.hpp"
 #include "gui/Component.hpp"
+#include "gui/Waveform.hpp"
 
 #include <cmath>
 #include <string_view>
@@ -61,4 +62,28 @@ TEST_CASE("Scrollbar physical height remains stable across pixel scales", "[gui]
     REQUIRE(std::abs(physical4 - physical1) <= 2);
     REQUIRE(h4 < h2);
     REQUIRE(h2 < h1);
+}
+
+TEST_CASE("Waveform channels fully tile waveforms height without gaps", "[gui]")
+{
+    cupuacu::State state{};
+    [[maybe_unused]] auto ui =
+        cupuacu::test::createSessionUi(&state, 8000, false, 2, 44100, 801, 401, 303);
+
+    REQUIRE(state.mainView != nullptr);
+    REQUIRE(state.waveforms.size() == 2);
+
+    state.pixelScale = 4;
+    ui.mainView->resized();
+
+    const auto *waveformsContainer =
+        findByNameRecursive(ui.mainView.get(), "Waveforms");
+    REQUIRE(waveformsContainer != nullptr);
+    const auto waveformsBounds = waveformsContainer->getBounds();
+    const SDL_Rect ch0 = state.waveforms[0]->getBounds();
+    const SDL_Rect ch1 = state.waveforms[1]->getBounds();
+
+    REQUIRE(ch0.y == 0);
+    REQUIRE(ch0.y + ch0.h == ch1.y);
+    REQUIRE(ch1.y + ch1.h == waveformsBounds.h);
 }
