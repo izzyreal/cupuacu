@@ -21,6 +21,15 @@
 
 using namespace cupuacu::gui;
 
+namespace
+{
+    int computeScrollBarHeightForScale(const uint8_t pixelScale)
+    {
+        const int safeScale = std::max(1, static_cast<int>(pixelScale));
+        return std::max(1, static_cast<int>(std::lround(14.0 / safeScale)));
+    }
+} // namespace
+
 void MainView::beginRecordingUndoCaptureIfNeeded(const int64_t startFrame)
 {
     if (recordingUndoCapture.active)
@@ -442,7 +451,7 @@ void MainView::resized()
     const int height = getHeight();
 
     const int timelineHeight = static_cast<int>(60 / state->pixelScale);
-    const int scrollBarHeight = std::max(8, static_cast<int>(14 / state->pixelScale));
+    const int scrollBarHeight = computeScrollBarHeightForScale(state->pixelScale);
 
     horizontalScrollBar->setBounds(borderWidth, 0,
                                    width - 2 * borderWidth, scrollBarHeight);
@@ -472,7 +481,7 @@ void MainView::updateTriangleMarkerBounds() const
     const auto &viewState = state->mainDocumentSessionWindow->getViewState();
     const auto borderWidth = computeBorderWidth();
     const int scrollBarHeight =
-        std::max(8, static_cast<int>(14 / state->pixelScale));
+        computeScrollBarHeightForScale(state->pixelScale);
     const float triHeight = borderWidth * 0.75f;
     const float halfBase = triHeight;
 
