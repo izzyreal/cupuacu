@@ -1,6 +1,7 @@
 #pragma once
 
 #include "State.hpp"
+#include "TestSdlTtfGuard.hpp"
 #include "audio/AudioDevices.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/DocumentSessionWindow.hpp"
@@ -24,6 +25,8 @@ namespace cupuacu::test
                                      const int windowHeight = 400,
                                      const int mainViewHeight = 300)
     {
+        ensureSdlTtfInitialized();
+
         auto &session = state->activeDocumentSession;
         session.document.initialize(cupuacu::SampleFormat::FLOAT32, sampleRate,
                                     channels, frameCount);

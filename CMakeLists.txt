@@ -104,6 +104,7 @@ add_executable(cupuacu-tests
     src/main/gui/Window.cpp
     src/main/actions/Play.cpp
     src/main/actions/Record.cpp
+    src/test/TestSdlTtfGuard.cpp
     src/test/test_playback_follow.cpp
     src/test/test_playback_range.cpp
     src/test/test_edit_commands.cpp
