@@ -1,16 +1,14 @@
 #pragma once
-#include "../Undoable.hpp"
+#include "DurationMutationUndoable.hpp"
 #include "../../Document.hpp"
 #include <algorithm>
 #include <vector>
 #include <cstdint>
-#include "../Zoom.hpp"
-#include "../../gui/MainView.hpp"
 
 namespace cupuacu::actions::audio
 {
 
-    class Paste : public Undoable
+    class Paste : public DurationMutationUndoable
     {
         int64_t startFrame;
         int64_t endFrame;
@@ -27,7 +25,8 @@ namespace cupuacu::actions::audio
 
     public:
         Paste(State *state, int64_t start, int64_t end = -1)
-            : Undoable(state), startFrame(start), endFrame(end)
+            : DurationMutationUndoable(state), startFrame(start),
+              endFrame(end)
         {
             auto &session = state->activeDocumentSession;
             if (session.selection.isActive())
@@ -37,13 +36,6 @@ namespace cupuacu::actions::audio
             }
 
             oldCursorPos = session.cursor;
-
-            updateGui = [state = state]
-            {
-                gui::Waveform::updateAllSamplePoints(state);
-                gui::Waveform::setAllWaveformsDirty(state);
-                state->mainView->setDirty();
-            };
         }
 
         void redo() override

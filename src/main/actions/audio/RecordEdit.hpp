@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../Undoable.hpp"
+#include "DurationMutationUndoable.hpp"
 
 #include "../../Document.hpp"
 #include "../../gui/MainView.hpp"
@@ -38,26 +38,12 @@ namespace cupuacu::actions::audio
         std::vector<std::vector<float>> recordedSamples;
     };
 
-    class RecordEdit : public Undoable
+    class RecordEdit : public DurationMutationUndoable
     {
     public:
         RecordEdit(State *stateToUse, RecordEditData dataToUse)
-            : Undoable(stateToUse), data(std::move(dataToUse))
+            : DurationMutationUndoable(stateToUse), data(std::move(dataToUse))
         {
-            updateGui = [state = state]
-            {
-                const auto currentChannelCount =
-                    state->activeDocumentSession.document.getChannelCount();
-                const auto currentWaveformCount =
-                    static_cast<int64_t>(state->waveforms.size());
-                if (currentWaveformCount != currentChannelCount)
-                {
-                    state->mainView->rebuildWaveforms();
-                }
-                gui::Waveform::updateAllSamplePoints(state);
-                gui::Waveform::setAllWaveformsDirty(state);
-                state->mainView->setDirty();
-            };
         }
 
         void redo() override
@@ -191,6 +177,23 @@ namespace cupuacu::actions::audio
 
     private:
         RecordEditData data;
+
+        void afterDurationMutationUi() override
+        {
+            if (!state || !state->mainView)
+            {
+                return;
+            }
+
+            const auto currentChannelCount =
+                state->activeDocumentSession.document.getChannelCount();
+            const auto currentWaveformCount =
+                static_cast<int64_t>(state->waveforms.size());
+            if (currentWaveformCount != currentChannelCount)
+            {
+                state->mainView->rebuildWaveforms();
+            }
+        }
 
         void restoreOldSessionState() const
         {

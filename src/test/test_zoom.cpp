@@ -174,3 +174,60 @@ TEST_CASE("Horizontal zoom-in keeps visible center from arbitrary viewport",
 
     REQUIRE(std::abs(newCenter - oldCenter) <= 1.0);
 }
+
+TEST_CASE("Trim keeps zoom when new duration still covers visible range",
+          "[session]")
+{
+    cupuacu::State state{};
+    auto &session = state.activeDocumentSession;
+    [[maybe_unused]] auto ui = cupuacu::test::createSessionUi(&state, 1000);
+
+    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+    viewState.samplesPerPixel = 0.5; // ~400 visible samples for width 800
+    const double zoomBefore = viewState.samplesPerPixel;
+
+    session.selection.setValue1(0.0);
+    session.selection.setValue2(600.0); // new duration 600 > visible ~400
+    cupuacu::actions::audio::performTrim(&state);
+
+    REQUIRE(session.document.getFrameCount() == 600);
+    REQUIRE(viewState.samplesPerPixel == zoomBefore);
+}
+
+TEST_CASE("Paste undo applies duration-change policy and restores fit zoom",
+          "[session]")
+{
+    cupuacu::State state{};
+    auto &session = state.activeDocumentSession;
+    [[maybe_unused]] auto ui = cupuacu::test::createSessionUi(&state, 400);
+
+    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+    const int waveformWidth = cupuacu::gui::Waveform::getWaveformWidth(&state);
+    REQUIRE(waveformWidth > 0);
+
+    state.clipboard.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 200);
+    for (int64_t i = 0; i < 200; ++i)
+    {
+        state.clipboard.setSample(0, i, 0.1f, false);
+        state.clipboard.setSample(1, i, -0.1f, false);
+    }
+
+    cupuacu::actions::resetZoom(&state); // fit 400 frames
+    session.selection.reset();
+    session.cursor = 400;
+    cupuacu::actions::audio::performPaste(&state); // now 600 frames
+    REQUIRE(session.document.getFrameCount() == 600);
+
+    cupuacu::actions::resetZoom(&state); // fit 600 frames
+    const double fit600 = viewState.samplesPerPixel;
+    const double expectedFit600 =
+        static_cast<double>(session.document.getFrameCount()) /
+        static_cast<double>(waveformWidth);
+    REQUIRE(std::abs(fit600 - expectedFit600) < 1e-6);
+
+    state.undo(); // duration shrinks to 400; policy should re-fit
+    REQUIRE(session.document.getFrameCount() == 400);
+    const double expectedFit400 = 400.0 / static_cast<double>(waveformWidth);
+    REQUIRE(std::abs(viewState.samplesPerPixel - expectedFit400) < 1e-6);
+    REQUIRE(viewState.sampleOffset == 0);
+}

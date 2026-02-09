@@ -1,8 +1,6 @@
 #pragma once
-#include "../Undoable.hpp"
+#include "DurationMutationUndoable.hpp"
 #include "../../Document.hpp"
-#include "../../gui/MainView.hpp"
-#include "../Zoom.hpp"
 #include <vector>
 #include <cstdint>
 #include <algorithm>
@@ -10,7 +8,7 @@
 namespace cupuacu::actions::audio
 {
 
-    class Trim : public Undoable
+    class Trim : public DurationMutationUndoable
     {
         int64_t startFrame;
         int64_t length;
@@ -28,13 +26,9 @@ namespace cupuacu::actions::audio
 
     public:
         Trim(State *state, int64_t start, int64_t lengthToKeep)
-            : Undoable(state), startFrame(start), length(lengthToKeep)
+            : DurationMutationUndoable(state), startFrame(start),
+              length(lengthToKeep)
         {
-            updateGui = [state = state]
-            {
-                resetZoomAndRefreshWaveforms(state);
-                state->mainView->setDirty();
-            };
         }
 
         void redo() override

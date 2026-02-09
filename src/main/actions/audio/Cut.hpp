@@ -1,17 +1,14 @@
 #pragma once
-#include "../Undoable.hpp"
+#include "DurationMutationUndoable.hpp"
 #include "../../Document.hpp"
-#include "../../gui/MainView.hpp"
-#include "../Zoom.hpp"
 #include <vector>
 #include <cstdint>
 #include <algorithm>
-#include <cmath>
 
 namespace cupuacu::actions::audio
 {
 
-    class Cut : public Undoable
+    class Cut : public DurationMutationUndoable
     {
         int64_t startFrame;
         int64_t numFrames;
@@ -24,7 +21,8 @@ namespace cupuacu::actions::audio
 
     public:
         Cut(State *state, int64_t start, int64_t count)
-            : Undoable(state), startFrame(start), numFrames(count)
+            : DurationMutationUndoable(state), startFrame(start),
+              numFrames(count)
         {
             auto &session = state->activeDocumentSession;
             if (session.selection.isActive())
@@ -34,41 +32,6 @@ namespace cupuacu::actions::audio
             }
 
             oldCursorPos = session.cursor;
-
-            updateGui = [state = state]
-            {
-                auto &session = state->activeDocumentSession;
-                const auto frameCount =
-                    std::max<int64_t>(0, session.document.getFrameCount());
-                const auto waveformWidth =
-                    static_cast<double>(gui::Waveform::getWaveformWidth(state));
-                const auto &viewState =
-                    state->mainDocumentSessionWindow->getViewState();
-
-                // If the current zoom would leave unused space on the right
-                // after this cut, reset zoom so waveform fills the viewport.
-                const bool shouldResetZoomToFillWidth =
-                    frameCount > 0 && waveformWidth > 0.0 &&
-                    std::ceil(waveformWidth * viewState.samplesPerPixel) >
-                        static_cast<double>(frameCount);
-
-                if (shouldResetZoomToFillWidth)
-                {
-                    resetZoomAndRefreshWaveforms(state);
-                    state->mainView->setDirty();
-                    return;
-                }
-
-                if (state->mainDocumentSessionWindow)
-                {
-                    auto &viewState =
-                        state->mainDocumentSessionWindow->getViewState();
-                    updateSampleOffset(state, viewState.sampleOffset);
-                }
-                gui::Waveform::updateAllSamplePoints(state);
-                gui::Waveform::setAllWaveformsDirty(state);
-                state->mainView->setDirty();
-            };
         }
 
         void redo() override
