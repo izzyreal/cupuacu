@@ -24,7 +24,11 @@ namespace cupuacu::gui
 
     private:
         uint8_t lastNumClicks = 0;
+        double horizontalWheelPendingPixels = 0.0;
         double horizontalWheelRemainder = 0.0;
+        uint64_t lastHorizontalWheelEventTicks = 0;
+
+        bool applyPendingHorizontalWheelScroll();
 
         uint16_t channelHeight() const;
 

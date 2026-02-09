@@ -10,6 +10,14 @@
 
 using namespace cupuacu::gui;
 
+namespace
+{
+    constexpr double kPixelsPerWheelUnit = 15;
+    constexpr double kWheelSmoothingFactor = 0.3;
+    constexpr double kWheelSnapThresholdPixels = 0.5;
+    constexpr uint64_t kWheelStreamTimeoutMs = 20;
+} // namespace
+
 int64_t getValidSampleIndexUnderMouseCursor(const int32_t mouseX,
                                             const double samplesPerPixel,
                                             const int64_t sampleOffset,
@@ -227,52 +235,35 @@ bool WaveformsUnderlay::mouseUp(const MouseEvent &e)
 
 bool WaveformsUnderlay::mouseWheel(const MouseEvent &e)
 {
-    auto &viewState = state->mainDocumentSessionWindow->getViewState();
-    if (viewState.samplesPerPixel <= 0.0)
+    if (state->mainDocumentSessionWindow->getViewState().samplesPerPixel <= 0.0)
     {
         return false;
     }
 
     // SDL wheel.x > 0 means user scrolled right; move the viewport right.
-    constexpr double kPixelsPerWheelUnit = 12.0;
-    const double deltaSamples =
-        static_cast<double>(e.wheelX) * viewState.samplesPerPixel *
-        kPixelsPerWheelUnit;
+    const double wheelX = static_cast<double>(e.wheelX);
+    const double deltaPixels = wheelX * kPixelsPerWheelUnit;
 
-    if (deltaSamples == 0.0)
+    if (deltaPixels == 0.0)
     {
         return false;
     }
 
-    horizontalWheelRemainder += deltaSamples;
-    const int64_t wholeSamples =
-        static_cast<int64_t>(std::trunc(horizontalWheelRemainder));
-    if (wholeSamples == 0)
-    {
-        return true;
-    }
+    lastHorizontalWheelEventTicks = SDL_GetTicks();
+    horizontalWheelPendingPixels += deltaPixels;
 
-    const int64_t oldOffset = viewState.sampleOffset;
-    updateSampleOffset(state, oldOffset + wholeSamples);
-    horizontalWheelRemainder -= static_cast<double>(wholeSamples);
-
-    if (oldOffset == viewState.sampleOffset)
-    {
-        return true;
-    }
-
-    viewState.samplesToScroll = 0.0;
-    if (getWindow())
-    {
-        getWindow()->setComponentUnderMouse(nullptr);
-    }
-    refreshWaveforms(state, true, true);
-
-    return true;
+    const bool moved = applyPendingHorizontalWheelScroll();
+    return moved || std::abs(horizontalWheelPendingPixels) > 0.0;
 }
 
 void WaveformsUnderlay::timerCallback()
 {
+    const bool movedByWheel = applyPendingHorizontalWheelScroll();
+    if (movedByWheel)
+    {
+        return;
+    }
+
     auto &viewState = state->mainDocumentSessionWindow->getViewState();
     if (viewState.samplesToScroll == 0.0)
     {
@@ -295,6 +286,61 @@ void WaveformsUnderlay::timerCallback()
         getWindow()->setComponentUnderMouse(nullptr);
     }
     refreshWaveforms(state, true, false);
+}
+
+bool WaveformsUnderlay::applyPendingHorizontalWheelScroll()
+{
+    auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    if (viewState.samplesPerPixel <= 0.0 ||
+        horizontalWheelPendingPixels == 0.0)
+    {
+        return false;
+    }
+
+    const double absPending = std::abs(horizontalWheelPendingPixels);
+    const uint64_t nowTicks = SDL_GetTicks();
+    const bool wheelStreamTimedOut =
+        lastHorizontalWheelEventTicks > 0 &&
+        nowTicks > lastHorizontalWheelEventTicks + kWheelStreamTimeoutMs;
+    const double smoothingFactor =
+        wheelStreamTimedOut ? 1.0 : kWheelSmoothingFactor;
+    const double stepPixels =
+        absPending <= kWheelSnapThresholdPixels
+            ? horizontalWheelPendingPixels
+            : horizontalWheelPendingPixels * smoothingFactor;
+    horizontalWheelPendingPixels -= stepPixels;
+    if (std::abs(horizontalWheelPendingPixels) < 1e-6)
+    {
+        horizontalWheelPendingPixels = 0.0;
+    }
+
+    horizontalWheelRemainder += stepPixels * viewState.samplesPerPixel;
+    const int64_t wholeSamples =
+        static_cast<int64_t>(std::trunc(horizontalWheelRemainder));
+    if (wholeSamples == 0)
+    {
+        return false;
+    }
+
+    const int64_t oldOffset = viewState.sampleOffset;
+    updateSampleOffset(state, oldOffset + wholeSamples);
+    horizontalWheelRemainder -= static_cast<double>(wholeSamples);
+
+    if (oldOffset == viewState.sampleOffset)
+    {
+        // We are clamped at an edge, so pending wheel deltas can be discarded.
+        horizontalWheelPendingPixels = 0.0;
+        horizontalWheelRemainder = 0.0;
+        return false;
+    }
+
+    viewState.samplesToScroll = 0.0;
+    if (getWindow())
+    {
+        getWindow()->setComponentUnderMouse(nullptr);
+    }
+    refreshWaveforms(state, true, true);
+    return true;
 }
 
 uint16_t WaveformsUnderlay::channelHeight() const
