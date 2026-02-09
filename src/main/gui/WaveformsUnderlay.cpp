@@ -285,7 +285,9 @@ void WaveformsUnderlay::timerCallback()
     {
         getWindow()->setComponentUnderMouse(nullptr);
     }
-    refreshWaveforms(state, true, false);
+    const bool shouldUpdateSamplePoints = Waveform::shouldShowSamplePoints(
+        viewState.samplesPerPixel, state->pixelScale);
+    refreshWaveforms(state, shouldUpdateSamplePoints, true);
 }
 
 bool WaveformsUnderlay::applyPendingHorizontalWheelScroll()
@@ -339,7 +341,9 @@ bool WaveformsUnderlay::applyPendingHorizontalWheelScroll()
     {
         getWindow()->setComponentUnderMouse(nullptr);
     }
-    refreshWaveforms(state, true, true);
+    const bool shouldUpdateSamplePoints = Waveform::shouldShowSamplePoints(
+        viewState.samplesPerPixel, state->pixelScale);
+    refreshWaveforms(state, shouldUpdateSamplePoints, true);
     return true;
 }
 

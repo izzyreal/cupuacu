@@ -18,6 +18,11 @@ Window::Window(State *stateToUse, const std::string &title, const int width,
         return;
     }
 
+    if (!SDL_SetRenderVSync(renderer, 1))
+    {
+        SDL_Log("SDL_SetRenderVSync(1) failed: %s", SDL_GetError());
+    }
+
     windowId = SDL_GetWindowID(window);
     resizeCanvasIfNeeded();
 }

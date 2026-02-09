@@ -114,11 +114,14 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         mainWindow->getRootComponent()->timerCallbackRecursive();
     }
 
+    bool renderedAnyWindow = false;
     for (auto *window : state->windows)
     {
         if (window && window->isOpen())
         {
+            const bool hadDirty = !window->getDirtyRects().empty();
             window->renderFrameIfDirty();
+            renderedAnyWindow = renderedAnyWindow || hadDirty;
         }
     }
 
@@ -136,7 +139,10 @@ SDL_AppResult SDL_AppIterate(void *appstate)
                                         }),
                          state->windows.end());
 
-    SDL_Delay(16);
+    if (!renderedAnyWindow)
+    {
+        SDL_Delay(1);
+    }
     return SDL_APP_CONTINUE;
 }
 

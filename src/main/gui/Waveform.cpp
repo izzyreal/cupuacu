@@ -419,9 +419,10 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
         return true;
     };
 
-    float prevX = 0.0f;
+    int prevX = 0;
     int prevY = 0;
     bool hasPrev = false;
+    int lastDrawXi = std::numeric_limits<int>::min();
 
     for (int x = 0; x < widthToUse + 1; ++x)
     {
@@ -432,7 +433,13 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
         }
 
         const float drawX = static_cast<float>(x - blockRenderPhasePx);
-        if (drawX < -1.0f || drawX > static_cast<float>(widthToUse))
+        const int drawXi = static_cast<int>(std::lround(drawX));
+        if (drawXi < 0 || drawXi > widthToUse)
+        {
+            continue;
+        }
+
+        if (drawXi == lastDrawXi)
         {
             continue;
         }
@@ -443,21 +450,22 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
 
         if (y1 != y2)
         {
-            SDL_RenderLine(renderer, drawX, y1, drawX, y2);
+            SDL_RenderLine(renderer, drawXi, y1, drawXi, y2);
         }
         else
         {
-            SDL_RenderPoint(renderer, drawX, y1);
+            SDL_RenderPoint(renderer, drawXi, y1);
         }
 
-        if (hasPrev)
+        if (hasPrev && prevX != drawXi)
         {
-            SDL_RenderLine(renderer, prevX, prevY, drawX, midY);
+            SDL_RenderLine(renderer, prevX, prevY, drawXi, midY);
         }
 
-        prevX = drawX;
+        prevX = drawXi;
         prevY = midY;
         hasPrev = true;
+        lastDrawXi = drawXi;
     }
 }
 
