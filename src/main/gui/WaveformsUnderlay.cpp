@@ -16,6 +16,7 @@ namespace
     constexpr double kWheelSmoothingFactor = 0.3;
     constexpr double kWheelSnapThresholdPixels = 0.5;
     constexpr uint64_t kWheelStreamTimeoutMs = 20;
+    constexpr bool kDisableWheelInterpolationForDiagnostics = false;
 } // namespace
 
 int64_t getValidSampleIndexUnderMouseCursor(const int32_t mouseX,
@@ -305,7 +306,9 @@ bool WaveformsUnderlay::applyPendingHorizontalWheelScroll()
         lastHorizontalWheelEventTicks > 0 &&
         nowTicks > lastHorizontalWheelEventTicks + kWheelStreamTimeoutMs;
     const double smoothingFactor =
-        wheelStreamTimedOut ? 1.0 : kWheelSmoothingFactor;
+        kDisableWheelInterpolationForDiagnostics
+            ? 1.0
+            : (wheelStreamTimedOut ? 1.0 : kWheelSmoothingFactor);
     const double stepPixels =
         absPending <= kWheelSnapThresholdPixels
             ? horizontalWheelPendingPixels

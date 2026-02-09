@@ -167,6 +167,7 @@ namespace cupuacu::gui
         }
 
         Waveform(State *, const uint8_t channelIndex);
+        ~Waveform() override;
 
         void onDraw(SDL_Renderer *) override;
         void timerCallback() override;
@@ -193,6 +194,15 @@ namespace cupuacu::gui
         mutable std::vector<double> smoothXBuffer;
         mutable std::vector<double> smoothYBuffer;
         mutable std::vector<double> smoothQueryBuffer;
+        mutable SDL_Texture *blockWaveformTexture = nullptr;
+        mutable SDL_Texture *blockWaveformScratchTexture = nullptr;
+        mutable bool blockWaveformTextureValid = false;
+        mutable int blockWaveformTextureWidth = 0;
+        mutable int blockWaveformTextureHeight = 0;
+        mutable int64_t blockWaveformTextureSampleOffset = 0;
+        mutable double blockWaveformTextureSamplesPerPixel = 0.0;
+        mutable double blockWaveformTextureVerticalZoom = 0.0;
+        mutable int64_t blockWaveformTextureFrameCount = 0;
 
         std::vector<std::unique_ptr<SamplePoint>> computeSamplePoints();
 
@@ -200,6 +210,11 @@ namespace cupuacu::gui
         void drawSelection(SDL_Renderer *) const;
         void drawHighlight(SDL_Renderer *) const;
         void renderBlockWaveform(SDL_Renderer *) const;
+        void renderBlockWaveformRange(SDL_Renderer *, int xStart,
+                                      int xEndExclusive,
+                                      int64_t sampleOffsetToUse) const;
+        void renderCachedBlockWaveform(SDL_Renderer *) const;
+        void destroyBlockWaveformTextures() const;
         void renderSmoothWaveform(SDL_Renderer *) const;
 
         void drawPlaybackPosition(SDL_Renderer *) const;

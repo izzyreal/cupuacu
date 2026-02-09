@@ -13,9 +13,19 @@
 
 using namespace cupuacu::gui;
 
+namespace
+{
+    constexpr bool kDrawBlockConnectorLines = true;
+}
+
 Waveform::Waveform(State *state, const uint8_t channelIndexToUse)
     : Component(state, "Waveform"), channelIndex(channelIndexToUse)
 {
+}
+
+Waveform::~Waveform()
+{
+    destroyBlockWaveformTextures();
 }
 
 uint8_t Waveform::getChannelIndex() const
@@ -30,6 +40,7 @@ uint16_t getSamplePointSize(const uint8_t pixelScale)
 
 void Waveform::resized()
 {
+    destroyBlockWaveformTextures();
     updateSamplePoints();
 }
 
@@ -312,18 +323,18 @@ void Waveform::renderSmoothWaveform(SDL_Renderer *renderer) const
     }
 }
 
-void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
+void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, const int xStart,
+                                        const int xEndExclusive,
+                                        const int64_t sampleOffsetToUse) const
 {
-    auto &session = state->activeDocumentSession;
-    auto &doc = session.document;
+    auto &doc = state->activeDocumentSession.document;
     const auto &viewState = state->mainDocumentSessionWindow->getViewState();
     SDL_SetRenderDrawColor(renderer, waveformColor.r, waveformColor.g,
                            waveformColor.b, waveformColor.a);
 
     const double samplesPerPixel = viewState.samplesPerPixel;
-    const int64_t sampleOffset = viewState.sampleOffset;
     const double blockRenderPhasePx =
-        getBlockRenderPhasePixels(sampleOffset, samplesPerPixel);
+        getBlockRenderPhasePixels(sampleOffsetToUse, samplesPerPixel);
     const double verticalZoom = viewState.verticalZoom;
     const int widthToUse = getWidth();
     const int heightToUse = getHeight();
@@ -337,7 +348,6 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
     const int64_t frameCount = doc.getFrameCount();
 
     const bool bypassCache = samplesPerPixel < WaveformCache::BASE_BLOCK_SIZE;
-
     auto &waveformCache = doc.getWaveformCache(channelIndex);
 
     if (!bypassCache && waveformCache.levelsCount() == 0)
@@ -366,14 +376,10 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
     {
         double aD = 0.0;
         double bD = 0.0;
-        getBlockRenderSampleWindowForPixel(x, sampleOffset, samplesPerPixel, aD,
-                                           bD);
+        getBlockRenderSampleWindowForPixel(x, sampleOffsetToUse, samplesPerPixel,
+                                           aD, bD);
 
-        if (bD <= 0.0)
-        {
-            return false;
-        }
-        if (aD >= (double)frameCount)
+        if (bD <= 0.0 || aD >= (double)frameCount)
         {
             return false;
         }
@@ -389,7 +395,7 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
             float maxv = sampleData[a];
             for (int64_t i = a + 1; i < b; ++i)
             {
-                float v = sampleData[i];
+                const float v = sampleData[i];
                 minv = std::min(minv, v);
                 maxv = std::max(maxv, v);
             }
@@ -419,14 +425,16 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
         return true;
     };
 
+    int lastDrawXi = std::numeric_limits<int>::min();
     int prevX = 0;
     int prevY = 0;
     bool hasPrev = false;
-    int lastDrawXi = std::numeric_limits<int>::min();
+    const int loopStart = std::max(0, xStart);
+    const int loopEnd = std::min(widthToUse + 1, std::max(loopStart, xEndExclusive));
 
-    for (int x = 0; x < widthToUse + 1; ++x)
+    for (int x = loopStart; x < loopEnd; ++x)
     {
-        Peak p;
+        Peak p{};
         if (!getPeakForPixel(x, p))
         {
             continue;
@@ -434,12 +442,7 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
 
         const float drawX = static_cast<float>(x - blockRenderPhasePx);
         const int drawXi = static_cast<int>(std::lround(drawX));
-        if (drawXi < 0 || drawXi > widthToUse)
-        {
-            continue;
-        }
-
-        if (drawXi == lastDrawXi)
+        if (drawXi < 0 || drawXi > widthToUse || drawXi == lastDrawXi)
         {
             continue;
         }
@@ -447,7 +450,6 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
         const int y1 = (int)(centerY - p.max * scale);
         const int y2 = (int)(centerY - p.min * scale);
         const int midY = (y1 + y2) / 2;
-
         if (y1 != y2)
         {
             SDL_RenderLine(renderer, drawXi, y1, drawXi, y2);
@@ -457,7 +459,7 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
             SDL_RenderPoint(renderer, drawXi, y1);
         }
 
-        if (hasPrev && prevX != drawXi)
+        if (kDrawBlockConnectorLines && hasPrev && prevX != drawXi)
         {
             SDL_RenderLine(renderer, prevX, prevY, drawXi, midY);
         }
@@ -467,6 +469,158 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
         hasPrev = true;
         lastDrawXi = drawXi;
     }
+}
+
+void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
+{
+    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    renderBlockWaveformRange(renderer, 0, getWidth() + 1, viewState.sampleOffset);
+}
+
+void Waveform::destroyBlockWaveformTextures() const
+{
+    if (blockWaveformTexture)
+    {
+        SDL_DestroyTexture(blockWaveformTexture);
+        blockWaveformTexture = nullptr;
+    }
+    if (blockWaveformScratchTexture)
+    {
+        SDL_DestroyTexture(blockWaveformScratchTexture);
+        blockWaveformScratchTexture = nullptr;
+    }
+    blockWaveformTextureValid = false;
+    blockWaveformTextureWidth = 0;
+    blockWaveformTextureHeight = 0;
+}
+
+void Waveform::renderCachedBlockWaveform(SDL_Renderer *renderer) const
+{
+    SDL_Texture *const previousTarget = SDL_GetRenderTarget(renderer);
+    SDL_Rect previousViewport{};
+    SDL_GetRenderViewport(renderer, &previousViewport);
+
+    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    const int widthToUse = getWidth();
+    const int heightToUse = getHeight();
+    const int64_t frameCount = state->activeDocumentSession.document.getFrameCount();
+
+    if (widthToUse <= 0 || heightToUse <= 0)
+    {
+        return;
+    }
+
+    if (!blockWaveformTexture || !blockWaveformScratchTexture ||
+        blockWaveformTextureWidth != widthToUse ||
+        blockWaveformTextureHeight != heightToUse)
+    {
+        destroyBlockWaveformTextures();
+        blockWaveformTexture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
+                                                 SDL_TEXTUREACCESS_TARGET,
+                                                 widthToUse, heightToUse);
+        blockWaveformScratchTexture =
+            SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
+                              SDL_TEXTUREACCESS_TARGET, widthToUse,
+                              heightToUse);
+        if (!blockWaveformTexture || !blockWaveformScratchTexture)
+        {
+            destroyBlockWaveformTextures();
+            renderBlockWaveform(renderer);
+            return;
+        }
+        SDL_SetTextureScaleMode(blockWaveformTexture, SDL_SCALEMODE_NEAREST);
+        SDL_SetTextureScaleMode(blockWaveformScratchTexture, SDL_SCALEMODE_NEAREST);
+        blockWaveformTextureWidth = widthToUse;
+        blockWaveformTextureHeight = heightToUse;
+        blockWaveformTextureValid = false;
+    }
+
+    const bool paramsChanged =
+        !blockWaveformTextureValid ||
+        blockWaveformTextureSamplesPerPixel != viewState.samplesPerPixel ||
+        blockWaveformTextureVerticalZoom != viewState.verticalZoom ||
+        blockWaveformTextureFrameCount != frameCount;
+
+    if (paramsChanged)
+    {
+        SDL_SetRenderTarget(renderer, blockWaveformTexture);
+        SDL_SetRenderViewport(renderer, nullptr);
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+        renderBlockWaveformRange(renderer, 0, widthToUse + 1, viewState.sampleOffset);
+
+        blockWaveformTextureSampleOffset = viewState.sampleOffset;
+        blockWaveformTextureSamplesPerPixel = viewState.samplesPerPixel;
+        blockWaveformTextureVerticalZoom = viewState.verticalZoom;
+        blockWaveformTextureFrameCount = frameCount;
+        blockWaveformTextureValid = true;
+    }
+    else
+    {
+        const int64_t deltaSamples =
+            viewState.sampleOffset - blockWaveformTextureSampleOffset;
+        const int pixelDelta = static_cast<int>(
+            std::lround((double)deltaSamples / viewState.samplesPerPixel));
+
+        if (pixelDelta != 0)
+        {
+            const int shift = -pixelDelta;
+            if (std::abs(shift) >= widthToUse)
+            {
+                SDL_SetRenderTarget(renderer, blockWaveformTexture);
+                SDL_SetRenderViewport(renderer, nullptr);
+                SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+                SDL_RenderClear(renderer);
+                renderBlockWaveformRange(renderer, 0, widthToUse + 1,
+                                        viewState.sampleOffset);
+            }
+            else
+            {
+                SDL_SetRenderTarget(renderer, blockWaveformScratchTexture);
+                SDL_SetRenderViewport(renderer, nullptr);
+                SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+                SDL_RenderClear(renderer);
+
+                SDL_FRect srcRect{};
+                SDL_FRect dstRect{};
+                if (shift < 0)
+                {
+                    const float k = static_cast<float>(-shift);
+                    srcRect = {k, 0.0f, static_cast<float>(widthToUse) - k,
+                               static_cast<float>(heightToUse)};
+                    dstRect = {0.0f, 0.0f, srcRect.w, srcRect.h};
+                }
+                else
+                {
+                    const float k = static_cast<float>(shift);
+                    srcRect = {0.0f, 0.0f, static_cast<float>(widthToUse) - k,
+                               static_cast<float>(heightToUse)};
+                    dstRect = {k, 0.0f, srcRect.w, srcRect.h};
+                }
+
+                SDL_RenderTexture(renderer, blockWaveformTexture, &srcRect, &dstRect);
+
+                if (shift < 0)
+                {
+                    renderBlockWaveformRange(renderer, widthToUse + shift,
+                                            widthToUse + 1,
+                                            viewState.sampleOffset);
+                }
+                else
+                {
+                    renderBlockWaveformRange(renderer, 0, shift + 1,
+                                            viewState.sampleOffset);
+                }
+
+                std::swap(blockWaveformTexture, blockWaveformScratchTexture);
+            }
+            blockWaveformTextureSampleOffset = viewState.sampleOffset;
+        }
+    }
+
+    SDL_SetRenderTarget(renderer, previousTarget);
+    SDL_SetRenderViewport(renderer, &previousViewport);
+    SDL_RenderTexture(renderer, blockWaveformTexture, nullptr, nullptr);
 }
 
 void Waveform::drawSelection(SDL_Renderer *renderer) const
@@ -588,7 +742,7 @@ void Waveform::onDraw(SDL_Renderer *renderer)
     }
     else
     {
-        renderBlockWaveform(renderer);
+        renderCachedBlockWaveform(renderer);
     }
 
     drawSelection(renderer);

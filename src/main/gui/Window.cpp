@@ -22,6 +22,20 @@ Window::Window(State *stateToUse, const std::string &title, const int width,
     {
         SDL_Log("SDL_SetRenderVSync(1) failed: %s", SDL_GetError());
     }
+    else
+    {
+        int vsync = 0;
+        if (SDL_GetRenderVSync(renderer, &vsync))
+        {
+            SDL_Log("Renderer vsync state: %d", vsync);
+        }
+    }
+
+    if (const char *rendererName = SDL_GetRendererName(renderer);
+        rendererName && rendererName[0] != '\0')
+    {
+        SDL_Log("Renderer backend: %s", rendererName);
+    }
 
     windowId = SDL_GetWindowID(window);
     resizeCanvasIfNeeded();

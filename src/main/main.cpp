@@ -14,6 +14,7 @@
 const uint16_t initialDimensions[] = {1280, 720};
 
 #include <cstdint>
+#include <cstdlib>
 #include <string>
 #include <filesystem>
 #include <algorithm>
@@ -49,6 +50,13 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     SDL_SetAppMetadata("Cupuacu -- A minimalist audio editor by Izmar", "0.1",
                        "nl.izmar.cupuacu");
+
+    if (const char *forcedRenderDriver = std::getenv("CUPUACU_RENDER_DRIVER");
+        forcedRenderDriver && forcedRenderDriver[0] != '\0')
+    {
+        SDL_SetHint(SDL_HINT_RENDER_DRIVER, forcedRenderDriver);
+        SDL_Log("Requested renderer driver: %s", forcedRenderDriver);
+    }
 
     SDL_SetHint(SDL_HINT_MAC_SCROLL_MOMENTUM, "1");
 
