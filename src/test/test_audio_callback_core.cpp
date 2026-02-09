@@ -42,7 +42,7 @@ TEST_CASE("AudioCallbackCore fillOutputBuffer handles invalid negative playback 
     }
 }
 
-TEST_CASE("AudioCallbackCore fillOutputBuffer writes silence after non-loop stop within buffer",
+TEST_CASE("AudioCallbackCore writes silence after non-loop stop in buffer",
           "[audio]")
 {
     cupuacu::Document doc{};

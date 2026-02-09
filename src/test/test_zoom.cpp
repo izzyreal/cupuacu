@@ -33,8 +33,7 @@ TEST_CASE("Paste keeps zoom level unchanged", "[session]")
     REQUIRE(viewState.samplesPerPixel == zoomBefore);
 }
 
-TEST_CASE("Cut keeps zoom and only clamps offset when right gap would appear",
-          "[session]")
+TEST_CASE("Cut keeps zoom and offset when no right gap risk", "[session]")
 {
     cupuacu::State state{};
     auto &session = state.activeDocumentSession;
@@ -42,40 +41,40 @@ TEST_CASE("Cut keeps zoom and only clamps offset when right gap would appear",
 
     auto &viewState = state.mainDocumentSessionWindow->getViewState();
     viewState.samplesPerPixel = 0.25;
+    updateSampleOffset(&state, 20);
+    const int64_t offsetBefore = viewState.sampleOffset;
+    REQUIRE(offsetBefore >= 0);
+    const double zoomBefore = viewState.samplesPerPixel;
 
-    SECTION("No right gap risk: offset unchanged")
-    {
-        viewState.samplesPerPixel = 0.25;
-        updateSampleOffset(&state, 20);
-        const int64_t offsetBefore = viewState.sampleOffset;
-        REQUIRE(offsetBefore >= 0);
-        const double zoomBefore = viewState.samplesPerPixel;
+    session.selection.setValue1(10.0);
+    session.selection.setValue2(20.0);
+    cupuacu::actions::audio::performCut(&state);
 
-        session.selection.setValue1(10.0);
-        session.selection.setValue2(20.0);
-        cupuacu::actions::audio::performCut(&state);
+    REQUIRE(viewState.samplesPerPixel == zoomBefore);
+    REQUIRE(viewState.sampleOffset == offsetBefore);
+}
 
-        REQUIRE(viewState.samplesPerPixel == zoomBefore);
-        REQUIRE(viewState.sampleOffset == offsetBefore);
-    }
+TEST_CASE("Cut keeps zoom and clamps offset when right gap would appear", "[session]")
+{
+    cupuacu::State state{};
+    auto &session = state.activeDocumentSession;
+    [[maybe_unused]] auto ui = cupuacu::test::createSessionUi(&state, 300);
 
-    SECTION("Right gap risk: offset clamped")
-    {
-        viewState.samplesPerPixel = 0.25;
-        const int64_t oldMaxOffset = getMaxSampleOffset(&state);
-        REQUIRE(oldMaxOffset > 0);
-        updateSampleOffset(&state, oldMaxOffset);
-        REQUIRE(viewState.sampleOffset == oldMaxOffset);
-        const double zoomBefore = viewState.samplesPerPixel;
+    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+    viewState.samplesPerPixel = 0.25;
+    const int64_t oldMaxOffset = getMaxSampleOffset(&state);
+    REQUIRE(oldMaxOffset > 0);
+    updateSampleOffset(&state, oldMaxOffset);
+    REQUIRE(viewState.sampleOffset == oldMaxOffset);
+    const double zoomBefore = viewState.samplesPerPixel;
 
-        session.selection.setValue1(0.0);
-        session.selection.setValue2(1.0);
-        cupuacu::actions::audio::performCut(&state);
+    session.selection.setValue1(0.0);
+    session.selection.setValue2(1.0);
+    cupuacu::actions::audio::performCut(&state);
 
-        REQUIRE(viewState.samplesPerPixel == zoomBefore);
-        REQUIRE(viewState.sampleOffset <= oldMaxOffset);
-        REQUIRE(viewState.sampleOffset == getMaxSampleOffset(&state));
-    }
+    REQUIRE(viewState.samplesPerPixel == zoomBefore);
+    REQUIRE(viewState.sampleOffset <= oldMaxOffset);
+    REQUIRE(viewState.sampleOffset == getMaxSampleOffset(&state));
 }
 
 TEST_CASE("Sample offset clamp never goes negative when viewport exceeds document",
