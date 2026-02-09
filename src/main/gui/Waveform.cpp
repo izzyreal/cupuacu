@@ -57,6 +57,86 @@ bool Waveform::shouldShowSamplePoints(const double samplesPerPixel,
     return samplesPerPixel < (float)pixelScale / 40.f;
 }
 
+bool Waveform::computeBlockModeSelectionRect(
+    const int64_t firstSample, const int64_t lastSampleExclusive,
+    const int64_t sampleOffset, const double samplesPerPixel, const int width,
+    const int height, SDL_FRect &outRect,
+    const int64_t samplesPerPeakForDisplay,
+    const bool includeConnectorPixelPadding)
+{
+    if (samplesPerPixel <= 0.0 || width <= 0 || height <= 0 ||
+        lastSampleExclusive <= firstSample)
+    {
+        return false;
+    }
+
+    int64_t mappedFirst = firstSample;
+    int64_t mappedLastExclusive = lastSampleExclusive;
+    if (samplesPerPeakForDisplay > 1)
+    {
+        const int64_t q = samplesPerPeakForDisplay;
+        mappedFirst = (mappedFirst / q) * q;
+        mappedLastExclusive = ((mappedLastExclusive + q - 1) / q) * q;
+    }
+
+    const double startPxD =
+        (static_cast<double>(mappedFirst) - static_cast<double>(sampleOffset)) /
+        samplesPerPixel;
+    const double endPxD =
+        (static_cast<double>(mappedLastExclusive) -
+         static_cast<double>(sampleOffset)) /
+        samplesPerPixel;
+
+    const int startPx = static_cast<int>(std::floor(startPxD));
+    const int endPx = static_cast<int>(std::ceil(endPxD));
+
+    if (endPx <= 0 || startPx >= width)
+    {
+        return false;
+    }
+
+    int drawStart = std::clamp(startPx, 0, width);
+    int drawEnd = std::clamp(endPx, 0, width);
+
+    if (includeConnectorPixelPadding)
+    {
+        drawStart = std::max(0, drawStart - 1);
+        drawEnd = std::min(width, drawEnd + 1);
+    }
+
+    if (drawEnd < drawStart)
+    {
+        return false;
+    }
+
+    const int drawWidth = std::max(1, drawEnd - drawStart);
+    outRect = {static_cast<float>(drawStart), 0.0f,
+               static_cast<float>(drawWidth), static_cast<float>(height)};
+    return true;
+}
+
+bool Waveform::computeBlockModeSelectionEdgePixels(
+    const int64_t firstSample, const int64_t lastSampleExclusive,
+    const int64_t sampleOffset, const double samplesPerPixel, const int width,
+    int32_t &outStartEdgePx, int32_t &outEndEdgePxExclusive,
+    const int64_t samplesPerPeakForDisplay,
+    const bool includeConnectorPixelPadding)
+{
+    SDL_FRect rect{};
+    if (!computeBlockModeSelectionRect(firstSample, lastSampleExclusive,
+                                       sampleOffset, samplesPerPixel, width, 1,
+                                       rect, samplesPerPeakForDisplay,
+                                       includeConnectorPixelPadding))
+    {
+        return false;
+    }
+
+    outStartEdgePx = static_cast<int32_t>(std::lround(rect.x));
+    outEndEdgePxExclusive =
+        static_cast<int32_t>(std::lround(rect.x + rect.w));
+    return true;
+}
+
 int getYPosForSampleValue(const float sampleValue,
                           const uint16_t waveformHeight,
                           const double verticalZoom,
@@ -388,6 +468,36 @@ void Waveform::drawSelection(SDL_Renderer *renderer) const
 
     if (isSelected && lastSample >= sampleOffset)
     {
+        SDL_SetRenderDrawColor(renderer, 0, 64, 255, 128);
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+
+        if (samplesPerPixel >= 1.0)
+        {
+            const bool bypassCache =
+                samplesPerPixel < WaveformCache::BASE_BLOCK_SIZE;
+            int64_t samplesPerPeakForDisplay = 1;
+            if (!bypassCache)
+            {
+                const auto &doc = state->activeDocumentSession.document;
+                const auto &waveformCache = doc.getWaveformCache(channelIndex);
+                const int cacheLevel =
+                    waveformCache.getLevelIndex(samplesPerPixel);
+                samplesPerPeakForDisplay =
+                    waveformCache.samplesPerPeakForLevel(cacheLevel);
+            }
+
+            SDL_FRect selectionRect{};
+            if (computeBlockModeSelectionRect(firstSample, lastSample,
+                                              sampleOffset, samplesPerPixel,
+                                              getWidth(), getHeight(),
+                                              selectionRect,
+                                              samplesPerPeakForDisplay, true))
+            {
+                SDL_RenderFillRect(renderer, &selectionRect);
+            }
+            return;
+        }
+
         const float startX =
             firstSample <= sampleOffset
                 ? 0
@@ -395,19 +505,11 @@ void Waveform::drawSelection(SDL_Renderer *renderer) const
                                         samplesPerPixel);
         const float endX =
             getXPosForSampleIndex(lastSample, sampleOffset, samplesPerPixel);
-
-        SDL_SetRenderDrawColor(renderer, 0, 64, 255, 128);
-        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-        auto selectionWidth = std::abs(endX - startX) < 1 ? 1 : endX - startX;
-
-        if (endX - startX < 0 && selectionWidth > 0)
-        {
-            selectionWidth = -selectionWidth;
-        }
+        const float selectionWidth =
+            std::abs(endX - startX) < 1.0f ? 1.0f : (endX - startX);
 
         const SDL_FRect selectionRect = {startX, 0.0f, selectionWidth,
                                          (float)getHeight()};
-
         SDL_RenderFillRect(renderer, &selectionRect);
     }
 }

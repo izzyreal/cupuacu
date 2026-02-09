@@ -109,6 +109,8 @@ add_executable(cupuacu-tests
     src/test/test_playback_range.cpp
     src/test/test_edit_commands.cpp
     src/test/test_zoom.cpp
+    src/test/test_waveform_selection.cpp
+    src/test/test_main_view_selection_markers.cpp
     src/test/test_session_loading.cpp
     src/test/test_component_dirty_rects.cpp
     src/test/test_audio_device_properties_persistence.cpp

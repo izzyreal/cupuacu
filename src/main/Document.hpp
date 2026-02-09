@@ -39,6 +39,10 @@ namespace cupuacu
         {
             return waveformCache[channel];
         }
+        const gui::WaveformCache &getWaveformCache(const int channel) const
+        {
+            return waveformCache[channel];
+        }
 
         SampleFormat getSampleFormat()
         {

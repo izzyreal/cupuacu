@@ -56,6 +56,21 @@ namespace cupuacu::gui
             }
         }
 
+        static bool computeBlockModeSelectionRect(
+            const int64_t firstSample, const int64_t lastSampleExclusive,
+            const int64_t sampleOffset, const double samplesPerPixel,
+            const int width, const int height, SDL_FRect &outRect,
+            const int64_t samplesPerPeakForDisplay = 1,
+            const bool includeConnectorPixelPadding = false);
+
+        static bool computeBlockModeSelectionEdgePixels(
+            const int64_t firstSample, const int64_t lastSampleExclusive,
+            const int64_t sampleOffset, const double samplesPerPixel,
+            const int width, int32_t &outStartEdgePx,
+            int32_t &outEndEdgePxExclusive,
+            const int64_t samplesPerPeakForDisplay = 1,
+            const bool includeConnectorPixelPadding = false);
+
         static double getDoubleXPosForSampleIndex(const int64_t sampleIndex,
                                                   const int64_t sampleOffset,
                                                   const double samplesPerPixel)

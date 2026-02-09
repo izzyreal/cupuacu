@@ -11,11 +11,13 @@
 #include "ScrollBar.hpp"
 #include "Timeline.hpp"
 #include "WaveformRefresh.hpp"
+#include "WaveformCache.hpp"
 #include "playback/PlaybackRange.hpp"
 
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 using namespace cupuacu::gui;
 
@@ -482,8 +484,45 @@ void MainView::updateTriangleMarkerBounds() const
         cursorTop->setVisible(false);
         cursorBottom->setVisible(false);
 
-        const int32_t startX = Waveform::getXPosForSampleIndex(
-            session.selection.getStartInt(), sampleOffset, samplesPerPixel);
+        int32_t startX = 0;
+        int32_t endX = 0;
+        if (samplesPerPixel >= 1.0)
+        {
+            const int64_t firstSample = session.selection.getStartInt();
+            const int64_t lastSampleExclusive = session.selection.getEndInt() + 1;
+
+            const bool bypassCache =
+                samplesPerPixel < WaveformCache::BASE_BLOCK_SIZE;
+            int64_t samplesPerPeakForDisplay = 1;
+            if (!bypassCache && state->activeDocumentSession.document.getChannelCount() > 0)
+            {
+                const auto &doc = state->activeDocumentSession.document;
+                const auto &waveformCache = doc.getWaveformCache(0);
+                const int cacheLevel =
+                    waveformCache.getLevelIndex(samplesPerPixel);
+                samplesPerPeakForDisplay =
+                    waveformCache.samplesPerPeakForLevel(cacheLevel);
+            }
+
+            if (Waveform::computeBlockModeSelectionEdgePixels(
+                    firstSample, lastSampleExclusive, sampleOffset,
+                    samplesPerPixel, waveforms->getWidth(),
+                    startX, endX, samplesPerPeakForDisplay, true) == false)
+            {
+                startX = std::numeric_limits<int32_t>::min();
+                endX = std::numeric_limits<int32_t>::min();
+            }
+        }
+        else
+        {
+            startX = Waveform::getXPosForSampleIndex(
+                session.selection.getStartInt(), sampleOffset, samplesPerPixel);
+            const int64_t endInclusive = session.selection.getEndInt();
+            const int64_t endToUse = endInclusive + 1;
+            endX = Waveform::getXPosForSampleIndex(endToUse, sampleOffset,
+                                                   samplesPerPixel);
+        }
+
         if (startX >= 0 && startX <= waveforms->getWidth())
         {
             selStartTop->setVisible(true);
@@ -500,11 +539,6 @@ void MainView::updateTriangleMarkerBounds() const
             selStartTop->setVisible(false);
             selStartBot->setVisible(false);
         }
-
-        const int64_t endInclusive = session.selection.getEndInt();
-        const int64_t endToUse = endInclusive + 1;
-        const int32_t endX = Waveform::getXPosForSampleIndex(
-            endToUse, sampleOffset, samplesPerPixel);
 
         if (endX >= 0 && endX <= waveforms->getWidth())
         {

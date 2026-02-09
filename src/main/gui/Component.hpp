@@ -97,7 +97,7 @@ namespace cupuacu::gui
             return {0.0f, 0.0f, (float)width, (float)height};
         }
 
-        SDL_Rect getAbsoluteBounds()
+        SDL_Rect getAbsoluteBounds() const
         {
             auto rect = getLocalBounds();
             const auto [absX, absY] = getAbsolutePosition();
