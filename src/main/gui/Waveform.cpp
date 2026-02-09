@@ -322,6 +322,8 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
 
     const double samplesPerPixel = viewState.samplesPerPixel;
     const int64_t sampleOffset = viewState.sampleOffset;
+    const double blockRenderPhasePx =
+        getBlockRenderPhasePixels(sampleOffset, samplesPerPixel);
     const double verticalZoom = viewState.verticalZoom;
     const int widthToUse = getWidth();
     const int heightToUse = getHeight();
@@ -362,9 +364,10 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
 
     auto getPeakForPixel = [&](const int x, Peak &out) -> bool
     {
-        const double aD = (double)sampleOffset + (double)x * samplesPerPixel;
-        const double bD =
-            (double)sampleOffset + (double)(x + 1) * samplesPerPixel;
+        double aD = 0.0;
+        double bD = 0.0;
+        getBlockRenderSampleWindowForPixel(x, sampleOffset, samplesPerPixel, aD,
+                                           bD);
 
         if (bD <= 0.0)
         {
@@ -416,13 +419,20 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
         return true;
     };
 
+    float prevX = 0.0f;
     int prevY = 0;
     bool hasPrev = false;
 
-    for (int x = 0; x < widthToUse; ++x)
+    for (int x = 0; x < widthToUse + 1; ++x)
     {
         Peak p;
         if (!getPeakForPixel(x, p))
+        {
+            continue;
+        }
+
+        const float drawX = static_cast<float>(x - blockRenderPhasePx);
+        if (drawX < -1.0f || drawX > static_cast<float>(widthToUse))
         {
             continue;
         }
@@ -433,18 +443,19 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
 
         if (y1 != y2)
         {
-            SDL_RenderLine(renderer, x, y1, x, y2);
+            SDL_RenderLine(renderer, drawX, y1, drawX, y2);
         }
         else
         {
-            SDL_RenderPoint(renderer, x, y1);
+            SDL_RenderPoint(renderer, drawX, y1);
         }
 
         if (hasPrev)
         {
-            SDL_RenderLine(renderer, x - 1, prevY, x, midY);
+            SDL_RenderLine(renderer, prevX, prevY, drawX, midY);
         }
 
+        prevX = drawX;
         prevY = midY;
         hasPrev = true;
     }

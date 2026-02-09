@@ -105,6 +105,67 @@ namespace cupuacu::gui
                                                          samplesPerPixel)));
         }
 
+        static double getBlockRenderSampleAnchor(const int64_t sampleOffset,
+                                                 const double samplesPerPixel)
+        {
+            if (samplesPerPixel <= 0.0)
+            {
+                return static_cast<double>(sampleOffset);
+            }
+            const long double spp = static_cast<long double>(samplesPerPixel);
+            const long double offset =
+                static_cast<long double>(sampleOffset);
+            const auto anchorIndex =
+                static_cast<int64_t>(std::floor(offset / spp));
+            return static_cast<double>(static_cast<long double>(anchorIndex) *
+                                       spp);
+        }
+
+        static double getBlockRenderPhasePixels(const int64_t sampleOffset,
+                                                const double samplesPerPixel)
+        {
+            if (samplesPerPixel <= 0.0)
+            {
+                return 0.0;
+            }
+            const long double spp = static_cast<long double>(samplesPerPixel);
+            const long double offset =
+                static_cast<long double>(sampleOffset);
+            const auto anchorIndex =
+                static_cast<int64_t>(std::floor(offset / spp));
+            const long double phaseSamples =
+                offset - static_cast<long double>(anchorIndex) * spp;
+            return static_cast<double>(phaseSamples / spp);
+        }
+
+        static void getBlockRenderSampleWindowForPixel(
+            const int x, const int64_t sampleOffset,
+            const double samplesPerPixel, double &outStartSample,
+            double &outEndSample)
+        {
+            if (samplesPerPixel <= 0.0)
+            {
+                outStartSample = static_cast<double>(sampleOffset);
+                outEndSample = outStartSample;
+                return;
+            }
+
+            const long double spp = static_cast<long double>(samplesPerPixel);
+            const long double offset =
+                static_cast<long double>(sampleOffset);
+            const auto anchorIndex =
+                static_cast<int64_t>(std::floor(offset / spp));
+
+            outStartSample = static_cast<double>(
+                (static_cast<long double>(anchorIndex) +
+                 static_cast<long double>(x)) *
+                spp);
+            outEndSample = static_cast<double>(
+                (static_cast<long double>(anchorIndex) +
+                 static_cast<long double>(x + 1)) *
+                spp);
+        }
+
         Waveform(State *, const uint8_t channelIndex);
 
         void onDraw(SDL_Renderer *) override;

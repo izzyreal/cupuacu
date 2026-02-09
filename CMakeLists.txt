@@ -110,6 +110,7 @@ add_executable(cupuacu-tests
     src/test/test_edit_commands.cpp
     src/test/test_zoom.cpp
     src/test/test_waveform_selection.cpp
+    src/test/test_waveform_block_render.cpp
     src/test/test_main_view_selection_markers.cpp
     src/test/test_main_view_layout.cpp
     src/test/test_wheel_scroll.cpp
