@@ -48,36 +48,6 @@ AddDependency(PlatformFolders "https://github.com/sago007/PlatformFolders.git" "
 FetchContent_Declare(json URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(json)
 
-add_executable(Cupuacu
-    src/main/main.cpp
-    src/main/State.cpp
-    src/main/Paths.cpp
-    src/main/persistence/AudioDevicePropertiesPersistence.cpp
-    src/main/audio/AudioDevices.cpp
-    src/main/audio/AudioCallbackCore.cpp
-    src/main/audio/AudioDeviceView.cpp
-    src/main/gui/Gui.cpp
-    src/main/gui/DocumentSessionWindow.cpp
-    src/main/gui/MainView.cpp
-    src/main/gui/TriangleMarker.cpp
-    src/main/gui/Component.cpp
-    src/main/gui/Button.cpp
-    src/main/gui/TextButton.cpp
-    src/main/gui/Label.cpp
-    src/main/gui/DropdownMenu.cpp
-    src/main/gui/DevicePropertiesWindow.cpp
-    src/main/gui/ScrollBar.cpp
-    src/main/gui/WaveformsUnderlay.cpp
-    src/main/gui/Waveforms.cpp
-    src/main/gui/Waveform.cpp
-    src/main/gui/SamplePoint.cpp
-    src/main/gui/Menu.cpp
-    src/main/gui/MenuBar.cpp
-    src/main/gui/Window.cpp
-    src/main/actions/Play.cpp
-    src/main/actions/Record.cpp
-)
-
 set(CUPUACU_SHARED_SOURCES
     src/main/State.cpp
     src/main/Paths.cpp
@@ -125,36 +95,6 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_audio_callback_core.cpp
 )
 
-add_executable(cupuacu-tests
-    ${CUPUACU_SHARED_SOURCES}
-    ${CUPUACU_TEST_SOURCES}
-)
-
-target_link_libraries(Cupuacu PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf)
-target_link_libraries(Cupuacu PRIVATE SndFile::sndfile)
-target_link_libraries(Cupuacu PRIVATE portaudio)
-target_link_libraries(Cupuacu PRIVATE platform_folders)
-target_link_libraries(Cupuacu PRIVATE nlohmann_json::nlohmann_json)
-
-target_link_libraries(cupuacu-tests PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf)
-target_link_libraries(cupuacu-tests PRIVATE SndFile::sndfile)
-target_link_libraries(cupuacu-tests PRIVATE portaudio)
-target_link_libraries(cupuacu-tests PRIVATE platform_folders)
-target_link_libraries(cupuacu-tests PRIVATE nlohmann_json::nlohmann_json)
-target_link_libraries(cupuacu-tests PRIVATE Catch2::Catch2WithMain)
-
-target_include_directories(Cupuacu PRIVATE src/main/)
-target_include_directories(Cupuacu PRIVATE ${readerwriterqueue_SOURCE_DIR})
-target_include_directories(cupuacu-tests PRIVATE src/main/)
-target_include_directories(cupuacu-tests PRIVATE ${readerwriterqueue_SOURCE_DIR})
-target_compile_definitions(cupuacu-tests PRIVATE
-    CUPUACU_RTSAN_LIBS_ENABLED=0
-    CUPUACU_TSAN_ENABLED=0
-)
-
-_bundle_resources(Cupuacu)
-target_link_libraries(cupuacu-tests PUBLIC cupuacu::rc)
-
 set(CUPUACU_RTSAN_SUPPORTED OFF)
 if(APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(CUPUACU_RTSAN_SUPPORTED ON)
@@ -180,28 +120,97 @@ if(CUPUACU_ENABLE_RTSAN_LIBS OR CUPUACU_RTSAN_SUPPORTED)
     FetchContent_MakeAvailable(rtsan)
 endif()
 
+add_library(cupuacu_deps INTERFACE)
+target_link_libraries(cupuacu_deps INTERFACE
+    SDL3::SDL3
+    SDL3_ttf::SDL3_ttf
+    SndFile::sndfile
+    portaudio
+    platform_folders
+    nlohmann_json::nlohmann_json
+)
+
+function(cupuacu_add_core_target target enable_rtsan enable_tsan)
+    add_library("${target}" STATIC ${CUPUACU_SHARED_SOURCES})
+    target_link_libraries("${target}" PUBLIC cupuacu_deps)
+    target_include_directories("${target}" PUBLIC
+        src/main/
+        ${readerwriterqueue_SOURCE_DIR}
+        ${CMRC_INCLUDE_DIR}
+    )
+
+    if(enable_tsan)
+        cupuacu_enable_tsan_for_target("${target}" _tsan_enabled_for_core)
+        if(NOT _tsan_enabled_for_core)
+            message(FATAL_ERROR "ThreadSanitizer not active for core target '${target}'")
+        endif()
+        target_compile_definitions("${target}" PUBLIC
+            CUPUACU_RTSAN_LIBS_ENABLED=0
+            CUPUACU_TSAN_ENABLED=1
+        )
+    elseif(enable_rtsan)
+        if(NOT CUPUACU_RTSAN_SUPPORTED)
+            message(FATAL_ERROR "RTSan requested for unsupported core target '${target}'")
+        endif()
+        rtsan_libs_enable(TARGET "${target}")
+        target_compile_definitions("${target}" PUBLIC
+            CUPUACU_RTSAN_LIBS_ENABLED=1
+            CUPUACU_TSAN_ENABLED=0
+        )
+    else()
+        target_compile_definitions("${target}" PUBLIC
+            CUPUACU_RTSAN_LIBS_ENABLED=0
+            CUPUACU_TSAN_ENABLED=0
+        )
+    endif()
+endfunction()
+
+cupuacu_add_core_target(cupuacu_core OFF OFF)
+
+if(CUPUACU_RTSAN_SUPPORTED)
+    cupuacu_add_core_target(cupuacu_core_rtsan ON OFF)
+endif()
+
+if(CUPUACU_TSAN_SUPPORTED)
+    cupuacu_add_core_target(cupuacu_core_tsan OFF ON)
+endif()
+
+set(_cupuacu_app_core_target cupuacu_core)
+if(CUPUACU_ENABLE_RTSAN_LIBS)
+    if(CUPUACU_RTSAN_SUPPORTED)
+        set(_cupuacu_app_core_target cupuacu_core_rtsan)
+    else()
+        message(FATAL_ERROR "CUPUACU_ENABLE_RTSAN_LIBS=ON but RTSan is unsupported for this platform")
+    endif()
+endif()
+
+add_executable(Cupuacu
+    src/main/main.cpp
+)
+target_link_libraries(Cupuacu PRIVATE "${_cupuacu_app_core_target}")
 if(CUPUACU_ENABLE_RTSAN_LIBS)
     rtsan_libs_enable(TARGET Cupuacu)
-    target_compile_definitions(Cupuacu PRIVATE CUPUACU_RTSAN_LIBS_ENABLED=1)
-else()
-    target_compile_definitions(Cupuacu PRIVATE CUPUACU_RTSAN_LIBS_ENABLED=0)
 endif()
+
+add_executable(cupuacu-tests
+    ${CUPUACU_TEST_SOURCES}
+)
+target_link_libraries(cupuacu-tests PRIVATE cupuacu_core Catch2::Catch2WithMain)
+target_compile_definitions(cupuacu-tests PRIVATE
+    CUPUACU_RTSAN_LIBS_ENABLED=0
+    CUPUACU_TSAN_ENABLED=0
+)
+
+_bundle_resources(Cupuacu)
+target_link_libraries(cupuacu-tests PUBLIC cupuacu::rc)
 
 if(CUPUACU_RTSAN_SUPPORTED)
     add_executable(cupuacu-tests-rtsan
-        ${CUPUACU_SHARED_SOURCES}
         src/test/test_rtsan.cpp
         src/test/test_audio_callback_core.cpp
     )
-    target_link_libraries(cupuacu-tests-rtsan PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf)
-    target_link_libraries(cupuacu-tests-rtsan PRIVATE SndFile::sndfile)
-    target_link_libraries(cupuacu-tests-rtsan PRIVATE portaudio)
-    target_link_libraries(cupuacu-tests-rtsan PRIVATE platform_folders)
-    target_link_libraries(cupuacu-tests-rtsan PRIVATE nlohmann_json::nlohmann_json)
-    target_link_libraries(cupuacu-tests-rtsan PRIVATE Catch2::Catch2WithMain)
+    target_link_libraries(cupuacu-tests-rtsan PRIVATE cupuacu_core_rtsan Catch2::Catch2WithMain)
     target_link_libraries(cupuacu-tests-rtsan PUBLIC cupuacu::rc)
-    target_include_directories(cupuacu-tests-rtsan PRIVATE src/main/)
-    target_include_directories(cupuacu-tests-rtsan PRIVATE ${readerwriterqueue_SOURCE_DIR})
     rtsan_libs_enable(TARGET cupuacu-tests-rtsan)
     target_compile_definitions(cupuacu-tests-rtsan PRIVATE
         CUPUACU_RTSAN_LIBS_ENABLED=1
@@ -218,19 +227,11 @@ if(CUPUACU_RTSAN_SUPPORTED)
         endif()
 
         add_executable(cupuacu-tests-tsan
-            ${CUPUACU_SHARED_SOURCES}
             ${CUPUACU_TEST_SOURCES}
             src/test/test_tsan_verification.cpp
         )
-        target_link_libraries(cupuacu-tests-tsan PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf)
-        target_link_libraries(cupuacu-tests-tsan PRIVATE SndFile::sndfile)
-        target_link_libraries(cupuacu-tests-tsan PRIVATE portaudio)
-        target_link_libraries(cupuacu-tests-tsan PRIVATE platform_folders)
-        target_link_libraries(cupuacu-tests-tsan PRIVATE nlohmann_json::nlohmann_json)
-        target_link_libraries(cupuacu-tests-tsan PRIVATE Catch2::Catch2WithMain)
+        target_link_libraries(cupuacu-tests-tsan PRIVATE cupuacu_core_tsan Catch2::Catch2WithMain)
         target_link_libraries(cupuacu-tests-tsan PUBLIC cupuacu::rc)
-        target_include_directories(cupuacu-tests-tsan PRIVATE src/main/)
-        target_include_directories(cupuacu-tests-tsan PRIVATE ${readerwriterqueue_SOURCE_DIR})
         target_compile_definitions(cupuacu-tests-tsan PRIVATE CUPUACU_RTSAN_LIBS_ENABLED=0)
         target_compile_definitions(cupuacu-tests-tsan PRIVATE
             CUPUACU_TSAN_RACE_PROBE_PATH="$<TARGET_FILE:cupuacu-tsan-race-probe>")
