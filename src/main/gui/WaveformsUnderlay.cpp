@@ -23,7 +23,10 @@ int64_t getValidSampleIndexUnderMouseCursor(const int32_t mouseX,
                                             const int64_t sampleOffset,
                                             const int64_t frameCount)
 {
-    assert(frameCount > 0);
+    if (frameCount <= 0)
+    {
+        return 0;
+    }
     const int64_t sampleIndex =
         static_cast<int64_t>(mouseX * samplesPerPixel) + sampleOffset;
     return std::clamp(sampleIndex, int64_t{0}, frameCount - 1);
@@ -168,6 +171,13 @@ bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
     auto &session = state->activeDocumentSession;
     auto &doc = session.document;
     auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    if (state->waveforms.empty() || doc.getChannelCount() <= 0 ||
+        doc.getFrameCount() <= 0)
+    {
+        resetSampleValueUnderMouseCursor(state);
+        handleChannelSelection(e.mouseYi, false);
+        return false;
+    }
 
     if (Waveform::shouldShowSamplePoints(viewState.samplesPerPixel,
                                          state->pixelScale))
@@ -355,6 +365,10 @@ uint16_t WaveformsUnderlay::channelHeight() const
 
 uint8_t WaveformsUnderlay::channelAt(const uint16_t y) const
 {
+    if (state->waveforms.empty())
+    {
+        return 0;
+    }
     const int ch = y / channelHeight();
     const int maxCh = static_cast<int>(state->waveforms.size()) - 1;
     return std::clamp(ch, 0, maxCh);
