@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 
 include(cmake/ResourceBundling.cmake)
 include(cmake/ClangFormat.cmake)
+include(cmake/ThreadSanitizer.cmake)
 
 project(Cupuacu)
 
@@ -77,7 +78,7 @@ add_executable(Cupuacu
     src/main/actions/Record.cpp
 )
 
-add_executable(cupuacu-tests
+set(CUPUACU_SHARED_SOURCES
     src/main/State.cpp
     src/main/Paths.cpp
     src/main/persistence/AudioDevicePropertiesPersistence.cpp
@@ -104,6 +105,9 @@ add_executable(cupuacu-tests
     src/main/gui/Window.cpp
     src/main/actions/Play.cpp
     src/main/actions/Record.cpp
+)
+
+set(CUPUACU_TEST_SOURCES
     src/test/TestSdlTtfGuard.cpp
     src/test/test_playback_follow.cpp
     src/test/test_playback_range.cpp
@@ -121,11 +125,10 @@ add_executable(cupuacu-tests
     src/test/test_audio_callback_core.cpp
 )
 
-if(APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    target_sources(cupuacu-tests PRIVATE
-        src/test/test_rtsan.cpp
-    )
-endif()
+add_executable(cupuacu-tests
+    ${CUPUACU_SHARED_SOURCES}
+    ${CUPUACU_TEST_SOURCES}
+)
 
 target_link_libraries(Cupuacu PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf)
 target_link_libraries(Cupuacu PRIVATE SndFile::sndfile)
@@ -144,6 +147,10 @@ target_include_directories(Cupuacu PRIVATE src/main/)
 target_include_directories(Cupuacu PRIVATE ${readerwriterqueue_SOURCE_DIR})
 target_include_directories(cupuacu-tests PRIVATE src/main/)
 target_include_directories(cupuacu-tests PRIVATE ${readerwriterqueue_SOURCE_DIR})
+target_compile_definitions(cupuacu-tests PRIVATE
+    CUPUACU_RTSAN_LIBS_ENABLED=0
+    CUPUACU_TSAN_ENABLED=0
+)
 
 _bundle_resources(Cupuacu)
 target_link_libraries(cupuacu-tests PUBLIC cupuacu::rc)
@@ -151,6 +158,17 @@ target_link_libraries(cupuacu-tests PUBLIC cupuacu::rc)
 set(CUPUACU_RTSAN_SUPPORTED OFF)
 if(APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(CUPUACU_RTSAN_SUPPORTED ON)
+endif()
+
+set(CUPUACU_TSAN_SUPPORTED OFF)
+if(APPLE)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        set(CUPUACU_TSAN_SUPPORTED ON)
+    endif()
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        set(CUPUACU_TSAN_SUPPORTED ON)
+    endif()
 endif()
 
 if(CUPUACU_ENABLE_RTSAN_LIBS OR CUPUACU_RTSAN_SUPPORTED)
@@ -170,10 +188,60 @@ else()
 endif()
 
 if(CUPUACU_RTSAN_SUPPORTED)
-    rtsan_libs_enable(TARGET cupuacu-tests)
-    target_compile_definitions(cupuacu-tests PRIVATE CUPUACU_RTSAN_LIBS_ENABLED=1)
-else()
-    target_compile_definitions(cupuacu-tests PRIVATE CUPUACU_RTSAN_LIBS_ENABLED=0)
+    add_executable(cupuacu-tests-rtsan
+        ${CUPUACU_SHARED_SOURCES}
+        src/test/test_rtsan.cpp
+        src/test/test_audio_callback_core.cpp
+    )
+    target_link_libraries(cupuacu-tests-rtsan PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf)
+    target_link_libraries(cupuacu-tests-rtsan PRIVATE SndFile::sndfile)
+    target_link_libraries(cupuacu-tests-rtsan PRIVATE portaudio)
+    target_link_libraries(cupuacu-tests-rtsan PRIVATE platform_folders)
+    target_link_libraries(cupuacu-tests-rtsan PRIVATE nlohmann_json::nlohmann_json)
+    target_link_libraries(cupuacu-tests-rtsan PRIVATE Catch2::Catch2WithMain)
+    target_link_libraries(cupuacu-tests-rtsan PUBLIC cupuacu::rc)
+    target_include_directories(cupuacu-tests-rtsan PRIVATE src/main/)
+    target_include_directories(cupuacu-tests-rtsan PRIVATE ${readerwriterqueue_SOURCE_DIR})
+    rtsan_libs_enable(TARGET cupuacu-tests-rtsan)
+    target_compile_definitions(cupuacu-tests-rtsan PRIVATE
+        CUPUACU_RTSAN_LIBS_ENABLED=1
+        CUPUACU_TSAN_ENABLED=0
+    )
+
+    if(CUPUACU_TSAN_SUPPORTED)
+        add_executable(cupuacu-tsan-race-probe
+            src/test/tsan_race_probe.cpp
+        )
+        cupuacu_enable_tsan_for_target(cupuacu-tsan-race-probe CUPUACU_TSAN_ENABLED_FOR_PROBE)
+        if(NOT CUPUACU_TSAN_ENABLED_FOR_PROBE)
+            message(FATAL_ERROR "cupuacu-tsan-race-probe created but TSan is inactive")
+        endif()
+
+        add_executable(cupuacu-tests-tsan
+            ${CUPUACU_SHARED_SOURCES}
+            ${CUPUACU_TEST_SOURCES}
+            src/test/test_tsan_verification.cpp
+        )
+        target_link_libraries(cupuacu-tests-tsan PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf)
+        target_link_libraries(cupuacu-tests-tsan PRIVATE SndFile::sndfile)
+        target_link_libraries(cupuacu-tests-tsan PRIVATE portaudio)
+        target_link_libraries(cupuacu-tests-tsan PRIVATE platform_folders)
+        target_link_libraries(cupuacu-tests-tsan PRIVATE nlohmann_json::nlohmann_json)
+        target_link_libraries(cupuacu-tests-tsan PRIVATE Catch2::Catch2WithMain)
+        target_link_libraries(cupuacu-tests-tsan PUBLIC cupuacu::rc)
+        target_include_directories(cupuacu-tests-tsan PRIVATE src/main/)
+        target_include_directories(cupuacu-tests-tsan PRIVATE ${readerwriterqueue_SOURCE_DIR})
+        target_compile_definitions(cupuacu-tests-tsan PRIVATE CUPUACU_RTSAN_LIBS_ENABLED=0)
+        target_compile_definitions(cupuacu-tests-tsan PRIVATE
+            CUPUACU_TSAN_RACE_PROBE_PATH="$<TARGET_FILE:cupuacu-tsan-race-probe>")
+        add_dependencies(cupuacu-tests-tsan cupuacu-tsan-race-probe)
+        cupuacu_enable_tsan_for_target(cupuacu-tests-tsan CUPUACU_TSAN_ENABLED_FOR_TESTS)
+        if(CUPUACU_TSAN_ENABLED_FOR_TESTS)
+            message(STATUS "ThreadSanitizer enabled for cupuacu-tests-tsan")
+        endif()
+    else()
+        message(STATUS "ThreadSanitizer not supported for this compiler/platform; cupuacu-tests-tsan not created")
+    endif()
 endif()
 
 if(CMAKE_GENERATOR STREQUAL "Xcode" AND CUPUACU_ENABLE_XCODE_TSAN_SUPPRESSIONS)
@@ -182,6 +250,10 @@ if(CMAKE_GENERATOR STREQUAL "Xcode" AND CUPUACU_ENABLE_XCODE_TSAN_SUPPRESSIONS)
     set_property(TARGET cupuacu-tests PROPERTY XCODE_GENERATE_SCHEME YES)
     set_property(TARGET Cupuacu PROPERTY XCODE_SCHEME_ENVIRONMENT "${_cupuacu_tsan_env}")
     set_property(TARGET cupuacu-tests PROPERTY XCODE_SCHEME_ENVIRONMENT "${_cupuacu_tsan_env}")
+    if(TARGET cupuacu-tests-tsan)
+        set_property(TARGET cupuacu-tests-tsan PROPERTY XCODE_GENERATE_SCHEME YES)
+        set_property(TARGET cupuacu-tests-tsan PROPERTY XCODE_SCHEME_ENVIRONMENT "${_cupuacu_tsan_env}")
+    endif()
 endif()
 
 if (PROJECT_IS_TOP_LEVEL)
