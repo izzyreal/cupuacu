@@ -9,6 +9,7 @@ namespace cupuacu::gui
     {
     public:
         Waveforms(State *);
+        void onDraw(SDL_Renderer *renderer) override;
 
         void rebuildWaveforms();
 

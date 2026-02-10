@@ -12,6 +12,14 @@ Waveforms::Waveforms(State *state) : Component(state, "Waveforms")
     waveformsUnderlay = emplaceChild<WaveformsUnderlay>(state);
 }
 
+void Waveforms::onDraw(SDL_Renderer *renderer)
+{
+    // Always paint the waveform area so stale popup/menu pixels are cleared
+    // even when there are zero channel waveform children.
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderFillRect(renderer, nullptr);
+}
+
 void Waveforms::rebuildWaveforms()
 {
     for (const auto &w : state->waveforms)
