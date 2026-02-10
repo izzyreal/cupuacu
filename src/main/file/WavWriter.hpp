@@ -11,6 +11,7 @@
 #include <stdexcept>
 #include <vector>
 #include <cstdio>
+#include <cstring>
 
 namespace cupuacu::file
 {
