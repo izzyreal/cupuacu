@@ -1,0 +1,229 @@
+version: 1
+project:
+  name: cupuacu
+
+pipelines:
+  - id: build
+    trigger: manual
+    source:
+      repo: https://github.com/izzyreal/cupuacu.git
+    versioning:
+      file: VERSION
+      tag_prefix: v
+    jobs:
+      - id: linux-amd64
+        runs_on:
+          executor: script
+          shell: posix
+          os: linux
+          arch: amd64
+        requires:
+          tools:
+            git: "*"
+            cmake: "*"
+        timeout_seconds: 1800
+        artifacts:
+          - dist/**
+        steps:
+          - run: mkdir -p build/linux-amd64 dist
+          - run: cmake -S . -B build/linux-amd64 -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release
+          - run: cmake --build build/linux-amd64 --config Release --target Cupuacu cupuacu-tests
+          - run: ctest --test-dir build/linux-amd64 -C Release --output-on-failure
+          - run: cp build/linux-amd64/Cupuacu dist/cupuacu-linux-amd64
+          - run: cp build/linux-amd64/cupuacu-tests dist/cupuacu-tests-linux-amd64
+
+      - id: macos-universal
+        runs_on:
+          executor: script
+          shell: posix
+          os: darwin
+          arch: arm64
+        requires:
+          tools:
+            git: "*"
+            cmake: "*"
+        timeout_seconds: 1800
+        artifacts:
+          - dist/**
+        steps:
+          - run: mkdir -p build/macos-universal dist
+          - run: cmake -S . -B build/macos-universal -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+          - run: cmake --build build/macos-universal --config Release --target Cupuacu cupuacu-tests
+          - run: ctest --test-dir build/macos-universal -C Release --output-on-failure
+          - run: cp build/macos-universal/Cupuacu dist/cupuacu-macos-universal
+          - run: cp build/macos-universal/cupuacu-tests dist/cupuacu-tests-macos-universal
+
+      - id: windows-amd64
+        runs_on:
+          executor: script
+          shell: cmd
+          os: windows
+          arch: amd64
+        requires:
+          tools:
+            git: "*"
+            cmake: "*"
+        timeout_seconds: 1800
+        artifacts:
+          - dist/**
+        steps:
+          - run: if not exist build\windows-amd64 mkdir build\windows-amd64
+          - run: if not exist dist mkdir dist
+          - run: cmake -S . -B build\windows-amd64 -G "Visual Studio 18 2026" -A x64
+          - run: cmake --build build\windows-amd64 --config Release --target Cupuacu cupuacu-tests
+          - run: ctest --test-dir build\windows-amd64 -C Release --output-on-failure
+          - run: copy /Y build\windows-amd64\Release\Cupuacu.exe dist\cupuacu-windows-amd64.exe
+          - run: copy /Y build\windows-amd64\Release\cupuacu-tests.exe dist\cupuacu-tests-windows-amd64.exe
+
+  - id: release
+    trigger: manual
+    depends_on:
+      - build
+    source:
+      repo: https://github.com/izzyreal/cupuacu.git
+    versioning:
+      file: VERSION
+      tag_prefix: v
+    jobs:
+      - id: release-linux-amd64
+        runs_on:
+          executor: script
+          shell: posix
+          os: linux
+          arch: amd64
+        requires:
+          tools:
+            git: "*"
+            cmake: "*"
+            gh: "*"
+        timeout_seconds: 2400
+        artifacts:
+          - dist/**
+        steps:
+          - run: command -v gh >/dev/null 2>&1 || { echo "gh CLI is required"; exit 1; }
+          - run: test -n "$GITHUB_TOKEN"
+          - run: mkdir -p build/linux-amd64 dist
+          - run: cmake -S . -B build/linux-amd64 -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release
+          - run: cmake --build build/linux-amd64 --config Release --target Cupuacu cupuacu-tests
+          - run: ctest --test-dir build/linux-amd64 -C Release --output-on-failure
+          - run: cp build/linux-amd64/Cupuacu dist/cupuacu-linux-amd64
+          - run: cp build/linux-amd64/cupuacu-tests dist/cupuacu-tests-linux-amd64
+          - run: shasum -a 256 dist/cupuacu-linux-amd64 dist/cupuacu-tests-linux-amd64 > dist/cupuacu-linux-amd64-checksums.txt
+          - run: |
+              TAG="${CIWI_PIPELINE_TAG}"
+              git config user.name "ciwi-agent"
+              git config user.email "ciwi-agent@local"
+              git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/izzyreal/cupuacu.git"
+              if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+                git tag -a "$TAG" -m "cupuacu $TAG"
+                git push origin "$TAG"
+              fi
+          - run: |
+              TAG="${CIWI_PIPELINE_TAG}"
+              if ! gh release view "$TAG" --repo izzyreal/cupuacu >/dev/null 2>&1; then
+                gh release create "$TAG" \
+                  --repo izzyreal/cupuacu \
+                  --title "cupuacu $TAG" \
+                  --notes "Release $TAG"
+              fi
+              gh release upload "$TAG" \
+                dist/cupuacu-linux-amd64 \
+                dist/cupuacu-tests-linux-amd64 \
+                dist/cupuacu-linux-amd64-checksums.txt \
+                --repo izzyreal/cupuacu \
+                --clobber
+              echo "__CIWI_RELEASE_SUMMARY__ version=${CIWI_PIPELINE_VERSION_RAW}"
+              echo "__CIWI_RELEASE_SUMMARY__ tag=${CIWI_PIPELINE_TAG}"
+              echo "__CIWI_RELEASE_SUMMARY__ uploaded=linux-amd64"
+
+      - id: release-macos-universal
+        runs_on:
+          executor: script
+          shell: posix
+          os: darwin
+          arch: arm64
+        requires:
+          tools:
+            git: "*"
+            cmake: "*"
+            gh: "*"
+        timeout_seconds: 2400
+        artifacts:
+          - dist/**
+        steps:
+          - run: command -v gh >/dev/null 2>&1 || { echo "gh CLI is required"; exit 1; }
+          - run: test -n "$GITHUB_TOKEN"
+          - run: mkdir -p build/macos-universal dist
+          - run: cmake -S . -B build/macos-universal -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+          - run: cmake --build build/macos-universal --config Release --target Cupuacu cupuacu-tests
+          - run: ctest --test-dir build/macos-universal -C Release --output-on-failure
+          - run: cp build/macos-universal/Cupuacu dist/cupuacu-macos-universal
+          - run: cp build/macos-universal/cupuacu-tests dist/cupuacu-tests-macos-universal
+          - run: shasum -a 256 dist/cupuacu-macos-universal dist/cupuacu-tests-macos-universal > dist/cupuacu-macos-universal-checksums.txt
+          - run: |
+              TAG="${CIWI_PIPELINE_TAG}"
+              for i in $(seq 1 180); do
+                if gh release view "$TAG" --repo izzyreal/cupuacu >/dev/null 2>&1; then
+                  break
+                fi
+                sleep 2
+              done
+              gh release view "$TAG" --repo izzyreal/cupuacu >/dev/null
+              gh release upload "$TAG" \
+                dist/cupuacu-macos-universal \
+                dist/cupuacu-tests-macos-universal \
+                dist/cupuacu-macos-universal-checksums.txt \
+                --repo izzyreal/cupuacu \
+                --clobber
+              echo "__CIWI_RELEASE_SUMMARY__ uploaded=macos-universal"
+
+      - id: release-windows-amd64
+        runs_on:
+          executor: script
+          shell: cmd
+          os: windows
+          arch: amd64
+        requires:
+          tools:
+            git: "*"
+            cmake: "*"
+            gh: "*"
+        timeout_seconds: 2400
+        artifacts:
+          - dist/**
+        steps:
+          - run: if "%GITHUB_TOKEN%"=="" (echo GITHUB_TOKEN is required & exit /b 1)
+          - run: if not exist build\windows-amd64 mkdir build\windows-amd64
+          - run: if not exist dist mkdir dist
+          - run: cmake -S . -B build\windows-amd64 -G "Visual Studio 17 2022" -A x64
+          - run: cmake --build build\windows-amd64 --config Release --target Cupuacu cupuacu-tests
+          - run: ctest --test-dir build\windows-amd64 -C Release --output-on-failure
+          - run: copy /Y build\windows-amd64\Release\Cupuacu.exe dist\cupuacu-windows-amd64.exe
+          - run: copy /Y build\windows-amd64\Release\cupuacu-tests.exe dist\cupuacu-tests-windows-amd64.exe
+          - run: certutil -hashfile dist\cupuacu-windows-amd64.exe SHA256 > dist\cupuacu-windows-amd64.sha256.txt
+          - run: certutil -hashfile dist\cupuacu-tests-windows-amd64.exe SHA256 > dist\cupuacu-tests-windows-amd64.sha256.txt
+          - run: |
+              set TAG=%CIWI_PIPELINE_TAG%
+              set REPO=izzyreal/cupuacu
+              set FOUND=
+              for /L %%I in (1,1,180) do (
+                gh release view "%TAG%" --repo "%REPO%" >NUL 2>&1
+                if not errorlevel 1 (
+                  set FOUND=1
+                  goto release_ready
+                )
+                timeout /t 2 /nobreak >NUL
+              )
+              :release_ready
+              if "%FOUND%"=="" (
+                echo release %TAG% not found
+                exit /b 1
+              )
+              gh release upload "%TAG%" ^
+                dist\cupuacu-windows-amd64.exe ^
+                dist\cupuacu-tests-windows-amd64.exe ^
+                dist\cupuacu-windows-amd64.sha256.txt ^
+                dist\cupuacu-tests-windows-amd64.sha256.txt ^
+                --repo "%REPO%" ^
+                --clobber
+              echo __CIWI_RELEASE_SUMMARY__ uploaded=windows-amd64
