@@ -48,7 +48,11 @@ pipelines:
           - run: mkdir -p build/linux-amd64 dist
           - run: cmake -S . -B build/linux-amd64 -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR"
           - run: cmake --build build/linux-amd64 --config Release --target Cupuacu cupuacu-tests
-          - run: ctest --test-dir build/linux-amd64 -C Release --output-on-failure
+          - test:
+              name: cupuacu-tests
+              command: ./build/linux-amd64/cupuacu-tests --reporter JUnit --out build/linux-amd64/result-junit.xml
+              format: junit-xml
+              report: build/linux-amd64/result-junit.xml
           - run: cp build/linux-amd64/Cupuacu dist/cupuacu-linux-amd64
           - run: cp build/linux-amd64/cupuacu-tests dist/cupuacu-tests-linux-amd64
 
@@ -89,7 +93,11 @@ pipelines:
           - run: mkdir -p build/macos-universal dist
           - run: cmake -S . -B build/macos-universal -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DFETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR"
           - run: cmake --build build/macos-universal --config Release --target Cupuacu cupuacu-tests
-          - run: ctest --test-dir build/macos-universal -C Release --output-on-failure
+          - test:
+              name: cupuacu-tests
+              command: ./build/macos-universal/cupuacu-tests --reporter JUnit --out build/macos-universal/result-junit.xml
+              format: junit-xml
+              report: build/macos-universal/result-junit.xml
           - run: cp build/macos-universal/Cupuacu dist/cupuacu-macos-universal
           - run: cp build/macos-universal/cupuacu-tests dist/cupuacu-tests-macos-universal
 
@@ -131,7 +139,11 @@ pipelines:
           - run: if not exist dist mkdir dist
           - run: cmake -S . -B build\windows-amd64 -G "Visual Studio 18 2026" -A x64 -DFETCHCONTENT_BASE_DIR="%FETCHCONTENT_BASE_DIR%"
           - run: cmake --build build\windows-amd64 --config Release --target Cupuacu cupuacu-tests
-          - run: ctest --test-dir build\windows-amd64 -C Release --output-on-failure
+          - test:
+              name: cupuacu-tests
+              command: build\windows-amd64\Release\cupuacu-tests.exe --reporter JUnit --out build\windows-amd64\result-junit.xml
+              format: junit-xml
+              report: build/windows-amd64/result-junit.xml
           - run: copy /Y build\windows-amd64\Release\Cupuacu.exe dist\cupuacu-windows-amd64.exe
           - run: copy /Y build\windows-amd64\Release\cupuacu-tests.exe dist\cupuacu-tests-windows-amd64.exe
 
@@ -157,8 +169,6 @@ pipelines:
             cmake: "*"
             gh: "*"
         timeout_seconds: 2400
-        artifacts:
-          - dist/**
         caches:
           - id: fetchcontent
             env: FETCHCONTENT_BASE_DIR
@@ -185,7 +195,6 @@ pipelines:
           - run: mkdir -p build/linux-amd64 dist
           - run: cmake -S . -B build/linux-amd64 -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR"
           - run: cmake --build build/linux-amd64 --config Release --target Cupuacu cupuacu-tests
-          - run: ctest --test-dir build/linux-amd64 -C Release --output-on-failure
           - run: cp build/linux-amd64/Cupuacu dist/cupuacu-linux-amd64
           - run: cp build/linux-amd64/cupuacu-tests dist/cupuacu-tests-linux-amd64
           - run: shasum -a 256 dist/cupuacu-linux-amd64 dist/cupuacu-tests-linux-amd64 > dist/cupuacu-linux-amd64-checksums.txt
@@ -228,8 +237,6 @@ pipelines:
             cmake: "*"
             gh: "*"
         timeout_seconds: 2400
-        artifacts:
-          - dist/**
         caches:
           - id: fetchcontent
             env: FETCHCONTENT_BASE_DIR
@@ -256,7 +263,6 @@ pipelines:
           - run: mkdir -p build/macos-universal dist
           - run: cmake -S . -B build/macos-universal -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DFETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR"
           - run: cmake --build build/macos-universal --config Release --target Cupuacu cupuacu-tests
-          - run: ctest --test-dir build/macos-universal -C Release --output-on-failure
           - run: cp build/macos-universal/Cupuacu dist/cupuacu-macos-universal
           - run: cp build/macos-universal/cupuacu-tests dist/cupuacu-tests-macos-universal
           - run: shasum -a 256 dist/cupuacu-macos-universal dist/cupuacu-tests-macos-universal > dist/cupuacu-macos-universal-checksums.txt
@@ -289,8 +295,6 @@ pipelines:
             cmake: "*"
             gh: "*"
         timeout_seconds: 2400
-        artifacts:
-          - dist/**
         caches:
           - id: fetchcontent
             env: FETCHCONTENT_BASE_DIR
@@ -317,7 +321,6 @@ pipelines:
           - run: if not exist dist mkdir dist
           - run: cmake -S . -B build\windows-amd64 -G "Visual Studio 17 2022" -A x64 -DFETCHCONTENT_BASE_DIR="%FETCHCONTENT_BASE_DIR%"
           - run: cmake --build build\windows-amd64 --config Release --target Cupuacu cupuacu-tests
-          - run: ctest --test-dir build\windows-amd64 -C Release --output-on-failure
           - run: copy /Y build\windows-amd64\Release\Cupuacu.exe dist\cupuacu-windows-amd64.exe
           - run: copy /Y build\windows-amd64\Release\cupuacu-tests.exe dist\cupuacu-tests-windows-amd64.exe
           - run: certutil -hashfile dist\cupuacu-windows-amd64.exe SHA256 > dist\cupuacu-windows-amd64.sha256.txt
