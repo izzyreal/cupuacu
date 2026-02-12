@@ -7,6 +7,10 @@ include(cmake/ThreadSanitizer.cmake)
 project(Cupuacu)
 
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "Prevent FetchContent from re-downloading sources" FORCE)
+if(NOT DEFINED FETCHCONTENT_BASE_DIR OR FETCHCONTENT_BASE_DIR STREQUAL "")
+    set(FETCHCONTENT_BASE_DIR "${CMAKE_SOURCE_DIR}/deps" CACHE PATH "Base directory used by FetchContent")
+endif()
+file(MAKE_DIRECTORY "${FETCHCONTENT_BASE_DIR}")
 option(CUPUACU_CODE_SIGNING_ENABLED "Enable post-build code signing on macOS" OFF)
 option(CUPUACU_ENABLE_XCODE_TSAN_SUPPRESSIONS
     "Inject TSAN_OPTIONS suppressions into CMake-generated Xcode schemes" ON)
@@ -24,7 +28,7 @@ macro(AddDependency name repo tag)
         GIT_REPOSITORY ${repo}
         GIT_TAG ${tag}
         GIT_SHALLOW TRUE
-        SOURCE_DIR ${CMAKE_SOURCE_DIR}/deps/${name}
+        SOURCE_DIR "${FETCHCONTENT_BASE_DIR}/${name}"
     )
 
     FetchContent_MakeAvailable(${name})
@@ -46,7 +50,12 @@ AddDependency(Catch2 "https://github.com/catchorg/Catch2.git" "v3.8.1")
 AddDependency(readerwriterqueue "https://github.com/cameron314/readerwriterqueue.git" "master")
 AddDependency(portaudio "https://github.com/PortAudio/portaudio.git" "master")
 AddDependency(PlatformFolders "https://github.com/sago007/PlatformFolders.git" "master")
-FetchContent_Declare(json URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_Declare(
+    json
+    URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    SOURCE_DIR "${FETCHCONTENT_BASE_DIR}/json"
+)
 FetchContent_MakeAvailable(json)
 
 set(CUPUACU_SHARED_SOURCES
@@ -117,6 +126,7 @@ if(CUPUACU_ENABLE_RTSAN_LIBS OR CUPUACU_RTSAN_SUPPORTED)
         rtsan
         GIT_REPOSITORY https://github.com/izzyreal/rtsan-libs-cmake.git
         GIT_TAG main
+        SOURCE_DIR "${FETCHCONTENT_BASE_DIR}/rtsan"
     )
     FetchContent_MakeAvailable(rtsan)
 endif()

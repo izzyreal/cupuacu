@@ -24,9 +24,29 @@ pipelines:
         timeout_seconds: 1800
         artifacts:
           - dist/**
+        caches:
+          - id: fetchcontent
+            env: FETCHCONTENT_BASE_DIR
+            key:
+              prefix: fetchcontent-v1
+              files:
+                - CMakeLists.txt
+                - cmake/**/*.cmake
+              runtime:
+                - os
+                - arch
+              tools:
+                - cmake
+              env:
+                - CC
+                - CXX
+                - CMAKE_TOOLCHAIN_FILE
+            policy: pull-push
+            ttl_days: 14
+            max_size_mb: 20480
         steps:
           - run: mkdir -p build/linux-amd64 dist
-          - run: cmake -S . -B build/linux-amd64 -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release
+          - run: cmake -S . -B build/linux-amd64 -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR"
           - run: cmake --build build/linux-amd64 --config Release --target Cupuacu cupuacu-tests
           - run: ctest --test-dir build/linux-amd64 -C Release --output-on-failure
           - run: cp build/linux-amd64/Cupuacu dist/cupuacu-linux-amd64
@@ -45,9 +65,29 @@ pipelines:
         timeout_seconds: 1800
         artifacts:
           - dist/**
+        caches:
+          - id: fetchcontent
+            env: FETCHCONTENT_BASE_DIR
+            key:
+              prefix: fetchcontent-v1
+              files:
+                - CMakeLists.txt
+                - cmake/**/*.cmake
+              runtime:
+                - os
+                - arch
+              tools:
+                - cmake
+              env:
+                - CC
+                - CXX
+                - CMAKE_TOOLCHAIN_FILE
+            policy: pull-push
+            ttl_days: 14
+            max_size_mb: 20480
         steps:
           - run: mkdir -p build/macos-universal dist
-          - run: cmake -S . -B build/macos-universal -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+          - run: cmake -S . -B build/macos-universal -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DFETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR"
           - run: cmake --build build/macos-universal --config Release --target Cupuacu cupuacu-tests
           - run: ctest --test-dir build/macos-universal -C Release --output-on-failure
           - run: cp build/macos-universal/Cupuacu dist/cupuacu-macos-universal
@@ -66,10 +106,30 @@ pipelines:
         timeout_seconds: 1800
         artifacts:
           - dist/**
+        caches:
+          - id: fetchcontent
+            env: FETCHCONTENT_BASE_DIR
+            key:
+              prefix: fetchcontent-v1
+              files:
+                - CMakeLists.txt
+                - cmake/**/*.cmake
+              runtime:
+                - os
+                - arch
+              tools:
+                - cmake
+              env:
+                - CC
+                - CXX
+                - CMAKE_TOOLCHAIN_FILE
+            policy: pull-push
+            ttl_days: 14
+            max_size_mb: 20480
         steps:
           - run: if not exist build\windows-amd64 mkdir build\windows-amd64
           - run: if not exist dist mkdir dist
-          - run: cmake -S . -B build\windows-amd64 -G "Visual Studio 18 2026" -A x64
+          - run: cmake -S . -B build\windows-amd64 -G "Visual Studio 18 2026" -A x64 -DFETCHCONTENT_BASE_DIR="%FETCHCONTENT_BASE_DIR%"
           - run: cmake --build build\windows-amd64 --config Release --target Cupuacu cupuacu-tests
           - run: ctest --test-dir build\windows-amd64 -C Release --output-on-failure
           - run: copy /Y build\windows-amd64\Release\Cupuacu.exe dist\cupuacu-windows-amd64.exe
@@ -99,11 +159,31 @@ pipelines:
         timeout_seconds: 2400
         artifacts:
           - dist/**
+        caches:
+          - id: fetchcontent
+            env: FETCHCONTENT_BASE_DIR
+            key:
+              prefix: fetchcontent-v1
+              files:
+                - CMakeLists.txt
+                - cmake/**/*.cmake
+              runtime:
+                - os
+                - arch
+              tools:
+                - cmake
+              env:
+                - CC
+                - CXX
+                - CMAKE_TOOLCHAIN_FILE
+            policy: pull-push
+            ttl_days: 14
+            max_size_mb: 20480
         steps:
           - run: command -v gh >/dev/null 2>&1 || { echo "gh CLI is required"; exit 1; }
           - run: test -n "$GITHUB_TOKEN"
           - run: mkdir -p build/linux-amd64 dist
-          - run: cmake -S . -B build/linux-amd64 -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release
+          - run: cmake -S . -B build/linux-amd64 -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR"
           - run: cmake --build build/linux-amd64 --config Release --target Cupuacu cupuacu-tests
           - run: ctest --test-dir build/linux-amd64 -C Release --output-on-failure
           - run: cp build/linux-amd64/Cupuacu dist/cupuacu-linux-amd64
@@ -150,11 +230,31 @@ pipelines:
         timeout_seconds: 2400
         artifacts:
           - dist/**
+        caches:
+          - id: fetchcontent
+            env: FETCHCONTENT_BASE_DIR
+            key:
+              prefix: fetchcontent-v1
+              files:
+                - CMakeLists.txt
+                - cmake/**/*.cmake
+              runtime:
+                - os
+                - arch
+              tools:
+                - cmake
+              env:
+                - CC
+                - CXX
+                - CMAKE_TOOLCHAIN_FILE
+            policy: pull-push
+            ttl_days: 14
+            max_size_mb: 20480
         steps:
           - run: command -v gh >/dev/null 2>&1 || { echo "gh CLI is required"; exit 1; }
           - run: test -n "$GITHUB_TOKEN"
           - run: mkdir -p build/macos-universal dist
-          - run: cmake -S . -B build/macos-universal -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+          - run: cmake -S . -B build/macos-universal -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DFETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR"
           - run: cmake --build build/macos-universal --config Release --target Cupuacu cupuacu-tests
           - run: ctest --test-dir build/macos-universal -C Release --output-on-failure
           - run: cp build/macos-universal/Cupuacu dist/cupuacu-macos-universal
@@ -191,11 +291,31 @@ pipelines:
         timeout_seconds: 2400
         artifacts:
           - dist/**
+        caches:
+          - id: fetchcontent
+            env: FETCHCONTENT_BASE_DIR
+            key:
+              prefix: fetchcontent-v1
+              files:
+                - CMakeLists.txt
+                - cmake/**/*.cmake
+              runtime:
+                - os
+                - arch
+              tools:
+                - cmake
+              env:
+                - CC
+                - CXX
+                - CMAKE_TOOLCHAIN_FILE
+            policy: pull-push
+            ttl_days: 14
+            max_size_mb: 20480
         steps:
           - run: if "%GITHUB_TOKEN%"=="" (echo GITHUB_TOKEN is required & exit /b 1)
           - run: if not exist build\windows-amd64 mkdir build\windows-amd64
           - run: if not exist dist mkdir dist
-          - run: cmake -S . -B build\windows-amd64 -G "Visual Studio 17 2022" -A x64
+          - run: cmake -S . -B build\windows-amd64 -G "Visual Studio 17 2022" -A x64 -DFETCHCONTENT_BASE_DIR="%FETCHCONTENT_BASE_DIR%"
           - run: cmake --build build\windows-amd64 --config Release --target Cupuacu cupuacu-tests
           - run: ctest --test-dir build\windows-amd64 -C Release --output-on-failure
           - run: copy /Y build\windows-amd64\Release\Cupuacu.exe dist\cupuacu-windows-amd64.exe
