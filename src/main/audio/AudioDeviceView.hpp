@@ -4,7 +4,7 @@
 
 namespace cupuacu::audio
 {
-    class AudioDeviceState;
+    struct AudioDeviceState;
     class AudioDeviceView
     {
     public:
