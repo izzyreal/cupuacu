@@ -42,6 +42,7 @@ set(BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(PA_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(SDLTTF_VENDORED ON CACHE BOOL "" FORCE)
 
 AddDependency(SDL3 "https://github.com/libsdl-org/SDL.git" "release-3.2.14")
 AddDependency(SDL_ttf "https://github.com/libsdl-org/SDL_ttf.git" "release-3.2.2")
