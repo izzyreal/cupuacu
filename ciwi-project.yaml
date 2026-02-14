@@ -186,3 +186,9 @@ pipelines:
             skip_dry_run: true
             env:
               GITHUB_TOKEN: "{{ secret.github-secret }}"
+
+pipeline_chains:
+  - id: build-release
+    pipelines:
+      - build
+      - release
