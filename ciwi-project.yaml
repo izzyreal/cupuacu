@@ -29,6 +29,8 @@ pipelines:
           tools:
             git: "*"
             cmake: "*"
+          capabilities:
+            xorg-dev: "1"
         timeout_seconds: 1800
         artifacts:
           - dist/**
