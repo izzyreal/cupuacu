@@ -22,13 +22,25 @@ set(CMAKE_CXX_STANDARD 20)
 
 include(FetchContent)
 
+function(resolve_fetchcontent_source_dir dep_name default_path out_var)
+    string(TOUPPER "${dep_name}" dep_upper)
+    set(dep_var "FETCHCONTENT_SOURCE_DIR_${dep_upper}")
+    if(DEFINED ${dep_var} AND NOT "${${dep_var}}" STREQUAL "")
+        set(dep_path "${${dep_var}}")
+    else()
+        set(dep_path "${default_path}")
+    endif()
+    set(${out_var} "${dep_path}" PARENT_SCOPE)
+endfunction()
+
 macro(AddDependency name repo tag)
+    resolve_fetchcontent_source_dir("${name}" "${FETCHCONTENT_BASE_DIR}/${name}" dep_source_dir)
     FetchContent_Declare(
         ${name}
         GIT_REPOSITORY ${repo}
         GIT_TAG ${tag}
         GIT_SHALLOW TRUE
-        SOURCE_DIR "${FETCHCONTENT_BASE_DIR}/${name}"
+        SOURCE_DIR "${dep_source_dir}"
     )
 
     FetchContent_MakeAvailable(${name})
@@ -51,11 +63,12 @@ AddDependency(Catch2 "https://github.com/catchorg/Catch2.git" "v3.8.1")
 AddDependency(readerwriterqueue "https://github.com/cameron314/readerwriterqueue.git" "master")
 AddDependency(portaudio "https://github.com/PortAudio/portaudio.git" "master")
 AddDependency(PlatformFolders "https://github.com/sago007/PlatformFolders.git" "master")
+resolve_fetchcontent_source_dir("json" "${FETCHCONTENT_BASE_DIR}/json" json_source_dir)
 FetchContent_Declare(
     json
     URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-    SOURCE_DIR "${FETCHCONTENT_BASE_DIR}/json"
+    SOURCE_DIR "${json_source_dir}"
 )
 FetchContent_MakeAvailable(json)
 
@@ -123,11 +136,12 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 
 if(CUPUACU_ENABLE_RTSAN_LIBS OR CUPUACU_RTSAN_SUPPORTED)
+    resolve_fetchcontent_source_dir("rtsan" "${FETCHCONTENT_BASE_DIR}/rtsan" rtsan_source_dir)
     FetchContent_Declare(
         rtsan
         GIT_REPOSITORY https://github.com/izzyreal/rtsan-libs-cmake.git
         GIT_TAG main
-        SOURCE_DIR "${FETCHCONTENT_BASE_DIR}/rtsan"
+        SOURCE_DIR "${rtsan_source_dir}"
     )
     FetchContent_MakeAvailable(rtsan)
 endif()
