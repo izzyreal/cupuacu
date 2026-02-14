@@ -1,6 +1,14 @@
 version: 1
 project:
   name: cupuacu
+  vault:
+    connection: home-vault
+    secrets:
+      - name: github-secret
+        mount: kv
+        path: gh
+        key: token
+        kv_version: 2
 
 pipelines:
   - id: build
@@ -190,8 +198,10 @@ pipelines:
             ttl_days: 14
             max_size_mb: 20480
         steps:
-          - run: command -v gh >/dev/null 2>&1 || { echo "gh CLI is required"; exit 1; }
           - run: test -n "$GITHUB_TOKEN"
+            env:
+              GITHUB_TOKEN: "{{ secret.github-secret }}"
+            skip_dry_run: true
           - run: mkdir -p build/linux-amd64 dist
           - run: cmake -S . -B build/linux-amd64 -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR"
           - run: cmake --build build/linux-amd64 --config Release --target Cupuacu cupuacu-tests
@@ -203,10 +213,16 @@ pipelines:
               git config user.name "ciwi-agent"
               git config user.email "ciwi-agent@local"
               git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/izzyreal/cupuacu.git"
+            env:
+              GITHUB_TOKEN: "{{ secret.github-secret }}"
+            skip_dry_run: true
+          - run: |
+              TAG="${CIWI_PIPELINE_TAG}"
               if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
                 git tag -a "$TAG" -m "cupuacu $TAG"
                 git push origin "$TAG"
               fi
+            skip_dry_run: true
           - run: |
               TAG="${CIWI_PIPELINE_TAG}"
               if ! gh release view "$TAG" --repo izzyreal/cupuacu >/dev/null 2>&1; then
@@ -221,9 +237,9 @@ pipelines:
                 dist/cupuacu-linux-amd64-checksums.txt \
                 --repo izzyreal/cupuacu \
                 --clobber
-              echo "__CIWI_RELEASE_SUMMARY__ version=${CIWI_PIPELINE_VERSION_RAW}"
-              echo "__CIWI_RELEASE_SUMMARY__ tag=${CIWI_PIPELINE_TAG}"
-              echo "__CIWI_RELEASE_SUMMARY__ uploaded=linux-amd64"
+            skip_dry_run: true
+            env:
+              GITHUB_TOKEN: "{{ secret.github-secret }}"
 
       - id: release-macos-universal
         runs_on:
@@ -258,8 +274,10 @@ pipelines:
             ttl_days: 14
             max_size_mb: 20480
         steps:
-          - run: command -v gh >/dev/null 2>&1 || { echo "gh CLI is required"; exit 1; }
           - run: test -n "$GITHUB_TOKEN"
+            env:
+              GITHUB_TOKEN: "{{ secret.github-secret }}"
+            skip_dry_run: true
           - run: mkdir -p build/macos-universal dist
           - run: cmake -S . -B build/macos-universal -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DFETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR"
           - run: cmake --build build/macos-universal --config Release --target Cupuacu cupuacu-tests
@@ -281,7 +299,9 @@ pipelines:
                 dist/cupuacu-macos-universal-checksums.txt \
                 --repo izzyreal/cupuacu \
                 --clobber
-              echo "__CIWI_RELEASE_SUMMARY__ uploaded=macos-universal"
+            skip_dry_run: true
+            env:
+              GITHUB_TOKEN: "{{ secret.github-secret }}"
 
       - id: release-windows-amd64
         runs_on:
@@ -317,6 +337,9 @@ pipelines:
             max_size_mb: 20480
         steps:
           - run: if "%GITHUB_TOKEN%"=="" (echo GITHUB_TOKEN is required & exit /b 1)
+            env:
+              GITHUB_TOKEN: "{{ secret.github-secret }}"
+            skip_dry_run: true
           - run: if not exist build\windows-amd64 mkdir build\windows-amd64
           - run: if not exist dist mkdir dist
           - run: cmake -S . -B build\windows-amd64 -G "Visual Studio 17 2022" -A x64 -DFETCHCONTENT_BASE_DIR="%FETCHCONTENT_BASE_DIR%"
@@ -349,4 +372,6 @@ pipelines:
                 dist\cupuacu-tests-windows-amd64.sha256.txt ^
                 --repo "%REPO%" ^
                 --clobber
-              echo __CIWI_RELEASE_SUMMARY__ uploaded=windows-amd64
+            skip_dry_run: true
+            env:
+              GITHUB_TOKEN: "{{ secret.github-secret }}"
