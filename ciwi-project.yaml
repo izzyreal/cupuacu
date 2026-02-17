@@ -36,27 +36,11 @@ pipelines:
           - dist/**
         caches: &fetchcontent_caches
           - id: fetchcontent
-            env: FETCHCONTENT_BASE_DIR
-            key:
-              prefix: fetchcontent-v1
-              files:
-                - CMakeLists.txt
-                - cmake/**/*.cmake
-              runtime:
-                - os
-                - arch
-              tools:
-                - cmake
-              env:
-                - CC
-                - CXX
-                - CMAKE_TOOLCHAIN_FILE
-            policy: pull-push
-            ttl_days: 14
-            max_size_mb: 20480
+            env: CIWI_FETCHCONTENT_SOURCES_DIR
         steps:
           - run: mkdir -p build/linux-amd64 dist
-          - run: cmake -S . -B build/linux-amd64 -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR"
+          - run: mkdir -p "$CIWI_FETCHCONTENT_SOURCES_DIR"
+          - run: cmake -S . -B build/linux-amd64 -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_CACHE_ROOT="$CIWI_FETCHCONTENT_SOURCES_DIR"
           - run: cmake --build build/linux-amd64 --config Release --target Cupuacu cupuacu-tests
           - test:
               name: cupuacu-tests
@@ -82,7 +66,8 @@ pipelines:
         caches: *fetchcontent_caches
         steps:
           - run: mkdir -p build/macos-universal dist
-          - run: cmake -S . -B build/macos-universal -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DFETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR"
+          - run: mkdir -p "$CIWI_FETCHCONTENT_SOURCES_DIR"
+          - run: cmake -S . -B build/macos-universal -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DFETCHCONTENT_CACHE_ROOT="$CIWI_FETCHCONTENT_SOURCES_DIR"
           - run: cmake --build build/macos-universal --config Release --target Cupuacu cupuacu-tests
           - test:
               name: cupuacu-tests
@@ -109,7 +94,8 @@ pipelines:
         steps:
           - run: if not exist build\windows-amd64 mkdir build\windows-amd64
           - run: if not exist dist mkdir dist
-          - run: cmake -S . -B build\windows-amd64 -G "Visual Studio 18 2026" -A x64 -DFETCHCONTENT_BASE_DIR="%FETCHCONTENT_BASE_DIR%"
+          - run: if not exist "%CIWI_FETCHCONTENT_SOURCES_DIR%" mkdir "%CIWI_FETCHCONTENT_SOURCES_DIR%"
+          - run: cmake -S . -B build\windows-amd64 -G "Visual Studio 18 2026" -A x64 -DFETCHCONTENT_CACHE_ROOT="%CIWI_FETCHCONTENT_SOURCES_DIR%"
           - run: cmake --build build\windows-amd64 --config Release --target Cupuacu cupuacu-tests
           - test:
               name: cupuacu-tests
