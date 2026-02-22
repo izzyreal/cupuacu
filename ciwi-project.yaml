@@ -1,14 +1,6 @@
 version: 1
 project:
   name: cupuacu
-  vault:
-    connection: home-vault
-    secrets:
-      - name: github-secret
-        mount: kv
-        path: gh
-        key: token
-        kv_version: 2
 
 pipelines:
   - id: build
@@ -127,6 +119,14 @@ pipelines:
         timeout_seconds: 2400
         steps:
           - run: test -n "$GITHUB_TOKEN"
+            vault:
+              connection: home-vault
+              secrets:
+                - name: github-secret
+                  mount: kv
+                  path: gh
+                  key: token
+                  kv_version: 2
             env:
               GITHUB_TOKEN: "{{ secret.github-secret }}"
             skip_dry_run: true
@@ -145,6 +145,14 @@ pipelines:
               git config user.name "ciwi-agent"
               git config user.email "ciwi-agent@local"
               git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/izzyreal/cupuacu.git"
+            vault:
+              connection: home-vault
+              secrets:
+                - name: github-secret
+                  mount: kv
+                  path: gh
+                  key: token
+                  kv_version: 2
             env:
               GITHUB_TOKEN: "{{ secret.github-secret }}"
             skip_dry_run: true
@@ -171,6 +179,14 @@ pipelines:
                 --repo izzyreal/cupuacu \
                 --clobber
             skip_dry_run: true
+            vault:
+              connection: home-vault
+              secrets:
+                - name: github-secret
+                  mount: kv
+                  path: gh
+                  key: token
+                  kv_version: 2
             env:
               GITHUB_TOKEN: "{{ secret.github-secret }}"
 
