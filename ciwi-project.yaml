@@ -13,7 +13,7 @@ project:
 pipelines:
   - id: build
     trigger: manual
-    source:
+    vcs_source:
       repo: https://github.com/izzyreal/cupuacu.git
     versioning:
       file: VERSION
@@ -108,7 +108,7 @@ pipelines:
     trigger: manual
     depends_on:
       - build
-    source:
+    vcs_source:
       repo: https://github.com/izzyreal/cupuacu.git
     versioning:
       file: VERSION
