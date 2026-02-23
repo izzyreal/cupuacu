@@ -142,8 +142,6 @@ pipelines:
                 > dist/cupuacu-checksums.txt
           - run: |
               TAG="${CIWI_PIPELINE_TAG}"
-              git config user.name "ciwi-agent"
-              git config user.email "ciwi-agent@local"
               git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/izzyreal/cupuacu.git"
             vault:
               connection: home-vault
