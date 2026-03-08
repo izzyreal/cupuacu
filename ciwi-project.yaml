@@ -22,6 +22,7 @@ pipelines:
             git: "*"
             cmake: "*"
             ccache: "*"
+            lcov: "*"
             xorg-dev: "*"
         timeout_seconds: 1800
         artifacts:
@@ -36,14 +37,16 @@ pipelines:
           - run: mkdir -p "$CIWI_FETCHCONTENT_SOURCES_DIR"
           - run: mkdir -p "$CCACHE_DIR"
           - run: if command -v ccache >/dev/null 2>&1; then ccache --zero-stats; else echo "ccache not found"; fi
-          - run: CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true CCACHE_COMPILERCHECK=content cmake -S . -B build/linux-amd64 -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCUPUACU_BUILD_CCACHE_ENABLED=ON -DFETCHCONTENT_CACHE_ROOT="$CIWI_FETCHCONTENT_SOURCES_DIR"
-          - run: CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true CCACHE_COMPILERCHECK=content cmake --build build/linux-amd64 --config Release --target Cupuacu cupuacu-tests
-          - run: if command -v ccache >/dev/null 2>&1; then ccache --show-stats; else echo "ccache not found"; fi
+          - run: CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true CCACHE_COMPILERCHECK=content cmake -S . -B build/linux-amd64 -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Debug -DCUPUACU_BUILD_CCACHE_ENABLED=ON -DCUPUACU_ENABLE_COVERAGE=ON -DFETCHCONTENT_CACHE_ROOT="$CIWI_FETCHCONTENT_SOURCES_DIR"
+          - run: CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true CCACHE_COMPILERCHECK=content cmake --build build/linux-amd64 --target Cupuacu cupuacu-tests
           - test:
               name: cupuacu-tests
-              command: ./build/linux-amd64/cupuacu-tests --reporter JUnit --out build/linux-amd64/result-junit.xml
+              command: mkdir -p dist && ./build/linux-amd64/cupuacu-tests --reporter JUnit --out dist/junit.xml && lcov --capture --directory build/linux-amd64 --base-directory "$PWD" --output-file dist/coverage.info
               format: junit-xml
-              report: build/linux-amd64/result-junit.xml
+              report: dist/junit.xml
+              coverage_format: lcov
+              coverage_report: dist/coverage.info
+          - run: if command -v ccache >/dev/null 2>&1; then ccache --show-stats; else echo "ccache not found"; fi
           - run: cp build/linux-amd64/Cupuacu dist/cupuacu-linux-amd64
           - run: cp build/linux-amd64/cupuacu-tests dist/cupuacu-tests-linux-amd64
 

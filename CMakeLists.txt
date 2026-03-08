@@ -28,6 +28,8 @@ option(CUPUACU_ENABLE_XCODE_TSAN_SUPPRESSIONS
     "Inject TSAN_OPTIONS suppressions into CMake-generated Xcode schemes" ON)
 option(CUPUACU_ENABLE_RTSAN_LIBS
     "Enable RTSan standalone runtime via rtsan-libs-cmake" OFF)
+option(CUPUACU_ENABLE_COVERAGE
+    "Enable compiler and linker coverage instrumentation for supported targets" OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
@@ -159,6 +161,18 @@ target_link_libraries(cupuacu_deps INTERFACE
     nlohmann_json::nlohmann_json
 )
 
+function(cupuacu_enable_coverage_for_target target)
+    if(NOT CUPUACU_ENABLE_COVERAGE)
+        return()
+    endif()
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+        target_compile_options("${target}" PRIVATE -O0 -g --coverage)
+        target_link_options("${target}" PRIVATE --coverage)
+    else()
+        message(WARNING "Coverage requested for unsupported compiler: ${CMAKE_CXX_COMPILER_ID}")
+    endif()
+endfunction()
+
 function(cupuacu_add_core_target target enable_rtsan enable_tsan)
     add_library("${target}" STATIC ${CUPUACU_SHARED_SOURCES})
     target_link_libraries("${target}" PUBLIC cupuacu_deps)
@@ -192,6 +206,7 @@ function(cupuacu_add_core_target target enable_rtsan enable_tsan)
             CUPUACU_TSAN_ENABLED=0
         )
     endif()
+    cupuacu_enable_coverage_for_target("${target}")
 endfunction()
 
 cupuacu_add_core_target(cupuacu_core OFF OFF)
@@ -229,6 +244,7 @@ target_compile_definitions(cupuacu-tests PRIVATE
     CUPUACU_RTSAN_LIBS_ENABLED=0
     CUPUACU_TSAN_ENABLED=0
 )
+cupuacu_enable_coverage_for_target(cupuacu-tests)
 
 _bundle_resources(Cupuacu)
 target_link_libraries(cupuacu-tests PUBLIC cupuacu::rc)
