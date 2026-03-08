@@ -1,11 +1,18 @@
 cmake_minimum_required(VERSION 3.14)
 
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
 include(cmake/ResourceBundling.cmake)
 include(cmake/ClangFormat.cmake)
 include(cmake/ThreadSanitizer.cmake)
 include(cmake/FetchContentCache.cmake)
 
 project(Cupuacu)
+
+option(CUPUACU_BUILD_CCACHE_ENABLED "Enable compiler cache integration via find_package(ccache)" OFF)
+if(CUPUACU_BUILD_CCACHE_ENABLED)
+    find_package(ccache)
+endif()
 
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "Prevent FetchContent from re-downloading sources" FORCE)
 if(NOT DEFINED FETCHCONTENT_CACHE_ROOT OR FETCHCONTENT_CACHE_ROOT STREQUAL "")
