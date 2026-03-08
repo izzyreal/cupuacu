@@ -96,6 +96,16 @@ function(fetchcontent_try_prepare_git_source dep_name source_dir repository git_
     message(FATAL_ERROR "FetchContent ${dep_name}: git reset failed in ${source_dir}: ${_reset_error}")
   endif()
 
+  fetchcontent_run_git(_submodule_sync_result _submodule_sync_output _submodule_sync_error -C "${source_dir}" submodule sync --recursive)
+  if(NOT _submodule_sync_result EQUAL 0)
+    message(FATAL_ERROR "FetchContent ${dep_name}: git submodule sync failed in ${source_dir}: ${_submodule_sync_error}")
+  endif()
+
+  fetchcontent_run_git(_submodule_update_result _submodule_update_output _submodule_update_error -C "${source_dir}" submodule update --init --recursive)
+  if(NOT _submodule_update_result EQUAL 0)
+    message(FATAL_ERROR "FetchContent ${dep_name}: git submodule update failed in ${source_dir}: ${_submodule_update_error}")
+  endif()
+
   fetchcontent_run_git(_clean_result _clean_output _clean_error -C "${source_dir}" clean -fdx)
   if(NOT _clean_result EQUAL 0)
     message(FATAL_ERROR "FetchContent ${dep_name}: git clean failed in ${source_dir}: ${_clean_error}")
