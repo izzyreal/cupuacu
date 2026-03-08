@@ -359,8 +359,8 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
         bypassCache ? 0 : waveformCache.getLevelIndex(samplesPerPixel);
     const int64_t samplesPerPeak =
         bypassCache ? 0 : waveformCache.samplesPerPeakForLevel(cacheLevel);
-    const auto &peaks = bypassCache ? *(const std::vector<Peak> *)nullptr
-                                    : waveformCache.getLevel(samplesPerPixel);
+    const std::vector<Peak> *peaks =
+        bypassCache ? nullptr : &waveformCache.getLevel(samplesPerPixel);
 
     auto getPeakForPixel = [&](const int x, Peak &out) -> bool
     {
@@ -397,22 +397,22 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
             return true;
         }
 
-        if (peaks.empty())
+        if (!peaks || peaks->empty())
         {
             return false;
         }
 
         const int64_t i0 = std::clamp<int64_t>(a / samplesPerPeak, 0,
-                                               (int64_t)peaks.size() - 1);
+                                               (int64_t)peaks->size() - 1);
         const int64_t i1 = std::clamp<int64_t>((b - 1) / samplesPerPeak, 0,
-                                               (int64_t)peaks.size() - 1);
+                                               (int64_t)peaks->size() - 1);
 
-        float minv = peaks[i0].min;
-        float maxv = peaks[i0].max;
+        float minv = (*peaks)[i0].min;
+        float maxv = (*peaks)[i0].max;
         for (int64_t i = i0 + 1; i <= i1; ++i)
         {
-            minv = std::min(minv, peaks[i].min);
-            maxv = std::max(maxv, peaks[i].max);
+            minv = std::min(minv, (*peaks)[i].min);
+            maxv = std::max(maxv, (*peaks)[i].max);
         }
 
         out = {minv, maxv};
