@@ -45,6 +45,7 @@ namespace cupuacu::test
         SessionUi ui{};
         ui.mainView = std::make_unique<cupuacu::gui::MainView>(state);
         state->mainView = ui.mainView.get();
+        ui.mainView->setWindow(state->mainDocumentSessionWindow->getWindow());
         ui.mainView->setBounds(0, 0, windowWidth, mainViewHeight);
         return ui;
     }
