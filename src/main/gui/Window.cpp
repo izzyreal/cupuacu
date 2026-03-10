@@ -332,14 +332,7 @@ bool Window::handleEvent(const SDL_Event &event)
             {
                 break;
             }
-            const MouseEvent mouseEvent = makeMouseEvent(event);
-            rootComponent->handleMouseEvent(mouseEvent);
-
-            if (capturingComponent == nullptr)
-            {
-                updateComponentUnderMouse(mouseEvent.mouseXi,
-                                          mouseEvent.mouseYi);
-            }
+            handleMouseEvent(makeMouseEvent(event));
             break;
         }
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
@@ -348,8 +341,7 @@ bool Window::handleEvent(const SDL_Event &event)
             {
                 break;
             }
-            const MouseEvent mouseEvent = makeMouseEvent(event);
-            rootComponent->handleMouseEvent(mouseEvent);
+            handleMouseEvent(makeMouseEvent(event));
             break;
         }
         case SDL_EVENT_MOUSE_BUTTON_UP:
@@ -358,7 +350,46 @@ bool Window::handleEvent(const SDL_Event &event)
             {
                 break;
             }
-            const MouseEvent mouseEvent = makeMouseEvent(event);
+            handleMouseEvent(makeMouseEvent(event));
+            break;
+        }
+        case SDL_EVENT_MOUSE_WHEEL:
+        {
+            if (!rootComponent)
+            {
+                break;
+            }
+            handleMouseEvent(makeMouseEvent(event));
+            break;
+        }
+        default:
+            break;
+    }
+
+    return true;
+}
+
+bool Window::handleMouseEvent(const MouseEvent &mouseEvent)
+{
+    if (!rootComponent)
+    {
+        return false;
+    }
+
+    switch (mouseEvent.type)
+    {
+        case MOVE:
+            rootComponent->handleMouseEvent(mouseEvent);
+            if (capturingComponent == nullptr)
+            {
+                updateComponentUnderMouse(mouseEvent.mouseXi,
+                                          mouseEvent.mouseYi);
+            }
+            return true;
+        case DOWN:
+            rootComponent->handleMouseEvent(mouseEvent);
+            return true;
+        case UP:
             updateComponentUnderMouse(mouseEvent.mouseXi, mouseEvent.mouseYi);
 
             if (capturingComponent != nullptr &&
@@ -370,30 +401,18 @@ bool Window::handleEvent(const SDL_Event &event)
 
             rootComponent->handleMouseEvent(mouseEvent);
 
-            // Ensure drag/capture interaction ends on mouse-up even when
-            // the captured component chooses not to consume the release event.
             if (capturingComponent != nullptr)
             {
                 capturingComponent = nullptr;
             }
-            break;
-        }
-        case SDL_EVENT_MOUSE_WHEEL:
-        {
-            if (!rootComponent)
-            {
-                break;
-            }
-            const MouseEvent mouseEvent = makeMouseEvent(event);
+            return true;
+        case WHEEL:
             updateComponentUnderMouse(mouseEvent.mouseXi, mouseEvent.mouseYi);
             rootComponent->handleMouseEvent(mouseEvent);
-            break;
-        }
-        default:
-            break;
+            return true;
     }
 
-    return true;
+    return false;
 }
 
 void Window::renderFrame()

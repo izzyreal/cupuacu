@@ -91,24 +91,18 @@ TEST_CASE("Window ignores events for other windows and clears capture on mouse u
     rootPtr->setBounds(0, 0, 320, 240);
     window->setRootComponent(std::move(root));
 
-    SDL_Event foreign{};
-    foreign.type = SDL_EVENT_MOUSE_MOTION;
-    foreign.motion.windowID = window->getId() + 1;
-    foreign.motion.x = 10;
-    foreign.motion.y = 10;
-    REQUIRE_FALSE(window->handleEvent(foreign));
-
     window->setCapturingComponent(captured);
 
-    SDL_Event release{};
-    release.type = SDL_EVENT_MOUSE_BUTTON_UP;
-    release.button.windowID = window->getId();
-    release.button.button = SDL_BUTTON_LEFT;
-    release.button.clicks = 1;
-    release.button.x = 120;
-    release.button.y = 120;
-
-    REQUIRE(window->handleEvent(release));
+    REQUIRE(window->handleMouseEvent(cupuacu::gui::MouseEvent{
+        cupuacu::gui::UP,
+        120,
+        120,
+        120.0f,
+        120.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
     REQUIRE(window->getCapturingComponent() == nullptr);
     REQUIRE(captured->mouseLeaveCount == 1);
     REQUIRE(captured->mouseUpCount == 1);
@@ -131,18 +125,11 @@ TEST_CASE("Window mouse motion updates component-under-mouse enter and leave",
     root->setBounds(0, 0, 320, 240);
     window->setRootComponent(std::move(root));
 
-    SDL_Event moveLeft{};
-    moveLeft.type = SDL_EVENT_MOUSE_MOTION;
-    moveLeft.motion.windowID = window->getId();
-    moveLeft.motion.x = 10;
-    moveLeft.motion.y = 10;
-    REQUIRE(window->handleEvent(moveLeft));
+    window->updateComponentUnderMouse(10, 10);
     REQUIRE(window->getComponentUnderMouse() == left);
     REQUIRE(left->mouseEnterCount == 1);
 
-    SDL_Event moveRight = moveLeft;
-    moveRight.motion.x = 110;
-    REQUIRE(window->handleEvent(moveRight));
+    window->updateComponentUnderMouse(110, 10);
     REQUIRE(window->getComponentUnderMouse() == right);
     REQUIRE(left->mouseLeaveCount == 1);
     REQUIRE(right->mouseEnterCount == 1);

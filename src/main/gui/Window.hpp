@@ -113,6 +113,7 @@ namespace cupuacu::gui
         }
 
         bool handleEvent(const SDL_Event &event);
+        bool handleMouseEvent(const MouseEvent &event);
         void renderFrame();
         void renderFrameIfDirty();
         void refreshForScaleOrResize();
