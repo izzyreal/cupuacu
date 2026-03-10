@@ -74,7 +74,7 @@ pipelines:
           - run: CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true CCACHE_COMPILERCHECK=content cmake --build build/linux-amd64-coverage --target cupuacu-tests
           - test:
               name: cupuacu-tests-coverage
-              command: mkdir -p dist && ./build/linux-amd64-coverage/cupuacu-tests --reporter JUnit --out dist/junit.xml && lcov --capture --directory build/linux-amd64-coverage --base-directory "$PWD" --output-file dist/coverage.info
+              command: mkdir -p dist && ./build/linux-amd64-coverage/cupuacu-tests --reporter JUnit --out dist/junit.xml && lcov --capture --directory build/linux-amd64-coverage --base-directory "$PWD" --output-file dist/coverage.raw.info && lcov --extract dist/coverage.raw.info "*/src/main/*" --output-file dist/coverage.info && perl -pe 's{^SF:.*/src/main/}{SF:src/main/}' dist/coverage.info > dist/coverage.info.tmp && mv dist/coverage.info.tmp dist/coverage.info
               format: junit-xml
               report: dist/junit.xml
               coverage_format: lcov
