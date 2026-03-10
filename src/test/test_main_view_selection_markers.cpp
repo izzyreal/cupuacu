@@ -169,3 +169,65 @@ TEST_CASE("Cursor markers align with cursor when selection is inactive", "[gui]"
     REQUIRE(topBounds.x + topBounds.w / 2 - 1 == expectedCursorAbsX);
     REQUIRE(bottomBounds.x + bottomBounds.w / 2 - 1 == expectedCursorAbsX);
 }
+
+TEST_CASE("Cursor markers are hidden when cursor is outside the visible range",
+          "[gui]")
+{
+    cupuacu::State state{};
+    auto ui = cupuacu::test::createSessionUi(&state, 800000);
+
+    auto &session = state.activeDocumentSession;
+    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+
+    session.selection.reset();
+    session.cursor = 1000;
+    viewState.sampleOffset = 12000;
+    viewState.samplesPerPixel = 700.0;
+
+    ui.mainView->updateTriangleMarkerBounds();
+
+    const auto *cursorTop =
+        findByNameRecursive(ui.mainView.get(), "TriangleMarker:CursorTop");
+    const auto *cursorBottom =
+        findByNameRecursive(ui.mainView.get(), "TriangleMarker:CursorBottom");
+
+    REQUIRE(cursorTop != nullptr);
+    REQUIRE(cursorBottom != nullptr);
+    REQUIRE_FALSE(cursorTop->isVisible());
+    REQUIRE_FALSE(cursorBottom->isVisible());
+}
+
+TEST_CASE("Selection markers are hidden when selection is entirely offscreen",
+          "[gui]")
+{
+    cupuacu::State state{};
+    auto ui = cupuacu::test::createSessionUi(&state, 800000);
+
+    auto &session = state.activeDocumentSession;
+    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+
+    session.selection.setValue1(1000.0);
+    session.selection.setValue2(2000.0);
+    viewState.sampleOffset = 12000;
+    viewState.samplesPerPixel = 700.0;
+
+    ui.mainView->updateTriangleMarkerBounds();
+
+    const auto *selStartTop =
+        findByNameRecursive(ui.mainView.get(), "TriangleMarker:SelectionStartTop");
+    const auto *selStartBottom = findByNameRecursive(
+        ui.mainView.get(), "TriangleMarker:SelectionStartBottom");
+    const auto *selEndTop =
+        findByNameRecursive(ui.mainView.get(), "TriangleMarker:SelectionEndTop");
+    const auto *selEndBottom =
+        findByNameRecursive(ui.mainView.get(), "TriangleMarker:SelectionEndBottom");
+
+    REQUIRE(selStartTop != nullptr);
+    REQUIRE(selStartBottom != nullptr);
+    REQUIRE(selEndTop != nullptr);
+    REQUIRE(selEndBottom != nullptr);
+    REQUIRE_FALSE(selStartTop->isVisible());
+    REQUIRE_FALSE(selStartBottom->isVisible());
+    REQUIRE_FALSE(selEndTop->isVisible());
+    REQUIRE_FALSE(selEndBottom->isVisible());
+}

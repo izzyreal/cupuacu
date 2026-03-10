@@ -129,6 +129,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_gui_primitives.cpp
     src/test/test_main_view_structure.cpp
     src/test/test_waveforms_underlay_behavior.cpp
+    src/test/test_timeline_waveform_refresh.cpp
 )
 
 set(CUPUACU_RTSAN_SUPPORTED OFF)
