@@ -2,6 +2,7 @@
 
 #include "State.hpp"
 #include "TestSdlTtfGuard.hpp"
+#include "gui/Button.hpp"
 #include "gui/Component.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/DropdownMenu.hpp"
@@ -9,6 +10,7 @@
 #include "gui/Menu.hpp"
 #include "gui/MenuBar.hpp"
 #include "gui/ScrollBar.hpp"
+#include "gui/TextButton.hpp"
 #include "gui/Window.hpp"
 
 #include <SDL3/SDL.h>
@@ -205,4 +207,112 @@ TEST_CASE("Menu hover can switch open submenu between siblings", "[gui]")
 
     REQUIRE_FALSE(fileMenu->isOpen());
     REQUIRE(viewMenu->isOpen());
+}
+
+TEST_CASE("Button momentary and toggle semantics fire callbacks only when enabled",
+          "[gui]")
+{
+    cupuacu::State state{};
+
+    cupuacu::gui::Button momentary(&state, "Momentary",
+                                   cupuacu::gui::ButtonType::Momentary);
+    momentary.setVisible(true);
+    momentary.setBounds(0, 0, 80, 24);
+
+    int pressCount = 0;
+    momentary.setOnPress([&]() { ++pressCount; });
+
+    REQUIRE(momentary.mouseDown(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN,
+        10,
+        10,
+        10.0f,
+        10.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE(pressCount == 1);
+    REQUIRE(momentary.mouseMove(cupuacu::gui::MouseEvent{
+        cupuacu::gui::MOVE,
+        120,
+        10,
+        120.0f,
+        10.0f,
+        110.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE(momentary.mouseUp(cupuacu::gui::MouseEvent{
+        cupuacu::gui::UP,
+        120,
+        10,
+        120.0f,
+        10.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+
+    cupuacu::gui::Button toggle(&state, "Toggle",
+                                cupuacu::gui::ButtonType::Toggle);
+    toggle.setVisible(true);
+    toggle.setBounds(0, 0, 80, 24);
+
+    int toggledValue = -1;
+    toggle.setOnToggle([&](const bool isOn) { toggledValue = isOn ? 1 : 0; });
+    REQUIRE(toggle.mouseDown(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN,
+        5,
+        5,
+        5.0f,
+        5.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE(toggle.isToggled());
+    REQUIRE(toggledValue == 1);
+
+    toggle.setEnabled(false);
+    REQUIRE_FALSE(toggle.mouseDown(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN,
+        5,
+        5,
+        5.0f,
+        5.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE(toggle.isToggled());
+    REQUIRE(toggledValue == 1);
+}
+
+TEST_CASE("TextButton updates its label text and keeps it sized to bounds", "[gui]")
+{
+    cupuacu::State state{};
+    cupuacu::gui::TextButton button(&state, "Play");
+    button.setVisible(true);
+    button.setBounds(0, 0, 120, 32);
+
+    auto labels = labelChildren(&button);
+    REQUIRE(labels.size() == 1);
+    REQUIRE(labels[0]->getText() == "Play");
+    const SDL_Rect originalLabelBounds = labels[0]->getBounds();
+    const SDL_Rect buttonBounds = button.getLocalBounds();
+    REQUIRE(originalLabelBounds.x == buttonBounds.x);
+    REQUIRE(originalLabelBounds.y == buttonBounds.y);
+    REQUIRE(originalLabelBounds.w == buttonBounds.w);
+    REQUIRE(originalLabelBounds.h == buttonBounds.h);
+
+    button.setText("Pause");
+    labels = labelChildren(&button);
+    REQUIRE(labels.size() == 1);
+    REQUIRE(labels[0]->getText() == "Pause");
+    const SDL_Rect updatedLabelBounds = labels[0]->getBounds();
+    REQUIRE(updatedLabelBounds.x == buttonBounds.x);
+    REQUIRE(updatedLabelBounds.y == buttonBounds.y);
+    REQUIRE(updatedLabelBounds.w == buttonBounds.w);
+    REQUIRE(updatedLabelBounds.h == buttonBounds.h);
 }

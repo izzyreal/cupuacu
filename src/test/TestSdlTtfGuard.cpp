@@ -12,7 +12,26 @@ namespace
 {
     std::mutex gGuardMutex;
     int gGuardRefCount = 0;
-    bool gInitializedVideoHere = false;
+    SDL_LogOutputFunction gPreviousLogOutputFunction = nullptr;
+    void *gPreviousLogOutputUserData = nullptr;
+
+    void filteredTestLogOutput(void *userdata, const int category,
+                               const SDL_LogPriority priority,
+                               const char *message)
+    {
+        const std::string_view text = message == nullptr ? "" : message;
+        if (text.find("SDL_CreateWindowAndRenderer() failed: The video driver did not add any displays") !=
+            std::string_view::npos)
+        {
+            return;
+        }
+
+        if (gPreviousLogOutputFunction != nullptr)
+        {
+            gPreviousLogOutputFunction(gPreviousLogOutputUserData, category,
+                                       priority, message);
+        }
+    }
 } // namespace
 
 namespace cupuacu::test
@@ -22,25 +41,13 @@ namespace cupuacu::test
         std::lock_guard<std::mutex> lock(gGuardMutex);
         if (gGuardRefCount == 0)
         {
-            setenv("SDL_VIDEODRIVER", "offscreen", 0);
-            if ((SDL_WasInit(SDL_INIT_VIDEO) & SDL_INIT_VIDEO) == 0)
-            {
-                if (!SDL_InitSubSystem(SDL_INIT_VIDEO))
-                {
-                    throw std::runtime_error(
-                        std::string("SDL_InitSubSystem(SDL_INIT_VIDEO) failed: ") +
-                        SDL_GetError());
-                }
-                gInitializedVideoHere = true;
-            }
-
+            SDL_GetLogOutputFunction(&gPreviousLogOutputFunction,
+                                     &gPreviousLogOutputUserData);
+            SDL_SetLogOutputFunction(filteredTestLogOutput, nullptr);
             if (!TTF_Init())
             {
-                if (gInitializedVideoHere)
-                {
-                    SDL_QuitSubSystem(SDL_INIT_VIDEO);
-                    gInitializedVideoHere = false;
-                }
+                SDL_SetLogOutputFunction(gPreviousLogOutputFunction,
+                                         gPreviousLogOutputUserData);
                 throw std::runtime_error(
                     std::string("TTF_Init failed: ") + SDL_GetError());
             }
@@ -55,11 +62,10 @@ namespace cupuacu::test
         if (gGuardRefCount == 0)
         {
             TTF_Quit();
-            if (gInitializedVideoHere)
-            {
-                SDL_QuitSubSystem(SDL_INIT_VIDEO);
-                gInitializedVideoHere = false;
-            }
+            SDL_SetLogOutputFunction(gPreviousLogOutputFunction,
+                                     gPreviousLogOutputUserData);
+            gPreviousLogOutputFunction = nullptr;
+            gPreviousLogOutputUserData = nullptr;
         }
     }
 

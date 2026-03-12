@@ -2,6 +2,7 @@
 
 #include "TestStateBuilders.hpp"
 #include "gui/Component.hpp"
+#include "gui/TextButton.hpp"
 #include "gui/TransportButtonsContainer.hpp"
 #include "gui/Waveform.hpp"
 
@@ -177,4 +178,84 @@ TEST_CASE("Transport button label centering is stable across scales", "[gui]")
     REQUIRE(std::abs(dx4 - dx1) <= 4);
     REQUIRE(std::abs(dy2 - dy1) <= 4);
     REQUIRE(std::abs(dy4 - dy1) <= 4);
+}
+
+TEST_CASE("Transport play button starts and stops playback", "[gui]")
+{
+    cupuacu::State state{};
+    auto ui = cupuacu::test::createSessionUi(&state, 64, true);
+    (void)ui;
+
+    cupuacu::gui::TransportButtonsContainer container(&state);
+    container.setBounds(0, 0, 320, 40);
+    container.resized();
+
+    auto *playButton = const_cast<cupuacu::gui::Component *>(
+        findByNameRecursive(&container, "TextButton:Play"));
+    REQUIRE(playButton != nullptr);
+
+    REQUIRE(state.audioDevices != nullptr);
+    REQUIRE_FALSE(state.audioDevices->isPlaying());
+
+    REQUIRE(playButton->mouseDown(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN,
+        5,
+        5,
+        5.0f,
+        5.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    state.audioDevices->drainQueue();
+    REQUIRE(state.audioDevices->isPlaying());
+
+    REQUIRE(playButton->mouseDown(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN,
+        5,
+        5,
+        5.0f,
+        5.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    state.audioDevices->drainQueue();
+    REQUIRE_FALSE(state.audioDevices->isPlaying());
+}
+
+TEST_CASE("Transport loop button follows state and toggles loop playback",
+          "[gui]")
+{
+    cupuacu::State state{};
+    auto ui = cupuacu::test::createSessionUi(&state, 64, true);
+    (void)ui;
+
+    cupuacu::gui::TransportButtonsContainer container(&state);
+    container.setBounds(0, 0, 320, 40);
+    container.resized();
+
+    auto *loopButton = dynamic_cast<cupuacu::gui::TextButton *>(
+        const_cast<cupuacu::gui::Component *>(
+            findByNameRecursive(&container, "TextButton:Loop")));
+    REQUIRE(loopButton != nullptr);
+    REQUIRE_FALSE(state.loopPlaybackEnabled);
+    REQUIRE_FALSE(loopButton->isToggled());
+
+    REQUIRE(loopButton->mouseDown(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN,
+        5,
+        5,
+        5.0f,
+        5.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE(state.loopPlaybackEnabled);
+    REQUIRE(loopButton->isToggled());
+
+    state.loopPlaybackEnabled = false;
+    container.timerCallback();
+    REQUIRE_FALSE(loopButton->isToggled());
 }
