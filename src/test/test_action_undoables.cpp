@@ -165,3 +165,123 @@ TEST_CASE("Trim undoable keeps requested middle range and restores document",
     REQUIRE(session.selection.getLengthInt() == 3);
     REQUIRE(session.cursor == 1);
 }
+
+TEST_CASE("Cut at document tail removes trailing frames and restores on undo",
+          "[actions]")
+{
+    cupuacu::State state{};
+    initializeMonoDocument(state, {0, 1, 2, 3, 4, 5});
+
+    auto &session = state.activeDocumentSession;
+    session.selection.setValue1(4.0);
+    session.selection.setValue2(6.0);
+    session.cursor = 5;
+
+    cupuacu::actions::audio::performCut(&state);
+
+    REQUIRE(readMonoSamples(session.document) ==
+            std::vector<float>({0, 1, 2, 3}));
+    REQUIRE(readMonoSamples(state.clipboard) ==
+            std::vector<float>({4, 5}));
+    REQUIRE(session.cursor == 4);
+    REQUIRE_FALSE(session.selection.isActive());
+
+    state.undo();
+    REQUIRE(readMonoSamples(session.document) ==
+            std::vector<float>({0, 1, 2, 3, 4, 5}));
+    REQUIRE(session.selection.isActive());
+    REQUIRE(session.selection.getStartInt() == 4);
+    REQUIRE(session.selection.getLengthInt() == 2);
+    REQUIRE(session.cursor == 5);
+}
+
+TEST_CASE("Paste insert at document end appends clipboard content", "[actions]")
+{
+    cupuacu::State state{};
+    initializeMonoDocument(state, {0, 1, 2});
+    state.clipboard.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 2);
+    state.clipboard.setSample(0, 0, 7.0f, false);
+    state.clipboard.setSample(0, 1, 8.0f, false);
+
+    auto &session = state.activeDocumentSession;
+    session.cursor = 3;
+
+    cupuacu::actions::audio::performPaste(&state);
+
+    REQUIRE(readMonoSamples(session.document) ==
+            std::vector<float>({0, 1, 2, 7, 8}));
+    REQUIRE(session.selection.isActive());
+    REQUIRE(session.selection.getStartInt() == 3);
+    REQUIRE(session.selection.getLengthInt() == 2);
+    REQUIRE(session.cursor == 3);
+
+    state.undo();
+    REQUIRE(readMonoSamples(session.document) == std::vector<float>({0, 1, 2}));
+    REQUIRE_FALSE(session.selection.isActive());
+    REQUIRE(session.cursor == 3);
+}
+
+TEST_CASE("Paste with empty clipboard is a no-op", "[actions]")
+{
+    cupuacu::State state{};
+    initializeMonoDocument(state, {0, 1, 2});
+
+    auto &session = state.activeDocumentSession;
+    session.cursor = 1;
+    cupuacu::actions::audio::performPaste(&state);
+
+    REQUIRE(readMonoSamples(session.document) == std::vector<float>({0, 1, 2}));
+    REQUIRE(state.undoables.size() == 1);
+    REQUIRE_FALSE(session.selection.isActive());
+    REQUIRE(session.cursor == 1);
+
+    state.undo();
+    REQUIRE(readMonoSamples(session.document) == std::vector<float>({0, 1, 2}));
+    REQUIRE_FALSE(session.selection.isActive());
+    REQUIRE(session.cursor == 1);
+}
+
+TEST_CASE("Trim full document keeps content and restores selection on undo",
+          "[actions]")
+{
+    cupuacu::State state{};
+    initializeMonoDocument(state, {0, 1, 2, 3});
+
+    auto &session = state.activeDocumentSession;
+    session.selection.setValue1(0.0);
+    session.selection.setValue2(4.0);
+    session.cursor = 3;
+
+    cupuacu::actions::audio::performTrim(&state);
+
+    REQUIRE(readMonoSamples(session.document) == std::vector<float>({0, 1, 2, 3}));
+    REQUIRE(session.selection.isActive());
+    REQUIRE(session.selection.getStartInt() == 0);
+    REQUIRE(session.selection.getLengthInt() == 4);
+    REQUIRE(session.cursor == 0);
+
+    state.undo();
+    REQUIRE(readMonoSamples(session.document) == std::vector<float>({0, 1, 2, 3}));
+    REQUIRE(session.selection.isActive());
+    REQUIRE(session.selection.getStartInt() == 0);
+    REQUIRE(session.selection.getLengthInt() == 4);
+    REQUIRE(session.cursor == 0);
+}
+
+TEST_CASE("Cut and trim without active selection are no-ops", "[actions]")
+{
+    cupuacu::State state{};
+    initializeMonoDocument(state, {0, 1, 2, 3});
+
+    auto &session = state.activeDocumentSession;
+    session.selection.reset();
+    session.cursor = 2;
+
+    cupuacu::actions::audio::performCut(&state);
+    cupuacu::actions::audio::performTrim(&state);
+
+    REQUIRE(readMonoSamples(session.document) == std::vector<float>({0, 1, 2, 3}));
+    REQUIRE(state.undoables.empty());
+    REQUIRE_FALSE(session.selection.isActive());
+    REQUIRE(session.cursor == 2);
+}

@@ -154,3 +154,108 @@ TEST_CASE("Audio device properties persistence round-trip", "[persistence]")
     REQUIRE(loaded->outputDeviceIndex == 9);
     REQUIRE(loaded->inputDeviceIndex == 11);
 }
+
+TEST_CASE("Audio device properties persistence rejects empty and missing paths",
+          "[persistence]")
+{
+    cupuacu::audio::AudioDevices::DeviceSelection selection;
+    selection.hostApiIndex = 1;
+    selection.outputDeviceIndex = 2;
+    selection.inputDeviceIndex = 3;
+
+    REQUIRE_FALSE(
+        cupuacu::persistence::AudioDevicePropertiesPersistence::save("", selection));
+    REQUIRE_FALSE(
+        cupuacu::persistence::AudioDevicePropertiesPersistence::load("").has_value());
+
+    const auto missingPath = std::filesystem::temp_directory_path() /
+                             "cupuacu-missing-audio-device-properties.json";
+    std::error_code ec;
+    std::filesystem::remove(missingPath, ec);
+    REQUIRE_FALSE(cupuacu::persistence::AudioDevicePropertiesPersistence::load(
+                      missingPath)
+                      .has_value());
+}
+
+TEST_CASE("Audio device properties persistence rejects malformed or incomplete JSON",
+          "[persistence]")
+{
+    const auto testConfigRoot =
+        std::filesystem::temp_directory_path() / "cupuacu-test-config-invalid";
+    ScopedConfigCleanup cleanup(testConfigRoot);
+    const auto malformedPath = testConfigRoot / "malformed.json";
+
+    std::filesystem::create_directories(testConfigRoot);
+
+    {
+        std::ofstream out(malformedPath, std::ios::binary | std::ios::trunc);
+        REQUIRE(out.good());
+        out << "{ this is not valid json";
+    }
+    REQUIRE_FALSE(cupuacu::persistence::AudioDevicePropertiesPersistence::load(
+                      malformedPath)
+                      .has_value());
+
+    {
+        std::ofstream out(malformedPath, std::ios::binary | std::ios::trunc);
+        REQUIRE(out.good());
+        out << R"({"version":1,"hostApiName":"Mock Host API"})";
+    }
+    REQUIRE_FALSE(cupuacu::persistence::AudioDevicePropertiesPersistence::load(
+                      malformedPath)
+                      .has_value());
+}
+
+TEST_CASE("Audio device properties persistence rejects unsupported versions",
+          "[persistence]")
+{
+    const auto testConfigRoot =
+        std::filesystem::temp_directory_path() / "cupuacu-test-config-version";
+    ScopedConfigCleanup cleanup(testConfigRoot);
+    const auto versionedPath = testConfigRoot / "unsupported-version.json";
+
+    std::filesystem::create_directories(testConfigRoot);
+    {
+        std::ofstream out(versionedPath, std::ios::binary | std::ios::trunc);
+        REQUIRE(out.good());
+        out << R"({"version":99,"hostApiName":"Mock Host API","outputDeviceName":"Mock Output Device","inputDeviceName":"Mock Input Device"})";
+    }
+
+    REQUIRE_FALSE(cupuacu::persistence::AudioDevicePropertiesPersistence::load(
+                      versionedPath)
+                      .has_value());
+}
+
+TEST_CASE("Audio device properties persistence maps unresolved names to -1 indexes",
+          "[persistence]")
+{
+    const auto testConfigRoot =
+        std::filesystem::temp_directory_path() / "cupuacu-test-config-unresolved";
+    ScopedConfigCleanup cleanup(testConfigRoot);
+    const auto propertiesPath = testConfigRoot / "audio-device-properties.json";
+
+    std::filesystem::create_directories(testConfigRoot);
+
+    ScopedResolverOverride resolverOverride(
+        cupuacu::persistence::AudioDevicePropertiesPersistence::Resolver{
+            .resolveHostApiName = [](const int) { return std::string{}; },
+            .resolveDeviceName = [](const int) { return std::string{}; },
+            .resolveHostApiIndex =
+                [](const std::string &) { return -1; },
+            .resolveDeviceIndex =
+                [](const std::string &, const bool, const int) { return -1; }});
+
+    {
+        std::ofstream out(propertiesPath, std::ios::binary | std::ios::trunc);
+        REQUIRE(out.good());
+        out << R"({"version":1,"hostApiName":"Unknown Host","outputDeviceName":"Unknown Output","inputDeviceName":"Unknown Input"})";
+    }
+
+    const auto loaded =
+        cupuacu::persistence::AudioDevicePropertiesPersistence::load(
+            propertiesPath);
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->hostApiIndex == -1);
+    REQUIRE(loaded->outputDeviceIndex == -1);
+    REQUIRE(loaded->inputDeviceIndex == -1);
+}
