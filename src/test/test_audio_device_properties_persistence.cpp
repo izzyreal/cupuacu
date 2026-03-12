@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <portaudio.h>
 #include <string>
 #include <utility>
 
@@ -258,4 +259,147 @@ TEST_CASE("Audio device properties persistence maps unresolved names to -1 index
     REQUIRE(loaded->hostApiIndex == -1);
     REQUIRE(loaded->outputDeviceIndex == -1);
     REQUIRE(loaded->inputDeviceIndex == -1);
+}
+
+TEST_CASE("Audio device properties persistence save fails when parent path cannot be created",
+          "[persistence]")
+{
+    const auto testConfigRoot =
+        std::filesystem::temp_directory_path() / "cupuacu-test-config-blocked-parent";
+    ScopedConfigCleanup cleanup(testConfigRoot);
+    std::filesystem::create_directories(testConfigRoot);
+
+    const auto blockingFile = testConfigRoot / "not-a-directory";
+    {
+        std::ofstream out(blockingFile, std::ios::binary | std::ios::trunc);
+        REQUIRE(out.good());
+        out << "block";
+    }
+
+    cupuacu::audio::AudioDevices::DeviceSelection selection;
+    selection.hostApiIndex = 1;
+    selection.outputDeviceIndex = 2;
+    selection.inputDeviceIndex = 3;
+
+    ScopedResolverOverride resolverOverride(
+        cupuacu::persistence::AudioDevicePropertiesPersistence::Resolver{});
+
+    REQUIRE_FALSE(cupuacu::persistence::AudioDevicePropertiesPersistence::save(
+        blockingFile / "audio-device-properties.json", selection));
+}
+
+TEST_CASE("Audio device properties persistence load rejects directory and wrong JSON shapes",
+          "[persistence]")
+{
+    const auto testConfigRoot =
+        std::filesystem::temp_directory_path() / "cupuacu-test-config-shapes";
+    ScopedConfigCleanup cleanup(testConfigRoot);
+    std::filesystem::create_directories(testConfigRoot);
+
+    REQUIRE_FALSE(cupuacu::persistence::AudioDevicePropertiesPersistence::load(
+                      testConfigRoot)
+                      .has_value());
+
+    const auto jsonPath = testConfigRoot / "audio-device-properties.json";
+    {
+        std::ofstream out(jsonPath, std::ios::binary | std::ios::trunc);
+        REQUIRE(out.good());
+        out << R"(["not","an","object"])";
+    }
+    REQUIRE_FALSE(cupuacu::persistence::AudioDevicePropertiesPersistence::load(
+                      jsonPath)
+                      .has_value());
+
+    {
+        std::ofstream out(jsonPath, std::ios::binary | std::ios::trunc);
+        REQUIRE(out.good());
+        out << R"({"version":"1","hostApiName":"Mock Host API","outputDeviceName":"Mock Output Device","inputDeviceName":"Mock Input Device"})";
+    }
+    REQUIRE_FALSE(cupuacu::persistence::AudioDevicePropertiesPersistence::load(
+                      jsonPath)
+                      .has_value());
+}
+
+TEST_CASE("Audio device properties persistence tolerates resolver functions being absent",
+          "[persistence]")
+{
+    const auto testConfigRoot =
+        std::filesystem::temp_directory_path() / "cupuacu-test-config-null-resolver";
+    ScopedConfigCleanup cleanup(testConfigRoot);
+    const auto propertiesPath = testConfigRoot / "audio-device-properties.json";
+
+    cupuacu::audio::AudioDevices::DeviceSelection selection;
+    selection.hostApiIndex = 4;
+    selection.outputDeviceIndex = 5;
+    selection.inputDeviceIndex = 6;
+
+    ScopedResolverOverride resolverOverride(
+        cupuacu::persistence::AudioDevicePropertiesPersistence::Resolver{});
+
+    REQUIRE(cupuacu::persistence::AudioDevicePropertiesPersistence::save(
+        propertiesPath, selection));
+
+    nlohmann::json persistedJson;
+    {
+        std::ifstream in(propertiesPath, std::ios::binary);
+        REQUIRE(in.good());
+        in >> persistedJson;
+    }
+    REQUIRE(persistedJson.at("hostApiName").get<std::string>().empty());
+    REQUIRE(persistedJson.at("outputDeviceName").get<std::string>().empty());
+    REQUIRE(persistedJson.at("inputDeviceName").get<std::string>().empty());
+
+    const auto loaded =
+        cupuacu::persistence::AudioDevicePropertiesPersistence::load(
+            propertiesPath);
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->hostApiIndex == -1);
+    REQUIRE(loaded->outputDeviceIndex == -1);
+    REQUIRE(loaded->inputDeviceIndex == -1);
+}
+
+TEST_CASE("Audio device properties persistence default resolver round-trips empty device names",
+          "[persistence]")
+{
+    const auto testConfigRoot =
+        std::filesystem::temp_directory_path() / "cupuacu-test-config-default-resolver";
+    ScopedConfigCleanup cleanup(testConfigRoot);
+    const auto propertiesPath = testConfigRoot / "audio-device-properties.json";
+
+    cupuacu::persistence::AudioDevicePropertiesPersistence::resetResolverForTesting();
+
+    const int initResult = Pa_Initialize();
+    REQUIRE((initResult == paNoError || initResult == paCanNotInitializeRecursively));
+
+    cupuacu::audio::AudioDevices::DeviceSelection selection;
+    selection.hostApiIndex = -1;
+    selection.outputDeviceIndex = -1;
+    selection.inputDeviceIndex = -1;
+
+    REQUIRE(cupuacu::persistence::AudioDevicePropertiesPersistence::save(
+        propertiesPath, selection));
+
+    nlohmann::json persistedJson;
+    {
+        std::ifstream in(propertiesPath, std::ios::binary);
+        REQUIRE(in.good());
+        in >> persistedJson;
+    }
+    REQUIRE(persistedJson.at("version").get<int>() == 1);
+    REQUIRE(persistedJson.at("hostApiName").get<std::string>().empty());
+    REQUIRE(persistedJson.at("outputDeviceName").get<std::string>().empty());
+    REQUIRE(persistedJson.at("inputDeviceName").get<std::string>().empty());
+
+    const auto loaded =
+        cupuacu::persistence::AudioDevicePropertiesPersistence::load(
+            propertiesPath);
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->hostApiIndex == -1);
+    REQUIRE(loaded->outputDeviceIndex == -1);
+    REQUIRE(loaded->inputDeviceIndex == -1);
+
+    if (initResult == paNoError)
+    {
+        REQUIRE(Pa_Terminate() == paNoError);
+    }
 }
