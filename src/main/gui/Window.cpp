@@ -2,6 +2,7 @@
 
 #include "../State.hpp"
 #include "MenuBar.hpp"
+#include "WindowMouseRouting.hpp"
 
 #include <cmath>
 
@@ -371,48 +372,46 @@ bool Window::handleEvent(const SDL_Event &event)
 
 bool Window::handleMouseEvent(const MouseEvent &mouseEvent)
 {
-    if (!rootComponent)
+    const bool hasCapturingComponent = capturingComponent != nullptr;
+    const bool captureContainsPoint =
+        hasCapturingComponent &&
+        capturingComponent->containsAbsoluteCoordinate(mouseEvent.mouseXi,
+                                                      mouseEvent.mouseYi);
+    const auto plan = planWindowMouseRouting(
+        mouseEvent.type, rootComponent != nullptr, hasCapturingComponent,
+        captureContainsPoint);
+
+    if (!plan.handled)
     {
         return false;
     }
 
-    switch (mouseEvent.type)
+    if (plan.updateHoverBeforeDispatch)
     {
-        case MOVE:
-            rootComponent->handleMouseEvent(mouseEvent);
-            if (capturingComponent == nullptr)
-            {
-                updateComponentUnderMouse(mouseEvent.mouseXi,
-                                          mouseEvent.mouseYi);
-            }
-            return true;
-        case DOWN:
-            rootComponent->handleMouseEvent(mouseEvent);
-            return true;
-        case UP:
-            updateComponentUnderMouse(mouseEvent.mouseXi, mouseEvent.mouseYi);
-
-            if (capturingComponent != nullptr &&
-                !capturingComponent->containsAbsoluteCoordinate(
-                    mouseEvent.mouseXi, mouseEvent.mouseYi))
-            {
-                capturingComponent->mouseLeave();
-            }
-
-            rootComponent->handleMouseEvent(mouseEvent);
-
-            if (capturingComponent != nullptr)
-            {
-                capturingComponent = nullptr;
-            }
-            return true;
-        case WHEEL:
-            updateComponentUnderMouse(mouseEvent.mouseXi, mouseEvent.mouseYi);
-            rootComponent->handleMouseEvent(mouseEvent);
-            return true;
+        updateComponentUnderMouse(mouseEvent.mouseXi, mouseEvent.mouseYi);
     }
 
-    return false;
+    if (plan.sendLeaveToCaptureBeforeDispatch)
+    {
+        capturingComponent->mouseLeave();
+    }
+
+    if (plan.dispatchToRoot)
+    {
+        rootComponent->handleMouseEvent(mouseEvent);
+    }
+
+    if (plan.updateHoverAfterDispatch)
+    {
+        updateComponentUnderMouse(mouseEvent.mouseXi, mouseEvent.mouseYi);
+    }
+
+    if (plan.clearCaptureAfterDispatch)
+    {
+        capturingComponent = nullptr;
+    }
+
+    return true;
 }
 
 void Window::renderFrame()
