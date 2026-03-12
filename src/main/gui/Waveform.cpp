@@ -3,6 +3,7 @@
 #include "audio/AudioDevices.hpp"
 #include "WaveformsUnderlay.hpp"
 #include "WaveformCache.hpp"
+#include "WaveformVisualState.hpp"
 #include "Window.hpp"
 
 #include "smooth_line.hpp"
@@ -37,10 +38,9 @@ void Waveform::updateSamplePoints()
 {
     removeAllChildren();
     const auto &viewState = state->mainDocumentSessionWindow->getViewState();
-    const bool playbackActive = playbackPosition >= 0;
-
-    if (!playbackActive &&
-        shouldShowSamplePoints(viewState.samplesPerPixel, state->pixelScale))
+    if (shouldRenderWaveformSamplePoints(playbackPosition,
+                                         viewState.samplesPerPixel,
+                                         state->pixelScale))
     {
         auto samplePoints = computeSamplePoints();
 
@@ -54,7 +54,7 @@ void Waveform::updateSamplePoints()
 bool Waveform::shouldShowSamplePoints(const double samplesPerPixel,
                                       const uint8_t pixelScale)
 {
-    return samplesPerPixel < (float)pixelScale / 40.f;
+    return shouldRenderWaveformSamplePoints(-1, samplesPerPixel, pixelScale);
 }
 
 bool Waveform::computeBlockModeSelectionRect(
@@ -517,19 +517,13 @@ void Waveform::drawSelection(SDL_Renderer *renderer) const
             return;
         }
 
-        const float startX =
-            firstSample <= sampleOffset
-                ? 0
-                : getXPosForSampleIndex(firstSample, sampleOffset,
-                                        samplesPerPixel);
-        const float endX =
-            getXPosForSampleIndex(lastSample, sampleOffset, samplesPerPixel);
-        const float selectionWidth =
-            std::abs(endX - startX) < 1.0f ? 1.0f : (endX - startX);
-
-        const SDL_FRect selectionRect = {startX, 0.0f, selectionWidth,
-                                         (float)getHeight()};
-        SDL_RenderFillRect(renderer, &selectionRect);
+        const auto selectionRect = planWaveformLinearSelectionRect(
+            isSelected, firstSample, lastSample, sampleOffset, samplesPerPixel,
+            getHeight());
+        if (selectionRect.visible)
+        {
+            SDL_RenderFillRect(renderer, &selectionRect.rect);
+        }
     }
 }
 
@@ -559,17 +553,14 @@ void Waveform::drawHighlight(SDL_Renderer *renderer) const
                                         ? *samplePosUnderCursor
                                         : samplePoint->getSampleIndex();
 
-        if (sampleIndex < document.getFrameCount())
+        const auto highlightRect = planWaveformHighlightRect(
+            true, sampleIndex, document.getFrameCount(), sampleOffset,
+            samplesPerPixel, getHeight());
+        if (highlightRect.visible)
         {
-            const float xPos = getXPosForSampleIndex(sampleIndex, sampleOffset,
-                                                     samplesPerPixel);
-            const float sampleWidth = 1.0f / samplesPerPixel;
-
             SDL_SetRenderDrawColor(renderer, 0, 128, 255, 100);
             SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-            const SDL_FRect sampleRect = {xPos, 0.0f, sampleWidth,
-                                          (float)getHeight()};
-            SDL_RenderFillRect(renderer, &sampleRect);
+            SDL_RenderFillRect(renderer, &highlightRect.rect);
         }
     }
 }
@@ -602,19 +593,14 @@ void Waveform::onDraw(SDL_Renderer *renderer)
 
 void Waveform::drawPlaybackPosition(SDL_Renderer *renderer) const
 {
-    if (playbackPosition == -1)
-    {
-        return;
-    }
-
     const auto &viewState = state->mainDocumentSessionWindow->getViewState();
-    const int32_t playbackXPos = getXPosForSampleIndex(
-        playbackPosition, viewState.sampleOffset, viewState.samplesPerPixel);
-
-    if (playbackXPos >= 0 && playbackXPos <= getWidth())
+    const auto marker = planWaveformPlaybackMarker(
+        playbackPosition, viewState.sampleOffset, viewState.samplesPerPixel,
+        getWidth());
+    if (marker.visible)
     {
         SDL_SetRenderDrawColor(renderer, 0, 200, 200, 255);
-        SDL_RenderLine(renderer, playbackXPos, 0, playbackXPos, getHeight());
+        SDL_RenderLine(renderer, marker.x, 0, marker.x, getHeight());
     }
 }
 
@@ -622,15 +608,10 @@ void Waveform::drawCursor(SDL_Renderer *renderer) const
 {
     const auto &session = state->activeDocumentSession;
     const auto &viewState = state->mainDocumentSessionWindow->getViewState();
-    if (session.selection.isActive())
-    {
-        return;
-    }
-
-    const int32_t cursorXPos = getXPosForSampleIndex(
-        session.cursor, viewState.sampleOffset, viewState.samplesPerPixel);
-
-    if (cursorXPos >= 0 && cursorXPos <= getWidth())
+    const auto marker = planWaveformCursorMarker(
+        session.selection.isActive(), session.cursor, viewState.sampleOffset,
+        viewState.samplesPerPixel, getWidth());
+    if (marker.visible)
     {
         SDL_SetRenderDrawColor(renderer, 188, 188, 0, 255);
 
@@ -638,7 +619,7 @@ void Waveform::drawCursor(SDL_Renderer *renderer) const
 
         for (int i = yInterval; i < getHeight(); i += yInterval)
         {
-            SDL_RenderPoint(renderer, cursorXPos, i);
+            SDL_RenderPoint(renderer, marker.x, i);
         }
     }
 }

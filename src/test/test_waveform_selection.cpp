@@ -4,6 +4,7 @@
 #include "gui/Waveform.hpp"
 #include "gui/WaveformRefresh.hpp"
 #include "gui/SamplePoint.hpp"
+#include "gui/WaveformVisualState.hpp"
 
 TEST_CASE("Block-mode selection rect covers boundary pixels for sample ranges",
           "[selection]")
@@ -111,6 +112,9 @@ TEST_CASE("Waveform sample point threshold and coordinate helpers are stable",
     REQUIRE(cupuacu::gui::Waveform::getDoubleSampleIndexForXPos(2.5f, 10, 2.0) ==
             15.0);
     REQUIRE(cupuacu::gui::Waveform::getSampleIndexForXPos(2.5f, 10, 2.0) == 15);
+
+    REQUIRE(cupuacu::gui::shouldRenderWaveformSamplePoints(-1, 0.01, 1));
+    REQUIRE_FALSE(cupuacu::gui::shouldRenderWaveformSamplePoints(5, 0.01, 1));
 }
 
 TEST_CASE("Waveform sample points hide during playback and return afterwards",
@@ -209,4 +213,48 @@ TEST_CASE("Waveform block-mode selection rect rejects invalid or offscreen input
         10, 20, 0, 0.0, 100, 20, rect));
     REQUIRE_FALSE(cupuacu::gui::Waveform::computeBlockModeSelectionRect(
         10, 20, 1000, 10.0, 10, 20, rect));
+}
+
+TEST_CASE("Waveform visual planning helpers compute markers and rects",
+          "[selection]")
+{
+    const auto playbackMarker =
+        cupuacu::gui::planWaveformPlaybackMarker(15, 10, 2.0, 10);
+    REQUIRE(playbackMarker.visible);
+    REQUIRE(playbackMarker.x == 3);
+
+    const auto hiddenPlaybackMarker =
+        cupuacu::gui::planWaveformPlaybackMarker(-1, 10, 2.0, 10);
+    REQUIRE_FALSE(hiddenPlaybackMarker.visible);
+
+    const auto cursorMarker =
+        cupuacu::gui::planWaveformCursorMarker(false, 15, 10, 2.0, 10);
+    REQUIRE(cursorMarker.visible);
+    REQUIRE(cursorMarker.x == 3);
+
+    const auto hiddenCursorMarker =
+        cupuacu::gui::planWaveformCursorMarker(true, 15, 10, 2.0, 10);
+    REQUIRE_FALSE(hiddenCursorMarker.visible);
+
+    const auto highlightRect =
+        cupuacu::gui::planWaveformHighlightRect(true, 15, 32, 10, 2.0, 20);
+    REQUIRE(highlightRect.visible);
+    REQUIRE(highlightRect.rect.x == 3.0f);
+    REQUIRE(highlightRect.rect.w == 0.5f);
+
+    const auto hiddenHighlightRect =
+        cupuacu::gui::planWaveformHighlightRect(false, 15, 32, 10, 2.0, 20);
+    REQUIRE_FALSE(hiddenHighlightRect.visible);
+
+    const auto selectionRect = cupuacu::gui::planWaveformLinearSelectionRect(
+        true, 12, 16, 10, 2.0, 20);
+    REQUIRE(selectionRect.visible);
+    REQUIRE(selectionRect.rect.x == 1.0f);
+    REQUIRE(selectionRect.rect.w == 2.0f);
+
+    const auto minimumWidthSelectionRect =
+        cupuacu::gui::planWaveformLinearSelectionRect(true, 10, 11, 10, 2.0,
+                                                      20);
+    REQUIRE(minimumWidthSelectionRect.visible);
+    REQUIRE(minimumWidthSelectionRect.rect.w == 1.0f);
 }
