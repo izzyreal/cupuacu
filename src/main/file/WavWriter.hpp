@@ -121,6 +121,94 @@ namespace cupuacu::file
             return result;
         }
 
+        static void printNoExtraBytesAfterDataChunk()
+        {
+            std::printf("No extra bytes after data chunk\n");
+        }
+
+        static void printAcceptableDifference(const std::streamoff offset)
+        {
+            std::printf("Acceptable difference detected at offset %lld\n",
+                        static_cast<long long>(offset));
+        }
+
+        static void printFileSizeDifference(const std::streamoff size1,
+                                            const std::streamoff size2)
+        {
+            std::printf("Files differ in size: original=%lld copy=%lld\n",
+                        static_cast<long long>(size1),
+                        static_cast<long long>(size2));
+        }
+
+        static void printDifferenceContext(std::ifstream &ifs,
+                                           const char *label,
+                                           const std::streamoff offset)
+        {
+            std::streamoff start = offset - 10;
+            if (start < 0)
+            {
+                start = 0;
+            }
+            std::streamoff end = offset + 10;
+
+            ifs.clear();
+            ifs.seekg(0, std::ios::end);
+            std::streamoff fileSize = ifs.tellg();
+            if (end >= fileSize)
+            {
+                end = fileSize - 1;
+            }
+
+            std::streamoff size = end - start + 1;
+            std::vector<unsigned char> buffer(size);
+
+            ifs.seekg(start, std::ios::beg);
+            ifs.read(reinterpret_cast<char *>(buffer.data()), size);
+
+            std::printf("%s: ", label);
+            for (std::streamoff i = 0; i < size; ++i)
+            {
+                std::printf("%02x ", buffer[i]);
+            }
+            std::printf("\n");
+
+            std::printf("%s: ", label);
+            for (std::streamoff i = 0; i < size; ++i)
+            {
+                char ch = (buffer[i] >= 32 && buffer[i] < 127) ? buffer[i]
+                                                                : '.';
+                std::printf("%c  ", ch);
+            }
+            std::printf("\n");
+
+            std::printf("%s: ", label);
+            for (std::streamoff i = 0; i < size; ++i)
+            {
+                if (start + i == offset)
+                {
+                    std::printf("^  ");
+                }
+                else
+                {
+                    std::printf("   ");
+                }
+            }
+            std::printf("\n");
+        }
+
+        static void printBinaryDifference(std::ifstream &ifs1,
+                                          std::ifstream &ifs2,
+                                          const std::streamoff offset,
+                                          const char c1, const char c2)
+        {
+            std::printf("Difference at offset %lld: original=0x%02x copy=0x%02x\n",
+                        static_cast<long long>(offset),
+                        static_cast<unsigned char>(c1),
+                        static_cast<unsigned char>(c2));
+            printDifferenceContext(ifs1, "original", offset);
+            printDifferenceContext(ifs2, "copy    ", offset);
+        }
+
         static void copyBytesBeforeDataChunk(std::istream &is, std::ostream &os)
         {
             if (!is16BitPcmWavFile(is))
@@ -216,7 +304,8 @@ namespace cupuacu::file
 
             if (fileEnd <= endOffset)
             {
-                std::printf("No extra bytes after data chunk\n");
+                // Reserved for future logger integration.
+                // printNoExtraBytesAfterDataChunk();
                 return;
             }
 
@@ -268,80 +357,14 @@ namespace cupuacu::file
                         std::abs((int)(unsigned char)c1 -
                                  (int)(unsigned char)c2) == 1)
                     {
-                        printf(
-                            "Acceptable difference detected at offset %lld\n",
-                            static_cast<long long>(offset));
+                        // Reserved for future logger integration.
+                        // printAcceptableDifference(offset);
                         // Acceptable off-by-one PCM sample difference
                     }
                     else
                     {
-                        std::printf(
-                            "Difference at offset %lld: original=0x%02x "
-                            "copy=0x%02x\n",
-                            static_cast<long long>(offset),
-                            static_cast<unsigned char>(c1),
-                            static_cast<unsigned char>(c2));
-
-                        auto printContext =
-                            [&](std::ifstream &ifs, const char *label)
-                        {
-                            std::streamoff start = offset - 10;
-                            if (start < 0)
-                            {
-                                start = 0;
-                            }
-                            std::streamoff end = offset + 10;
-
-                            ifs.clear();
-                            ifs.seekg(0, std::ios::end);
-                            std::streamoff fileSize = ifs.tellg();
-                            if (end >= fileSize)
-                            {
-                                end = fileSize - 1;
-                            }
-
-                            std::streamoff size = end - start + 1;
-                            std::vector<unsigned char> buffer(size);
-
-                            ifs.seekg(start, std::ios::beg);
-                            ifs.read(reinterpret_cast<char *>(buffer.data()),
-                                     size);
-
-                            std::printf("%s: ", label);
-                            for (std::streamoff i = 0; i < size; ++i)
-                            {
-                                std::printf("%02x ", buffer[i]);
-                            }
-                            std::printf("\n");
-
-                            std::printf("%s: ", label);
-                            for (std::streamoff i = 0; i < size; ++i)
-                            {
-                                char ch = (buffer[i] >= 32 && buffer[i] < 127)
-                                              ? buffer[i]
-                                              : '.';
-                                std::printf("%c  ", ch);
-                            }
-                            std::printf("\n");
-
-                            std::printf("%s: ", label);
-                            for (std::streamoff i = 0; i < size; ++i)
-                            {
-                                if (start + i == offset)
-                                {
-                                    std::printf("^  ");
-                                }
-                                else
-                                {
-                                    std::printf("   ");
-                                }
-                            }
-                            std::printf("\n");
-                        };
-
-                        printContext(ifs1, "original");
-                        printContext(ifs2, "copy    ");
-
+                        // Reserved for future logger integration.
+                        // printBinaryDifference(ifs1, ifs2, offset, c1, c2);
                         return false;
                     }
                 }
@@ -356,9 +379,8 @@ namespace cupuacu::file
             std::streamoff size2 = ifs2.tellg();
             if (size1 != size2)
             {
-                std::printf("Files differ in size: original=%lld copy=%lld\n",
-                            static_cast<long long>(size1),
-                            static_cast<long long>(size2));
+                // Reserved for future logger integration.
+                // printFileSizeDifference(size1, size2);
                 return false;
             }
 
@@ -388,17 +410,8 @@ namespace cupuacu::file
             ofs.flush();
             ofs.close();
 
-            bool identical = isCopyBinaryIdentical(input, output);
-
-            if (identical)
-            {
-                std::printf(
-                    "Saved file is binary identical to what was loaded.\n");
-            }
-            else
-            {
-                std::printf("Save file differs from what was loaded.\n");
-            }
+            [[maybe_unused]] const bool identical =
+                isCopyBinaryIdentical(input, output);
 
             std::filesystem::rename(output, input);
         }
