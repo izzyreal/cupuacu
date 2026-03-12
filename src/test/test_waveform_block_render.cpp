@@ -2,6 +2,8 @@
 #include <catch2/catch_approx.hpp>
 
 #include "TestStateBuilders.hpp"
+#include "gui/WaveformBlockRenderPlanning.hpp"
+#include "gui/WaveformSamplePointPlanning.hpp"
 #include "gui/Waveform.hpp"
 #include "gui/WaveformCache.hpp"
 
@@ -117,4 +119,110 @@ TEST_CASE("Block render phase stays monotonic for large offsets",
 
         prevPhase = phase;
     }
+}
+
+TEST_CASE("Block waveform planner deduplicates columns and tracks connectors",
+          "[gui]")
+{
+    const auto plan = cupuacu::gui::planBlockWaveformColumns(
+        4, 0.4, 10, 10.0f,
+        [](const int x, cupuacu::gui::Peak &peak) -> bool
+        {
+            switch (x)
+            {
+                case 0:
+                    peak = {-0.5f, 0.5f};
+                    return true;
+                case 1:
+                    peak = {-0.25f, 0.75f};
+                    return true;
+                case 2:
+                    peak = {-0.25f, 0.75f};
+                    return true;
+                case 3:
+                    peak = {-1.0f, 1.0f};
+                    return true;
+                default:
+                    return false;
+            }
+        });
+
+    REQUIRE(plan.size() == 4);
+
+    REQUIRE(plan[0].drawXi == 0);
+    REQUIRE_FALSE(plan[0].connectFromPrevious);
+    REQUIRE(plan[0].y1 == 5);
+    REQUIRE(plan[0].y2 == 15);
+
+    REQUIRE(plan[1].drawXi == 1);
+    REQUIRE(plan[1].connectFromPrevious);
+    REQUIRE(plan[1].previousX == 0);
+    REQUIRE(plan[1].previousY == 10);
+
+    REQUIRE(plan[2].drawXi == 2);
+    REQUIRE(plan[2].connectFromPrevious);
+    REQUIRE(plan[2].previousX == 1);
+
+    REQUIRE(plan[3].drawXi == 3);
+    REQUIRE(plan[3].connectFromPrevious);
+    REQUIRE(plan[3].previousX == 2);
+}
+
+TEST_CASE("Block waveform planner skips peaks that map offscreen",
+          "[gui]")
+{
+    const auto plan = cupuacu::gui::planBlockWaveformColumns(
+        2, 5.0, 10, 4.0f,
+        [](const int x, cupuacu::gui::Peak &peak) -> bool
+        {
+            peak = {-0.5f, 0.5f};
+            return x < 3;
+        });
+
+    REQUIRE(plan.empty());
+}
+
+TEST_CASE("Waveform sample point planner maps visible samples to point bounds",
+          "[gui]")
+{
+    const auto plan = cupuacu::gui::planWaveformSamplePoints(
+        4, 20, 0.5, 2, 2, 1.0, 10,
+        [](const int64_t sampleIndex)
+        {
+            return sampleIndex == 2 ? 1.0f : (sampleIndex == 3 ? 0.0f : -1.0f);
+        });
+
+    REQUIRE(plan.size() == 2);
+
+    REQUIRE(plan[0].sampleIndex == 2);
+    REQUIRE(plan[0].size == 16);
+    REQUIRE(plan[0].x == 0);
+    REQUIRE(plan[0].y == 0);
+
+    REQUIRE(plan[1].sampleIndex == 3);
+    REQUIRE(plan[1].x == 0);
+    REQUIRE(plan[1].y == 2);
+}
+
+TEST_CASE("Waveform sample point planner clamps to available input samples",
+          "[gui]")
+{
+    const auto emptyPlan = cupuacu::gui::planWaveformSamplePoints(
+        10, 20, 1.0, 12, 1, 1.0, 12,
+        [](const int64_t)
+        {
+            return 0.0f;
+        });
+    REQUIRE(emptyPlan.empty());
+
+    const auto truncatedPlan = cupuacu::gui::planWaveformSamplePoints(
+        10, 20, 2.0, 8, 1, 1.0, 10,
+        [](const int64_t sampleIndex)
+        {
+            return sampleIndex == 8 ? -0.5f : 0.5f;
+        });
+
+    REQUIRE(truncatedPlan.size() == 2);
+    REQUIRE(truncatedPlan[0].sampleIndex == 8);
+    REQUIRE(truncatedPlan[1].sampleIndex == 9);
 }

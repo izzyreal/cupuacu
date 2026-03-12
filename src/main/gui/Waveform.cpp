@@ -1,6 +1,8 @@
 #include "Waveform.hpp"
 
 #include "audio/AudioDevices.hpp"
+#include "WaveformBlockRenderPlanning.hpp"
+#include "WaveformSamplePointPlanning.hpp"
 #include "WaveformsUnderlay.hpp"
 #include "WaveformCache.hpp"
 #include "WaveformVisualState.hpp"
@@ -22,11 +24,6 @@ Waveform::Waveform(State *state, const uint8_t channelIndexToUse)
 uint8_t Waveform::getChannelIndex() const
 {
     return channelIndex;
-}
-
-uint16_t getSamplePointSize(const uint8_t pixelScale)
-{
-    return 32 / pixelScale;
 }
 
 void Waveform::resized()
@@ -152,42 +149,26 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
     const auto &session = state->activeDocumentSession;
     const auto &doc = session.document;
     const auto &viewState = state->mainDocumentSessionWindow->getViewState();
-    const double samplesPerPixel = viewState.samplesPerPixel;
-    const int64_t sampleOffset = viewState.sampleOffset;
-    const uint8_t pixelScale = state->pixelScale;
-    const double verticalZoom = viewState.verticalZoom;
-    const float halfSampleWidth = 0.5f / samplesPerPixel;
-
-    const int64_t neededInputSamples =
-        static_cast<int64_t>(std::round(getWidth() * samplesPerPixel));
-    const int64_t availableSamples = doc.getFrameCount() - sampleOffset;
-    const int64_t actualInputSamples =
-        std::min(neededInputSamples, availableSamples);
-
-    if (actualInputSamples < 1)
-    {
-        return {};
-    }
-
-    std::vector<std::unique_ptr<SamplePoint>> result;
-    const uint16_t samplePointSize = getSamplePointSize(pixelScale);
-
     const auto sampleData =
         doc.getAudioBuffer()->getImmutableChannelData(channelIndex);
+    const auto plannedPoints = planWaveformSamplePoints(
+        getWidth(), getHeight(), viewState.samplesPerPixel,
+        viewState.sampleOffset, state->pixelScale, viewState.verticalZoom,
+        doc.getFrameCount(),
+        [&](const int64_t sampleIndex)
+        {
+            return sampleData[static_cast<std::size_t>(sampleIndex)];
+        });
 
-    for (int i = 0; i < actualInputSamples; ++i)
+    std::vector<std::unique_ptr<SamplePoint>> result;
+    result.reserve(plannedPoints.size());
+
+    for (const auto &plannedPoint : plannedPoints)
     {
-        const int xPos =
-            static_cast<int>(i / samplesPerPixel + halfSampleWidth);
-        const int yPos =
-            getYPosForSampleValue(sampleData[sampleOffset + i], getHeight(),
-                                  verticalZoom, samplePointSize);
-
-        auto samplePoint = std::make_unique<SamplePoint>(state, channelIndex,
-                                                         sampleOffset + i);
-        samplePoint->setBounds(std::max(0, xPos - samplePointSize / 2),
-                               yPos - samplePointSize / 2, samplePointSize,
-                               samplePointSize);
+        auto samplePoint = std::make_unique<SamplePoint>(
+            state, channelIndex, plannedPoint.sampleIndex);
+        samplePoint->setBounds(plannedPoint.x, plannedPoint.y,
+                               plannedPoint.size, plannedPoint.size);
         result.push_back(std::move(samplePoint));
     }
 
@@ -196,7 +177,7 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
 
 void Waveform::drawHorizontalLines(SDL_Renderer *renderer) const
 {
-    const auto samplePointSize = getSamplePointSize(state->pixelScale);
+    const auto samplePointSize = getWaveformSamplePointSize(state->pixelScale);
     const auto &viewState = state->mainDocumentSessionWindow->getViewState();
     const auto verticalZoom = viewState.verticalZoom;
 
@@ -230,7 +211,7 @@ void Waveform::renderSmoothWaveform(SDL_Renderer *renderer) const
     const auto verticalZoom = viewState.verticalZoom;
     const auto widthToUse = getWidth();
     const auto heightToUse = getHeight();
-    const auto samplePointSize = getSamplePointSize(state->pixelScale);
+    const auto samplePointSize = getWaveformSamplePointSize(state->pixelScale);
     const auto drawableHeight = heightToUse - samplePointSize;
 
     const int64_t neededInputSamples =
@@ -327,7 +308,8 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
     const double verticalZoom = viewState.verticalZoom;
     const int widthToUse = getWidth();
     const int heightToUse = getHeight();
-    const uint16_t samplePointSize = getSamplePointSize(state->pixelScale);
+    const uint16_t samplePointSize =
+        getWaveformSamplePointSize(state->pixelScale);
     const auto drawableHeight = heightToUse - samplePointSize;
     const float scale = (float)(verticalZoom * drawableHeight * 0.5f);
     const int centerY = heightToUse / 2;
@@ -419,53 +401,30 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
         return true;
     };
 
-    int prevX = 0;
-    int prevY = 0;
-    bool hasPrev = false;
-    int lastDrawXi = std::numeric_limits<int>::min();
+    const auto plan = planBlockWaveformColumns(
+        widthToUse, blockRenderPhasePx, centerY, scale,
+        [&](const int x, Peak &out) -> bool
+        {
+            return getPeakForPixel(x, out);
+        });
 
-    for (int x = 0; x < widthToUse + 1; ++x)
+    for (const auto &column : plan)
     {
-        Peak p;
-        if (!getPeakForPixel(x, p))
+        if (column.y1 != column.y2)
         {
-            continue;
-        }
-
-        const float drawX = static_cast<float>(x - blockRenderPhasePx);
-        const int drawXi = static_cast<int>(std::lround(drawX));
-        if (drawXi < 0 || drawXi > widthToUse)
-        {
-            continue;
-        }
-
-        if (drawXi == lastDrawXi)
-        {
-            continue;
-        }
-
-        const int y1 = (int)(centerY - p.max * scale);
-        const int y2 = (int)(centerY - p.min * scale);
-        const int midY = (y1 + y2) / 2;
-
-        if (y1 != y2)
-        {
-            SDL_RenderLine(renderer, drawXi, y1, drawXi, y2);
+            SDL_RenderLine(renderer, column.drawXi, column.y1, column.drawXi,
+                           column.y2);
         }
         else
         {
-            SDL_RenderPoint(renderer, drawXi, y1);
+            SDL_RenderPoint(renderer, column.drawXi, column.y1);
         }
 
-        if (hasPrev && prevX != drawXi)
+        if (column.connectFromPrevious)
         {
-            SDL_RenderLine(renderer, prevX, prevY, drawXi, midY);
+            SDL_RenderLine(renderer, column.previousX, column.previousY,
+                           column.drawXi, column.midY);
         }
-
-        prevX = drawXi;
-        prevY = midY;
-        hasPrev = true;
-        lastDrawXi = drawXi;
     }
 }
 

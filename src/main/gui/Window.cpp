@@ -2,6 +2,8 @@
 
 #include "../State.hpp"
 #include "MenuBar.hpp"
+#include "WindowEventHandlingPlan.hpp"
+#include "WindowEventPlanning.hpp"
 #include "WindowMouseRouting.hpp"
 
 #include <cmath>
@@ -182,72 +184,13 @@ bool Window::isEventForWindow(const SDL_Event &event) const
         return false;
     }
 
-    SDL_WindowID eventWindowId = 0;
-    switch (event.type)
-    {
-        case SDL_EVENT_WINDOW_RESIZED:
-        case SDL_EVENT_WINDOW_MAXIMIZED:
-        case SDL_EVENT_WINDOW_EXPOSED:
-        case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
-            eventWindowId = event.window.windowID;
-            break;
-        case SDL_EVENT_MOUSE_MOTION:
-            eventWindowId = event.motion.windowID;
-            break;
-        case SDL_EVENT_MOUSE_BUTTON_DOWN:
-        case SDL_EVENT_MOUSE_BUTTON_UP:
-            eventWindowId = event.button.windowID;
-            break;
-        case SDL_EVENT_MOUSE_WHEEL:
-            eventWindowId = event.wheel.windowID;
-            break;
-        default:
-            return false;
-    }
-
-    return eventWindowId == windowId;
+    const auto eventWindowId = getWindowEventWindowId(event);
+    return eventWindowId.has_value() && *eventWindowId == windowId;
 }
 
 MouseEvent Window::makeMouseEvent(const SDL_Event &event) const
 {
-    MouseEventType type = MOVE;
-    float xf = 0.0f, yf = 0.0f;
-    float relx = 0.0f, rely = 0.0f;
-    int32_t xi = 0, yi = 0;
-    bool left = false, middle = false, right = false;
-    uint8_t clicks = 0;
-    float wheelX = 0.0f, wheelY = 0.0f;
-
-    if (event.type == SDL_EVENT_MOUSE_MOTION)
-    {
-        type = MOVE;
-        xf = event.motion.x;
-        yf = event.motion.y;
-        relx = event.motion.xrel;
-        rely = event.motion.yrel;
-        left = (event.motion.state & SDL_BUTTON_LMASK) != 0;
-        middle = (event.motion.state & SDL_BUTTON_MMASK) != 0;
-        right = (event.motion.state & SDL_BUTTON_RMASK) != 0;
-    }
-    else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
-             event.type == SDL_EVENT_MOUSE_BUTTON_UP)
-    {
-        type = event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ? DOWN : UP;
-        xf = event.button.x;
-        yf = event.button.y;
-        left = event.button.button == SDL_BUTTON_LEFT;
-        middle = event.button.button == SDL_BUTTON_MIDDLE;
-        right = event.button.button == SDL_BUTTON_RIGHT;
-        clicks = event.button.clicks;
-    }
-    else if (event.type == SDL_EVENT_MOUSE_WHEEL)
-    {
-        type = WHEEL;
-        xf = event.wheel.mouse_x;
-        yf = event.wheel.mouse_y;
-        wheelX = event.wheel.x;
-        wheelY = event.wheel.y;
-    }
+    auto draft = draftWindowMouseEvent(event);
 
     if (canvas && window)
     {
@@ -259,19 +202,13 @@ MouseEvent Window::makeMouseEvent(const SDL_Event &event) const
 
         if (winDimensions.x > 0 && winDimensions.y > 0)
         {
-            xf *= canvasDimensions.x / winDimensions.x;
-            yf *= canvasDimensions.y / winDimensions.y;
-            relx *= canvasDimensions.x / winDimensions.x;
-            rely *= canvasDimensions.y / winDimensions.y;
+            scaleWindowMouseEventDraft(draft, canvasDimensions.x,
+                                       canvasDimensions.y, winDimensions.x,
+                                       winDimensions.y);
         }
     }
 
-    xi = static_cast<int32_t>(std::floor(xf));
-    yi = static_cast<int32_t>(std::floor(yf));
-
-    const MouseButtonState bs{left, middle, right};
-    return MouseEvent{type,      xi,      yi,      xf,      yf,
-                      relx,      rely,    bs,      clicks,  wheelX, wheelY};
+    return finalizeWindowMouseEvent(draft);
 }
 
 void Window::updateComponentUnderMouse(const int32_t mouseX,
@@ -309,62 +246,35 @@ bool Window::handleEvent(const SDL_Event &event)
         return false;
     }
 
-    switch (event.type)
+    const auto plan = planWindowEventHandling(event.type, rootComponent != nullptr);
+    if (!plan.handled)
     {
-        case SDL_EVENT_WINDOW_MAXIMIZED:
-            wasMaximized = true;
-            break;
-        case SDL_EVENT_WINDOW_RESIZED:
-            handleResize();
-            break;
-        case SDL_EVENT_WINDOW_EXPOSED:
-            renderFrame();
-            break;
-        case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
-            if (onClose)
-            {
-                onClose();
-            }
-            close();
-            break;
-        case SDL_EVENT_MOUSE_MOTION:
-        {
-            if (!rootComponent)
-            {
-                break;
-            }
-            handleMouseEvent(makeMouseEvent(event));
-            break;
-        }
-        case SDL_EVENT_MOUSE_BUTTON_DOWN:
-        {
-            if (!rootComponent)
-            {
-                break;
-            }
-            handleMouseEvent(makeMouseEvent(event));
-            break;
-        }
-        case SDL_EVENT_MOUSE_BUTTON_UP:
-        {
-            if (!rootComponent)
-            {
-                break;
-            }
-            handleMouseEvent(makeMouseEvent(event));
-            break;
-        }
-        case SDL_EVENT_MOUSE_WHEEL:
-        {
-            if (!rootComponent)
-            {
-                break;
-            }
-            handleMouseEvent(makeMouseEvent(event));
-            break;
-        }
-        default:
-            break;
+        return true;
+    }
+
+    if (plan.markMaximized)
+    {
+        wasMaximized = true;
+    }
+    if (plan.handleResize)
+    {
+        handleResize();
+    }
+    if (plan.renderFrame)
+    {
+        renderFrame();
+    }
+    if (plan.invokeOnClose && onClose)
+    {
+        onClose();
+    }
+    if (plan.closeWindow)
+    {
+        close();
+    }
+    if (plan.forwardAsMouse)
+    {
+        handleMouseEvent(makeMouseEvent(event));
     }
 
     return true;
