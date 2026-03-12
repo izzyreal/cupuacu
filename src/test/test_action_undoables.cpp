@@ -6,7 +6,10 @@
 #include "actions/audio/Cut.hpp"
 #include "actions/audio/EditCommands.hpp"
 #include "actions/audio/Paste.hpp"
+#include "actions/audio/RecordedChunkApplier.hpp"
+#include "actions/audio/SetSampleValue.hpp"
 #include "actions/audio/Trim.hpp"
+#include "audio/RecordedChunk.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/Window.hpp"
 
@@ -284,4 +287,119 @@ TEST_CASE("Cut and trim without active selection are no-ops", "[actions]")
     REQUIRE(state.undoables.empty());
     REQUIRE_FALSE(session.selection.isActive());
     REQUIRE(session.cursor == 2);
+}
+
+TEST_CASE("Copy undoable preserves zero-based selection and restores it on undo",
+          "[actions]")
+{
+    cupuacu::State state{};
+    initializeMonoDocument(state, {0, 1, 2, 3});
+
+    auto &session = state.activeDocumentSession;
+    session.selection.setValue1(0.0);
+    session.selection.setValue2(2.0);
+    session.cursor = 3;
+
+    cupuacu::actions::audio::performCopy(&state);
+
+    REQUIRE(state.undoables.size() == 1);
+    REQUIRE(readMonoSamples(session.document) == std::vector<float>({0, 1, 2, 3}));
+    REQUIRE(readMonoSamples(state.clipboard) == std::vector<float>({0, 1}));
+    REQUIRE(session.selection.isActive());
+    REQUIRE(session.selection.getStartInt() == 0);
+    REQUIRE(session.selection.getLengthInt() == 2);
+    REQUIRE(session.cursor == 0);
+
+    session.selection.reset();
+    session.cursor = 1;
+    state.undo();
+
+    REQUIRE(session.selection.isActive());
+    REQUIRE(session.selection.getStartInt() == 0);
+    REQUIRE(session.selection.getLengthInt() == 2);
+    REQUIRE(session.cursor == 3);
+}
+
+TEST_CASE("SetSampleValue undoable changes one sample and restores it", "[actions]")
+{
+    cupuacu::State state{};
+    initializeMonoDocument(state, {0, 1, 2});
+
+    auto undoable = std::make_shared<cupuacu::actions::audio::SetSampleValue>(
+        &state, 0, 1, 1.0f);
+    undoable->setNewValue(42.0f);
+    state.addAndDoUndoable(undoable);
+
+    REQUIRE(readMonoSamples(state.activeDocumentSession.document) ==
+            std::vector<float>({0, 42, 2}));
+
+    state.undo();
+    REQUIRE(readMonoSamples(state.activeDocumentSession.document) ==
+            std::vector<float>({0, 1, 2}));
+
+    state.redo();
+    REQUIRE(readMonoSamples(state.activeDocumentSession.document) ==
+            std::vector<float>({0, 42, 2}));
+}
+
+TEST_CASE("Recorded chunk applier initializes empty document from chunk", "[actions]")
+{
+    cupuacu::Document doc;
+    cupuacu::audio::RecordedChunk chunk{};
+    chunk.startFrame = 0;
+    chunk.frameCount = 3;
+    chunk.channelCount = 2;
+    chunk.interleavedSamples[0] = 1.0f;
+    chunk.interleavedSamples[1] = -1.0f;
+    chunk.interleavedSamples[2] = 0.5f;
+    chunk.interleavedSamples[3] = -0.5f;
+    chunk.interleavedSamples[4] = 0.25f;
+    chunk.interleavedSamples[5] = -0.25f;
+
+    const auto result =
+        cupuacu::actions::audio::applyRecordedChunk(doc, chunk);
+
+    REQUIRE(result.channelLayoutChanged);
+    REQUIRE(result.waveformCacheChanged);
+    REQUIRE(result.requiredFrameCount == 3);
+    REQUIRE(doc.getChannelCount() == 2);
+    REQUIRE(doc.getFrameCount() == 3);
+    REQUIRE(doc.getSample(0, 0) == Catch::Approx(1.0f));
+    REQUIRE(doc.getSample(1, 0) == Catch::Approx(-1.0f));
+    REQUIRE(doc.getSample(0, 2) == Catch::Approx(0.25f));
+    REQUIRE(doc.getSample(1, 2) == Catch::Approx(-0.25f));
+}
+
+TEST_CASE("Recorded chunk applier expands channel layout and appends frames",
+          "[actions]")
+{
+    cupuacu::Document doc;
+    doc.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 2);
+    doc.setSample(0, 0, 10.0f, false);
+    doc.setSample(0, 1, 20.0f, false);
+
+    cupuacu::audio::RecordedChunk chunk{};
+    chunk.startFrame = 1;
+    chunk.frameCount = 3;
+    chunk.channelCount = 2;
+    chunk.interleavedSamples[0] = 1.0f;
+    chunk.interleavedSamples[1] = 2.0f;
+    chunk.interleavedSamples[2] = 3.0f;
+    chunk.interleavedSamples[3] = 4.0f;
+    chunk.interleavedSamples[4] = 5.0f;
+    chunk.interleavedSamples[5] = 6.0f;
+
+    const auto result =
+        cupuacu::actions::audio::applyRecordedChunk(doc, chunk);
+
+    REQUIRE(result.channelLayoutChanged);
+    REQUIRE(result.waveformCacheChanged);
+    REQUIRE(result.requiredFrameCount == 4);
+    REQUIRE(doc.getChannelCount() == 2);
+    REQUIRE(doc.getFrameCount() == 4);
+    REQUIRE(doc.getSample(0, 0) == Catch::Approx(10.0f));
+    REQUIRE(doc.getSample(0, 1) == Catch::Approx(1.0f));
+    REQUIRE(doc.getSample(1, 1) == Catch::Approx(2.0f));
+    REQUIRE(doc.getSample(0, 3) == Catch::Approx(5.0f));
+    REQUIRE(doc.getSample(1, 3) == Catch::Approx(6.0f));
 }

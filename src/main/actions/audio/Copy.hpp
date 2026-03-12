@@ -12,6 +12,7 @@ namespace cupuacu::actions::audio
         int64_t numFrames;
 
         // For restoring state on undo (selection, cursor)
+        bool hadOldSelection = false;
         double oldSel1 = 0;
         double oldSel2 = 0;
         int64_t oldCursorPos = 0;
@@ -23,6 +24,7 @@ namespace cupuacu::actions::audio
             auto &session = state->activeDocumentSession;
             if (session.selection.isActive())
             {
+                hadOldSelection = true;
                 oldSel1 = session.selection.getStart();
                 oldSel2 = session.selection.getEnd();
             }
@@ -30,7 +32,10 @@ namespace cupuacu::actions::audio
 
             updateGui = [state = state]
             {
-                state->mainView->setDirty();
+                if (state->mainView)
+                {
+                    state->mainView->setDirty();
+                }
             };
         }
 
@@ -71,7 +76,7 @@ namespace cupuacu::actions::audio
         {
             auto &session = state->activeDocumentSession;
             // Copy doesn’t modify audio data — just restore previous UI state
-            if (oldSel1 != 0 && oldSel2 != 0)
+            if (hadOldSelection)
             {
                 session.selection.setValue1(oldSel1);
                 session.selection.setValue2(oldSel2);

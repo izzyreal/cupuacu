@@ -19,6 +19,7 @@ namespace cupuacu::actions::audio
         std::vector<std::vector<float>> inserted;
         std::vector<std::vector<float>> overwritten;
 
+        bool hadOldSelection = false;
         double oldSel1 = 0;
         double oldSel2 = 0;
         int64_t oldCursorPos = 0;
@@ -31,8 +32,15 @@ namespace cupuacu::actions::audio
             auto &session = state->activeDocumentSession;
             if (session.selection.isActive())
             {
+                hadOldSelection = true;
                 oldSel1 = session.selection.getStart();
                 oldSel2 = session.selection.getEnd();
+            }
+            else if (endFrame >= startFrame && endFrame >= 0)
+            {
+                hadOldSelection = true;
+                oldSel1 = static_cast<double>(startFrame);
+                oldSel2 = static_cast<double>(endFrame + 1);
             }
 
             oldCursorPos = session.cursor;
@@ -156,7 +164,7 @@ namespace cupuacu::actions::audio
             doc.updateWaveformCache();
             session.syncSelectionAndCursorToDocumentLength();
 
-            if (oldSel1 != 0 && oldSel2 != 0)
+            if (hadOldSelection)
             {
                 session.selection.setValue1(oldSel1);
                 session.selection.setValue2(oldSel2);
