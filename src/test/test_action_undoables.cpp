@@ -320,6 +320,30 @@ TEST_CASE("Copy undoable preserves zero-based selection and restores it on undo"
     REQUIRE(session.cursor == 3);
 }
 
+TEST_CASE("Paste overwrite undo restores zero-based previous selection",
+          "[actions]")
+{
+    cupuacu::State state{};
+    initializeMonoDocument(state, {0, 1, 2, 3});
+    state.clipboard.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 1);
+    state.clipboard.setSample(0, 0, 9.0f, false);
+
+    auto &session = state.activeDocumentSession;
+    session.selection.setValue1(0.0);
+    session.selection.setValue2(2.0);
+    session.cursor = 2;
+
+    auto undoable =
+        std::make_shared<cupuacu::actions::audio::Paste>(&state, 0, 2);
+    state.addAndDoUndoable(undoable);
+    state.undo();
+
+    REQUIRE(session.selection.isActive());
+    REQUIRE(session.selection.getStartInt() == 0);
+    REQUIRE(session.selection.getLengthInt() == 2);
+    REQUIRE(session.cursor == 2);
+}
+
 TEST_CASE("SetSampleValue undoable changes one sample and restores it", "[actions]")
 {
     cupuacu::State state{};
