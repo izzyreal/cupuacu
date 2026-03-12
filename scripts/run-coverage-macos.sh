@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/build/macos-llvm-cov}"
+BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/build-coverage-macos}"
 DIST_DIR="${DIST_DIR:-$ROOT_DIR/dist}"
 TEST_BIN="$BUILD_DIR/cupuacu-tests"
 PROFRAW="$DIST_DIR/cupuacu-tests.profraw"
