@@ -2,8 +2,10 @@
 #include <catch2/catch_approx.hpp>
 
 #include "TestStateBuilders.hpp"
+#include "gui/SamplePointInteractionPlanning.hpp"
 #include "gui/WaveformBlockRenderPlanning.hpp"
 #include "gui/WaveformSamplePointPlanning.hpp"
+#include "gui/WaveformSmoothRenderPlanning.hpp"
 #include "gui/Waveform.hpp"
 #include "gui/WaveformCache.hpp"
 
@@ -225,4 +227,45 @@ TEST_CASE("Waveform sample point planner clamps to available input samples",
     REQUIRE(truncatedPlan.size() == 2);
     REQUIRE(truncatedPlan[0].sampleIndex == 8);
     REQUIRE(truncatedPlan[1].sampleIndex == 9);
+}
+
+TEST_CASE("Waveform smooth render helpers plan input buffers and quads", "[gui]")
+{
+    const auto input = cupuacu::gui::planWaveformSmoothRenderInput(
+        3, 0.5, 2, 1.0, 10,
+        [](const int64_t sampleIndex)
+        {
+            return static_cast<float>(sampleIndex);
+        });
+
+    REQUIRE(input.sampleX.size() == 2);
+    REQUIRE(input.sampleY.size() == 2);
+    REQUIRE(input.queryX.size() == 4);
+    REQUIRE(input.sampleX[0] == Catch::Approx(1.0));
+    REQUIRE(input.sampleY[0] == Catch::Approx(2.0));
+    REQUIRE(input.queryX[3] == Catch::Approx(3.0));
+
+    const auto quad =
+        cupuacu::gui::planWaveformSmoothSegmentQuad(0.0f, 2.0f, 0.0f, 0.0f, 1.0f);
+    REQUIRE(quad.has_value());
+    REQUIRE((*quad).vertices[0].x == Catch::Approx(0.0f));
+    REQUIRE((*quad).vertices[0].y == Catch::Approx(-0.5f));
+    REQUIRE((*quad).vertices[2].x == Catch::Approx(2.0f));
+    REQUIRE((*quad).vertices[2].y == Catch::Approx(0.5f));
+
+    REQUIRE_FALSE(cupuacu::gui::planWaveformSmoothSegmentQuad(
+                      1.0f, 1.0f, 2.0f, 2.0f, 1.0f)
+                      .has_value());
+}
+
+TEST_CASE("Sample point interaction planning clamps drag and sample value",
+          "[gui]")
+{
+    const auto drag = cupuacu::gui::planSamplePointDrag(5.0f, -20.0f, 10, 30, 1.0);
+    REQUIRE(drag.clampedY == Catch::Approx(0.0f));
+    REQUIRE(drag.sampleValue == Catch::Approx(1.0f));
+
+    const auto lower = cupuacu::gui::planSamplePointDrag(15.0f, 20.0f, 10, 30, 1.0);
+    REQUIRE(lower.clampedY == Catch::Approx(20.0f));
+    REQUIRE(lower.sampleValue == Catch::Approx(-1.0f));
 }

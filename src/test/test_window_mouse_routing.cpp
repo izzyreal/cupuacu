@@ -3,6 +3,7 @@
 #include "gui/WindowEventHandlingPlan.hpp"
 #include "gui/WindowEventPlanning.hpp"
 #include "gui/WindowMouseRouting.hpp"
+#include "gui/WindowResizePlanning.hpp"
 
 TEST_CASE("Window mouse routing helper plans hover and capture transitions",
           "[gui]")
@@ -212,5 +213,36 @@ TEST_CASE("Window event handling plan covers window and mouse event branches",
         REQUIRE_FALSE(unsupported.handled);
         REQUIRE_FALSE(unsupported.markMaximized);
         REQUIRE_FALSE(unsupported.forwardAsMouse);
+    }
+}
+
+TEST_CASE("Window resize planning normalizes canvas and resize policy", "[gui]")
+{
+    SECTION("canvas dimensions follow pixel scale")
+    {
+        const auto canvas = cupuacu::gui::planWindowCanvasDimensions(801, 603, 3);
+        REQUIRE(canvas.x == 267);
+        REQUIRE(canvas.y == 201);
+        REQUIRE(cupuacu::gui::shouldRecreateWindowCanvas(266, 201, canvas));
+        REQUIRE_FALSE(
+            cupuacu::gui::shouldRecreateWindowCanvas(267, 201, canvas));
+    }
+
+    SECTION("resize plan snaps to pixel scale and notes maximized restore")
+    {
+        const auto plan = cupuacu::gui::planWindowResize(803, 605, 3, true);
+        REQUIRE(plan.valid);
+        REQUIRE(plan.requiresWindowResize);
+        REQUIRE(plan.restoreFromMaximized);
+        REQUIRE(plan.targetWindowWidth == 801);
+        REQUIRE(plan.targetWindowHeight == 603);
+    }
+
+    SECTION("already aligned size only refreshes canvas")
+    {
+        const auto plan = cupuacu::gui::planWindowResize(800, 600, 2, false);
+        REQUIRE(plan.valid);
+        REQUIRE_FALSE(plan.requiresWindowResize);
+        REQUIRE_FALSE(plan.restoreFromMaximized);
     }
 }

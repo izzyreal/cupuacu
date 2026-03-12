@@ -2,6 +2,7 @@
 
 #include "../actions/audio/SetSampleValue.hpp"
 #include "MainView.hpp"
+#include "SamplePointInteractionPlanning.hpp"
 #include "Waveform.hpp"
 
 using namespace cupuacu::gui;
@@ -12,14 +13,6 @@ SamplePoint::SamplePoint(State *state, const uint8_t channelIndexToUse,
     : Component(state, "Sample point idx " + std::to_string(sampleIndexToUse)),
       sampleIndex(sampleIndexToUse), channelIndex(channelIndexToUse)
 {
-}
-
-float SamplePoint::getSampleValueForYPos(const int16_t y, const uint16_t h,
-                                         const double v,
-                                         const uint16_t samplePointSize)
-{
-    const float drawableHeight = h - samplePointSize;
-    return (h / 2.f - y) / (v * (drawableHeight / 2.f));
 }
 
 uint64_t SamplePoint::getSampleIndex() const
@@ -102,28 +95,15 @@ bool SamplePoint::mouseMove(const MouseEvent &e)
     const auto &viewState = state->mainDocumentSessionWindow->getViewState();
     const auto verticalZoom = viewState.verticalZoom;
 
-    // Update y-position based on mouse movement
-    dragYPos += e.mouseRelY;
+    const auto dragPlan = planSamplePointDrag(
+        dragYPos, e.mouseRelY, static_cast<uint16_t>(samplePointSize),
+        static_cast<uint16_t>(parentHeight), verticalZoom);
+    dragYPos = dragPlan.clampedY;
 
-    // Clamp y-position to allow sample point to reach drawable area edges
-    constexpr float minY = 0.0f; // Top edge of sample point can reach 0
-    const float maxY =
-        parentHeight - samplePointSize; // Bottom edge can reach drawableHeight
-    dragYPos = std::clamp(dragYPos, minY, maxY);
-
-    // Calculate the new sample value based on the clamped y-position
-    const float vertCenter = dragYPos + samplePointSize * 0.5f;
-    float newSampleValue = getSampleValueForYPos(vertCenter, parentHeight,
-                                                 verticalZoom, samplePointSize);
-
-    // Clamp sample value to [-1.0, 1.0]
-    newSampleValue = std::clamp(newSampleValue, -1.0f, 1.0f);
-
-    // Update the sample point's position and sample value
     setYPos(dragYPos);
     state->activeDocumentSession.document.setSample(channelIndex, sampleIndex,
-                                                    newSampleValue);
-    updateSampleValueUnderMouseCursor(state, newSampleValue);
+                                                    dragPlan.sampleValue);
+    updateSampleValueUnderMouseCursor(state, dragPlan.sampleValue);
 
     return true;
 }

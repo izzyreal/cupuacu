@@ -5,6 +5,7 @@
 #include "WindowEventHandlingPlan.hpp"
 #include "WindowEventPlanning.hpp"
 #include "WindowMouseRouting.hpp"
+#include "WindowResizePlanning.hpp"
 
 #include <cmath>
 
@@ -62,21 +63,17 @@ void Window::setRootComponent(std::unique_ptr<Component> rootToUse)
 
 SDL_Point Window::computeRequiredCanvasDimensions() const
 {
-    SDL_Point result{0, 0};
     if (!window)
-    {
-        return result;
-    }
-
-    if (!SDL_GetWindowSizeInPixels(window, &result.x, &result.y))
     {
         return {0, 0};
     }
 
-    result.x = std::floor(result.x / state->pixelScale);
-    result.y = std::floor(result.y / state->pixelScale);
-
-    return result;
+    SDL_Point result{0, 0};
+    if (!SDL_GetWindowSizeInPixels(window, &result.x, &result.y))
+    {
+        return {0, 0};
+    }
+    return planWindowCanvasDimensions(result.x, result.y, state->pixelScale);
 }
 
 void Window::resizeCanvasIfNeeded()
@@ -96,7 +93,8 @@ void Window::resizeCanvasIfNeeded()
     {
         float currentW = 0.0f, currentH = 0.0f;
         SDL_GetTextureSize(canvas, &currentW, &currentH);
-        if ((int)currentW == required.x && (int)currentH == required.y)
+        if (!shouldRecreateWindowCanvas(static_cast<int>(currentW),
+                                        static_cast<int>(currentH), required))
         {
             return;
         }
@@ -120,23 +118,28 @@ void Window::handleResize()
     int winW = 0, winH = 0;
     SDL_GetWindowSize(window, &winW, &winH);
 
-    const int hpp = state->pixelScale;
-    const int newW = winW / hpp * hpp;
-    const int newH = winH / hpp * hpp;
-
-    if (newW != winW || newH != winH)
+    const auto plan =
+        planWindowResize(winW, winH, state->pixelScale, wasMaximized);
+    if (!plan.valid)
     {
-        if (wasMaximized)
+        return;
+    }
+
+    if (plan.requiresWindowResize)
+    {
+        if (plan.restoreFromMaximized)
         {
             wasMaximized = false;
             SDL_RestoreWindow(window);
-            SDL_SetWindowSize(window, newW, newH);
+            SDL_SetWindowSize(window, plan.targetWindowWidth,
+                              plan.targetWindowHeight);
             SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED,
                                   SDL_WINDOWPOS_CENTERED);
         }
         else
         {
-            SDL_SetWindowSize(window, newW, newH);
+            SDL_SetWindowSize(window, plan.targetWindowWidth,
+                              plan.targetWindowHeight);
         }
         return;
     }

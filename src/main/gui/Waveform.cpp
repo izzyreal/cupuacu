@@ -3,6 +3,7 @@
 #include "audio/AudioDevices.hpp"
 #include "WaveformBlockRenderPlanning.hpp"
 #include "WaveformSamplePointPlanning.hpp"
+#include "WaveformSmoothRenderPlanning.hpp"
 #include "WaveformsUnderlay.hpp"
 #include "WaveformCache.hpp"
 #include "WaveformVisualState.hpp"
@@ -214,73 +215,47 @@ void Waveform::renderSmoothWaveform(SDL_Renderer *renderer) const
     const auto samplePointSize = getWaveformSamplePointSize(state->pixelScale);
     const auto drawableHeight = heightToUse - samplePointSize;
 
-    const int64_t neededInputSamples =
-        static_cast<int64_t>(std::ceil((widthToUse + 1) * samplesPerPixel));
-    const int64_t availableSamples = frameCount - sampleOffset;
-    const int64_t actualInputSamples =
-        std::min(neededInputSamples, availableSamples);
+    const auto input = planWaveformSmoothRenderInput(
+        widthToUse, samplesPerPixel, sampleOffset, halfSampleWidth, frameCount,
+        [&](const int64_t sampleIndex)
+        {
+            return sampleData[static_cast<std::size_t>(sampleIndex)];
+        });
 
-    if (actualInputSamples < 1)
+    if (input.sampleX.empty() || input.queryX.size() < 2)
     {
         return;
     }
 
-    smoothXBuffer.resize(static_cast<std::size_t>(actualInputSamples));
-    smoothYBuffer.resize(static_cast<std::size_t>(actualInputSamples));
-
-    for (int i = 0; i < actualInputSamples; ++i)
-    {
-        smoothXBuffer[static_cast<std::size_t>(i)] =
-            i / samplesPerPixel + halfSampleWidth;
-        smoothYBuffer[static_cast<std::size_t>(i)] =
-            static_cast<double>(sampleData[sampleOffset + i]);
-    }
-
-    const int numPoints = widthToUse + 1;
-    smoothQueryBuffer.resize(static_cast<std::size_t>(numPoints));
-
-    for (int i = 0; i < numPoints; ++i)
-    {
-        smoothQueryBuffer[static_cast<std::size_t>(i)] =
-            static_cast<double>(i);
-    }
+    smoothXBuffer = input.sampleX;
+    smoothYBuffer = input.sampleY;
+    smoothQueryBuffer = input.queryX;
 
     const auto smoothened = splineInterpolateNonUniform(
         smoothXBuffer, smoothYBuffer, smoothQueryBuffer);
 
-    for (int i = 0; i < numPoints - 1; ++i)
+    for (std::size_t i = 0; i + 1 < smoothQueryBuffer.size(); ++i)
     {
-        const float x1 = static_cast<float>(smoothQueryBuffer[static_cast<std::size_t>(i)]);
-        const float x2 = static_cast<float>(
-            smoothQueryBuffer[static_cast<std::size_t>(i + 1)]);
+        const float x1 = static_cast<float>(smoothQueryBuffer[i]);
+        const float x2 = static_cast<float>(smoothQueryBuffer[i + 1]);
 
         const float y1f = heightToUse / 2.0f -
                           smoothened[i] * verticalZoom * drawableHeight / 2.0f;
-        const float y2f = heightToUse / 2.0f - smoothened[i + 1] *
-                                                   verticalZoom *
-                                                   drawableHeight / 2.0f;
+        const float y2f = heightToUse / 2.0f -
+                          smoothened[i + 1] * verticalZoom * drawableHeight / 2.0f;
 
-        constexpr float thickness = 1.0f;
-
-        float dx = x2 - x1;
-        float dy = y2f - y1f;
-        const float len = std::sqrt(dx * dx + dy * dy);
-        if (len == 0.0f)
+        const auto quad =
+            planWaveformSmoothSegmentQuad(x1, x2, y1f, y2f, 1.0f);
+        if (!quad)
         {
             continue;
         }
 
-        dx /= len;
-        dy /= len;
-
-        const float px = -dy * thickness * 0.5f;
-        const float py = dx * thickness * 0.5f;
-
         SDL_Vertex verts[4];
-        verts[0].position = {x1 - px, y1f - py};
-        verts[1].position = {x1 + px, y1f + py};
-        verts[2].position = {x2 + px, y2f + py};
-        verts[3].position = {x2 - px, y2f - py};
+        for (int j = 0; j < 4; ++j)
+        {
+            verts[j].position = (*quad).vertices[static_cast<std::size_t>(j)];
+        }
 
         for (int j = 0; j < 4; ++j)
         {
