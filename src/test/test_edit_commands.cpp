@@ -49,8 +49,8 @@ TEST_CASE("Edit command paste target with selection uses selection bounds", "[se
     session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 128);
 
     session.selection.setValue1(7.0);
-    session.selection.setValue2(15.0); // [7, 15)
+    session.selection.setValue2(15.0); // inclusive integer selection [7, 14]
     const auto target = cupuacu::actions::audio::pasteTarget(&state);
     REQUIRE(target.start == 7);
-    REQUIRE(target.end == 14);
+    REQUIRE(target.end == 15);
 }

@@ -53,7 +53,7 @@ namespace cupuacu::actions::audio
         if (state->activeDocumentSession.selection.isActive())
         {
             target.start = state->activeDocumentSession.selection.getStartInt();
-            target.end = state->activeDocumentSession.selection.getEndInt();
+            target.end = state->activeDocumentSession.selection.getEndInt() + 1;
             return target;
         }
 

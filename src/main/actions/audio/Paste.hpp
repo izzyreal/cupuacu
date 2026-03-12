@@ -40,7 +40,7 @@ namespace cupuacu::actions::audio
             {
                 hadOldSelection = true;
                 oldSel1 = static_cast<double>(startFrame);
-                oldSel2 = static_cast<double>(endFrame + 1);
+                oldSel2 = static_cast<double>(endFrame);
             }
 
             oldCursorPos = session.cursor;
