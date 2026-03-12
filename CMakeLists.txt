@@ -114,6 +114,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_zoom.cpp
     src/test/test_waveform_selection.cpp
     src/test/test_waveform_block_render.cpp
+    src/test/test_waveform_interactions.cpp
     src/test/test_main_view_selection_markers.cpp
     src/test/test_main_view_layout.cpp
     src/test/test_empty_session.cpp

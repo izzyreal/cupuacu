@@ -2,6 +2,7 @@
 
 #include "State.hpp"
 
+#include "gui/TriangleMarkerInteractionPlanning.hpp"
 #include "gui/Window.hpp"
 
 using namespace cupuacu::gui;
@@ -86,26 +87,13 @@ bool TriangleMarker::mouseDown(const MouseEvent &e)
     auto &session = state->activeDocumentSession;
     const auto &viewState = state->mainDocumentSessionWindow->getViewState();
     const float mouseParentX = e.mouseXf + getXPos();
-
-    if (type == TriangleMarkerType::SelectionStartTop ||
-        type == TriangleMarkerType::SelectionStartBottom)
-    {
-        dragStartSample = session.selection.getStart();
-    }
-    else if (type == TriangleMarkerType::SelectionEndTop ||
-             type == TriangleMarkerType::SelectionEndBottom)
-    {
-        dragStartSample = session.selection.getEndExclusiveInt();
-    }
-    else
-    {
-        dragStartSample = static_cast<double>(session.cursor);
-    }
-
-    const double mouseSample = mouseParentX * viewState.samplesPerPixel;
-    dragMouseOffsetParentX = static_cast<float>(mouseSample - dragStartSample);
-
-    if (session.selection.isActive())
+    const auto plan = planTriangleMarkerMouseDown(
+        type, session.selection.getStart(),
+        session.selection.getEndExclusiveInt(), session.cursor, mouseParentX,
+        viewState.samplesPerPixel, session.selection.isActive());
+    dragStartSample = plan.dragStartSample;
+    dragMouseOffsetParentX = plan.dragMouseOffsetParentX;
+    if (plan.shouldFixSelectionOrder)
     {
         session.selection.fixOrder();
     }
@@ -129,8 +117,8 @@ bool TriangleMarker::mouseMove(const MouseEvent &e)
     }
 
     const float mouseParentX = e.mouseXf + getXPos();
-    const double mouseSample = mouseParentX * viewState.samplesPerPixel;
-    const double newSamplePos = mouseSample - dragMouseOffsetParentX;
+    const double newSamplePos = planTriangleMarkerDraggedSamplePosition(
+        mouseParentX, viewState.samplesPerPixel, dragMouseOffsetParentX);
 
     const bool selectionWasActive = session.selection.isActive();
 
@@ -142,20 +130,15 @@ bool TriangleMarker::mouseMove(const MouseEvent &e)
             break;
         case TriangleMarkerType::SelectionStartTop:
         case TriangleMarkerType::SelectionStartBottom:
-            session.selection.setValue1(newSamplePos);
-            if (selectionWasActive && !session.selection.isActive())
-            {
-                session.selection.setValue1(newSamplePos + 1);
-            }
-
+            session.selection.setValue1(planTriangleMarkerSelectionValue(
+                newSamplePos, session.selection.getEndExclusiveInt(),
+                selectionWasActive));
             break;
         case TriangleMarkerType::SelectionEndTop:
         case TriangleMarkerType::SelectionEndBottom:
-            session.selection.setValue2(newSamplePos);
-            if (selectionWasActive && !session.selection.isActive())
-            {
-                session.selection.setValue2(newSamplePos + 1);
-            }
+            session.selection.setValue2(planTriangleMarkerSelectionValue(
+                newSamplePos, session.selection.getStartInt(),
+                selectionWasActive));
             break;
     }
 
