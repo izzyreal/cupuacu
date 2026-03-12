@@ -20,7 +20,7 @@ namespace
                                const char *message)
     {
         const std::string_view text = message == nullptr ? "" : message;
-        if (text.find("SDL_CreateWindowAndRenderer() failed: The video driver did not add any displays") !=
+        if (text.find("SDL_CreateWindowAndRenderer() failed:") !=
             std::string_view::npos)
         {
             return;
