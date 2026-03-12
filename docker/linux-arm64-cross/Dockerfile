@@ -1,22 +1,35 @@
-FROM dockcross/linux-arm64
+FROM ubuntu:24.04
 
-RUN dpkg --add-architecture arm64 \
-    && apt-get update \
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        libegl1-mesa-dev:arm64 \
-        libgl1-mesa-dev:arm64 \
-        libx11-dev:arm64 \
-        libxcomposite-dev:arm64 \
-        libxext-dev:arm64 \
-        libxcursor-dev:arm64 \
-        libxi-dev:arm64 \
-        libxfixes-dev:arm64 \
-        libxrandr-dev:arm64 \
-        libxrender-dev:arm64 \
-        libxss-dev:arm64 \
-        libxinerama-dev:arm64 \
-        libwayland-dev:arm64 \
-        libxkbcommon-dev:arm64 \
-        wayland-protocols \
+        build-essential \
+        ca-certificates \
+        ccache \
+        cmake \
+        git \
+        libasound2-dev \
+        libegl1-mesa-dev \
+        libgl1-mesa-dev \
+        libjack-jackd2-dev \
+        libpulse-dev \
+        libwayland-dev \
+        libx11-dev \
+        libxcomposite-dev \
+        libxcursor-dev \
+        libxext-dev \
+        libxfixes-dev \
+        libxi-dev \
+        libxinerama-dev \
+        libxkbcommon-dev \
+        libxrandr-dev \
+        libxrender-dev \
+        libxss-dev \
+        make \
+        ninja-build \
+        perl \
         pkg-config \
+        python3 \
+        wayland-protocols \
     && rm -rf /var/lib/apt/lists/*
