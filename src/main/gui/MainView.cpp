@@ -498,7 +498,8 @@ void MainView::updateTriangleMarkerBounds() const
         if (samplesPerPixel >= 1.0)
         {
             const int64_t firstSample = session.selection.getStartInt();
-            const int64_t lastSampleExclusive = session.selection.getEndInt() + 1;
+            const int64_t lastSampleExclusive =
+                session.selection.getEndExclusiveInt();
 
             const bool bypassCache =
                 samplesPerPixel < WaveformCache::BASE_BLOCK_SIZE;
@@ -526,8 +527,7 @@ void MainView::updateTriangleMarkerBounds() const
         {
             startX = Waveform::getXPosForSampleIndex(
                 session.selection.getStartInt(), sampleOffset, samplesPerPixel);
-            const int64_t endInclusive = session.selection.getEndInt();
-            const int64_t endToUse = endInclusive + 1;
+            const int64_t endToUse = session.selection.getEndExclusiveInt();
             endX = Waveform::getXPosForSampleIndex(endToUse, sampleOffset,
                                                    samplesPerPixel);
         }

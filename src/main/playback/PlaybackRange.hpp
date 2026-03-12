@@ -29,7 +29,7 @@ namespace cupuacu::playback
                 std::max<int64_t>(int64_t{0}, session.selection.getStartInt()));
             end = static_cast<uint64_t>(
                 std::max<int64_t>(static_cast<int64_t>(start),
-                                  session.selection.getEndInt() + 1));
+                                  session.selection.getEndExclusiveInt()));
         }
         else if (loopPlaybackEnabled)
         {
@@ -66,7 +66,7 @@ namespace cupuacu::playback
                 std::max<int64_t>(int64_t{0}, session.selection.getStartInt()));
             end = static_cast<uint64_t>(
                 std::max<int64_t>(static_cast<int64_t>(start),
-                                  session.selection.getEndInt() + 1));
+                                  session.selection.getEndExclusiveInt()));
         }
         else if (loopPlaybackEnabled)
         {

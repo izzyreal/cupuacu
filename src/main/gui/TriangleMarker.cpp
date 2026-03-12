@@ -95,7 +95,7 @@ bool TriangleMarker::mouseDown(const MouseEvent &e)
     else if (type == TriangleMarkerType::SelectionEndTop ||
              type == TriangleMarkerType::SelectionEndBottom)
     {
-        dragStartSample = session.selection.getEndInt();
+        dragStartSample = session.selection.getEndExclusiveInt();
     }
     else
     {
@@ -151,10 +151,10 @@ bool TriangleMarker::mouseMove(const MouseEvent &e)
             break;
         case TriangleMarkerType::SelectionEndTop:
         case TriangleMarkerType::SelectionEndBottom:
-            session.selection.setValue2(newSamplePos + 1);
+            session.selection.setValue2(newSamplePos);
             if (selectionWasActive && !session.selection.isActive())
             {
-                session.selection.setValue2(newSamplePos);
+                session.selection.setValue2(newSamplePos + 1);
             }
             break;
     }

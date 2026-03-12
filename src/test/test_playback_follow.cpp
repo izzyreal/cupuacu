@@ -129,7 +129,7 @@ TEST_CASE("Loop playback update while dragging keeps old loop end/start", "[sess
     state.audioDevices->processCallbackCycle(nullptr, output.data(), 4); // pos 14
     REQUIRE(state.audioDevices->getPlaybackPosition() == 14);
     const int64_t oldStart = session.selection.getStartInt();
-    const int64_t oldEndExclusive = session.selection.getEndInt() + 1;
+    const int64_t oldEndExclusive = session.selection.getEndExclusiveInt();
 
     session.selection.setValue1(40.0);
     session.selection.setValue2(51.0); // R2 => [40, 51)
@@ -163,7 +163,7 @@ TEST_CASE("Loop update keeps old end, then loops to new start when end is behind
     cupuacu::actions::play(&state);
     state.audioDevices->processCallbackCycle(nullptr, output.data(), 12); // pos 22
     REQUIRE(state.audioDevices->getPlaybackPosition() == 22);
-    const int64_t oldEndExclusive = session.selection.getEndInt() + 1;
+    const int64_t oldEndExclusive = session.selection.getEndExclusiveInt();
 
     session.selection.setValue1(12.0);
     session.selection.setValue2(21.0); // R2 => [12, 21), end before pos
@@ -205,7 +205,7 @@ TEST_CASE("Loop update uses new end after release when end is ahead",
     session.selection.setValue1(12.0);
     session.selection.setValue2(27.0); // R2 => [12, 27), end after pos
     const int64_t newStart = session.selection.getStartInt();
-    const int64_t newEndExclusive = session.selection.getEndInt() + 1;
+    const int64_t newEndExclusive = session.selection.getEndExclusiveInt();
     window->setCapturingComponent(nullptr);
     ui.mainView->timerCallback(); // apply
 

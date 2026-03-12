@@ -1,7 +1,10 @@
 #pragma once
-#include <cmath>
-#include <limits>
+
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <limits>
 
 namespace cupuacu::gui
 {
@@ -9,68 +12,144 @@ namespace cupuacu::gui
     template <typename T> class Selection
     {
     private:
-        const T lowest;
+        static constexpr int64_t kUnset =
+            std::numeric_limits<int64_t>::max();
 
-        T highest = std::numeric_limits<T>::max();
-        T value1;
-        T value2;
+        int64_t lowest;
+        int64_t highest = kUnset;
+        int64_t value1 = kUnset;
+        int64_t value2 = kUnset;
+
+        static int64_t toFrameBoundary(const T v)
+        {
+            return static_cast<int64_t>(std::llround(v));
+        }
+
+        bool hasValue1() const
+        {
+            return value1 != kUnset;
+        }
+
+        bool hasValue2() const
+        {
+            return value2 != kUnset;
+        }
+
+        bool hasBothValues() const
+        {
+            return hasValue1() && hasValue2();
+        }
+
+        bool hasAnyValue() const
+        {
+            return hasValue1() || hasValue2();
+        }
+
+        int64_t anchorValue() const
+        {
+            if (hasValue1())
+            {
+                return value1;
+            }
+
+            if (hasValue2())
+            {
+                return value2;
+            }
+
+            return kUnset;
+        }
 
     public:
         Selection(const T lowestToUse = std::numeric_limits<T>::lowest())
-            : lowest(lowestToUse), value1(std::numeric_limits<T>::max()),
-              value2(std::numeric_limits<T>::max())
+            : lowest(toFrameBoundary(lowestToUse))
         {
         }
 
         void setHighest(const T highestToUse)
         {
-            highest = highestToUse;
+            highest = toFrameBoundary(highestToUse);
         }
 
         T getStart() const
         {
-            return value1 < value2 ? value1 : value2;
+            if (!hasAnyValue())
+            {
+                return std::numeric_limits<T>::max();
+            }
+            return static_cast<T>(
+                hasBothValues() ? std::min(value1, value2) : anchorValue());
         }
 
         T getEnd() const
         {
-            return value1 < value2 ? value2 : value1;
+            if (!hasAnyValue())
+            {
+                return std::numeric_limits<T>::max();
+            }
+            return static_cast<T>(
+                hasBothValues() ? std::max(value1, value2) : anchorValue());
         }
 
         void setValue1(const T v)
         {
-            value1 = std::clamp(std::round(v), lowest, highest);
+            value1 = std::clamp(toFrameBoundary(v), lowest, highest);
         }
 
         void setValue2(const T v)
         {
-            value2 = std::clamp(v, lowest, highest);
+            value2 = std::clamp(toFrameBoundary(v), lowest, highest);
         }
 
         int64_t getStartInt() const
         {
-            return static_cast<int64_t>(std::round(getStart()));
+            if (!hasAnyValue())
+            {
+                return kUnset;
+            }
+            return hasBothValues() ? std::min(value1, value2) : anchorValue();
+        }
+
+        int64_t getEndExclusiveInt() const
+        {
+            if (!hasAnyValue())
+            {
+                return kUnset;
+            }
+            return hasBothValues() ? std::max(value1, value2) : anchorValue();
         }
 
         int64_t getEndInt() const
         {
-            return static_cast<int64_t>(std::round(getEnd() - 1));
+            if (!hasAnyValue())
+            {
+                return kUnset;
+            }
+            if (!hasBothValues())
+            {
+                return anchorValue();
+            }
+            return getEndExclusiveInt() - 1;
         }
 
         int64_t getLengthInt() const
         {
-            return getEndInt() - getStartInt() + 1;
+            if (!hasBothValues())
+            {
+                return 0;
+            }
+            return getEndExclusiveInt() - getStartInt();
         }
 
         void reset()
         {
-            value1 = std::numeric_limits<T>::max();
-            value2 = std::numeric_limits<T>::max();
+            value1 = kUnset;
+            value2 = kUnset;
         }
 
         T getLength() const
         {
-            return getEnd() - getStart();
+            return static_cast<T>(getLengthInt());
         }
 
         void fixOrder()
@@ -83,18 +162,20 @@ namespace cupuacu::gui
 
         bool isActive() const
         {
-            return value1 != std::numeric_limits<T>::max() &&
-                   value2 != std::numeric_limits<T>::max() &&
-                   getLengthInt() > 0;
+            return hasBothValues() && getLengthInt() > 0;
         }
 
         void printInfo() const
         {
             printf(
-                "active: %i, value1: %d, value2: %d, startInt: %i, endInt: %i, "
-                "lengthInt: %i\n",
-                isActive(), value1, value2, getStartInt(), getEndInt(),
-                getLengthInt());
+                "active: %i, value1: %lld, value2: %lld, startInt: %lld, "
+                "endExclusiveInt: %lld, endInt: %lld, lengthInt: %lld\n",
+                isActive(), static_cast<long long>(value1),
+                static_cast<long long>(value2),
+                static_cast<long long>(getStartInt()),
+                static_cast<long long>(getEndExclusiveInt()),
+                static_cast<long long>(getEndInt()),
+                static_cast<long long>(getLengthInt()));
         }
     };
 } // namespace cupuacu::gui

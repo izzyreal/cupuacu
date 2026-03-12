@@ -35,7 +35,7 @@ void cupuacu::actions::record(cupuacu::State *state)
         recordMessage.startPos =
             std::max<int64_t>(0, session.selection.getStartInt());
         recordMessage.endPos = std::max<uint64_t>(
-            recordMessage.startPos, session.selection.getEndInt() + 1);
+            recordMessage.startPos, session.selection.getEndExclusiveInt());
         recordMessage.boundedToEnd = true;
     }
     else

@@ -482,7 +482,7 @@ void Waveform::drawSelection(SDL_Renderer *renderer) const
          (channelIndex == 1 && viewState.selectedChannels == RIGHT));
 
     const int64_t firstSample = session.selection.getStartInt();
-    const int64_t lastSample = session.selection.getEndInt() + 1;
+    const int64_t lastSample = session.selection.getEndExclusiveInt();
     const int64_t sampleOffset = viewState.sampleOffset;
 
     if (isSelected && lastSample >= sampleOffset)
