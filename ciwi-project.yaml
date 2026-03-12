@@ -52,32 +52,25 @@ pipelines:
           executor: script
           shell: posix
           os: linux
-          arch: arm64
+          arch: amd64
         requires:
           tools:
             git: "*"
-            cmake: "*"
-            ccache: "*"
-            xorg-dev: "*"
+            docker: "*"
         timeout_seconds: 1800
         artifacts:
           - dist/**
-        caches: *build_caches
+        caches:
+          - id: fetchcontent
+            env: CIWI_FETCHCONTENT_SOURCES_DIR
         steps:
           - run: mkdir -p build/linux-arm64 dist
           - run: mkdir -p "$CIWI_FETCHCONTENT_SOURCES_DIR"
-          - run: mkdir -p "$CCACHE_DIR"
-          - run: if command -v ccache >/dev/null 2>&1; then ccache --zero-stats; else echo "ccache not found"; fi
-          - run: CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true CCACHE_COMPILERCHECK=content cmake -S . -B build/linux-arm64 -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCUPUACU_BUILD_CCACHE_ENABLED=ON -DFETCHCONTENT_CACHE_ROOT="$CIWI_FETCHCONTENT_SOURCES_DIR"
-          - run: CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true CCACHE_COMPILERCHECK=content cmake --build build/linux-arm64 --config Release --target Cupuacu cupuacu-tests
-          - test:
-              name: cupuacu-tests
-              command: SDL_VIDEODRIVER=offscreen ./build/linux-arm64/cupuacu-tests --reporter JUnit --out build/linux-arm64/result-junit.xml
-              format: junit-xml
-              report: build/linux-arm64/result-junit.xml
-          - run: if command -v ccache >/dev/null 2>&1; then ccache --show-stats; else echo "ccache not found"; fi
+          - run: docker run --rm dockcross/linux-arm64 > ./dockcross-linux-arm64
+          - run: chmod +x ./dockcross-linux-arm64
+          - run: DOCKCROSS_ARGS="--volume $CIWI_FETCHCONTENT_SOURCES_DIR:/ciwi-fetchcontent" ./dockcross-linux-arm64 bash -lc 'cmake -S . -B build/linux-arm64 -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$CMAKE_TOOLCHAIN_FILE" -DFETCHCONTENT_CACHE_ROOT=/ciwi-fetchcontent'
+          - run: DOCKCROSS_ARGS="--volume $CIWI_FETCHCONTENT_SOURCES_DIR:/ciwi-fetchcontent" ./dockcross-linux-arm64 cmake --build build/linux-arm64 --config Release --target Cupuacu
           - run: cp build/linux-arm64/Cupuacu dist/cupuacu-linux-arm64
-          - run: cp build/linux-arm64/cupuacu-tests dist/cupuacu-tests-linux-arm64
 
       - id: linux-amd64-coverage
         runs_on:
