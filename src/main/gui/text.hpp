@@ -3,6 +3,7 @@
 #include <SDL3/SDL.h>
 
 #include "../ResourceUtil.hpp"
+#include "TextPlanning.hpp"
 
 #include <functional>
 #include <map>
@@ -16,6 +17,11 @@ namespace cupuacu::gui
     {
         static std::map<uint8_t, TTF_Font *> fontCache;
         return fontCache;
+    }
+
+    inline bool hasCachedFontForPointSize(const uint8_t pointSize)
+    {
+        return getFontCache().find(pointSize) != getFontCache().end();
     }
 
     // Store font data once
@@ -117,14 +123,8 @@ namespace cupuacu::gui
             return;
         }
 
-        float x = destRect.x;
-        if (shouldCenterHorizontally)
-        {
-            const float centeredX = destRect.x + (destRect.w - textW) * 0.5f;
-            x = std::max(centeredX,
-                         destRect.x); // Prevent left overflow; fallback to
-                                      // left-align if needed
-        }
+        const float x =
+            planTextXPosition(destRect, textW, shouldCenterHorizontally);
 
         const SDL_FRect textDestRect = {x, destRect.y, (float)textW,
                                         (float)textH};

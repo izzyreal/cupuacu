@@ -4,6 +4,8 @@
 #include <cmath>
 #include <vector>
 
+#include "RoundedRectPlanning.hpp"
+
 #ifndef M_PI
 #define M_PI  (3.14159265)
 #endif
@@ -97,17 +99,15 @@ namespace cupuacu::gui
             return;
         }
 
-        radius = std::min(radius, std::min(rect.w, rect.h) / 2.0f);
+        radius = clampRoundedRectRadius(rect, radius);
 
         SDL_SetRenderDrawColor(renderer, col.r, col.g, col.b, col.a);
 
         // Core rectangles
-        const SDL_FRect core = {rect.x + radius, rect.y, rect.w - 2 * radius,
-                                rect.h};
+        const SDL_FRect core = planRoundedRectCore(rect, radius);
         SDL_RenderFillRect(renderer, &core);
 
-        const SDL_FRect vertical = {rect.x, rect.y + radius, rect.w,
-                                    rect.h - 2 * radius};
+        const SDL_FRect vertical = planRoundedRectVerticalCore(rect, radius);
         SDL_RenderFillRect(renderer, &vertical);
 
         // Four corners
@@ -134,14 +134,15 @@ namespace cupuacu::gui
             return;
         }
 
-        radius = std::min(radius, std::min(rect.w, rect.h) / 2.0f);
+        const auto geometry = planRoundedRectGeometry(rect, radius);
+        radius = geometry.radius;
 
         SDL_SetRenderDrawColor(renderer, col.r, col.g, col.b, col.a);
 
-        const float x0 = rect.x;
-        const float y0 = rect.y;
-        const float x1 = rect.x + rect.w - 1.0f;
-        const float y1 = rect.y + rect.h - 1.0f;
+        const float x0 = geometry.x0;
+        const float y0 = geometry.y0;
+        const float x1 = geometry.x1;
+        const float y1 = geometry.y1;
 
         // Straight edges
         SDL_RenderLine(renderer, x0 + radius, y0, x1 - radius, y0); // top
@@ -172,12 +173,11 @@ namespace cupuacu::gui
             return;
         }
 
-        radius = std::min(radius, std::min(rect.w, rect.h) / 2.0f);
+        radius = clampRoundedRectRadius(rect, radius);
         SDL_SetRenderDrawColor(renderer, col.r, col.g, col.b, col.a);
 
         // Core rectangle covering bottom and middle
-        const SDL_FRect core = {rect.x, rect.y + radius, rect.w,
-                                rect.h - radius};
+        const SDL_FRect core = {rect.x, rect.y + radius, rect.w, rect.h - radius};
         SDL_RenderFillRect(renderer, &core);
 
         // Top horizontal bar (between corners)
@@ -204,7 +204,7 @@ namespace cupuacu::gui
             return;
         }
 
-        radius = std::min(radius, std::min(rect.w, rect.h) / 2.0f);
+        radius = clampRoundedRectRadius(rect, radius);
         SDL_SetRenderDrawColor(renderer, col.r, col.g, col.b, col.a);
 
         // Core rectangle covering top and middle
@@ -241,13 +241,14 @@ namespace cupuacu::gui
             return;
         }
 
-        radius = std::min(radius, std::min(rect.w, rect.h) / 2.0f);
+        const auto geometry = planRoundedRectGeometry(rect, radius);
+        radius = geometry.radius;
         SDL_SetRenderDrawColor(renderer, col.r, col.g, col.b, col.a);
 
-        const float x0 = rect.x;
-        const float y0 = rect.y;
-        const float x1 = rect.x + rect.w - 1.0f;
-        const float y1 = rect.y + rect.h - 1.0f;
+        const float x0 = geometry.x0;
+        const float y0 = geometry.y0;
+        const float x1 = geometry.x1;
+        const float y1 = geometry.y1;
 
         // Top edge
         SDL_RenderLine(renderer, x0 + radius, y0, x1 - radius, y0);
@@ -282,13 +283,14 @@ namespace cupuacu::gui
             return;
         }
 
-        radius = std::min(radius, std::min(rect.w, rect.h) / 2.0f);
+        const auto geometry = planRoundedRectGeometry(rect, radius);
+        radius = geometry.radius;
         SDL_SetRenderDrawColor(renderer, col.r, col.g, col.b, col.a);
 
-        const float x0 = rect.x;
-        const float y0 = rect.y;
-        const float x1 = rect.x + rect.w - 1.0f;
-        const float y1 = rect.y + rect.h - 1.0f;
+        const float x0 = geometry.x0;
+        const float y0 = geometry.y0;
+        const float x1 = geometry.x1;
+        const float y1 = geometry.y1;
 
         // Bottom edge
         SDL_RenderLine(renderer, x0 + radius, y1, x1 - radius, y1);
