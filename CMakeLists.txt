@@ -127,6 +127,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_action_undoables.cpp
     src/test/test_audio_devices_orchestration.cpp
     src/test/test_window_menu_behavior.cpp
+    src/test/test_menu_bar_planning.cpp
     src/test/test_window_mouse_routing.cpp
     src/test/test_gui_primitives.cpp
     src/test/test_main_view_structure.cpp

@@ -5,6 +5,7 @@
 
 #include "gui/OpaqueRect.hpp"
 #include "gui/Menu.hpp"
+#include "gui/MenuBarPlanning.hpp"
 #include "gui/Window.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/Colors.hpp"
@@ -85,15 +86,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
 
     std::function<std::string()> undoMenuNameGetter = [&]
     {
-#ifdef __APPLE__
-        constexpr std::string undoShortcut = " (Cmd + Z)";
-#else
-        const std::string undoShortcut = " (Ctrl + Z)";
-#endif
-        auto description = state->getUndoDescription();
-        if (!description.empty())
-            description.insert(0, " ");
-        return "Undo" + description + undoShortcut;
+        return buildUndoMenuLabel(state);
     };
 
     auto undoMenu = editMenu->addSubMenu(state, undoMenuNameGetter,
@@ -110,15 +103,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
 
     std::function<std::string()> redoMenuNameGetter = [&]
     {
-#ifdef __APPLE__
-        constexpr std::string redoShortcut = " (Cmd + Shift + Z)";
-#else
-        const std::string redoShortcut = " (Ctrl + Shift + Z)";
-#endif
-        auto description = state->getRedoDescription();
-        if (!description.empty())
-            description.insert(0, " ");
-        return "Redo" + description + redoShortcut;
+        return buildRedoMenuLabel(state);
     };
 
     auto redoMenu = editMenu->addSubMenu(state, redoMenuNameGetter,
@@ -158,7 +143,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
     trimMenu->setIsAvailable(
         [&]
         {
-            return state->activeDocumentSession.selection.isActive();
+            return isSelectionEditAvailable(state);
         });
 
     auto cutMenu = editMenu->addSubMenu(
@@ -170,7 +155,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
     cutMenu->setIsAvailable(
         [&]
         {
-            return state->activeDocumentSession.selection.isActive();
+            return isSelectionEditAvailable(state);
         });
 
     auto copyMenu = editMenu->addSubMenu(
@@ -182,7 +167,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
     copyMenu->setIsAvailable(
         [&]
         {
-            return state->activeDocumentSession.selection.isActive();
+            return isSelectionEditAvailable(state);
         });
 
     auto pasteMenu = editMenu->addSubMenu(
@@ -194,7 +179,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
     pasteMenu->setIsAvailable(
         [&]
         {
-            return state->clipboard.getFrameCount() > 0;
+            return isPasteAvailable(state);
         });
 
     optionsMenu->addSubMenu(
