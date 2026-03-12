@@ -25,6 +25,7 @@ namespace
 
         int mouseEnterCount = 0;
         int mouseLeaveCount = 0;
+        int mouseMoveCount = 0;
         int mouseUpCount = 0;
         bool consumeMouseUp = true;
 
@@ -36,6 +37,12 @@ namespace
         void mouseLeave() override
         {
             ++mouseLeaveCount;
+        }
+
+        bool mouseMove(const cupuacu::gui::MouseEvent &) override
+        {
+            ++mouseMoveCount;
+            return false;
         }
 
         bool mouseUp(const cupuacu::gui::MouseEvent &) override
@@ -133,6 +140,44 @@ TEST_CASE("Window mouse motion updates component-under-mouse enter and leave",
     REQUIRE(window->getComponentUnderMouse() == right);
     REQUIRE(left->mouseLeaveCount == 1);
     REQUIRE(right->mouseEnterCount == 1);
+}
+
+TEST_CASE("Window capture suppresses hover target changes during mouse move",
+          "[gui]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::State state{};
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "window-capture-hover", 320, 240, SDL_WINDOW_HIDDEN);
+
+    auto root = std::make_unique<RootComponent>(&state);
+    auto *left = root->emplaceChild<TestComponent>(&state, "Left");
+    auto *right = root->emplaceChild<TestComponent>(&state, "Right");
+    left->setBounds(0, 0, 80, 80);
+    right->setBounds(100, 0, 80, 80);
+    root->setBounds(0, 0, 320, 240);
+    window->setRootComponent(std::move(root));
+
+    window->updateComponentUnderMouse(10, 10);
+    REQUIRE(window->getComponentUnderMouse() == left);
+    REQUIRE(left->mouseEnterCount == 1);
+
+    window->setCapturingComponent(left);
+    REQUIRE(window->handleMouseEvent(cupuacu::gui::MouseEvent{
+        cupuacu::gui::MOVE,
+        110,
+        10,
+        110.0f,
+        10.0f,
+        100.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+
+    REQUIRE(window->getComponentUnderMouse() == left);
+    REQUIRE(left->mouseLeaveCount == 0);
+    REQUIRE(right->mouseEnterCount == 0);
 }
 
 TEST_CASE("Menu edit actions stay disabled when unavailable and run when enabled",
