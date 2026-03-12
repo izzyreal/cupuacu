@@ -3,7 +3,10 @@ FROM dockcross/linux-arm64
 RUN dpkg --add-architecture arm64 \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
+        libegl1-mesa-dev:arm64 \
+        libgl1-mesa-dev:arm64 \
         libx11-dev:arm64 \
+        libxcomposite-dev:arm64 \
         libxext-dev:arm64 \
         libxcursor-dev:arm64 \
         libxi-dev:arm64 \

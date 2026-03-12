@@ -69,7 +69,7 @@ pipelines:
           - run: docker build -t cupuacu-linux-arm64-cross -f docker/linux-arm64-cross/Dockerfile .
           - run: docker run --rm cupuacu-linux-arm64-cross > ./dockcross-linux-arm64
           - run: chmod +x ./dockcross-linux-arm64
-          - run: DOCKCROSS_ARGS="--volume $CIWI_FETCHCONTENT_SOURCES_DIR:/ciwi-fetchcontent" ./dockcross-linux-arm64 bash -lc 'cmake -S . -B build/linux-arm64 -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$CMAKE_TOOLCHAIN_FILE" -DFETCHCONTENT_CACHE_ROOT=/ciwi-fetchcontent'
+          - run: DOCKCROSS_ARGS="--volume $CIWI_FETCHCONTENT_SOURCES_DIR:/ciwi-fetchcontent" ./dockcross-linux-arm64 bash -lc 'export PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig && export PKG_CONFIG_SYSROOT_DIR=/ && cmake -S . -B build/linux-arm64 -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$CMAKE_TOOLCHAIN_FILE" -DCMAKE_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu -DCMAKE_INCLUDE_PATH=/usr/include -DFETCHCONTENT_CACHE_ROOT=/ciwi-fetchcontent'
           - run: DOCKCROSS_ARGS="--volume $CIWI_FETCHCONTENT_SOURCES_DIR:/ciwi-fetchcontent" ./dockcross-linux-arm64 cmake --build build/linux-arm64 --config Release --target Cupuacu
           - run: cp build/linux-arm64/Cupuacu dist/cupuacu-linux-arm64
 
