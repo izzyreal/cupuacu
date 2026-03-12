@@ -47,6 +47,38 @@ pipelines:
           - run: cp build/linux-amd64/Cupuacu dist/cupuacu-linux-amd64
           - run: cp build/linux-amd64/cupuacu-tests dist/cupuacu-tests-linux-amd64
 
+      - id: linux-arm64
+        runs_on:
+          executor: script
+          shell: posix
+          os: linux
+          arch: arm64
+        requires:
+          tools:
+            git: "*"
+            cmake: "*"
+            ccache: "*"
+            xorg-dev: "*"
+        timeout_seconds: 1800
+        artifacts:
+          - dist/**
+        caches: *build_caches
+        steps:
+          - run: mkdir -p build/linux-arm64 dist
+          - run: mkdir -p "$CIWI_FETCHCONTENT_SOURCES_DIR"
+          - run: mkdir -p "$CCACHE_DIR"
+          - run: if command -v ccache >/dev/null 2>&1; then ccache --zero-stats; else echo "ccache not found"; fi
+          - run: CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true CCACHE_COMPILERCHECK=content cmake -S . -B build/linux-arm64 -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCUPUACU_BUILD_CCACHE_ENABLED=ON -DFETCHCONTENT_CACHE_ROOT="$CIWI_FETCHCONTENT_SOURCES_DIR"
+          - run: CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true CCACHE_COMPILERCHECK=content cmake --build build/linux-arm64 --config Release --target Cupuacu cupuacu-tests
+          - test:
+              name: cupuacu-tests
+              command: SDL_VIDEODRIVER=offscreen ./build/linux-arm64/cupuacu-tests --reporter JUnit --out build/linux-arm64/result-junit.xml
+              format: junit-xml
+              report: build/linux-arm64/result-junit.xml
+          - run: if command -v ccache >/dev/null 2>&1; then ccache --show-stats; else echo "ccache not found"; fi
+          - run: cp build/linux-arm64/Cupuacu dist/cupuacu-linux-arm64
+          - run: cp build/linux-arm64/cupuacu-tests dist/cupuacu-tests-linux-arm64
+
       - id: linux-amd64-coverage
         runs_on:
           executor: script
@@ -190,11 +222,13 @@ pipelines:
             skip_dry_run: true
           - run: test -f VERSION
           - run: test -f dist/cupuacu-linux-amd64
+          - run: test -f dist/cupuacu-linux-arm64
           - run: test -f dist/cupuacu-macos-universal
           - run: test -f dist/cupuacu-windows-amd64.exe
           - run: |
               shasum -a 256 \
                 dist/cupuacu-linux-amd64 \
+                dist/cupuacu-linux-arm64 \
                 dist/cupuacu-macos-universal \
                 dist/cupuacu-windows-amd64.exe \
                 > dist/cupuacu-checksums.txt
@@ -229,6 +263,7 @@ pipelines:
               fi
               gh release upload "$TAG" \
                 dist/cupuacu-linux-amd64 \
+                dist/cupuacu-linux-arm64 \
                 dist/cupuacu-macos-universal \
                 dist/cupuacu-windows-amd64.exe \
                 dist/cupuacu-checksums.txt \
