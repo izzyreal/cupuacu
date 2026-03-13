@@ -46,7 +46,7 @@ namespace cupuacu
         std::unique_ptr<Paths> paths = std::make_unique<Paths>();
         std::deque<std::shared_ptr<actions::Undoable>> undoables;
         std::deque<std::shared_ptr<actions::Undoable>> redoables;
-        uint8_t menuFontSize = 40;
+        uint8_t menuFontSize = 30;
         uint8_t pixelScale = 1;
         bool loopPlaybackEnabled = false;
         uint64_t playbackRangeStart = 0;
