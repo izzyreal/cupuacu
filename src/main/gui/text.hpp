@@ -7,21 +7,48 @@
 
 #include <functional>
 #include <map>
+#include <cmath>
 #include <string>
+#include <utility>
 
 namespace cupuacu::gui
 {
+    static void cleanupFonts();
 
-    // Font cache to store TTF_Font instances by point size
-    static std::map<uint8_t, TTF_Font *> &getFontCache()
+    static float &getFontDisplayScale()
     {
-        static std::map<uint8_t, TTF_Font *> fontCache;
+        static float fontDisplayScale = 1.0f;
+        return fontDisplayScale;
+    }
+
+    inline int getFontDpi()
+    {
+        const float safeScale = std::max(1.0f, getFontDisplayScale());
+        return std::max(1, static_cast<int>(std::lround(72.0f * safeScale)));
+    }
+
+    inline void setFontDisplayScale(const float scale)
+    {
+        const float safeScale = std::max(1.0f, scale);
+        if (std::fabs(getFontDisplayScale() - safeScale) < 0.01f)
+        {
+            return;
+        }
+        cleanupFonts();
+        getFontDisplayScale() = safeScale;
+    }
+
+    // Font cache to store TTF_Font instances by point size and DPI
+    static std::map<std::pair<uint8_t, int>, TTF_Font *> &getFontCache()
+    {
+        static std::map<std::pair<uint8_t, int>, TTF_Font *> fontCache;
         return fontCache;
     }
 
     inline bool hasCachedFontForPointSize(const uint8_t pointSize)
     {
-        return getFontCache().find(pointSize) != getFontCache().end();
+        return getFontCache().find({pointSize, getFontDpi()}) !=
+               getFontCache().end();
     }
 
     // Store font data once
@@ -35,7 +62,8 @@ namespace cupuacu::gui
     static TTF_Font *getFont(const uint8_t pointSize)
     {
         auto &cache = getFontCache();
-        const auto it = cache.find(pointSize);
+        const std::pair<uint8_t, int> cacheKey{pointSize, getFontDpi()};
+        const auto it = cache.find(cacheKey);
         if (it != cache.end())
         {
             return it->second; // Return cached font
@@ -43,16 +71,30 @@ namespace cupuacu::gui
 
         auto &fontData = getFontData();
         const auto fontIo = SDL_IOFromMem(fontData.data(), fontData.size());
-        TTF_Font *font = TTF_OpenFontIO(fontIo, false, pointSize);
+        SDL_PropertiesID props = SDL_CreateProperties();
+        SDL_SetPointerProperty(props, TTF_PROP_FONT_CREATE_IOSTREAM_POINTER,
+                               fontIo);
+        SDL_SetBooleanProperty(props,
+                               TTF_PROP_FONT_CREATE_IOSTREAM_AUTOCLOSE_BOOLEAN,
+                               false);
+        SDL_SetFloatProperty(props, TTF_PROP_FONT_CREATE_SIZE_FLOAT, pointSize);
+        SDL_SetNumberProperty(props,
+                              TTF_PROP_FONT_CREATE_HORIZONTAL_DPI_NUMBER,
+                              getFontDpi());
+        SDL_SetNumberProperty(props,
+                              TTF_PROP_FONT_CREATE_VERTICAL_DPI_NUMBER,
+                              getFontDpi());
+        TTF_Font *font = TTF_OpenFontWithProperties(props);
+        SDL_DestroyProperties(props);
 
         if (!font)
         {
-            printf("Problem opening TTF font for point size %u: %s\n",
-                   pointSize, SDL_GetError());
+            printf("Problem opening TTF font for point size %u at dpi %d: %s\n",
+                   pointSize, getFontDpi(), SDL_GetError());
             return nullptr;
         }
 
-        cache[pointSize] = font; // Store in cache
+        cache[cacheKey] = font; // Store in cache
         return font;
     }
 
@@ -60,7 +102,7 @@ namespace cupuacu::gui
     static void cleanupFonts()
     {
         auto &cache = getFontCache();
-        for (auto &[pointSize, font] : cache)
+        for (auto &[key, font] : cache)
         {
             TTF_CloseFont(font);
         }

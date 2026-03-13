@@ -6,10 +6,28 @@
 #include "WindowEventPlanning.hpp"
 #include "WindowMouseRouting.hpp"
 #include "WindowResizePlanning.hpp"
+#include "text.hpp"
 
 #include <cmath>
 
 using namespace cupuacu::gui;
+
+namespace
+{
+    float getEffectiveWindowDisplayScale(SDL_Window *window)
+    {
+        if (!window)
+        {
+            return 1.0f;
+        }
+        const float scale = SDL_GetWindowDisplayScale(window);
+        if (scale <= 0.0f)
+        {
+            return 1.0f;
+        }
+        return scale;
+    }
+}
 
 Window::Window(State *stateToUse, const std::string &title, const int width,
                const int height, const Uint32 flags)
@@ -28,6 +46,7 @@ Window::Window(State *stateToUse, const std::string &title, const int width,
     }
 
     windowId = SDL_GetWindowID(window);
+    setFontDisplayScale(getEffectiveWindowDisplayScale(window));
     resizeCanvasIfNeeded();
 }
 
@@ -115,6 +134,8 @@ void Window::handleResize()
         return;
     }
 
+    setFontDisplayScale(getEffectiveWindowDisplayScale(window));
+
     int winW = 0, winH = 0;
     SDL_GetWindowSize(window, &winW, &winH);
 
@@ -153,6 +174,7 @@ void Window::handleResize()
 
 void Window::refreshForScaleOrResize()
 {
+    setFontDisplayScale(getEffectiveWindowDisplayScale(window));
     resizeCanvasIfNeeded();
     if (onResize)
     {
