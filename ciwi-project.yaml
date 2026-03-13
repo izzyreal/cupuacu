@@ -57,7 +57,7 @@ pipelines:
           tools:
             git: "*"
             docker: "*"
-        timeout_seconds: 1800
+        timeout_seconds: 3600
         artifacts:
           - dist/**
         caches:
@@ -70,7 +70,7 @@ pipelines:
           - run: docker buildx create --name cupuacu-linux-arm64-builder --use || docker buildx use cupuacu-linux-arm64-builder
           - run: docker buildx inspect --bootstrap
           - run: docker buildx build --platform linux/arm64 -t cupuacu-linux-arm64-cross --load -f docker/linux-arm64-cross/Dockerfile .
-          - run: docker run --rm --platform linux/arm64 -v "$PWD:/work" -v "$CIWI_FETCHCONTENT_SOURCES_DIR:/ciwi-fetchcontent" -w /work cupuacu-linux-arm64-cross bash -lc 'cmake -S . -B build/linux-arm64 -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_CACHE_ROOT=/ciwi-fetchcontent && cmake --build build/linux-arm64 --config Release --target Cupuacu'
+          - run: docker run --rm --platform linux/arm64 --user "$(id -u):$(id -g)" -v "$PWD:/work" -v "$CIWI_FETCHCONTENT_SOURCES_DIR:/ciwi-fetchcontent" -w /work cupuacu-linux-arm64-cross bash -lc 'cmake -S . -B build/linux-arm64 -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_CACHE_ROOT=/ciwi-fetchcontent && cmake --build build/linux-arm64 --config Release --target Cupuacu'
           - run: cp build/linux-arm64/Cupuacu dist/cupuacu-linux-arm64
 
       - id: linux-amd64-coverage
