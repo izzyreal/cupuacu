@@ -1,6 +1,8 @@
 FROM ubuntu:20.04
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV CC=gcc-10
+ENV CXX=g++-10
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -8,6 +10,8 @@ RUN apt-get update \
         ca-certificates \
         ccache \
         cmake \
+        g++-10 \
+        gcc-10 \
         git \
         libasound2-dev \
         libegl1-mesa-dev \
