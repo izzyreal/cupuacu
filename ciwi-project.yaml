@@ -60,17 +60,18 @@ pipelines:
         timeout_seconds: 7200
         artifacts:
           - dist/**
-        caches:
-          - id: fetchcontent
-            env: CIWI_FETCHCONTENT_SOURCES_DIR
+        caches: *build_caches
         steps:
           - run: mkdir -p build/linux-arm64 dist
           - run: mkdir -p "$CIWI_FETCHCONTENT_SOURCES_DIR"
+          - run: mkdir -p "$CCACHE_DIR"
           - run: docker run --privileged --rm tonistiigi/binfmt --install arm64
           - run: docker buildx create --name cupuacu-linux-arm64-builder --use || docker buildx use cupuacu-linux-arm64-builder
           - run: docker buildx inspect --bootstrap
           - run: docker buildx build --platform linux/arm64 -t cupuacu-linux-arm64-cross --load -f docker/linux-arm64-cross/Dockerfile .
-          - run: docker run --rm --platform linux/arm64 --user "$(id -u):$(id -g)" -v "$PWD:/work" -v "$CIWI_FETCHCONTENT_SOURCES_DIR:/ciwi-fetchcontent" -w /work cupuacu-linux-arm64-cross bash -lc 'cmake -S . -B build/linux-arm64 -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_CACHE_ROOT=/ciwi-fetchcontent && cmake --build build/linux-arm64 --config Release --target Cupuacu'
+          - run: docker run --rm --platform linux/arm64 --user "$(id -u):$(id -g)" -v "$CCACHE_DIR:/ccache" cupuacu-linux-arm64-cross bash -lc 'export CCACHE_DIR=/ccache && ccache --zero-stats'
+          - run: docker run --rm --platform linux/arm64 --user "$(id -u):$(id -g)" -v "$PWD:/work" -v "$CIWI_FETCHCONTENT_SOURCES_DIR:/ciwi-fetchcontent" -v "$CCACHE_DIR:/ccache" -w /work cupuacu-linux-arm64-cross bash -lc 'export CCACHE_DIR=/ccache && export CCACHE_COMPILERCHECK=content && cmake -S . -B build/linux-arm64 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCUPUACU_BUILD_CCACHE_ENABLED=ON -DFETCHCONTENT_CACHE_ROOT=/ciwi-fetchcontent && cmake --build build/linux-arm64 --config Release --target Cupuacu'
+          - run: docker run --rm --platform linux/arm64 --user "$(id -u):$(id -g)" -v "$CCACHE_DIR:/ccache" cupuacu-linux-arm64-cross bash -lc 'export CCACHE_DIR=/ccache && ccache --show-stats'
           - run: cp build/linux-arm64/Cupuacu dist/cupuacu-linux-arm64
 
       - id: linux-amd64-coverage
