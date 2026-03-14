@@ -200,6 +200,8 @@ namespace cupuacu::gui
         {
             int width = 0;
             int height = 0;
+            int viewWidth = 0;
+            int viewHeight = 0;
             int64_t sampleOffset = 0;
             int64_t frameCount = 0;
             double samplesPerPixel = 0.0;
@@ -212,12 +214,18 @@ namespace cupuacu::gui
 
         mutable BaseTextureCacheKey cachedBaseTextureKey{};
         mutable bool cachedBaseTextureValid = false;
+        mutable SDL_FRect cachedBaseTextureSourceRect{
+            0.0f, 0.0f, 0.0f, 0.0f};
 
         std::vector<std::unique_ptr<SamplePoint>> computeSamplePoints();
 
         void invalidateBaseTexture() const;
         bool ensureBaseTexture(SDL_Renderer *) const;
         BaseTextureCacheKey computeBaseTextureCacheKey() const;
+        BaseTextureCacheKey
+        makeCurrentBlockTextureCoverageKey(const BaseTextureCacheKey &) const;
+        bool canRenderCurrentViewFromCachedBlockTexture(
+            const BaseTextureCacheKey &) const;
         bool canReuseBlockTextureForHorizontalShift(
             const BaseTextureCacheKey &newKey, int &outPixelShift) const;
         bool rebuildShiftedBlockTexture(SDL_Renderer *,
@@ -229,7 +237,8 @@ namespace cupuacu::gui
         void drawHighlight(SDL_Renderer *) const;
         void renderBlockWaveform(SDL_Renderer *) const;
         void renderBlockWaveformRange(SDL_Renderer *, int xStart,
-                                      int xEndExclusive) const;
+                                      int xEndExclusive, int widthToUse,
+                                      int64_t sampleOffset) const;
         void renderSmoothWaveform(SDL_Renderer *) const;
 
         void drawPlaybackPosition(SDL_Renderer *) const;

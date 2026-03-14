@@ -55,6 +55,8 @@ Waveform::BaseTextureCacheKey Waveform::computeBaseTextureCacheKey() const
     return {
         .width = getWidth(),
         .height = getHeight(),
+        .viewWidth = getWidth(),
+        .viewHeight = getHeight(),
         .sampleOffset = viewState.sampleOffset,
         .frameCount = doc.getFrameCount(),
         .samplesPerPixel = viewState.samplesPerPixel,
@@ -62,6 +64,73 @@ Waveform::BaseTextureCacheKey Waveform::computeBaseTextureCacheKey() const
         .waveformDataVersion = doc.getWaveformDataVersion(),
         .pixelScale = state->pixelScale,
     };
+}
+
+Waveform::BaseTextureCacheKey Waveform::makeCurrentBlockTextureCoverageKey(
+    const BaseTextureCacheKey &currentViewKey) const
+{
+    const int coverageWidth =
+        std::max(currentViewKey.viewWidth * 2, currentViewKey.viewWidth + 64);
+    const int extraWidth = coverageWidth - currentViewKey.viewWidth;
+    const double extraSamples =
+        currentViewKey.samplesPerPixel * static_cast<double>(extraWidth) * 0.5;
+    const int64_t coverageSpanSamples = static_cast<int64_t>(
+        std::ceil(currentViewKey.samplesPerPixel * coverageWidth));
+    const int64_t maxCoverageOffset = std::max<int64_t>(
+        0, currentViewKey.frameCount - coverageSpanSamples);
+    const int64_t coverageOffset = std::clamp<int64_t>(
+        currentViewKey.sampleOffset -
+            static_cast<int64_t>(std::llround(extraSamples)),
+        0, maxCoverageOffset);
+
+    auto coverageKey = currentViewKey;
+    coverageKey.width = coverageWidth;
+    coverageKey.height = currentViewKey.viewHeight;
+    coverageKey.sampleOffset = coverageOffset;
+    return coverageKey;
+}
+
+bool Waveform::canRenderCurrentViewFromCachedBlockTexture(
+    const BaseTextureCacheKey &currentViewKey) const
+{
+    if (!cachedBaseTextureValid || !cachedBaseTexture ||
+        currentViewKey.samplesPerPixel < 1.0)
+    {
+        return false;
+    }
+
+    if (cachedBaseTextureKey.viewWidth != currentViewKey.viewWidth ||
+        cachedBaseTextureKey.viewHeight != currentViewKey.viewHeight ||
+        cachedBaseTextureKey.height != currentViewKey.viewHeight ||
+        cachedBaseTextureKey.frameCount != currentViewKey.frameCount ||
+        cachedBaseTextureKey.waveformDataVersion !=
+            currentViewKey.waveformDataVersion ||
+        cachedBaseTextureKey.pixelScale != currentViewKey.pixelScale ||
+        cachedBaseTextureKey.samplesPerPixel != currentViewKey.samplesPerPixel ||
+        cachedBaseTextureKey.verticalZoom != currentViewKey.verticalZoom)
+    {
+        return false;
+    }
+
+    const double sourceX =
+        (static_cast<double>(currentViewKey.sampleOffset) -
+         static_cast<double>(cachedBaseTextureKey.sampleOffset)) /
+        currentViewKey.samplesPerPixel;
+    if (sourceX < 0.0)
+    {
+        return false;
+    }
+
+    if (sourceX + static_cast<double>(currentViewKey.viewWidth) >
+        static_cast<double>(cachedBaseTextureKey.width))
+    {
+        return false;
+    }
+
+    cachedBaseTextureSourceRect = {static_cast<float>(sourceX), 0.0f,
+                                   static_cast<float>(currentViewKey.viewWidth),
+                                   static_cast<float>(currentViewKey.viewHeight)};
+    return true;
 }
 
 void Waveform::drawBaseWaveformContents(SDL_Renderer *renderer) const
@@ -90,25 +159,38 @@ bool Waveform::ensureBaseTexture(SDL_Renderer *renderer) const
     }
 
     const auto newKey = computeBaseTextureCacheKey();
-    if (cachedBaseTextureValid && cachedBaseTexture &&
-        cachedBaseTextureKey == newKey)
+    const bool isBlockMode = newKey.samplesPerPixel >= 1.0;
+    if (isBlockMode && canRenderCurrentViewFromCachedBlockTexture(newKey))
     {
         return true;
     }
 
-    int pixelShift = 0;
     if (cachedBaseTextureValid && cachedBaseTexture &&
+        cachedBaseTextureKey == newKey)
+    {
+        cachedBaseTextureSourceRect = {0.0f, 0.0f, static_cast<float>(newKey.width),
+                                       static_cast<float>(newKey.height)};
+        return true;
+    }
+
+    int pixelShift = 0;
+    if (!isBlockMode && cachedBaseTextureValid && cachedBaseTexture &&
         canReuseBlockTextureForHorizontalShift(newKey, pixelShift) &&
         rebuildShiftedBlockTexture(renderer, newKey, pixelShift))
     {
         cachedBaseTextureKey = newKey;
         cachedBaseTextureValid = true;
+        cachedBaseTextureSourceRect = {0.0f, 0.0f, static_cast<float>(newKey.width),
+                                       static_cast<float>(newKey.height)};
         return true;
     }
 
+    const auto targetKey =
+        isBlockMode ? makeCurrentBlockTextureCoverageKey(newKey) : newKey;
+
     if (!cachedBaseTexture ||
-        cachedBaseTextureKey.width != newKey.width ||
-        cachedBaseTextureKey.height != newKey.height)
+        cachedBaseTextureKey.width != targetKey.width ||
+        cachedBaseTextureKey.height != targetKey.height)
     {
         if (cachedBaseTexture)
         {
@@ -118,7 +200,7 @@ bool Waveform::ensureBaseTexture(SDL_Renderer *renderer) const
 
         cachedBaseTexture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
                                               SDL_TEXTUREACCESS_TARGET,
-                                              newKey.width, newKey.height);
+                                              targetKey.width, targetKey.height);
         if (!cachedBaseTexture)
         {
             cachedBaseTextureValid = false;
@@ -132,15 +214,36 @@ bool Waveform::ensureBaseTexture(SDL_Renderer *renderer) const
     SDL_GetRenderViewport(renderer, &previousViewport);
 
     SDL_SetRenderTarget(renderer, cachedBaseTexture);
-    const SDL_Rect localViewport{0, 0, newKey.width, newKey.height};
+    const SDL_Rect localViewport{0, 0, targetKey.width, targetKey.height};
     SDL_SetRenderViewport(renderer, &localViewport);
-    drawBaseWaveformContents(renderer);
+    if (isBlockMode)
+    {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderFillRect(renderer, nullptr);
+        drawHorizontalLines(renderer);
+        renderBlockWaveformRange(renderer, 0, targetKey.width, targetKey.width,
+                                 targetKey.sampleOffset);
+    }
+    else
+    {
+        drawBaseWaveformContents(renderer);
+    }
 
     SDL_SetRenderTarget(renderer, previousTarget);
     SDL_SetRenderViewport(renderer, &previousViewport);
 
-    cachedBaseTextureKey = newKey;
+    cachedBaseTextureKey = targetKey;
     cachedBaseTextureValid = true;
+    if (isBlockMode)
+    {
+        canRenderCurrentViewFromCachedBlockTexture(newKey);
+    }
+    else
+    {
+        cachedBaseTextureSourceRect = {
+            0.0f, 0.0f, static_cast<float>(newKey.width),
+            static_cast<float>(newKey.height)};
+    }
     return true;
 }
 
@@ -246,7 +349,8 @@ bool Waveform::rebuildShiftedBlockTexture(SDL_Renderer *renderer,
         SDL_RenderFillRect(renderer, nullptr);
         drawHorizontalLines(renderer);
         renderBlockWaveformRange(renderer, exposedRect.x,
-                                 exposedRect.x + exposedRect.w);
+                                 exposedRect.x + exposedRect.w, newKey.width,
+                                 newKey.sampleOffset);
     }
 
     SDL_SetRenderTarget(renderer, previousTarget);
@@ -492,11 +596,14 @@ void Waveform::renderSmoothWaveform(SDL_Renderer *renderer) const
 
 void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
 {
-    renderBlockWaveformRange(renderer, 0, getWidth());
+    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    renderBlockWaveformRange(renderer, 0, getWidth(), getWidth(),
+                             viewState.sampleOffset);
 }
 
 void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
-                                        int xEndExclusive) const
+                                        int xEndExclusive, int widthToUse,
+                                        int64_t sampleOffset) const
 {
     auto &session = state->activeDocumentSession;
     auto &doc = session.document;
@@ -505,11 +612,9 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
                            waveformColor.b, waveformColor.a);
 
     const double samplesPerPixel = viewState.samplesPerPixel;
-    const int64_t sampleOffset = viewState.sampleOffset;
     const double blockRenderPhasePx =
         getBlockRenderPhasePixels(sampleOffset, samplesPerPixel);
     const double verticalZoom = viewState.verticalZoom;
-    const int widthToUse = getWidth();
     const int heightToUse = getHeight();
     const uint16_t samplePointSize =
         getWaveformSamplePointSize(state->pixelScale);
@@ -774,7 +879,8 @@ void Waveform::onDraw(SDL_Renderer *renderer)
 {
     if (ensureBaseTexture(renderer))
     {
-        SDL_RenderTexture(renderer, cachedBaseTexture, nullptr, nullptr);
+        SDL_RenderTexture(renderer, cachedBaseTexture,
+                          &cachedBaseTextureSourceRect, nullptr);
     }
     else
     {
