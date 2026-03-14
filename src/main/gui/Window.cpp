@@ -69,6 +69,9 @@ namespace
         SDL_Point pixelSize{0, 0};
         SDL_GetWindowSize(window, &logicalSize.x, &logicalSize.y);
         SDL_GetWindowSizeInPixels(window, &pixelSize.x, &pixelSize.y);
+        const SDL_DisplayID displayId = SDL_GetDisplayForWindow(window);
+        const float displayContentScale =
+            displayId ? SDL_GetDisplayContentScale(displayId) : 0.0f;
 
         float canvasW = 0.0f;
         float canvasH = 0.0f;
@@ -78,9 +81,10 @@ namespace
         }
 
         SDL_Log(
-            "CUPUACU_DEBUG_WINDOW_SCALE: logical=%dx%d pixels=%dx%d displayScale=%.3f canvas=%.1fx%.1f pixelScale=%u effectiveFontScale=%.3f",
+            "CUPUACU_DEBUG_WINDOW_SCALE: logical=%dx%d pixels=%dx%d displayId=%" SDL_PRIu32 " displayScale=%.3f displayContentScale=%.3f canvas=%.1fx%.1f pixelScale=%u effectiveFontScale=%.3f",
             logicalSize.x, logicalSize.y, pixelSize.x, pixelSize.y,
-            SDL_GetWindowDisplayScale(window), canvasW, canvasH, pixelScale,
+            displayId, SDL_GetWindowDisplayScale(window), displayContentScale,
+            canvasW, canvasH, pixelScale,
             getEffectiveWindowDisplayScale(window, canvas));
     }
 }
