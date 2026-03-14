@@ -14,6 +14,12 @@ using namespace cupuacu::gui;
 
 namespace
 {
+    bool shouldLogWindowScaleDiagnostics()
+    {
+        const char *value = SDL_getenv("CUPUACU_DEBUG_WINDOW_SCALE");
+        return value && value[0] != '\0' && SDL_strcmp(value, "0") != 0;
+    }
+
     float getEffectiveWindowDisplayScale(SDL_Window *window,
                                          SDL_Texture *canvas)
     {
@@ -49,6 +55,33 @@ namespace
             return 1.0f;
         }
         return fallbackScale;
+    }
+
+    void logWindowScaleDiagnostics(SDL_Window *window, SDL_Texture *canvas,
+                                   const Uint8 pixelScale)
+    {
+        if (!shouldLogWindowScaleDiagnostics() || !window)
+        {
+            return;
+        }
+
+        SDL_Point logicalSize{0, 0};
+        SDL_Point pixelSize{0, 0};
+        SDL_GetWindowSize(window, &logicalSize.x, &logicalSize.y);
+        SDL_GetWindowSizeInPixels(window, &pixelSize.x, &pixelSize.y);
+
+        float canvasW = 0.0f;
+        float canvasH = 0.0f;
+        if (canvas)
+        {
+            SDL_GetTextureSize(canvas, &canvasW, &canvasH);
+        }
+
+        SDL_Log(
+            "CUPUACU_DEBUG_WINDOW_SCALE: logical=%dx%d pixels=%dx%d displayScale=%.3f canvas=%.1fx%.1f pixelScale=%u effectiveFontScale=%.3f",
+            logicalSize.x, logicalSize.y, pixelSize.x, pixelSize.y,
+            SDL_GetWindowDisplayScale(window), canvasW, canvasH, pixelScale,
+            getEffectiveWindowDisplayScale(window, canvas));
     }
 }
 
@@ -164,6 +197,7 @@ void Window::resizeCanvasIfNeeded()
         SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
                           SDL_TEXTUREACCESS_TARGET, required.x, required.y);
     SDL_SetTextureScaleMode(canvas, SDL_SCALEMODE_NEAREST);
+    logWindowScaleDiagnostics(window, canvas, state->pixelScale);
 }
 
 void Window::handleResize()
@@ -214,6 +248,7 @@ void Window::refreshForScaleOrResize()
 {
     resizeCanvasIfNeeded();
     setFontDisplayScale(getEffectiveWindowDisplayScale(window, canvas));
+    logWindowScaleDiagnostics(window, canvas, state->pixelScale);
     if (onResize)
     {
         onResize();
