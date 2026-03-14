@@ -167,6 +167,7 @@ namespace cupuacu::gui
         }
 
         Waveform(State *, const uint8_t channelIndex);
+        ~Waveform() override;
 
         void onDraw(SDL_Renderer *) override;
         void timerCallback() override;
@@ -193,9 +194,31 @@ namespace cupuacu::gui
         mutable std::vector<double> smoothXBuffer;
         mutable std::vector<double> smoothYBuffer;
         mutable std::vector<double> smoothQueryBuffer;
+        mutable SDL_Texture *cachedBaseTexture = nullptr;
+
+        struct BaseTextureCacheKey
+        {
+            int width = 0;
+            int height = 0;
+            int64_t sampleOffset = 0;
+            int64_t frameCount = 0;
+            double samplesPerPixel = 0.0;
+            double verticalZoom = 0.0;
+            uint64_t waveformDataVersion = 0;
+            uint8_t pixelScale = 0;
+
+            bool operator==(const BaseTextureCacheKey &other) const = default;
+        };
+
+        mutable BaseTextureCacheKey cachedBaseTextureKey{};
+        mutable bool cachedBaseTextureValid = false;
 
         std::vector<std::unique_ptr<SamplePoint>> computeSamplePoints();
 
+        void invalidateBaseTexture() const;
+        bool ensureBaseTexture(SDL_Renderer *) const;
+        BaseTextureCacheKey computeBaseTextureCacheKey() const;
+        void drawBaseWaveformContents(SDL_Renderer *) const;
         void drawHorizontalLines(SDL_Renderer *) const;
         void drawSelection(SDL_Renderer *) const;
         void drawHighlight(SDL_Renderer *) const;

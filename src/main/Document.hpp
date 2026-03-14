@@ -17,6 +17,7 @@ namespace cupuacu
             std::make_shared<cupuacu::audio::AudioBuffer>();
         int sampleRate = 0;
         SampleFormat format = SampleFormat::Unknown;
+        uint64_t waveformDataVersion = 0;
         std::vector<gui::WaveformCache> waveformCache =
             std::vector<gui::WaveformCache>(2);
 
@@ -32,6 +33,7 @@ namespace cupuacu
                                cupuacu::audio::DirtyTrackingAudioBuffer>()
                          : std::make_shared<cupuacu::audio::AudioBuffer>();
             buffer->resize(channelCount, frameCount);
+            ++waveformDataVersion;
             waveformCache.assign(channelCount, gui::WaveformCache{});
         }
 
@@ -53,6 +55,10 @@ namespace cupuacu
         {
             return sampleRate;
         }
+        uint64_t getWaveformDataVersion() const
+        {
+            return waveformDataVersion;
+        }
         int64_t getFrameCount() const
         {
             return buffer->getFrameCount();
@@ -70,16 +76,19 @@ namespace cupuacu
                        const bool shouldMarkDirty = true)
         {
             buffer->setSample(channel, frame, value, shouldMarkDirty);
+            ++waveformDataVersion;
         }
 
         void resizeBuffer(int64_t channels, int64_t frames)
         {
             buffer->resize(channels, frames);
+            ++waveformDataVersion;
         }
 
         void insertFrames(int64_t frameIndex, int64_t numFrames)
         {
             buffer->insertFrames(frameIndex, numFrames);
+            ++waveformDataVersion;
 
             for (int ch = 0; ch < getChannelCount(); ++ch)
             {
@@ -90,6 +99,7 @@ namespace cupuacu
         void removeFrames(int64_t frameIndex, int64_t numFrames)
         {
             buffer->removeFrames(frameIndex, numFrames);
+            ++waveformDataVersion;
 
             for (int ch = 0; ch < getChannelCount(); ++ch)
             {

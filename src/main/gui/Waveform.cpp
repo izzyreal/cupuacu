@@ -22,6 +22,11 @@ Waveform::Waveform(State *state, const uint8_t channelIndexToUse)
 {
 }
 
+Waveform::~Waveform()
+{
+    invalidateBaseTexture();
+}
+
 uint8_t Waveform::getChannelIndex() const
 {
     return channelIndex;
@@ -29,7 +34,104 @@ uint8_t Waveform::getChannelIndex() const
 
 void Waveform::resized()
 {
+    invalidateBaseTexture();
     updateSamplePoints();
+}
+
+void Waveform::invalidateBaseTexture() const
+{
+    cachedBaseTextureValid = false;
+    if (cachedBaseTexture)
+    {
+        SDL_DestroyTexture(cachedBaseTexture);
+        cachedBaseTexture = nullptr;
+    }
+}
+
+Waveform::BaseTextureCacheKey Waveform::computeBaseTextureCacheKey() const
+{
+    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    const auto &doc = state->activeDocumentSession.document;
+    return {
+        .width = getWidth(),
+        .height = getHeight(),
+        .sampleOffset = viewState.sampleOffset,
+        .frameCount = doc.getFrameCount(),
+        .samplesPerPixel = viewState.samplesPerPixel,
+        .verticalZoom = viewState.verticalZoom,
+        .waveformDataVersion = doc.getWaveformDataVersion(),
+        .pixelScale = state->pixelScale,
+    };
+}
+
+void Waveform::drawBaseWaveformContents(SDL_Renderer *renderer) const
+{
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderFillRect(renderer, NULL);
+
+    drawHorizontalLines(renderer);
+
+    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    if (viewState.samplesPerPixel < 1)
+    {
+        renderSmoothWaveform(renderer);
+    }
+    else
+    {
+        renderBlockWaveform(renderer);
+    }
+}
+
+bool Waveform::ensureBaseTexture(SDL_Renderer *renderer) const
+{
+    if (!renderer || getWidth() <= 0 || getHeight() <= 0)
+    {
+        return false;
+    }
+
+    const auto newKey = computeBaseTextureCacheKey();
+    if (cachedBaseTextureValid && cachedBaseTexture &&
+        cachedBaseTextureKey == newKey)
+    {
+        return true;
+    }
+
+    if (!cachedBaseTexture ||
+        cachedBaseTextureKey.width != newKey.width ||
+        cachedBaseTextureKey.height != newKey.height)
+    {
+        if (cachedBaseTexture)
+        {
+            SDL_DestroyTexture(cachedBaseTexture);
+            cachedBaseTexture = nullptr;
+        }
+
+        cachedBaseTexture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
+                                              SDL_TEXTUREACCESS_TARGET,
+                                              newKey.width, newKey.height);
+        if (!cachedBaseTexture)
+        {
+            cachedBaseTextureValid = false;
+            return false;
+        }
+        SDL_SetTextureScaleMode(cachedBaseTexture, SDL_SCALEMODE_NEAREST);
+    }
+
+    SDL_Texture *previousTarget = SDL_GetRenderTarget(renderer);
+    SDL_Rect previousViewport{};
+    SDL_GetRenderViewport(renderer, &previousViewport);
+
+    SDL_SetRenderTarget(renderer, cachedBaseTexture);
+    const SDL_Rect localViewport{0, 0, newKey.width, newKey.height};
+    SDL_SetRenderViewport(renderer, &localViewport);
+    drawBaseWaveformContents(renderer);
+
+    SDL_SetRenderTarget(renderer, previousTarget);
+    SDL_SetRenderViewport(renderer, &previousViewport);
+
+    cachedBaseTextureKey = newKey;
+    cachedBaseTextureValid = true;
+    return true;
 }
 
 void Waveform::updateSamplePoints()
@@ -501,19 +603,13 @@ void Waveform::drawHighlight(SDL_Renderer *renderer) const
 
 void Waveform::onDraw(SDL_Renderer *renderer)
 {
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-    SDL_RenderFillRect(renderer, NULL);
-
-    drawHorizontalLines(renderer);
-
-    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
-    if (viewState.samplesPerPixel < 1)
+    if (ensureBaseTexture(renderer))
     {
-        renderSmoothWaveform(renderer);
+        SDL_RenderTexture(renderer, cachedBaseTexture, nullptr, nullptr);
     }
     else
     {
-        renderBlockWaveform(renderer);
+        drawBaseWaveformContents(renderer);
     }
 
     drawSelection(renderer);
