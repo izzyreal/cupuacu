@@ -14,18 +14,41 @@ using namespace cupuacu::gui;
 
 namespace
 {
-    float getEffectiveWindowDisplayScale(SDL_Window *window)
+    float getEffectiveWindowDisplayScale(SDL_Window *window,
+                                         SDL_Texture *canvas)
     {
         if (!window)
         {
             return 1.0f;
         }
-        const float scale = SDL_GetWindowDisplayScale(window);
-        if (scale <= 0.0f)
+
+        if (canvas)
+        {
+            SDL_Point logicalSize{0, 0};
+            if (SDL_GetWindowSize(window, &logicalSize.x, &logicalSize.y) &&
+                logicalSize.x > 0 && logicalSize.y > 0)
+            {
+                float canvasW = 0.0f, canvasH = 0.0f;
+                SDL_GetTextureSize(canvas, &canvasW, &canvasH);
+                if (canvasW > 0.0f && canvasH > 0.0f)
+                {
+                    const float scaleX = canvasW / logicalSize.x;
+                    const float scaleY = canvasH / logicalSize.y;
+                    const float scale = std::min(scaleX, scaleY);
+                    if (scale > 0.0f)
+                    {
+                        return scale;
+                    }
+                }
+            }
+        }
+
+        const float fallbackScale = SDL_GetWindowDisplayScale(window);
+        if (fallbackScale <= 0.0f)
         {
             return 1.0f;
         }
-        return scale;
+        return fallbackScale;
     }
 }
 
@@ -46,8 +69,8 @@ Window::Window(State *stateToUse, const std::string &title, const int width,
     }
 
     windowId = SDL_GetWindowID(window);
-    setFontDisplayScale(getEffectiveWindowDisplayScale(window));
     resizeCanvasIfNeeded();
+    setFontDisplayScale(getEffectiveWindowDisplayScale(window, canvas));
 }
 
 Window::~Window()
@@ -97,7 +120,8 @@ SDL_Point Window::computeRequiredCanvasDimensions() const
     if (SDL_GetWindowSize(window, &logicalSize.x, &logicalSize.y) &&
         logicalSize.x > 0 && logicalSize.y > 0)
     {
-        const float displayScale = getEffectiveWindowDisplayScale(window);
+        const float displayScale =
+            getEffectiveWindowDisplayScale(window, nullptr);
         pixelSize.x = std::max(
             pixelSize.x,
             static_cast<int>(std::lround(logicalSize.x * displayScale)));
@@ -149,8 +173,6 @@ void Window::handleResize()
         return;
     }
 
-    setFontDisplayScale(getEffectiveWindowDisplayScale(window));
-
     int winW = 0, winH = 0;
     SDL_GetWindowSize(window, &winW, &winH);
 
@@ -181,6 +203,7 @@ void Window::handleResize()
     }
 
     resizeCanvasIfNeeded();
+    setFontDisplayScale(getEffectiveWindowDisplayScale(window, canvas));
     if (onResize)
     {
         onResize();
@@ -189,8 +212,8 @@ void Window::handleResize()
 
 void Window::refreshForScaleOrResize()
 {
-    setFontDisplayScale(getEffectiveWindowDisplayScale(window));
     resizeCanvasIfNeeded();
+    setFontDisplayScale(getEffectiveWindowDisplayScale(window, canvas));
     if (onResize)
     {
         onResize();
