@@ -27,6 +27,18 @@ const uint16_t initialDimensions[] = {1280, 720};
 #include <rtsan_standalone/rtsan_standalone.h>
 #endif
 
+namespace
+{
+    constexpr Uint32 getHighDensityWindowFlag()
+    {
+#if defined(__linux__)
+        return 0;
+#else
+        return SDL_WINDOW_HIGH_PIXEL_DENSITY;
+#endif
+    }
+}
+
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 {
 #if CUPUACU_RTSAN_LIBS_ENABLED
@@ -69,7 +81,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     state->mainDocumentSessionWindow =
         std::make_unique<cupuacu::gui::DocumentSessionWindow>(
             state, &session, "", initialDimensions[0], initialDimensions[1],
-            SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+            SDL_WINDOW_RESIZABLE | getHighDensityWindowFlag());
 
     auto *mainWindow = state->mainDocumentSessionWindow->getWindow();
     if (!mainWindow || !mainWindow->isOpen())

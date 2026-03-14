@@ -17,6 +17,15 @@ namespace
     constexpr int kWindowWidth = 500;
     constexpr int kWindowHeight = 500;
 
+    constexpr Uint32 getHighDensityWindowFlag()
+    {
+#if defined(__linux__)
+        return 0;
+#else
+        return SDL_WINDOW_HIGH_PIXEL_DENSITY;
+#endif
+    }
+
     int findIndex(const std::vector<int> &indices, const int value)
     {
         const auto it = std::find(indices.begin(), indices.end(), value);
@@ -50,7 +59,7 @@ DevicePropertiesWindow::DevicePropertiesWindow(State *stateToUse)
 
     window = std::make_unique<Window>(
         state, "Device Properties", kWindowWidth, kWindowHeight,
-        SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+        SDL_WINDOW_RESIZABLE | getHighDensityWindowFlag());
     if (!window->isOpen())
     {
         return;
