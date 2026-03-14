@@ -53,11 +53,8 @@ namespace cupuacu::gui
             x = std::max(centeredX, contentRect.x);
         }
 
-        if (pixelScale > 1)
-        {
-            x = std::round(x);
-            y = std::floor(y);
-        }
+        x = std::round(x);
+        y = std::round(y);
 
         return {x, y, static_cast<float>(cachedW), static_cast<float>(cachedH)};
     }

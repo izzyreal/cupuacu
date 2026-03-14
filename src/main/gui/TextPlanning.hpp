@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 namespace cupuacu::gui
 {
     inline float planTextXPosition(const SDL_FRect &destRect, const int textW,
@@ -12,6 +13,6 @@ namespace cupuacu::gui
         }
 
         const float centeredX = destRect.x + (destRect.w - textW) * 0.5f;
-        return std::max(centeredX, destRect.x);
+        return std::round(std::max(centeredX, destRect.x));
     }
 } // namespace cupuacu::gui

@@ -168,7 +168,7 @@ namespace cupuacu::gui
         const float x =
             planTextXPosition(destRect, textW, shouldCenterHorizontally);
 
-        const SDL_FRect textDestRect = {x, destRect.y, (float)textW,
+        const SDL_FRect textDestRect = {x, std::round(destRect.y), (float)textW,
                                         (float)textH};
 
         SDL_SetRenderTarget(renderer, canvas);
