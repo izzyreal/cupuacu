@@ -9,6 +9,7 @@
 #include "gui/Gui.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/DocumentSessionWindow.hpp"
+#include "gui/UiScale.hpp"
 #include "gui/Window.hpp"
 
 const uint16_t initialDimensions[] = {1280, 720};
@@ -47,6 +48,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     cupuacu::State *state = new cupuacu::State();
     auto &session = state->activeDocumentSession;
+    state->uiScale = cupuacu::gui::resolveInitialUiScale();
 
     state->audioDevices = std::make_shared<cupuacu::audio::AudioDevices>();
     if (const auto persistedSelection =

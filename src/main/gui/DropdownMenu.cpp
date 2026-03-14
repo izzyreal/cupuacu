@@ -3,6 +3,7 @@
 #include "Colors.hpp"
 #include "Helpers.hpp"
 #include "RoundedRect.hpp"
+#include "UiScale.hpp"
 #include "Window.hpp"
 #include "text.hpp"
 
@@ -29,10 +30,10 @@ int DropdownMenu::getFontSize() const
 
 int DropdownMenu::getRowHeight() const
 {
-    const int fontSizeVirtual = std::max(1, getFontSize() / state->pixelScale);
+    const int fontSizeVirtual = scaleFontPointSize(state, getFontSize());
     const auto [textW, textH] = measureText("Ag", fontSizeVirtual);
     const int textHeight = std::max(1, (int)std::ceil(textH));
-    return textHeight + itemMargin * 2;
+    return textHeight + scaleUi(state, static_cast<float>(itemMargin) * 2.0f);
 }
 
 void DropdownMenu::rebuildLabels()
@@ -198,7 +199,7 @@ void DropdownMenu::resized()
 void DropdownMenu::onDraw(SDL_Renderer *renderer)
 {
     const SDL_FRect outer = getLocalBoundsF();
-    const float radius = std::max(1.0f, 12.0f / state->pixelScale);
+    const float radius = scaleUiF(state, 12.0f);
 
     constexpr SDL_Color border = Colors::border;
     constexpr SDL_Color baseBg = {55, 55, 55, 255};
@@ -229,10 +230,10 @@ void DropdownMenu::onDraw(SDL_Renderer *renderer)
 
     if (itemLabels.size() > 1)
     {
-        const float arrowPadding = std::max(1.0f, 12.0f / state->pixelScale);
-        const float arrowWidth = std::max(1.0f, 20.0f / state->pixelScale);
-        const float arrowHeight = std::max(1.0f, 10.0f / state->pixelScale);
-        const float arrowOffset = std::max(1.0f, 4.0f / state->pixelScale);
+        const float arrowPadding = scaleUiF(state, 12.0f);
+        const float arrowWidth = scaleUiF(state, 20.0f);
+        const float arrowHeight = scaleUiF(state, 10.0f);
+        const float arrowOffset = scaleUiF(state, 4.0f);
         const float cx = std::round(inner.x + inner.w - arrowPadding -
                                     arrowWidth * 0.5f - arrowOffset);
         const float cy = inner.y + getRowHeight() * 0.5f;

@@ -7,6 +7,7 @@
 #include "StatusBar.hpp"
 #include "MainView.hpp"
 #include "TransportButtonsContainer.hpp"
+#include "UiScale.hpp"
 #include "VuMeterContainer.hpp"
 #include "Window.hpp"
 
@@ -26,7 +27,7 @@ SDL_Rect computeMenuBarBounds(const uint16_t canvasWidth,
                               const uint8_t menuFontSize)
 {
     const SDL_Rect result{0, 0, canvasWidth,
-                          static_cast<int>(menuFontSize * 1.33 / pixelScale)};
+                          cupuacu::gui::scaleUi(nullptr, static_cast<float>(menuFontSize) * 1.33f)};
     return result;
 }
 
@@ -35,8 +36,8 @@ SDL_Rect computeStatusBarBounds(const uint16_t canvasWidth,
                                 const uint8_t pixelScale,
                                 const uint8_t menuFontSize)
 {
-    const auto statusBarHeight =
-        static_cast<int>(menuFontSize * 1.33 / pixelScale);
+    const auto statusBarHeight = cupuacu::gui::scaleUi(
+        nullptr, static_cast<float>(menuFontSize) * 1.33f);
 
     const SDL_Rect result{0, canvasHeight - statusBarHeight, canvasWidth,
                           statusBarHeight};
@@ -137,13 +138,18 @@ void cupuacu::gui::resizeComponents(State *state, Window *window)
         window->getOverlayLayer()->setBounds(0, 0, newCanvasW, newCanvasH);
     }
 
-    const SDL_Rect menuBarRect = computeMenuBarBounds(
-        newCanvasW, newCanvasH, state->pixelScale, state->menuFontSize);
+    const SDL_Rect menuBarRect{
+        0, 0, newCanvasW,
+        scaleUi(state, static_cast<float>(state->menuFontSize) * 1.33f)};
 
-    const SDL_Rect statusBarRect = computeStatusBarBounds(
-        newCanvasW, newCanvasH, state->pixelScale, state->menuFontSize);
+    const SDL_Rect statusBarRect{
+        0,
+        newCanvasH -
+            scaleUi(state, static_cast<float>(state->menuFontSize) * 1.33f),
+        newCanvasW,
+        scaleUi(state, static_cast<float>(state->menuFontSize) * 1.33f)};
 
-    const int vuMeterContainerHeight = 80 / state->pixelScale;
+    const int vuMeterContainerHeight = scaleUi(state, 80.0f);
     const SDL_Rect transportButtonsContainerRect =
         computeTransportButtonsContainerBounds(
             newCanvasW, newCanvasH, vuMeterContainerHeight, statusBarRect);

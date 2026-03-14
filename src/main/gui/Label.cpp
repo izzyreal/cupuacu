@@ -60,7 +60,7 @@ void Label::updateTexture(SDL_Renderer *renderer)
 
 void Label::onDraw(SDL_Renderer *renderer)
 {
-    const uint8_t fontPointSize = (float)pointSize / state->pixelScale;
+    const uint8_t fontPointSize = getEffectiveFontSize();
 
     // Rebuild texture if needed
     if (shouldRebuildLabelTexture(cachedTexture, cachedText, text,
@@ -75,7 +75,7 @@ void Label::onDraw(SDL_Renderer *renderer)
         return;
     }
 
-    const float marginScaled = margin / state->pixelScale;
+    const float marginScaled = margin * getCanvasSpaceScale(state);
     const SDL_FRect contentRect = planLabelContentRect(
         getLocalBoundsF(), marginScaled, centerVertically, cachedH);
     const SDL_FRect destRect = planLabelDestRect(

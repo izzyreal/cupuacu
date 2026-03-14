@@ -5,6 +5,7 @@
 
 #include "Component.hpp"
 #include "State.hpp"
+#include "UiScale.hpp"
 
 namespace cupuacu::gui
 {
@@ -58,7 +59,7 @@ namespace cupuacu::gui
         }
         uint8_t getEffectiveFontSize() const
         {
-            return (float)pointSize / state->pixelScale;
+            return scaleFontPointSize(state, pointSize);
         }
         void setCenterHorizontally(const bool centerHorizontallyToUse)
         {

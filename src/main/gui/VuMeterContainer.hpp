@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Component.hpp"
+#include "UiScale.hpp"
 #include "VuMeter.hpp"
 #include "Ruler.hpp"
 #include <vector>
@@ -41,7 +42,7 @@ namespace cupuacu::gui
             const int meterHeight =
                 bounds.h - (labelAreaHeight + tickAreaHeight);
 
-            const int margin = static_cast<int>(20 / state->pixelScale);
+            const int margin = scaleUi(state, 20.0f);
 
             vuMeter->setBounds(bounds.x + margin, bounds.y,
                                bounds.w - 2 * margin, meterHeight);

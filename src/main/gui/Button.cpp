@@ -3,6 +3,7 @@
 #include "../State.hpp"
 #include "Colors.hpp"
 #include "Helpers.hpp"
+#include "UiScale.hpp"
 
 #include <utility>
 #include <algorithm>
@@ -16,10 +17,9 @@ namespace
     constexpr SDL_Color kPressedColor{66, 92, 134, 255};
     constexpr SDL_Color kToggledColor{74, 110, 170, 255};
 
-    int computeButtonBorderThicknessForScale(const uint8_t pixelScale)
+    int computeButtonBorderThicknessForScale(const cupuacu::State *state)
     {
-        const int safeScale = std::max(1, static_cast<int>(pixelScale));
-        return std::max(1, static_cast<int>(std::lround(4.0 / safeScale)));
+        return cupuacu::gui::scaleUi(state, 4.0f);
     }
 } // namespace
 
@@ -186,7 +186,7 @@ void Button::onDraw(SDL_Renderer *renderer)
     Helpers::fillRect(renderer, bounds, fillColor);
 
     const int borderThickness = std::min(
-        computeButtonBorderThicknessForScale(state->pixelScale),
+        computeButtonBorderThicknessForScale(state),
         std::max(1, std::min(bounds.w, bounds.h) / 2));
 
     Helpers::fillRect(renderer, SDL_Rect{0, 0, bounds.w, borderThickness},

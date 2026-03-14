@@ -48,6 +48,7 @@ namespace cupuacu
         std::deque<std::shared_ptr<actions::Undoable>> redoables;
         uint8_t menuFontSize = 30;
         uint8_t pixelScale = 1;
+        float uiScale = 1.0f;
         bool loopPlaybackEnabled = false;
         uint64_t playbackRangeStart = 0;
         uint64_t playbackRangeEnd = 0;

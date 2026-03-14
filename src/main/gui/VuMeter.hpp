@@ -3,6 +3,7 @@
 #include "gui/Component.hpp"
 #include "gui/Helpers.hpp"
 #include "gui/Colors.hpp"
+#include "gui/UiScale.hpp"
 
 #include "State.hpp"
 
@@ -67,7 +68,7 @@ namespace cupuacu::gui
             const SDL_Rect fullBounds = getLocalBounds();
             Helpers::fillRect(renderer, fullBounds, Colors::black);
 
-            const int border = std::max(1, 2 / state->pixelScale);
+            const int border = scaleUi(state, 2.0f);
             const int barSpacing = fullBounds.h / numChannels;
 
             constexpr float dt = 1.0f / 60.0f;

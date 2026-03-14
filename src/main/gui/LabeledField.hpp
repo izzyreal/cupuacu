@@ -3,6 +3,7 @@
 #include "gui/Component.hpp"
 #include "gui/text.hpp"
 #include "gui/Helpers.hpp"
+#include "gui/UiScale.hpp"
 
 #include "State.hpp"
 
@@ -40,7 +41,7 @@ namespace cupuacu::gui
         {
             Helpers::fillRect(renderer, getLocalBounds(), background);
             const uint8_t fontPointSize =
-                state->menuFontSize / state->pixelScale;
+                scaleFontPointSize(state, state->menuFontSize);
             const std::string displayText = label + ": " + value;
             const auto rect = getLocalBoundsF();
             renderText(renderer, displayText, fontPointSize, rect, false);

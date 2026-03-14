@@ -9,6 +9,7 @@
 #include "gui/Window.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/Colors.hpp"
+#include "gui/UiScale.hpp"
 #include "gui/Helpers.hpp"
 
 #include "actions/ShowOpenFileDialog.hpp"
@@ -251,7 +252,7 @@ void MenuBar::hideSubMenus()
 
 void MenuBar::resized()
 {
-    const float scale = 4.0f / state->pixelScale;
+    const float scale = getCanvasSpaceScale(state) * 4.0f;
 
     const int fileW = int(40 * scale);
     const int viewW = int(40 * scale);

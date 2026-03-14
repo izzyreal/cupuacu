@@ -4,6 +4,7 @@
 #include "gui/Label.hpp"
 #include "gui/Helpers.hpp"
 #include "gui/Colors.hpp"
+#include "gui/UiScale.hpp"
 #include "gui/text.hpp"
 
 #include <vector>
@@ -81,17 +82,17 @@ namespace cupuacu::gui
 
         float getLabelAreaHeight() const
         {
-            return baseLabelAreaHeight / state->pixelScale;
+            return scaleUiF(state, baseLabelAreaHeight);
         }
 
         float getTickAreaHeight() const
         {
-            return baseTickAreaHeight / state->pixelScale;
+            return scaleUiF(state, baseTickAreaHeight);
         }
 
         float getHorizontalMargin() const
         {
-            return baseHorizontalMargin / state->pixelScale;
+            return scaleUiF(state, baseHorizontalMargin, 0.0f);
         }
 
         void resized() override
@@ -108,8 +109,7 @@ namespace cupuacu::gui
                 numLabels++;
             }
 
-            const int labelHeight =
-                static_cast<int>(baseLabelAreaHeight / state->pixelScale);
+            const int labelHeight = scaleUi(state, baseLabelAreaHeight);
             const int labelY = getTickAreaHeight();
 
             for (int i = 0; i < numLabels; ++i)
@@ -200,8 +200,8 @@ namespace cupuacu::gui
         {
             const SDL_Rect bounds = getLocalBounds();
 
-            const int tickHeightLong = std::max(1.f, 14.f / state->pixelScale);
-            const int tickHeightShort = std::max(1.f, 3.f / state->pixelScale);
+            const int tickHeightLong = scaleUi(state, 14.0f);
+            const int tickHeightShort = scaleUi(state, 3.0f);
 
             bool logFirstTick = true;
 

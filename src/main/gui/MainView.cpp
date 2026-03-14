@@ -10,6 +10,7 @@
 #include "OpaqueRect.hpp"
 #include "ScrollBar.hpp"
 #include "Timeline.hpp"
+#include "UiScale.hpp"
 #include "WaveformRefresh.hpp"
 #include "WaveformCache.hpp"
 #include "playback/PlaybackRange.hpp"
@@ -23,10 +24,9 @@ using namespace cupuacu::gui;
 
 namespace
 {
-    int computeScrollBarHeightForScale(const uint8_t pixelScale)
+    int computeScrollBarHeightForScale(const cupuacu::State *state)
     {
-        const int safeScale = std::max(1, static_cast<int>(pixelScale));
-        return std::max(1, static_cast<int>(std::lround(14.0 / safeScale)));
+        return cupuacu::gui::scaleUi(state, 14.0f);
     }
 } // namespace
 
@@ -435,7 +435,7 @@ MainView::MainView(State *state) : Component(state, "MainView")
 
 uint8_t MainView::computeBorderWidth() const
 {
-    return baseBorderWidth / state->pixelScale;
+    return scaleUi(state, static_cast<float>(baseBorderWidth));
 }
 
 void MainView::rebuildWaveforms() const
@@ -450,8 +450,8 @@ void MainView::resized()
     const int width = getWidth();
     const int height = getHeight();
 
-    const int timelineHeight = static_cast<int>(60 / state->pixelScale);
-    const int scrollBarHeight = computeScrollBarHeightForScale(state->pixelScale);
+    const int timelineHeight = scaleUi(state, 60.0f);
+    const int scrollBarHeight = computeScrollBarHeightForScale(state);
 
     horizontalScrollBar->setBounds(borderWidth, 0,
                                    width - 2 * borderWidth, scrollBarHeight);
@@ -481,7 +481,7 @@ void MainView::updateTriangleMarkerBounds() const
     const auto &viewState = state->mainDocumentSessionWindow->getViewState();
     const auto borderWidth = computeBorderWidth();
     const int scrollBarHeight =
-        computeScrollBarHeightForScale(state->pixelScale);
+        computeScrollBarHeightForScale(state);
     const float triHeight = borderWidth * 0.75f;
     const float halfBase = triHeight;
 

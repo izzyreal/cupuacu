@@ -9,6 +9,7 @@
 #include "gui/text.hpp"
 
 #include "gui/RoundedRect.hpp"
+#include "gui/UiScale.hpp"
 
 using namespace cupuacu::gui;
 
@@ -78,7 +79,7 @@ void Menu::showSubMenus()
     int subMenuYPos = getHeight();
 
     const int menuItemHeight =
-        int((float)state->menuFontSize / state->pixelScale * 2.0f);
+        scaleUi(state, static_cast<float>(state->menuFontSize) * 2.0f);
 
     int subMenuWidth = 1;
 
@@ -89,7 +90,7 @@ void Menu::showSubMenus()
         subMenuWidth = std::max(subMenuWidth, tw);
     }
 
-    const int subMenuHorizontalMargin = 64.f / state->pixelScale;
+    const int subMenuHorizontalMargin = scaleUi(state, 64.0f);
 
     for (const auto &subMenu : subMenus)
     {
@@ -117,7 +118,7 @@ void Menu::hideSubMenus()
 
 void Menu::onDraw(SDL_Renderer *renderer)
 {
-    const auto radius = 14.f / state->pixelScale;
+    const auto radius = scaleUiF(state, 14.0f);
     const auto rect = getLocalBoundsF();
 
     label->setOpacity(isAvailable() ? 255 : 128);
@@ -149,7 +150,7 @@ void Menu::onDraw(SDL_Renderer *renderer)
 
     auto rectShrunk = rect;
 
-    const float shrink = 6.f / state->pixelScale;
+    const float shrink = scaleUiF(state, 6.0f);
     rectShrunk.x += shrink;
     rectShrunk.y += shrink;
     rectShrunk.w -= shrink * 2;

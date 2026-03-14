@@ -5,6 +5,7 @@
 #include "gui/Component.hpp"
 #include "gui/LabeledField.hpp"
 #include "gui/Colors.hpp"
+#include "gui/UiScale.hpp"
 
 #include "State.hpp"
 
@@ -52,8 +53,7 @@ namespace cupuacu::gui
 
         void resized() override
         {
-            const float scale = 4.0f / state->pixelScale;
-            const int fieldWidth = int(80 * scale);
+            const int fieldWidth = scaleUi(state, 80.0f * 4.0f);
             const int fieldHeight = int(getHeight());
 
             posField->setBounds(0, 0, fieldWidth, fieldHeight);

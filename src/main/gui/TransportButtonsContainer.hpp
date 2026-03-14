@@ -5,6 +5,7 @@
 #include "Component.hpp"
 #include "Helpers.hpp"
 #include "TextButton.hpp"
+#include "UiScale.hpp"
 
 #include "../actions/Play.hpp"
 #include "../actions/Record.hpp"
@@ -86,8 +87,7 @@ namespace cupuacu::gui
         {
             auto scaledPx = [this](const double basePx)
             {
-                const int safeScale = std::max(1, static_cast<int>(state->pixelScale));
-                return std::max(1, static_cast<int>(std::lround(basePx / safeScale)));
+                return scaleUi(state, static_cast<float>(basePx));
             };
 
             const SDL_Rect bounds = getLocalBounds();
