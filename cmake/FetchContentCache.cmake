@@ -189,18 +189,27 @@ function(fetchcontent_declare_cached_url dep_name cache_subdir default_path url)
 
   string(TOUPPER "${dep_name}" _dep_upper)
   set(_dep_override_var "FETCHCONTENT_SOURCE_DIR_${_dep_upper}")
+  set(_reuse_local_source OFF)
   if(IS_DIRECTORY "${_source_dir}")
     file(GLOB _cached_entries LIST_DIRECTORIES true "${_source_dir}/*")
     list(LENGTH _cached_entries _cached_entry_count)
     if(_cached_entry_count GREATER 0)
       set(${_dep_override_var} "${_source_dir}" PARENT_SCOPE)
+      set(_reuse_local_source ON)
       message(STATUS "FetchContent ${dep_name}: reusing cached source ${_source_dir}")
     endif()
   endif()
 
-  FetchContent_Declare(${dep_name}
-    URL "${url}"
-    ${ARGN}
-  )
+  if(_reuse_local_source)
+    FetchContent_Declare(${dep_name}
+      SOURCE_DIR "${_source_dir}"
+      ${ARGN}
+    )
+  else()
+    FetchContent_Declare(${dep_name}
+      URL "${url}"
+      ${ARGN}
+    )
+  endif()
   set("${dep_name}_FETCHCONTENT_SOURCE_DIR" "${_source_dir}" PARENT_SCOPE)
 endfunction()
