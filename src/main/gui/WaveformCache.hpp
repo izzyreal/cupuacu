@@ -16,7 +16,7 @@ namespace cupuacu::gui
     class WaveformCache
     {
     public:
-        constexpr static int BASE_BLOCK_SIZE = 512;
+        constexpr static int BASE_BLOCK_SIZE = 32;
         constexpr static int MAX_LEVEL_COUNT = 16;
 
         WaveformCache()
