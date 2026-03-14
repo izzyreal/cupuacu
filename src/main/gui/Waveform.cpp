@@ -96,6 +96,16 @@ bool Waveform::ensureBaseTexture(SDL_Renderer *renderer) const
         return true;
     }
 
+    int pixelShift = 0;
+    if (cachedBaseTextureValid && cachedBaseTexture &&
+        canReuseBlockTextureForHorizontalShift(newKey, pixelShift) &&
+        rebuildShiftedBlockTexture(renderer, newKey, pixelShift))
+    {
+        cachedBaseTextureKey = newKey;
+        cachedBaseTextureValid = true;
+        return true;
+    }
+
     if (!cachedBaseTexture ||
         cachedBaseTextureKey.width != newKey.width ||
         cachedBaseTextureKey.height != newKey.height)
@@ -131,6 +141,119 @@ bool Waveform::ensureBaseTexture(SDL_Renderer *renderer) const
 
     cachedBaseTextureKey = newKey;
     cachedBaseTextureValid = true;
+    return true;
+}
+
+bool Waveform::canReuseBlockTextureForHorizontalShift(
+    const BaseTextureCacheKey &newKey, int &outPixelShift) const
+{
+    outPixelShift = 0;
+    if (!cachedBaseTextureValid)
+    {
+        return false;
+    }
+
+    if (cachedBaseTextureKey.width != newKey.width ||
+        cachedBaseTextureKey.height != newKey.height ||
+        cachedBaseTextureKey.frameCount != newKey.frameCount ||
+        cachedBaseTextureKey.waveformDataVersion != newKey.waveformDataVersion ||
+        cachedBaseTextureKey.pixelScale != newKey.pixelScale)
+    {
+        return false;
+    }
+
+    if (cachedBaseTextureKey.samplesPerPixel != newKey.samplesPerPixel ||
+        cachedBaseTextureKey.verticalZoom != newKey.verticalZoom)
+    {
+        return false;
+    }
+
+    if (newKey.samplesPerPixel < 1.0)
+    {
+        return false;
+    }
+
+    const int64_t deltaSamples =
+        newKey.sampleOffset - cachedBaseTextureKey.sampleOffset;
+    if (deltaSamples == 0)
+    {
+        return false;
+    }
+
+    const double pixelShiftD =
+        -static_cast<double>(deltaSamples) / newKey.samplesPerPixel;
+    const int pixelShift = static_cast<int>(std::lround(pixelShiftD));
+    if (pixelShift == 0 || std::abs(pixelShift) >= newKey.width)
+    {
+        return false;
+    }
+    if (std::abs(pixelShiftD - static_cast<double>(pixelShift)) > 1e-6)
+    {
+        return false;
+    }
+
+    outPixelShift = pixelShift;
+    return true;
+}
+
+bool Waveform::rebuildShiftedBlockTexture(SDL_Renderer *renderer,
+                                          const BaseTextureCacheKey &newKey,
+                                          int pixelShift) const
+{
+    if (!cachedBaseTexture)
+    {
+        return false;
+    }
+
+    SDL_Texture *shiftedTexture = SDL_CreateTexture(
+        renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET,
+        newKey.width, newKey.height);
+    if (!shiftedTexture)
+    {
+        return false;
+    }
+    SDL_SetTextureScaleMode(shiftedTexture, SDL_SCALEMODE_NEAREST);
+
+    SDL_Texture *previousTarget = SDL_GetRenderTarget(renderer);
+    SDL_Rect previousViewport{};
+    SDL_GetRenderViewport(renderer, &previousViewport);
+
+    SDL_SetRenderTarget(renderer, shiftedTexture);
+    const SDL_Rect fullViewport{0, 0, newKey.width, newKey.height};
+    SDL_SetRenderViewport(renderer, &fullViewport);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderFillRect(renderer, nullptr);
+
+    SDL_FRect shiftedDest{static_cast<float>(pixelShift), 0.0f,
+                          static_cast<float>(newKey.width),
+                          static_cast<float>(newKey.height)};
+    SDL_RenderTexture(renderer, cachedBaseTexture, nullptr, &shiftedDest);
+
+    SDL_Rect exposedRect{};
+    if (pixelShift > 0)
+    {
+        exposedRect = {0, 0, pixelShift, newKey.height};
+    }
+    else
+    {
+        exposedRect = {newKey.width + pixelShift, 0, -pixelShift, newKey.height};
+    }
+
+    if (exposedRect.w > 0 && exposedRect.h > 0)
+    {
+        SDL_SetRenderViewport(renderer, &exposedRect);
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderFillRect(renderer, nullptr);
+        drawHorizontalLines(renderer);
+        renderBlockWaveformRange(renderer, exposedRect.x,
+                                 exposedRect.x + exposedRect.w);
+    }
+
+    SDL_SetRenderTarget(renderer, previousTarget);
+    SDL_SetRenderViewport(renderer, &previousViewport);
+
+    SDL_DestroyTexture(cachedBaseTexture);
+    cachedBaseTexture = shiftedTexture;
     return true;
 }
 
@@ -324,53 +447,56 @@ void Waveform::renderSmoothWaveform(SDL_Renderer *renderer) const
             return sampleData[static_cast<std::size_t>(sampleIndex)];
         });
 
-    if (input.sampleX.empty() || input.queryX.size() < 2)
+    if (input.sampleX.empty())
     {
         return;
     }
 
-    smoothXBuffer = input.sampleX;
-    smoothYBuffer = input.sampleY;
-    smoothQueryBuffer = input.queryX;
+    SDL_SetRenderDrawColor(renderer, waveformColor.r, waveformColor.g,
+                           waveformColor.b, waveformColor.a);
 
-    const auto smoothened = splineInterpolateNonUniform(
-        smoothXBuffer, smoothYBuffer, smoothQueryBuffer);
-
-    for (std::size_t i = 0; i + 1 < smoothQueryBuffer.size(); ++i)
+    if (input.sampleX.size() == 1)
     {
-        const float x1 = static_cast<float>(smoothQueryBuffer[i]);
-        const float x2 = static_cast<float>(smoothQueryBuffer[i + 1]);
+        const int x = static_cast<int>(std::lround(input.sampleX.front()));
+        const int y = static_cast<int>(
+            std::lround(heightToUse / 2.0f -
+                        static_cast<float>(input.sampleY.front()) *
+                            verticalZoom * drawableHeight / 2.0f));
+        SDL_RenderPoint(renderer, x, y);
+        return;
+    }
 
-        const float y1f = heightToUse / 2.0f -
-                          smoothened[i] * verticalZoom * drawableHeight / 2.0f;
-        const float y2f = heightToUse / 2.0f -
-                          smoothened[i + 1] * verticalZoom * drawableHeight / 2.0f;
+    for (std::size_t i = 0; i + 1 < input.sampleX.size(); ++i)
+    {
+        const int x1 = static_cast<int>(std::lround(input.sampleX[i]));
+        const int x2 = static_cast<int>(std::lround(input.sampleX[i + 1]));
+        const int y1 = static_cast<int>(
+            std::lround(heightToUse / 2.0f -
+                        static_cast<float>(input.sampleY[i]) * verticalZoom *
+                            drawableHeight / 2.0f));
+        const int y2 = static_cast<int>(
+            std::lround(heightToUse / 2.0f -
+                        static_cast<float>(input.sampleY[i + 1]) *
+                            verticalZoom * drawableHeight / 2.0f));
 
-        const auto quad =
-            planWaveformSmoothSegmentQuad(x1, x2, y1f, y2f, 1.0f);
-        if (!quad)
+        if (x1 == x2 && y1 == y2)
         {
-            continue;
+            SDL_RenderPoint(renderer, x1, y1);
         }
-
-        SDL_Vertex verts[4];
-        for (int j = 0; j < 4; ++j)
+        else
         {
-            verts[j].position = (*quad).vertices[static_cast<std::size_t>(j)];
+            SDL_RenderLine(renderer, x1, y1, x2, y2);
         }
-
-        for (int j = 0; j < 4; ++j)
-        {
-            verts[j].color = waveformFColor;
-            verts[j].tex_coord = {0, 0};
-        }
-
-        const int indices[6] = {0, 1, 2, 0, 2, 3};
-        SDL_RenderGeometry(renderer, nullptr, verts, 4, indices, 6);
     }
 }
 
 void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
+{
+    renderBlockWaveformRange(renderer, 0, getWidth());
+}
+
+void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
+                                        int xEndExclusive) const
 {
     auto &session = state->activeDocumentSession;
     auto &doc = session.document;
@@ -390,6 +516,12 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
     const auto drawableHeight = heightToUse - samplePointSize;
     const float scale = (float)(verticalZoom * drawableHeight * 0.5f);
     const int centerY = heightToUse / 2;
+    xStart = std::clamp(xStart, 0, widthToUse);
+    xEndExclusive = std::clamp(xEndExclusive, 0, widthToUse);
+    if (xEndExclusive <= xStart)
+    {
+        return;
+    }
 
     const auto sampleData =
         doc.getAudioBuffer()->getImmutableChannelData(channelIndex);
@@ -478,30 +610,67 @@ void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
         return true;
     };
 
-    const auto plan = planBlockWaveformColumns(
-        widthToUse, blockRenderPhasePx, centerY, scale,
-        [&](const int x, Peak &out) -> bool
-        {
-            return getPeakForPixel(x, out);
-        });
+    int prevX = 0;
+    int prevY = 0;
+    bool hasPrev = false;
+    int lastDrawXi = std::numeric_limits<int>::min();
 
-    for (const auto &column : plan)
+    const int lookupStart = std::max(0, xStart - 1);
+    const int lookupEndExclusive = std::min(widthToUse + 1, xEndExclusive + 1);
+
+    for (int x = lookupStart; x < lookupEndExclusive; ++x)
     {
-        if (column.y1 != column.y2)
+        Peak p{};
+        if (!getPeakForPixel(x, p))
         {
-            SDL_RenderLine(renderer, column.drawXi, column.y1, column.drawXi,
-                           column.y2);
-        }
-        else
-        {
-            SDL_RenderPoint(renderer, column.drawXi, column.y1);
+            continue;
         }
 
-        if (column.connectFromPrevious)
+        const float drawX = static_cast<float>(x - blockRenderPhasePx);
+        const int drawXi = static_cast<int>(std::lround(drawX));
+        if (drawXi < 0 || drawXi > widthToUse)
         {
-            SDL_RenderLine(renderer, column.previousX, column.previousY,
-                           column.drawXi, column.midY);
+            continue;
         }
+
+        if (drawXi == lastDrawXi)
+        {
+            continue;
+        }
+
+        const int y1 = static_cast<int>(centerY - p.max * scale);
+        const int y2 = static_cast<int>(centerY - p.min * scale);
+        const int midY = (y1 + y2) / 2;
+        const bool connectFromPrevious = hasPrev && prevX != drawXi;
+
+        const bool columnVisible =
+            drawXi >= xStart && drawXi < xEndExclusive;
+        const bool connectorTouchesVisibleRange =
+            connectFromPrevious &&
+            ((prevX < xStart && drawXi >= xStart) ||
+             (prevX >= xStart && prevX < xEndExclusive));
+
+        if (columnVisible)
+        {
+            if (y1 != y2)
+            {
+                SDL_RenderLine(renderer, drawXi, y1, drawXi, y2);
+            }
+            else
+            {
+                SDL_RenderPoint(renderer, drawXi, y1);
+            }
+        }
+
+        if (connectorTouchesVisibleRange)
+        {
+            SDL_RenderLine(renderer, prevX, prevY, drawXi, midY);
+        }
+
+        prevX = drawXi;
+        prevY = midY;
+        hasPrev = true;
+        lastDrawXi = drawXi;
     }
 }
 

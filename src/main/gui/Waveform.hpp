@@ -218,11 +218,18 @@ namespace cupuacu::gui
         void invalidateBaseTexture() const;
         bool ensureBaseTexture(SDL_Renderer *) const;
         BaseTextureCacheKey computeBaseTextureCacheKey() const;
+        bool canReuseBlockTextureForHorizontalShift(
+            const BaseTextureCacheKey &newKey, int &outPixelShift) const;
+        bool rebuildShiftedBlockTexture(SDL_Renderer *,
+                                        const BaseTextureCacheKey &newKey,
+                                        int pixelShift) const;
         void drawBaseWaveformContents(SDL_Renderer *) const;
         void drawHorizontalLines(SDL_Renderer *) const;
         void drawSelection(SDL_Renderer *) const;
         void drawHighlight(SDL_Renderer *) const;
         void renderBlockWaveform(SDL_Renderer *) const;
+        void renderBlockWaveformRange(SDL_Renderer *, int xStart,
+                                      int xEndExclusive) const;
         void renderSmoothWaveform(SDL_Renderer *) const;
 
         void drawPlaybackPosition(SDL_Renderer *) const;
