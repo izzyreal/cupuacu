@@ -87,12 +87,27 @@ SDL_Point Window::computeRequiredCanvasDimensions() const
         return {0, 0};
     }
 
-    SDL_Point result{0, 0};
-    if (!SDL_GetWindowSizeInPixels(window, &result.x, &result.y))
+    SDL_Point pixelSize{0, 0};
+    if (!SDL_GetWindowSizeInPixels(window, &pixelSize.x, &pixelSize.y))
     {
         return {0, 0};
     }
-    return planWindowCanvasDimensions(result.x, result.y, state->pixelScale);
+
+    SDL_Point logicalSize{0, 0};
+    if (SDL_GetWindowSize(window, &logicalSize.x, &logicalSize.y) &&
+        logicalSize.x > 0 && logicalSize.y > 0)
+    {
+        const float displayScale = getEffectiveWindowDisplayScale(window);
+        pixelSize.x = std::max(
+            pixelSize.x,
+            static_cast<int>(std::lround(logicalSize.x * displayScale)));
+        pixelSize.y = std::max(
+            pixelSize.y,
+            static_cast<int>(std::lround(logicalSize.y * displayScale)));
+    }
+
+    return planWindowCanvasDimensions(pixelSize.x, pixelSize.y,
+                                      state->pixelScale);
 }
 
 void Window::resizeCanvasIfNeeded()
