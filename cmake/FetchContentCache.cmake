@@ -200,7 +200,6 @@ function(fetchcontent_declare_cached_url dep_name cache_subdir default_path url)
 
   FetchContent_Declare(${dep_name}
     URL "${url}"
-    SOURCE_DIR "${_source_dir}"
     ${ARGN}
   )
   set("${dep_name}_FETCHCONTENT_SOURCE_DIR" "${_source_dir}" PARENT_SCOPE)
