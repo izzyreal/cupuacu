@@ -46,7 +46,11 @@ namespace cupuacu::gui
         const char *value = SDL_getenv("CUPUACU_UI_SCALE");
         if (!value || value[0] == '\0')
         {
+#if defined(__linux__)
+            return 0.5f;
+#else
             return 1.0f;
+#endif
         }
 
         char *end = nullptr;
