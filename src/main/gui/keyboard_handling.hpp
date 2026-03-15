@@ -184,7 +184,7 @@ namespace cupuacu::gui
             {
                 state->pixelScale = std::min<uint8_t>(state->pixelScale * 2, 4);
 
-                const double newSamplesPerPixel = viewState.samplesPerPixel * 2;
+                viewState.samplesPerPixel *= 2.0;
 
                 buildComponents(state, mainWindow);
                 for (auto *window : state->windows)
@@ -195,12 +195,7 @@ namespace cupuacu::gui
                     }
                 }
 
-                viewState.samplesPerPixel = newSamplesPerPixel;
-
-                for (const auto &w : state->waveforms)
-                {
-                    w->setDirty();
-                }
+                updateWaveforms(state);
             }
         }
         else if (event->key.scancode == SDL_SCANCODE_COMMA &&
@@ -210,7 +205,7 @@ namespace cupuacu::gui
             {
                 state->pixelScale = std::max<uint8_t>(state->pixelScale / 2, 1);
 
-                const double newSamplesPerPixel = viewState.samplesPerPixel / 2;
+                viewState.samplesPerPixel /= 2.0;
 
                 buildComponents(state, mainWindow);
                 for (auto *window : state->windows)
@@ -221,12 +216,7 @@ namespace cupuacu::gui
                     }
                 }
 
-                viewState.samplesPerPixel = newSamplesPerPixel;
-
-                for (const auto &w : state->waveforms)
-                {
-                    w->setDirty();
-                }
+                updateWaveforms(state);
             }
         }
         else if (event->key.scancode == SDL_SCANCODE_X)

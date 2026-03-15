@@ -105,6 +105,13 @@ TEST_CASE("Waveform sample point threshold and coordinate helpers are stable",
     REQUIRE_FALSE(
         cupuacu::gui::Waveform::shouldShowSamplePoints(threshold * 1.001, 1));
     REQUIRE_FALSE(cupuacu::gui::Waveform::shouldShowSamplePoints(0.05, 1));
+    REQUIRE(cupuacu::gui::Waveform::shouldShowSamplePoints(0.024, 2));
+    REQUIRE(cupuacu::gui::Waveform::shouldShowSamplePoints(0.049, 2));
+    REQUIRE(cupuacu::gui::Waveform::shouldShowSamplePoints(0.09, 4));
+    REQUIRE_FALSE(
+        cupuacu::gui::Waveform::shouldShowSamplePoints(0.051, 2));
+    REQUIRE_FALSE(
+        cupuacu::gui::Waveform::shouldShowSamplePoints(0.101, 4));
 
     REQUIRE(cupuacu::gui::Waveform::getDoubleXPosForSampleIndex(15, 10, 2.0) ==
             2.5);

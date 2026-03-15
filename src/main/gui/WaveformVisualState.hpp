@@ -24,8 +24,12 @@ namespace cupuacu::gui
                                                  const double samplesPerPixel,
                                                  const uint8_t pixelScale)
     {
+        const double effectivePixelScale =
+            std::max(1.0, static_cast<double>(pixelScale));
+        const double kSamplePointVisibilityThreshold =
+            effectivePixelScale / 40.0;
         return playbackPosition < 0 &&
-               samplesPerPixel < static_cast<float>(pixelScale) / 40.0f;
+               samplesPerPixel < kSamplePointVisibilityThreshold;
     }
 
     inline WaveformLineMarker planWaveformPlaybackMarker(
