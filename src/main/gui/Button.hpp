@@ -21,6 +21,7 @@ namespace cupuacu::gui
 
         void setOnPress(std::function<void()> onPressToUse);
         void setOnToggle(std::function<void(bool)> onToggleToUse);
+        void setTriggerOnMouseUp(bool triggerOnMouseUpToUse);
         void setEnabled(bool enabledToUse);
         bool getEnabled() const
         {
@@ -48,6 +49,7 @@ namespace cupuacu::gui
         bool pressed = false;
         bool pointerInsideWhilePressed = false;
         bool toggled = false;
+        bool triggerOnMouseUp = false;
         std::optional<SDL_Color> forcedFillColor;
         std::function<void()> onPress;
         std::function<void(bool)> onToggle;

@@ -41,6 +41,11 @@ void Button::setOnToggle(std::function<void(bool)> onToggleToUse)
     onToggle = std::move(onToggleToUse);
 }
 
+void Button::setTriggerOnMouseUp(const bool triggerOnMouseUpToUse)
+{
+    triggerOnMouseUp = triggerOnMouseUpToUse;
+}
+
 void Button::setEnabled(const bool enabledToUse)
 {
     if (enabled == enabledToUse)
@@ -107,7 +112,7 @@ bool Button::mouseDown(const MouseEvent &e)
             }
         }
 
-        if (onPress)
+        if (onPress && !triggerOnMouseUp)
         {
             onPress();
         }
@@ -124,8 +129,16 @@ bool Button::mouseUp(const MouseEvent &e)
         return false;
     }
 
+    const bool shouldPressOnMouseUp =
+        triggerOnMouseUp && pressed && pointerInsideWhilePressed && isInside(e);
+
     pressed = false;
     pointerInsideWhilePressed = false;
+
+    if (shouldPressOnMouseUp && onPress)
+    {
+        onPress();
+    }
 
     setDirty();
     return true;

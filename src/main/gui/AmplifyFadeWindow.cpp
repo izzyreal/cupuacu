@@ -134,16 +134,6 @@ AmplifyFadeWindow::AmplifyFadeWindow(State *stateToUse) : state(stateToUse)
                 }
             }
 
-            if (state && state->mainDocumentSessionWindow)
-            {
-                auto *mainWindow = state->mainDocumentSessionWindow->getWindow();
-                if (mainWindow && mainWindow->getSdlWindow())
-                {
-                    SDL_RaiseWindow(mainWindow->getSdlWindow());
-                    mainWindow->updateHoverFromCurrentMousePosition();
-                    mainWindow->renderFrameIfDirty();
-                }
-            }
         });
 
     window->setRootComponent(std::move(rootComponent));
@@ -326,21 +316,6 @@ void AmplifyFadeWindow::applyEffect()
     }
 
     commitInputValues();
-    if (state->mainDocumentSessionWindow)
-    {
-        const auto &viewState = state->mainDocumentSessionWindow->getViewState();
-        const auto &selection = state->activeDocumentSession.selection;
-        SDL_Log(
-            "CUPUACU_DEBUG_FADE_BOUNDARY: apply start=%.2f end=%.2f curve=%d pixelScale=%u samplesPerPixel=%.6f sampleOffset=%lld selectionActive=%d selection=[%lld,%lld)",
-            startPercent, endPercent, getCurveIndex(),
-            static_cast<unsigned>(state->pixelScale), viewState.samplesPerPixel,
-            static_cast<long long>(viewState.sampleOffset),
-            selection.isActive() ? 1 : 0,
-            static_cast<long long>(selection.isActive() ? selection.getStartInt()
-                                                        : 0),
-            static_cast<long long>(
-                selection.isActive() ? selection.getEndExclusiveInt() : 0));
-    }
     cupuacu::actions::audio::performAmplifyFade(
         state, startPercent, endPercent, getCurveIndex());
 
@@ -433,6 +408,8 @@ void AmplifyFadeWindow::bindButtons()
     fadeInButton->setOnPress([this]() { applyFadeInPreset(); });
     fadeOutButton->setOnPress([this]() { applyFadeOutPreset(); });
     lockButton->setOnToggle([this](const bool isEnabled) { setLocked(isEnabled); });
+    cancelButton->setTriggerOnMouseUp(true);
+    applyButton->setTriggerOnMouseUp(true);
     cancelButton->setOnPress([this]() { closeNow(); });
     applyButton->setOnPress([this]() { applyEffect(); });
 }

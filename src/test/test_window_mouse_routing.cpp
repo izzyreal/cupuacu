@@ -34,6 +34,32 @@ TEST_CASE("Window mouse routing helper plans hover and capture transitions",
         REQUIRE_FALSE(plan.clearCaptureAfterDispatch);
     }
 
+    SECTION("mouse down refreshes hover before dispatch when uncaptured")
+    {
+        const auto plan = cupuacu::gui::planWindowMouseRouting(
+            cupuacu::gui::DOWN, true, false, false);
+
+        REQUIRE(plan.handled);
+        REQUIRE(plan.dispatchToRoot);
+        REQUIRE(plan.updateHoverBeforeDispatch);
+        REQUIRE_FALSE(plan.updateHoverAfterDispatch);
+        REQUIRE_FALSE(plan.sendLeaveToCaptureBeforeDispatch);
+        REQUIRE_FALSE(plan.clearCaptureAfterDispatch);
+    }
+
+    SECTION("mouse down with capture keeps the current target")
+    {
+        const auto plan = cupuacu::gui::planWindowMouseRouting(
+            cupuacu::gui::DOWN, true, true, true);
+
+        REQUIRE(plan.handled);
+        REQUIRE(plan.dispatchToRoot);
+        REQUIRE_FALSE(plan.updateHoverBeforeDispatch);
+        REQUIRE_FALSE(plan.updateHoverAfterDispatch);
+        REQUIRE_FALSE(plan.sendLeaveToCaptureBeforeDispatch);
+        REQUIRE_FALSE(plan.clearCaptureAfterDispatch);
+    }
+
     SECTION("mouse up refreshes hover and releases capture")
     {
         const auto plan = cupuacu::gui::planWindowMouseRouting(

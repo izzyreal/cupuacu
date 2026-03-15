@@ -354,7 +354,7 @@ TEST_CASE("Block waveform render does not keep full-height columns just inside a
     REQUIRE(insideHeight < outsideHeight / 2);
 }
 
-TEST_CASE("Block waveform render clips a phase-shifted fade boundary to the selected range",
+TEST_CASE("Block waveform deselect restores columns at the former selection start",
           "[gui]")
 {
     cupuacu::test::ensureSdlTtfInitialized();
@@ -363,9 +363,10 @@ TEST_CASE("Block waveform render clips a phase-shifted fade boundary to the sele
     state.pixelScale = 1;
 
     auto &session = state.activeDocumentSession;
+    const int64_t frameCount = 44100 * 60 * 4;
     session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1,
-                                150000);
-    for (int64_t i = 0; i < session.document.getFrameCount(); ++i)
+                                frameCount);
+    for (int64_t i = 0; i < frameCount; ++i)
     {
         session.document.setSample(0, i, (i % 2 == 0) ? 1.0f : -1.0f);
     }
@@ -377,50 +378,263 @@ TEST_CASE("Block waveform render clips a phase-shifted fade boundary to the sele
         &state, state.mainDocumentSessionWindow->getWindow());
     REQUIRE_FALSE(state.waveforms.empty());
 
+    auto *window = state.mainDocumentSessionWindow->getWindow();
     auto &viewState = state.mainDocumentSessionWindow->getViewState();
     const SDL_Rect waveformBounds = state.waveforms[0]->getAbsoluteBounds();
-    const int64_t selectionStart = 50000;
-    const int64_t selectionEnd = 100000;
+    viewState.sampleOffset = 0;
+    viewState.samplesPerPixel =
+        static_cast<double>(frameCount) / static_cast<double>(waveformBounds.w);
 
-    viewState.sampleOffset = 700;
-    viewState.samplesPerPixel = 450.60443;
+    window->renderFrame();
+    auto beforeSurface = readWindowCanvas(window);
+    REQUIRE(beforeSurface != nullptr);
+
+    const int selectStartX = waveformBounds.x + waveformBounds.w / 8;
+    const int selectEndX = waveformBounds.x + waveformBounds.w / 2;
+    const int deselectX = waveformBounds.x + waveformBounds.w * 3 / 4;
+    const int mouseY = waveformBounds.y + waveformBounds.h / 4;
+
+    const int beforeStartHeight = computeWaveformColumnHeight(
+        beforeSurface.get(), waveformBounds, selectStartX);
+    REQUIRE(beforeStartHeight > 0);
+
+    REQUIRE(window->handleMouseEvent(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN,
+        selectStartX,
+        mouseY,
+        static_cast<float>(selectStartX),
+        static_cast<float>(mouseY),
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE(window->handleMouseEvent(cupuacu::gui::MouseEvent{
+        cupuacu::gui::MOVE,
+        selectEndX,
+        mouseY,
+        static_cast<float>(selectEndX),
+        static_cast<float>(mouseY),
+        static_cast<float>(selectEndX - selectStartX),
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE(window->handleMouseEvent(cupuacu::gui::MouseEvent{
+        cupuacu::gui::UP,
+        selectEndX,
+        mouseY,
+        static_cast<float>(selectEndX),
+        static_cast<float>(mouseY),
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    window->renderFrameIfDirty();
+    REQUIRE(session.selection.isActive());
+
+    REQUIRE(window->handleMouseEvent(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN,
+        deselectX,
+        mouseY,
+        static_cast<float>(deselectX),
+        static_cast<float>(mouseY),
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE(window->handleMouseEvent(cupuacu::gui::MouseEvent{
+        cupuacu::gui::UP,
+        deselectX,
+        mouseY,
+        static_cast<float>(deselectX),
+        static_cast<float>(mouseY),
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    window->renderFrameIfDirty();
+    REQUIRE_FALSE(session.selection.isActive());
+
+    auto afterSurface = readWindowCanvas(window);
+    REQUIRE(afterSurface != nullptr);
+
+    const int afterStartHeight = computeWaveformColumnHeight(
+        afterSurface.get(), waveformBounds, selectStartX);
+
+    INFO("beforeStartHeight=" << beforeStartHeight
+                              << " afterStartHeight=" << afterStartHeight
+                              << " selectStartX=" << selectStartX
+                              << " deselectX=" << deselectX
+                              << " spp=" << viewState.samplesPerPixel);
+    REQUIRE(afterStartHeight >= beforeStartHeight / 2);
+}
+
+TEST_CASE("Block waveform apply keeps selection-edge columns continuous for a fade-in",
+          "[gui]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::State state{};
+    state.pixelScale = 1;
+
+    auto &session = state.activeDocumentSession;
+    const int64_t frameCount = 44100 * 60 * 4;
+    session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1,
+                                frameCount);
+    for (int64_t i = 0; i < frameCount; ++i)
+    {
+        session.document.setSample(0, i, (i % 2 == 0) ? 1.0f : -1.0f);
+    }
+
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &session, "test", 800, 400, SDL_WINDOW_HIDDEN);
+    cupuacu::gui::buildComponents(
+        &state, state.mainDocumentSessionWindow->getWindow());
+    REQUIRE_FALSE(state.waveforms.empty());
 
     auto *window = state.mainDocumentSessionWindow->getWindow();
-    window->renderFrame();
+    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+    const SDL_Rect waveformBounds = state.waveforms[0]->getAbsoluteBounds();
+    viewState.sampleOffset = 0;
+    viewState.samplesPerPixel =
+        static_cast<double>(frameCount) / static_cast<double>(waveformBounds.w);
 
-    session.selection.setValue1(static_cast<double>(selectionStart));
-    session.selection.setValue2(static_cast<double>(selectionEnd));
-    cupuacu::actions::audio::performAmplifyFade(&state, 100.0, 0.0, 0);
+    const int selectionStartX = waveformBounds.x + waveformBounds.w / 8;
+    const int selectionEndX = waveformBounds.x + waveformBounds.w / 4;
+    const int mouseY = waveformBounds.y + waveformBounds.h / 4;
+
+    window->renderFrame();
+    REQUIRE(window->handleMouseEvent(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN,
+        selectionStartX,
+        mouseY,
+        static_cast<float>(selectionStartX),
+        static_cast<float>(mouseY),
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE(window->handleMouseEvent(cupuacu::gui::MouseEvent{
+        cupuacu::gui::MOVE,
+        selectionEndX,
+        mouseY,
+        static_cast<float>(selectionEndX),
+        static_cast<float>(mouseY),
+        static_cast<float>(selectionEndX - selectionStartX),
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE(window->handleMouseEvent(cupuacu::gui::MouseEvent{
+        cupuacu::gui::UP,
+        selectionEndX,
+        mouseY,
+        static_cast<float>(selectionEndX),
+        static_cast<float>(mouseY),
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE(session.selection.isActive());
+
+    cupuacu::actions::audio::performAmplifyFade(&state, 0.0, 100.0, 0);
     window->renderFrameIfDirty();
 
     auto surface = readWindowCanvas(window);
     REQUIRE(surface != nullptr);
 
-    int32_t startEdge = 0;
-    int32_t endEdge = 0;
-    const bool hasFillEdges =
-        cupuacu::gui::Waveform::computeBlockModeSelectionFillEdgePixels(
-            selectionStart, selectionEnd, viewState.sampleOffset,
-            viewState.samplesPerPixel, waveformBounds.w, startEdge, endEdge);
-    const bool hasExactEdges =
-        hasFillEdges ||
-        cupuacu::gui::Waveform::computeBlockModeSelectionEdgePixels(
-            selectionStart, selectionEnd, viewState.sampleOffset,
-            viewState.samplesPerPixel, waveformBounds.w, startEdge, endEdge, 1,
-            false);
-    REQUIRE(hasExactEdges);
+    const int64_t selectionEnd = session.selection.getEndExclusiveInt();
+    const int edgeX =
+        waveformBounds.x + cupuacu::gui::Waveform::getXPosForSampleIndex(
+                              selectionEnd, viewState.sampleOffset,
+                              viewState.samplesPerPixel);
 
-    const int insideHeight = computeWaveformColumnHeight(
-        surface.get(), waveformBounds, waveformBounds.x + endEdge - 1);
-    const int outsideHeight = computeWaveformColumnHeight(
-        surface.get(), waveformBounds, waveformBounds.x + endEdge);
+    int droppedColumnX = -1;
+    const int xMin = std::max(waveformBounds.x + 1, edgeX - 4);
+    const int xMax =
+        std::min(waveformBounds.x + waveformBounds.w - 2, edgeX + 4);
+    for (int x = xMin; x <= xMax; ++x)
+    {
+        const int prevHeight =
+            computeWaveformColumnHeight(surface.get(), waveformBounds, x - 1);
+        const int height =
+            computeWaveformColumnHeight(surface.get(), waveformBounds, x);
+        const int nextHeight =
+            computeWaveformColumnHeight(surface.get(), waveformBounds, x + 1);
 
-    INFO("insideHeight=" << insideHeight << " outsideHeight=" << outsideHeight
-                         << " edges=[" << startEdge << "," << endEdge
-                         << ") sampleOffset=" << viewState.sampleOffset
-                         << " spp=" << viewState.samplesPerPixel);
-    REQUIRE(outsideHeight > 0);
-    REQUIRE(insideHeight < outsideHeight / 2);
+        if (height == 0 && prevHeight > waveformBounds.h / 2 &&
+            nextHeight > waveformBounds.h / 2)
+        {
+            droppedColumnX = x;
+            break;
+        }
+    }
+
+    INFO("edgeX=" << edgeX << " xMin=" << xMin << " xMax=" << xMax
+                  << " spp=" << viewState.samplesPerPixel
+                  << " droppedColumnX=" << droppedColumnX
+                  << " selectionEnd=" << selectionEnd);
+    REQUIRE(droppedColumnX == -1);
+}
+
+TEST_CASE("Block waveform render keeps a dense full-scale signal continuous when fully zoomed out",
+          "[gui]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::State state{};
+    state.pixelScale = 1;
+
+    auto &session = state.activeDocumentSession;
+    const int64_t frameCount = 44100 * 60 * 4;
+    session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1,
+                                frameCount);
+    for (int64_t i = 0; i < frameCount; ++i)
+    {
+        session.document.setSample(0, i, (i % 2 == 0) ? 1.0f : -1.0f);
+    }
+
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &session, "test", 2560, 1600, SDL_WINDOW_HIDDEN);
+    cupuacu::gui::buildComponents(
+        &state, state.mainDocumentSessionWindow->getWindow());
+    REQUIRE_FALSE(state.waveforms.empty());
+
+    auto *window = state.mainDocumentSessionWindow->getWindow();
+    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+    const SDL_Rect waveformBounds = state.waveforms[0]->getAbsoluteBounds();
+    viewState.sampleOffset = 0;
+    viewState.samplesPerPixel =
+        static_cast<double>(frameCount) / static_cast<double>(waveformBounds.w);
+
+    window->renderFrame();
+
+    auto surface = readWindowCanvas(window);
+    REQUIRE(surface != nullptr);
+
+    int droppedColumnX = -1;
+    for (int x = waveformBounds.x + 1; x < waveformBounds.x + waveformBounds.w - 1;
+         ++x)
+    {
+        const int prevHeight =
+            computeWaveformColumnHeight(surface.get(), waveformBounds, x - 1);
+        const int height =
+            computeWaveformColumnHeight(surface.get(), waveformBounds, x);
+        const int nextHeight =
+            computeWaveformColumnHeight(surface.get(), waveformBounds, x + 1);
+
+        if (height == 0 && prevHeight > waveformBounds.h / 2 &&
+            nextHeight > waveformBounds.h / 2)
+        {
+            droppedColumnX = x;
+            break;
+        }
+    }
+
+    INFO("waveformWidth=" << waveformBounds.w << " spp="
+                          << viewState.samplesPerPixel
+                          << " droppedColumnX=" << droppedColumnX);
+    REQUIRE(droppedColumnX == -1);
 }
 
 TEST_CASE("Waveform smooth render helpers plan input buffers and quads", "[gui]")

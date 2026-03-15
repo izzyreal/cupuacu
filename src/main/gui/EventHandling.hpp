@@ -213,13 +213,13 @@ namespace cupuacu::gui
                 return SDL_APP_SUCCESS;
             case SDL_EVENT_WINDOW_MAXIMIZED:
             case SDL_EVENT_WINDOW_RESIZED:
-                if (eventWindow && eventWindow->hasFocus())
+                if (eventWindow)
                 {
                     eventWindow->handleEvent(*event);
                 }
                 break;
             case SDL_EVENT_WINDOW_MOUSE_LEAVE:
-                if (eventWindow && eventWindow->hasFocus())
+                if (eventWindow)
                 {
                     if (mainWindow && eventWindow == mainWindow)
                     {
@@ -248,26 +248,26 @@ namespace cupuacu::gui
                 }
                 break;
             case SDL_EVENT_MOUSE_MOTION:
-                if (eventWindow && eventWindow->hasFocus())
+                if (eventWindow)
                 {
                     eventWindow->handleEvent(*event);
                 }
                 break;
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
-                if (eventWindow && eventWindow->hasFocus())
+                if (eventWindow)
                 {
                     eventWindow->handleEvent(*event);
                 }
                 // state->rootComponent->printTree();
                 break;
             case SDL_EVENT_MOUSE_BUTTON_UP:
-                if (eventWindow && eventWindow->hasFocus())
+                if (eventWindow)
                 {
                     eventWindow->handleEvent(*event);
                 }
                 break;
             case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
-                if (eventWindow && eventWindow->hasFocus())
+                if (eventWindow)
                 {
                     eventWindow->handleEvent(*event);
                     if (mainWindow && eventWindow == mainWindow)
@@ -278,7 +278,7 @@ namespace cupuacu::gui
                 }
                 break;
             default:
-                if (eventWindow && eventWindow->hasFocus())
+                if (eventWindow)
                 {
                     eventWindow->handleEvent(*event);
                 }

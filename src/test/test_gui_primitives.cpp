@@ -309,6 +309,44 @@ TEST_CASE("Button momentary and toggle semantics fire callbacks only when enable
     REQUIRE(toggledValue == 1);
 }
 
+TEST_CASE("Button can defer momentary press callbacks until mouse up", "[gui]")
+{
+    cupuacu::State state{};
+
+    cupuacu::gui::Button button(&state, "DeferredMomentary",
+                                cupuacu::gui::ButtonType::Momentary);
+    button.setVisible(true);
+    button.setBounds(0, 0, 80, 24);
+    button.setTriggerOnMouseUp(true);
+
+    int pressCount = 0;
+    button.setOnPress([&]() { ++pressCount; });
+
+    REQUIRE(button.mouseDown(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN,
+        10,
+        10,
+        10.0f,
+        10.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE(pressCount == 0);
+
+    REQUIRE(button.mouseUp(cupuacu::gui::MouseEvent{
+        cupuacu::gui::UP,
+        10,
+        10,
+        10.0f,
+        10.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE(pressCount == 1);
+}
+
 TEST_CASE("TextButton updates its label text and keeps it sized to bounds", "[gui]")
 {
     cupuacu::State state{};

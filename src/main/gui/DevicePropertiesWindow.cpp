@@ -208,13 +208,6 @@ DevicePropertiesWindow::DevicePropertiesWindow(State *stateToUse)
             {
                 return;
             }
-            auto *mainWindow = state->mainDocumentSessionWindow->getWindow();
-            if (mainWindow && mainWindow->getSdlWindow())
-            {
-                SDL_RaiseWindow(mainWindow->getSdlWindow());
-                mainWindow->updateHoverFromCurrentMousePosition();
-                mainWindow->renderFrameIfDirty();
-            }
         });
 
     window->setRootComponent(std::move(rootComponent));

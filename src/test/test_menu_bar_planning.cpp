@@ -464,6 +464,16 @@ TEST_CASE("AmplifyFadeWindow lock and apply respect selected channels",
         0.0f,
         cupuacu::gui::MouseButtonState{true, false, false},
         1}));
+    REQUIRE(amplifyFadeWindow->getWindow()->handleMouseEvent(cupuacu::gui::MouseEvent{
+        cupuacu::gui::UP,
+        applyBounds.x + 5,
+        applyBounds.y + 5,
+        static_cast<float>(applyBounds.x + 5),
+        static_cast<float>(applyBounds.y + 5),
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
 
     REQUIRE(state.activeDocumentSession.document.getSample(0, 0) == 1.0f);
     REQUIRE(state.activeDocumentSession.document.getSample(0, 1) == 2.0f);

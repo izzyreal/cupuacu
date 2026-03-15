@@ -4,6 +4,7 @@
 #include "TestSdlTtfGuard.hpp"
 #include "gui/Component.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
+#include "gui/EventHandling.hpp"
 #include "gui/Menu.hpp"
 #include "gui/MenuBar.hpp"
 #include "gui/Window.hpp"
@@ -227,6 +228,82 @@ TEST_CASE("Window capture suppresses hover target changes during mouse move",
     REQUIRE(window->getComponentUnderMouse() == left);
     REQUIRE(left->mouseLeaveCount == 0);
     REQUIRE(right->mouseEnterCount == 0);
+}
+
+TEST_CASE("Clearing capture before hover refresh restores first-click targeting",
+          "[gui]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::State state{};
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "window-capture-reset", 320, 240, SDL_WINDOW_HIDDEN);
+
+    auto root = std::make_unique<RootComponent>(&state);
+    auto *left = root->emplaceChild<TestComponent>(&state, "Left");
+    auto *right = root->emplaceChild<TestComponent>(&state, "Right");
+    left->setBounds(0, 0, 80, 80);
+    right->setBounds(100, 0, 80, 80);
+    root->setBounds(0, 0, 320, 240);
+    window->setRootComponent(std::move(root));
+
+    window->updateComponentUnderMouse(10, 10);
+    window->setCapturingComponent(left);
+
+    window->setCapturingComponent(nullptr);
+    window->updateComponentUnderMouse(110, 10);
+
+    REQUIRE(window->getCapturingComponent() == nullptr);
+    REQUIRE(window->getComponentUnderMouse() == right);
+
+    REQUIRE(window->handleMouseEvent(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN,
+        110,
+        10,
+        110.0f,
+        10.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+
+    REQUIRE(right->mouseDownCount == 1);
+    REQUIRE(left->mouseDownCount == 0);
+}
+
+TEST_CASE("App event handling forwards the first mouse click to an unfocused window",
+          "[gui]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::State state{};
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &state.activeDocumentSession, "main-event-test", 320, 240,
+            SDL_WINDOW_HIDDEN);
+
+    auto *window = state.mainDocumentSessionWindow->getWindow();
+    state.windows.push_back(window);
+    auto root = std::make_unique<RootComponent>(&state);
+    auto *target = root->emplaceChild<TestComponent>(&state, "Target");
+    target->setBounds(0, 0, 80, 80);
+    root->setBounds(0, 0, 320, 240);
+    window->setRootComponent(std::move(root));
+
+    REQUIRE_FALSE(window->hasFocus());
+
+    SDL_Event button{};
+    button.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+    button.button.windowID = window->getId();
+    button.button.x = 10.0f;
+    button.button.y = 10.0f;
+    button.button.button = SDL_BUTTON_LEFT;
+    button.button.down = true;
+    button.button.clicks = 1;
+
+    REQUIRE(cupuacu::gui::handleAppEvent(&state, &button) ==
+            SDL_APP_CONTINUE);
+    REQUIRE(target->mouseDownCount == 1);
 }
 
 TEST_CASE("Menu edit actions stay disabled when unavailable and run when enabled",

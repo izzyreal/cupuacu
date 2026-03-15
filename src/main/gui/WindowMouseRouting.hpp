@@ -34,6 +34,7 @@ namespace cupuacu::gui
                 plan.updateHoverAfterDispatch = !hasCapturingComponent;
                 break;
             case DOWN:
+                plan.updateHoverBeforeDispatch = !hasCapturingComponent;
                 break;
             case UP:
                 plan.updateHoverBeforeDispatch = true;

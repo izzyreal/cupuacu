@@ -54,6 +54,8 @@ NormalizeWindow::NormalizeWindow(State *stateToUse) : state(stateToUse)
     applyButton = rootComponent->emplaceChild<TextButton>(state, "Apply");
 
     messageLabel->setFontSize(std::max(16, (int)state->menuFontSize - 6));
+    cancelButton->setTriggerOnMouseUp(true);
+    applyButton->setTriggerOnMouseUp(true);
     cancelButton->setOnPress([this]() { closeNow(); });
     applyButton->setOnPress([this]() { closeNow(); });
 
@@ -71,16 +73,6 @@ NormalizeWindow::NormalizeWindow(State *stateToUse) : state(stateToUse)
                 }
             }
 
-            if (state && state->mainDocumentSessionWindow)
-            {
-                auto *mainWindow = state->mainDocumentSessionWindow->getWindow();
-                if (mainWindow && mainWindow->getSdlWindow())
-                {
-                    SDL_RaiseWindow(mainWindow->getSdlWindow());
-                    mainWindow->updateHoverFromCurrentMousePosition();
-                    mainWindow->renderFrameIfDirty();
-                }
-            }
         });
 
     window->setRootComponent(std::move(rootComponent));
