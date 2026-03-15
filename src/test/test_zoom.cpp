@@ -213,9 +213,9 @@ TEST_CASE("Trim undo restores pre-trim zoom and sample offset", "[session]")
     cupuacu::actions::audio::performTrim(&state);
 
     REQUIRE(session.document.getFrameCount() == 1000);
-    REQUIRE(viewState.samplesPerPixel == zoomBefore);
-    REQUIRE(viewState.verticalZoom == verticalZoomBefore);
-    REQUIRE(viewState.sampleOffset == offsetBefore);
+    const double zoomAfterTrim = viewState.samplesPerPixel;
+    const double verticalZoomAfterTrim = viewState.verticalZoom;
+    const int64_t offsetAfterTrim = viewState.sampleOffset;
 
     state.undo();
 
@@ -223,6 +223,13 @@ TEST_CASE("Trim undo restores pre-trim zoom and sample offset", "[session]")
     REQUIRE(viewState.samplesPerPixel == zoomBefore);
     REQUIRE(viewState.verticalZoom == verticalZoomBefore);
     REQUIRE(viewState.sampleOffset == offsetBefore);
+
+    state.redo();
+
+    REQUIRE(session.document.getFrameCount() == 1000);
+    REQUIRE(viewState.samplesPerPixel == zoomAfterTrim);
+    REQUIRE(viewState.verticalZoom == verticalZoomAfterTrim);
+    REQUIRE(viewState.sampleOffset == offsetAfterTrim);
 }
 
 TEST_CASE("Paste undo applies duration-change policy and restores fit zoom",
