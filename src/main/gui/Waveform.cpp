@@ -543,7 +543,8 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
         [&](const int64_t sampleIndex)
         {
             return sampleData[static_cast<std::size_t>(sampleIndex)];
-        });
+        },
+        state->uiScale);
 
     std::vector<std::unique_ptr<SamplePoint>> result;
     result.reserve(plannedPoints.size());
@@ -562,7 +563,8 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
 
 void Waveform::drawHorizontalLines(SDL_Renderer *renderer) const
 {
-    const auto samplePointSize = getWaveformSamplePointSize(state->pixelScale);
+    const auto samplePointSize =
+        getWaveformSamplePointSize(state->pixelScale, state->uiScale);
     const auto &viewState = state->mainDocumentSessionWindow->getViewState();
     const auto verticalZoom = viewState.verticalZoom;
     SDL_Rect viewport{};
@@ -599,7 +601,8 @@ void Waveform::renderSmoothWaveform(SDL_Renderer *renderer) const
     const auto verticalZoom = viewState.verticalZoom;
     const auto widthToUse = getWidth();
     const auto heightToUse = getHeight();
-    const auto samplePointSize = getWaveformSamplePointSize(state->pixelScale);
+    const auto samplePointSize =
+        getWaveformSamplePointSize(state->pixelScale, state->uiScale);
     const auto drawableHeight = heightToUse - samplePointSize;
 
     const auto input = planWaveformSmoothRenderInput(
@@ -692,7 +695,7 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
     const double verticalZoom = viewState.verticalZoom;
     const int heightToUse = getHeight();
     const uint16_t samplePointSize =
-        getWaveformSamplePointSize(state->pixelScale);
+        getWaveformSamplePointSize(state->pixelScale, state->uiScale);
     const auto drawableHeight = heightToUse - samplePointSize;
     const float scale = (float)(verticalZoom * drawableHeight * 0.5f);
     const int centerY = heightToUse / 2;

@@ -18,9 +18,14 @@ namespace cupuacu::gui
         uint16_t size = 0;
     };
 
-    inline uint16_t getWaveformSamplePointSize(const uint8_t pixelScale)
+    inline uint16_t getWaveformSamplePointSize(const uint8_t pixelScale,
+                                               const float uiScale = 1.0f)
     {
-        return 32 / pixelScale;
+        const float safeUiScale = std::max(0.25f, uiScale);
+        const int safePixelScale = std::max(1, static_cast<int>(pixelScale));
+        return static_cast<uint16_t>(std::max(
+            1, static_cast<int>(std::lround(32.0f * safeUiScale /
+                                            static_cast<float>(safePixelScale)))));
     }
 
     inline float getWaveformCenterYForSampleValue(const float sampleValue,
@@ -37,7 +42,8 @@ namespace cupuacu::gui
         const int width, const int height, const double samplesPerPixel,
         const int64_t sampleOffset, const uint8_t pixelScale,
         const double verticalZoom, const int64_t frameCount,
-        const std::function<float(int64_t)> &getSampleValue)
+        const std::function<float(int64_t)> &getSampleValue,
+        const float uiScale = 1.0f)
     {
         if (width <= 0 || height <= 0 || samplesPerPixel <= 0.0 ||
             sampleOffset >= frameCount)
@@ -58,7 +64,8 @@ namespace cupuacu::gui
         }
 
         std::vector<WaveformSamplePointLayout> result;
-        const uint16_t samplePointSize = getWaveformSamplePointSize(pixelScale);
+        const uint16_t samplePointSize =
+            getWaveformSamplePointSize(pixelScale, uiScale);
         result.reserve(static_cast<std::size_t>(actualInputSamples));
 
         for (int64_t i = 0; i < actualInputSamples; ++i)
