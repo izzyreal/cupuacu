@@ -565,11 +565,14 @@ void Waveform::drawHorizontalLines(SDL_Renderer *renderer) const
     const auto samplePointSize = getWaveformSamplePointSize(state->pixelScale);
     const auto &viewState = state->mainDocumentSessionWindow->getViewState();
     const auto verticalZoom = viewState.verticalZoom;
+    SDL_Rect viewport{};
+    SDL_GetRenderViewport(renderer, &viewport);
+    const int drawWidth = std::max(0, viewport.w);
 
     const uint16_t yCenter = getHeight() / 2;
 
     SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
-    SDL_RenderLine(renderer, 0, yCenter, getWidth(), yCenter);
+    SDL_RenderLine(renderer, 0, yCenter, drawWidth, yCenter);
 
     if (verticalZoom <= 1.0)
     {
@@ -577,8 +580,8 @@ void Waveform::drawHorizontalLines(SDL_Renderer *renderer) const
         const int topY = samplePointSize / 2;
         const int bottomY = getHeight() - samplePointSize / 2;
 
-        SDL_RenderLine(renderer, 0, topY, getWidth(), topY);
-        SDL_RenderLine(renderer, 0, bottomY, getWidth(), bottomY);
+        SDL_RenderLine(renderer, 0, topY, drawWidth, topY);
+        SDL_RenderLine(renderer, 0, bottomY, drawWidth, bottomY);
     }
 }
 
