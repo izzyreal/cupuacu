@@ -6,6 +6,7 @@
 
 #include "SelectedChannels.hpp"
 #include "DocumentSession.hpp"
+#include "EffectSettings.hpp"
 #include "Paths.hpp"
 #include "gui/DocumentSessionWindow.hpp"
 
@@ -32,7 +33,9 @@ namespace cupuacu
     namespace gui
     {
         class AmplifyFadeWindow;
+        class DynamicsWindow;
         class DevicePropertiesWindow;
+        class NormalizeWindow;
         class Component;
         class Waveform;
         class MainView;
@@ -42,6 +45,8 @@ namespace cupuacu
     } // namespace gui
 
     void destroyAmplifyFadeWindow(gui::AmplifyFadeWindow *);
+    void destroyNormalizeWindow(gui::NormalizeWindow *);
+    void destroyDynamicsWindow(gui::DynamicsWindow *);
 
     struct State
     {
@@ -57,6 +62,7 @@ namespace cupuacu
         uint64_t playbackRangeEnd = 0;
         DocumentSession activeDocumentSession;
         Document clipboard;
+        EffectSettings effectSettings;
 
         std::vector<gui::Waveform *> waveforms;
         std::vector<gui::Window *> windows;
@@ -65,6 +71,10 @@ namespace cupuacu
         std::unique_ptr<gui::AmplifyFadeWindow,
                         void (*)(gui::AmplifyFadeWindow *)>
             amplifyFadeWindow{nullptr, destroyAmplifyFadeWindow};
+        std::unique_ptr<gui::NormalizeWindow, void (*)(gui::NormalizeWindow *)>
+            normalizeWindow{nullptr, destroyNormalizeWindow};
+        std::unique_ptr<gui::DynamicsWindow, void (*)(gui::DynamicsWindow *)>
+            dynamicsWindow{nullptr, destroyDynamicsWindow};
         gui::MainView *mainView;
         gui::Component *statusBar;
         gui::VuMeterContainer *vuMeterContainer;

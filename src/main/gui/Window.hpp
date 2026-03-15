@@ -127,6 +127,7 @@ namespace cupuacu::gui
         {
             closeRequested = true;
         }
+        void updateHoverFromCurrentMousePosition();
         void renderFrame();
         void renderFrameIfDirty();
         void refreshForScaleOrResize();

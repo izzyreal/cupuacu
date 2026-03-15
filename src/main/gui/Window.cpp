@@ -367,6 +367,27 @@ void Window::updateComponentUnderMouse(const int32_t mouseX,
     }
 }
 
+void Window::updateHoverFromCurrentMousePosition()
+{
+    if (!window)
+    {
+        return;
+    }
+
+    float mouseX = 0.0f;
+    float mouseY = 0.0f;
+    SDL_GetMouseState(&mouseX, &mouseY);
+
+    SDL_Event motion{};
+    motion.type = SDL_EVENT_MOUSE_MOTION;
+    motion.motion.windowID = windowId;
+    motion.motion.x = mouseX;
+    motion.motion.y = mouseY;
+
+    const auto mouseEvent = makeMouseEvent(motion);
+    updateComponentUnderMouse(mouseEvent.mouseXi, mouseEvent.mouseYi);
+}
+
 bool Window::handleEvent(const SDL_Event &event)
 {
     if (!isEventForWindow(event))
@@ -376,8 +397,25 @@ bool Window::handleEvent(const SDL_Event &event)
 
     if (event.type == SDL_EVENT_KEY_DOWN)
     {
-        return focusedComponent != nullptr &&
-               focusedComponent->keyDown(event.key);
+        const bool isMainDocumentWindow =
+            state != nullptr && state->mainDocumentSessionWindow != nullptr &&
+            state->mainDocumentSessionWindow->getWindow() == this;
+        if (event.key.scancode == SDL_SCANCODE_ESCAPE && !isMainDocumentWindow)
+        {
+            requestClose();
+            if (closeRequested)
+            {
+                closeRequested = false;
+                if (onClose)
+                {
+                    onClose();
+                }
+                close();
+            }
+            return true;
+        }
+
+        return focusedComponent != nullptr && focusedComponent->keyDown(event.key);
     }
 
     if (event.type == SDL_EVENT_TEXT_INPUT)

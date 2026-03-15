@@ -6,12 +6,14 @@
 #include "actions/Undoable.hpp"
 #include "gui/Component.hpp"
 #include "gui/AmplifyFadeWindow.hpp"
+#include "gui/DynamicsWindow.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/DocumentSessionWindow.hpp"
 #include "gui/Label.hpp"
 #include "gui/Menu.hpp"
 #include "gui/MenuBar.hpp"
 #include "gui/MenuBarPlanning.hpp"
+#include "gui/NormalizeWindow.hpp"
 #include "gui/TextButton.hpp"
 #include "gui/DropdownMenu.hpp"
 #include "gui/Slider.hpp"
@@ -225,7 +227,7 @@ TEST_CASE("Effects menu opens AmplifyFadeWindow", "[gui]")
     REQUIRE(topLevelMenus.size() == 5);
     auto *effectsMenu = topLevelMenus[3];
     auto effectSubMenus = menuChildren(effectsMenu);
-    REQUIRE(effectSubMenus.size() == 1);
+    REQUIRE(effectSubMenus.size() == 3);
 
     REQUIRE(state.amplifyFadeWindow == nullptr);
     REQUIRE(effectSubMenus[0]->mouseDown(cupuacu::gui::MouseEvent{
@@ -241,6 +243,34 @@ TEST_CASE("Effects menu opens AmplifyFadeWindow", "[gui]")
 
     REQUIRE(state.amplifyFadeWindow != nullptr);
     REQUIRE(state.amplifyFadeWindow->isOpen());
+
+    REQUIRE(state.normalizeWindow == nullptr);
+    REQUIRE(effectSubMenus[1]->mouseDown(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN,
+        5,
+        5,
+        5.0f,
+        5.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE(state.normalizeWindow != nullptr);
+    REQUIRE(state.normalizeWindow->isOpen());
+
+    REQUIRE(state.dynamicsWindow == nullptr);
+    REQUIRE(effectSubMenus[2]->mouseDown(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN,
+        5,
+        5,
+        5.0f,
+        5.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE(state.dynamicsWindow != nullptr);
+    REQUIRE(state.dynamicsWindow->isOpen());
 }
 
 TEST_CASE("AmplifyFadeWindow presets update values and curve row does not overlap",
@@ -446,4 +476,57 @@ TEST_CASE("AmplifyFadeWindow lock and apply respect selected channels",
     REQUIRE(state.activeDocumentSession.document.getSample(1, 3) == 40.0f);
 
     REQUIRE_FALSE(amplifyFadeWindow->isOpen());
+}
+
+TEST_CASE("AmplifyFadeWindow reopens with last remembered settings", "[gui]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::State state{};
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &state.activeDocumentSession, "main", 640, 360,
+            SDL_WINDOW_HIDDEN);
+    state.windows.push_back(state.mainDocumentSessionWindow->getWindow());
+
+    {
+        auto amplifyFadeWindow =
+            std::make_unique<cupuacu::gui::AmplifyFadeWindow>(&state);
+        REQUIRE(amplifyFadeWindow->isOpen());
+
+        auto *root = amplifyFadeWindow->getWindow()->getRootComponent();
+        REQUIRE(root != nullptr);
+
+        auto *fadeOutButton = dynamic_cast<cupuacu::gui::TextButton *>(
+            const_cast<cupuacu::gui::Component *>(
+                findByNameRecursive(root, "TextButton:Fade out")));
+        auto *curveDropdown = dynamic_cast<cupuacu::gui::DropdownMenu *>(
+            const_cast<cupuacu::gui::Component *>(
+                findByNameRecursive(root, "DropdownMenu")));
+        REQUIRE(fadeOutButton != nullptr);
+        REQUIRE(curveDropdown != nullptr);
+
+        REQUIRE(fadeOutButton->mouseDown(cupuacu::gui::MouseEvent{
+            cupuacu::gui::DOWN,
+            5,
+            5,
+            5.0f,
+            5.0f,
+            0.0f,
+            0.0f,
+            cupuacu::gui::MouseButtonState{true, false, false},
+            1}));
+        curveDropdown->setSelectedIndex(2);
+        state.effectSettings.amplifyFade.curveIndex = 2;
+
+        amplifyFadeWindow.reset();
+    }
+
+    auto reopenedWindow =
+        std::make_unique<cupuacu::gui::AmplifyFadeWindow>(&state);
+    REQUIRE(reopenedWindow->isOpen());
+    REQUIRE(reopenedWindow->getStartPercent() == 100.0);
+    REQUIRE(reopenedWindow->getEndPercent() == 0.0);
+    REQUIRE_FALSE(reopenedWindow->isLocked());
+    REQUIRE(reopenedWindow->getCurveIndex() == 2);
 }

@@ -212,6 +212,8 @@ DevicePropertiesWindow::DevicePropertiesWindow(State *stateToUse)
             if (mainWindow && mainWindow->getSdlWindow())
             {
                 SDL_RaiseWindow(mainWindow->getSdlWindow());
+                mainWindow->updateHoverFromCurrentMousePosition();
+                mainWindow->renderFrameIfDirty();
             }
         });
 

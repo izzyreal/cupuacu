@@ -445,6 +445,31 @@ TEST_CASE("Amplify/Fade limits selected stereo edits to the chosen channel",
             std::vector<float>({10, 20, 30, 40}));
 }
 
+TEST_CASE("Amplify/Fade processes the full selected range and stops at selection end",
+          "[actions]")
+{
+    cupuacu::State state{};
+    initializeMonoDocument(state, {10, 10, 10, 10, 10, 10});
+    state.activeDocumentSession.selection.setHighest(6.0);
+    state.activeDocumentSession.selection.setValue1(1.0);
+    state.activeDocumentSession.selection.setValue2(5.0);
+
+    cupuacu::actions::audio::performAmplifyFade(&state, 100.0, 0.0, 0);
+
+    REQUIRE(readMonoSamples(state.activeDocumentSession.document)[0] ==
+            Catch::Approx(10.0f));
+    REQUIRE(readMonoSamples(state.activeDocumentSession.document)[1] ==
+            Catch::Approx(10.0f));
+    REQUIRE(readMonoSamples(state.activeDocumentSession.document)[2] ==
+            Catch::Approx(10.0f * (2.0f / 3.0f)));
+    REQUIRE(readMonoSamples(state.activeDocumentSession.document)[3] ==
+            Catch::Approx(10.0f * (1.0f / 3.0f)));
+    REQUIRE(readMonoSamples(state.activeDocumentSession.document)[4] ==
+            Catch::Approx(0.0f));
+    REQUIRE(readMonoSamples(state.activeDocumentSession.document)[5] ==
+            Catch::Approx(10.0f));
+}
+
 TEST_CASE("Recorded chunk applier initializes empty document from chunk", "[actions]")
 {
     cupuacu::Document doc;

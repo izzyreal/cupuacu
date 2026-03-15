@@ -38,6 +38,10 @@ AmplifyFadeWindow::AmplifyFadeWindow(State *stateToUse) : state(stateToUse)
         return;
     }
 
+    startPercent = state->effectSettings.amplifyFade.startPercent;
+    endPercent = state->effectSettings.amplifyFade.endPercent;
+    lockEnabled = state->effectSettings.amplifyFade.lockEnabled;
+
     window = std::make_unique<Window>(
         state, "Amplify/Fade", kWindowWidth, kWindowHeight,
         SDL_WINDOW_RESIZABLE | getHighDensityWindowFlag());
@@ -100,14 +104,15 @@ AmplifyFadeWindow::AmplifyFadeWindow(State *stateToUse) : state(stateToUse)
     endInput->setAllowedCharacters("0123456789.%");
     curveDropdown->setFontSize(labelFontSize);
     curveDropdown->setItems({"Linear", "Exponential", "Logarithmic"});
-    curveDropdown->setSelectedIndex(0);
+    curveDropdown->setSelectedIndex(state->effectSettings.amplifyFade.curveIndex);
     curveDropdown->setExpanded(false);
     updateLockButton();
 
     bindTextInputs();
     bindButtons();
     bindDropdown();
-    setDefaults();
+    syncInputs();
+    syncSettings();
 
     window->setOnResize(
         [this]
@@ -135,12 +140,15 @@ AmplifyFadeWindow::AmplifyFadeWindow(State *stateToUse) : state(stateToUse)
                 if (mainWindow && mainWindow->getSdlWindow())
                 {
                     SDL_RaiseWindow(mainWindow->getSdlWindow());
+                    mainWindow->updateHoverFromCurrentMousePosition();
+                    mainWindow->renderFrameIfDirty();
                 }
             }
         });
 
     window->setRootComponent(std::move(rootComponent));
     layoutComponents();
+    curveDropdown->setSelectedIndex(state->effectSettings.amplifyFade.curveIndex);
     renderOnce();
     raise();
 }
@@ -189,6 +197,20 @@ bool AmplifyFadeWindow::updatePercentControl(double &currentPercent,
     return changed || refreshInput;
 }
 
+void AmplifyFadeWindow::syncSettings() const
+{
+    if (!state)
+    {
+        return;
+    }
+
+    auto &settings = state->effectSettings.amplifyFade;
+    settings.startPercent = startPercent;
+    settings.endPercent = endPercent;
+    settings.lockEnabled = lockEnabled;
+    settings.curveIndex = getCurveIndex();
+}
+
 void AmplifyFadeWindow::setStartPercent(const double value,
                                         const bool refreshInput)
 {
@@ -204,6 +226,7 @@ void AmplifyFadeWindow::setStartPercent(const double value,
             shouldRender;
         syncingLockedValues = false;
     }
+    syncSettings();
     if (shouldRender)
     {
         renderOnce();
@@ -225,6 +248,7 @@ void AmplifyFadeWindow::setEndPercent(const double value,
             shouldRender;
         syncingLockedValues = false;
     }
+    syncSettings();
     if (shouldRender)
     {
         renderOnce();
@@ -245,6 +269,7 @@ void AmplifyFadeWindow::setLocked(const bool enabled)
         return;
     }
 
+    syncSettings();
     renderOnce();
 }
 
@@ -281,6 +306,7 @@ void AmplifyFadeWindow::commitInputValues()
         }
     }
 
+    syncSettings();
     renderOnce();
 }
 
@@ -319,6 +345,7 @@ void AmplifyFadeWindow::setDefaults()
     {
         curveDropdown->setSelectedIndex(0);
     }
+    syncSettings();
     renderOnce();
 }
 
@@ -400,6 +427,7 @@ void AmplifyFadeWindow::bindDropdown()
     curveDropdown->setOnSelectionChanged(
         [this](const int)
         {
+            syncSettings();
             renderOnce();
         });
 }

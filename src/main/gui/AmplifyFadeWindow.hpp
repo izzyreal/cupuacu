@@ -89,6 +89,7 @@ namespace cupuacu::gui
         void commitInputValues();
         void closeNow();
         void applyEffect();
+        void syncSettings() const;
         void setDefaults();
         void applyFadeInPreset();
         void applyFadeOutPreset();

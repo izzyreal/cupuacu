@@ -506,3 +506,24 @@ TEST_CASE("Window mouse up without capture updates hover and dispatches to child
     REQUIRE(child->mouseUpCount == 1);
     REQUIRE(window->getCapturingComponent() == nullptr);
 }
+
+TEST_CASE("Escape closes non-main windows", "[gui]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::State state{};
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "esc-close", 320, 240, SDL_WINDOW_HIDDEN);
+
+    auto root = std::make_unique<RootComponent>(&state);
+    root->setBounds(0, 0, 320, 240);
+    window->setRootComponent(std::move(root));
+
+    SDL_Event event{};
+    event.type = SDL_EVENT_KEY_DOWN;
+    event.key.windowID = window->getId();
+    event.key.scancode = SDL_SCANCODE_ESCAPE;
+
+    REQUIRE(window->handleEvent(event));
+    REQUIRE_FALSE(window->isOpen());
+}

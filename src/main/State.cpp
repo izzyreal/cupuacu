@@ -2,7 +2,9 @@
 
 #include "gui/Waveform.hpp"
 #include "gui/AmplifyFadeWindow.hpp"
+#include "gui/DynamicsWindow.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
+#include "gui/NormalizeWindow.hpp"
 #include "actions/Undoable.hpp"
 
 int64_t getMaxSampleOffset(const cupuacu::State *state)
@@ -25,6 +27,16 @@ int64_t getMaxSampleOffset(const cupuacu::State *state)
 }
 
 void cupuacu::destroyAmplifyFadeWindow(gui::AmplifyFadeWindow *window)
+{
+    delete window;
+}
+
+void cupuacu::destroyNormalizeWindow(gui::NormalizeWindow *window)
+{
+    delete window;
+}
+
+void cupuacu::destroyDynamicsWindow(gui::DynamicsWindow *window)
 {
     delete window;
 }
