@@ -247,9 +247,26 @@ bool Waveform::ensureBaseTexture(SDL_Renderer *renderer) const
         return true;
     }
 
-    const auto targetKey =
+    auto targetKey =
         allowBlockCoverageReuse ? makeCurrentBlockTextureCoverageKey(newKey)
                                 : newKey;
+    if (allowBlockCoverageReuse)
+    {
+        const double sourceX =
+            (static_cast<double>(newKey.sampleOffset) -
+             static_cast<double>(targetKey.sampleOffset)) /
+            newKey.samplesPerPixel;
+        const double roundedSourceX = std::round(sourceX);
+        const bool hasIntegralCrop =
+            std::abs(sourceX - roundedSourceX) <= 1e-6 &&
+            sourceX >= 0.0 &&
+            roundedSourceX + static_cast<double>(newKey.viewWidth) <=
+                static_cast<double>(targetKey.width);
+        if (!hasIntegralCrop)
+        {
+            targetKey = newKey;
+        }
+    }
     if (!cachedBaseTexture ||
         cachedBaseTextureKey.width != targetKey.width ||
         cachedBaseTextureKey.height != targetKey.height)
@@ -296,7 +313,7 @@ bool Waveform::ensureBaseTexture(SDL_Renderer *renderer) const
 
     cachedBaseTextureKey = targetKey;
     cachedBaseTextureValid = true;
-    if (allowBlockCoverageReuse)
+    if (allowBlockCoverageReuse && targetKey != newKey)
     {
         canRenderCurrentViewFromCachedBlockTexture(newKey);
     }

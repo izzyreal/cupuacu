@@ -11,6 +11,7 @@
 #include "gui/WaveformSmoothRenderPlanning.hpp"
 #include "gui/Waveform.hpp"
 #include "gui/WaveformCache.hpp"
+#include "gui/WaveformRefresh.hpp"
 
 #include <cmath>
 #include <memory>
@@ -70,6 +71,25 @@ namespace
         }
 
         return found ? (bottom - top + 1) : 0;
+    }
+
+    int countDifferentPixelsInRect(const SDL_Surface *a, const SDL_Surface *b,
+                                   const SDL_Rect rect)
+    {
+        int diffCount = 0;
+        for (int y = rect.y; y < rect.y + rect.h; ++y)
+        {
+            for (int x = rect.x; x < rect.x + rect.w; ++x)
+            {
+                const auto pa = readSurfacePixel(a, x, y);
+                const auto pb = readSurfacePixel(b, x, y);
+                if (pa.r != pb.r || pa.g != pb.g || pa.b != pb.b || pa.a != pb.a)
+                {
+                    ++diffCount;
+                }
+            }
+        }
+        return diffCount;
     }
 }
 
@@ -466,6 +486,56 @@ TEST_CASE("Block waveform deselect restores columns at the former selection star
                               << " deselectX=" << deselectX
                               << " spp=" << viewState.samplesPerPixel);
     REQUIRE(afterStartHeight >= beforeStartHeight / 2);
+}
+
+TEST_CASE("Block waveform updates at the document start when fractional edge scrolling changes the view",
+          "[gui]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::State state{};
+    state.pixelScale = 1;
+
+    auto &session = state.activeDocumentSession;
+    session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1,
+                                200000);
+    for (int64_t i = 0; i < session.document.getFrameCount(); ++i)
+    {
+        const float sample =
+            (i < 300) ? ((i % 2 == 0) ? 1.0f : -1.0f) : 0.0f;
+        session.document.setSample(0, i, sample, false);
+    }
+
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &session, "test", 800, 400, SDL_WINDOW_HIDDEN);
+    cupuacu::gui::buildComponents(
+        &state, state.mainDocumentSessionWindow->getWindow());
+    REQUIRE_FALSE(state.waveforms.empty());
+
+    auto *window = state.mainDocumentSessionWindow->getWindow();
+    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+    const SDL_Rect waveformBounds = state.waveforms[0]->getAbsoluteBounds();
+    viewState.samplesPerPixel = 450.60443;
+    viewState.sampleOffset = 0;
+
+    window->renderFrame();
+    auto beforeSurface = readWindowCanvas(window);
+    REQUIRE(beforeSurface != nullptr);
+
+    viewState.sampleOffset = 400;
+    cupuacu::gui::refreshWaveforms(&state, false, true);
+    window->renderFrameIfDirty();
+
+    auto afterSurface = readWindowCanvas(window);
+    REQUIRE(afterSurface != nullptr);
+    const int diffCount = countDifferentPixelsInRect(
+        beforeSurface.get(), afterSurface.get(), waveformBounds);
+
+    INFO("diffCount=" << diffCount
+                         << " sampleOffset=" << viewState.sampleOffset
+                         << " spp=" << viewState.samplesPerPixel);
+    REQUIRE(diffCount > 0);
 }
 
 TEST_CASE("Block waveform apply keeps selection-edge columns continuous for a fade-in",
