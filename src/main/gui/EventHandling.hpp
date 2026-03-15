@@ -177,6 +177,8 @@ namespace cupuacu::gui
                 return event->wheel.windowID;
             case SDL_EVENT_KEY_DOWN:
                 return event->key.windowID;
+            case SDL_EVENT_TEXT_INPUT:
+                return event->text.windowID;
             default:
                 return 0;
         }
@@ -226,10 +228,23 @@ namespace cupuacu::gui
                 }
                 break;
             case SDL_EVENT_KEY_DOWN:
-                if (eventWindow && eventWindow->hasFocus() && mainWindow &&
-                    eventWindow == mainWindow)
+                if (eventWindow && eventWindow->hasFocus())
                 {
-                    handleKeyDown(event, state);
+                    if (mainWindow && eventWindow == mainWindow &&
+                        !eventWindow->hasFocusedComponent())
+                    {
+                        handleKeyDown(event, state);
+                    }
+                    else
+                    {
+                        eventWindow->handleEvent(*event);
+                    }
+                }
+                break;
+            case SDL_EVENT_TEXT_INPUT:
+                if (eventWindow && eventWindow->hasFocus())
+                {
+                    eventWindow->handleEvent(*event);
                 }
                 break;
             case SDL_EVENT_MOUSE_MOTION:

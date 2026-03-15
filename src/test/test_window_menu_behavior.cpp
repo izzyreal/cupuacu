@@ -246,9 +246,9 @@ TEST_CASE("Menu edit actions stay disabled when unavailable and run when enabled
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 4);
-    auto *editMenu = topLevelMenus[2];
-    auto *optionsMenu = topLevelMenus[3];
+    REQUIRE(topLevelMenus.size() == 5);
+    auto *editMenu = topLevelMenus[1];
+    auto *optionsMenu = topLevelMenus[4];
 
     auto editSubMenus = menuChildren(editMenu);
     REQUIRE(editSubMenus.size() == 6);
@@ -295,7 +295,7 @@ TEST_CASE("Menu open and close toggles submenu visibility", "[gui]")
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 4);
+    REQUIRE(topLevelMenus.size() == 5);
     auto *fileMenu = topLevelMenus[0];
     auto fileSubMenus = menuChildren(fileMenu);
     REQUIRE(fileSubMenus.size() == 2);
@@ -338,9 +338,9 @@ TEST_CASE("Menu hover switches open top-level submenu when enabled by menubar",
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 4);
+    REQUIRE(topLevelMenus.size() == 5);
     auto *fileMenu = topLevelMenus[0];
-    auto *viewMenu = topLevelMenus[1];
+    auto *viewMenu = topLevelMenus[2];
 
     auto fileSubMenus = menuChildren(fileMenu);
     auto viewSubMenus = menuChildren(viewMenu);
@@ -382,8 +382,8 @@ TEST_CASE("Menu edit undo and redo actions reflect undo stack state", "[gui]")
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 4);
-    auto *editMenu = topLevelMenus[2];
+    REQUIRE(topLevelMenus.size() == 5);
+    auto *editMenu = topLevelMenus[1];
     auto editSubMenus = menuChildren(editMenu);
     REQUIRE(editSubMenus.size() == 6);
     auto *undoMenu = editSubMenus[0];

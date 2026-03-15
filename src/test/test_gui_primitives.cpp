@@ -10,6 +10,8 @@
 #include "gui/Menu.hpp"
 #include "gui/MenuBar.hpp"
 #include "gui/ScrollBar.hpp"
+#include "gui/Slider.hpp"
+#include "gui/TextInput.hpp"
 #include "gui/TextButton.hpp"
 #include "gui/Window.hpp"
 
@@ -163,10 +165,28 @@ TEST_CASE("DropdownMenu expands collapses and notifies on selection change",
 
     REQUIRE(dropdown.getSelectedIndex() == 1);
     REQUIRE(callbackIndex == 1);
-    REQUIRE(dropdown.getHeight() == 30);
+    REQUIRE(dropdown.getHeight() >= 30);
+    REQUIRE(dropdown.getHeight() >= dropdown.getRowHeight());
     REQUIRE_FALSE(labels[0]->isVisible());
     REQUIRE(labels[1]->isVisible());
     REQUIRE_FALSE(labels[2]->isVisible());
+}
+
+TEST_CASE("DropdownMenu collapsed height tracks row height after margin changes",
+          "[gui]")
+{
+    cupuacu::State state{};
+    state.menuFontSize = 32;
+
+    cupuacu::gui::DropdownMenu dropdown(&state);
+    dropdown.setVisible(true);
+    dropdown.setBounds(0, 0, 180, 30);
+    dropdown.setItems({"Linear", "Exponential", "Logarithmic"});
+    dropdown.setCollapsedHeight(30);
+
+    dropdown.setItemMargin(10);
+
+    REQUIRE(dropdown.getHeight() >= dropdown.getRowHeight());
 }
 
 TEST_CASE("Menu hover can switch open submenu between siblings", "[gui]")
@@ -185,9 +205,9 @@ TEST_CASE("Menu hover can switch open submenu between siblings", "[gui]")
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 4);
+    REQUIRE(topLevelMenus.size() == 5);
     auto *fileMenu = topLevelMenus[0];
-    auto *viewMenu = topLevelMenus[1];
+    auto *editMenu = topLevelMenus[1];
 
     REQUIRE(fileMenu->mouseDown(cupuacu::gui::MouseEvent{
         cupuacu::gui::DOWN,
@@ -200,13 +220,13 @@ TEST_CASE("Menu hover can switch open submenu between siblings", "[gui]")
         cupuacu::gui::MouseButtonState{true, false, false},
         1}));
     REQUIRE(fileMenu->isOpen());
-    REQUIRE_FALSE(viewMenu->isOpen());
+    REQUIRE_FALSE(editMenu->isOpen());
 
     menuBar->setOpenSubMenuOnMouseOver(true);
-    viewMenu->mouseEnter();
+    editMenu->mouseEnter();
 
     REQUIRE_FALSE(fileMenu->isOpen());
-    REQUIRE(viewMenu->isOpen());
+    REQUIRE(editMenu->isOpen());
 }
 
 TEST_CASE("Button momentary and toggle semantics fire callbacks only when enabled",
@@ -315,4 +335,94 @@ TEST_CASE("TextButton updates its label text and keeps it sized to bounds", "[gu
     REQUIRE(updatedLabelBounds.y == buttonBounds.y);
     REQUIRE(updatedLabelBounds.w == buttonBounds.w);
     REQUIRE(updatedLabelBounds.h == buttonBounds.h);
+}
+
+TEST_CASE("TextInput handles focus, text input, and backspace through Window",
+          "[gui]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::State state{};
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "text-input", 320, 160, SDL_WINDOW_HIDDEN);
+
+    auto root = std::make_unique<RootComponent>(&state);
+    auto *input = root->emplaceChild<cupuacu::gui::TextInput>(&state);
+    root->setBounds(0, 0, 320, 160);
+    input->setBounds(10, 10, 120, 28);
+    input->setAllowedCharacters("0123456789.%");
+    window->setRootComponent(std::move(root));
+
+    REQUIRE(input->mouseDown(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN,
+        10,
+        10,
+        10.0f,
+        10.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE(window->getFocusedComponent() == input);
+
+    SDL_Event textEvent{};
+    textEvent.type = SDL_EVENT_TEXT_INPUT;
+    textEvent.text.windowID = window->getId();
+    textEvent.text.text = "125%";
+    REQUIRE(window->handleEvent(textEvent));
+    REQUIRE(input->getText() == "125%");
+
+    SDL_Event backspaceEvent{};
+    backspaceEvent.type = SDL_EVENT_KEY_DOWN;
+    backspaceEvent.key.windowID = window->getId();
+    backspaceEvent.key.scancode = SDL_SCANCODE_BACKSPACE;
+    REQUIRE(window->handleEvent(backspaceEvent));
+    REQUIRE(input->getText() == "125");
+}
+
+TEST_CASE("Slider updates value across drag range", "[gui]")
+{
+    cupuacu::State state{};
+    double value = 100.0;
+
+    cupuacu::gui::Slider slider(
+        &state, [&]() { return value; }, []() { return 0.0; },
+        []() { return 1000.0; }, [&](const double next) { value = next; });
+    slider.setVisible(true);
+    slider.setBounds(0, 0, 100, 20);
+
+    REQUIRE(slider.mouseDown(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN,
+        0,
+        10,
+        0.0f,
+        10.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE(value == 0.0);
+
+    REQUIRE(slider.mouseMove(cupuacu::gui::MouseEvent{
+        cupuacu::gui::MOVE,
+        99,
+        10,
+        99.0f,
+        10.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE(value > 990.0);
+
+    REQUIRE(slider.mouseUp(cupuacu::gui::MouseEvent{
+        cupuacu::gui::UP,
+        50,
+        10,
+        50.0f,
+        10.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
 }

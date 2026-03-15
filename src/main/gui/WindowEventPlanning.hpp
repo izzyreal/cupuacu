@@ -42,6 +42,10 @@ namespace cupuacu::gui
                 return event.button.windowID;
             case SDL_EVENT_MOUSE_WHEEL:
                 return event.wheel.windowID;
+            case SDL_EVENT_KEY_DOWN:
+                return event.key.windowID;
+            case SDL_EVENT_TEXT_INPUT:
+                return event.text.windowID;
             default:
                 return std::nullopt;
         }

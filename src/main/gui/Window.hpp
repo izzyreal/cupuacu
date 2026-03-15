@@ -102,6 +102,15 @@ namespace cupuacu::gui
         {
             componentUnderMouse = component;
         }
+        Component *getFocusedComponent() const
+        {
+            return focusedComponent;
+        }
+        bool hasFocusedComponent() const
+        {
+            return focusedComponent != nullptr;
+        }
+        void setFocusedComponent(Component *component);
 
         void setOnResize(std::function<void()> callback)
         {
@@ -114,6 +123,10 @@ namespace cupuacu::gui
 
         bool handleEvent(const SDL_Event &event);
         bool handleMouseEvent(const MouseEvent &event);
+        void requestClose()
+        {
+            closeRequested = true;
+        }
         void renderFrame();
         void renderFrameIfDirty();
         void refreshForScaleOrResize();
@@ -135,12 +148,14 @@ namespace cupuacu::gui
 
         Component *capturingComponent = nullptr;
         Component *componentUnderMouse = nullptr;
+        Component *focusedComponent = nullptr;
         MenuBar *menuBar = nullptr;
         Component *contentLayer = nullptr;
         Component *overlayLayer = nullptr;
 
         std::function<void()> onResize;
         std::function<void()> onClose;
+        bool closeRequested = false;
 
         void close();
         bool isEventForWindow(const SDL_Event &event) const;

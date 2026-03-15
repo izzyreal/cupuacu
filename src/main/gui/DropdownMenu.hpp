@@ -23,7 +23,6 @@ namespace cupuacu::gui
         std::function<void(int)> onSelectionChanged;
 
         int getFontSize() const;
-        int getRowHeight() const;
         void rebuildLabels();
         void updateLabelStyles() const;
         void updateLabelVisibility() const;
@@ -37,6 +36,7 @@ namespace cupuacu::gui
         void setItemMargin(const int margin);
         void setOnSelectionChanged(std::function<void(int)> callback);
         void setCollapsedHeight(const int height);
+        int getRowHeight() const;
         int getSelectedIndex() const
         {
             return selectedIndex;

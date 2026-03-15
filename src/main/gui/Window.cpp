@@ -133,10 +133,36 @@ void Window::setRootComponent(std::unique_ptr<Component> rootToUse)
     menuBar = nullptr;
     capturingComponent = nullptr;
     componentUnderMouse = nullptr;
+    focusedComponent = nullptr;
     if (rootComponent)
     {
         rootComponent->setWindow(this);
         rootComponent->setVisible(true);
+    }
+}
+
+void Window::setFocusedComponent(Component *component)
+{
+    if (component != nullptr && !component->acceptsKeyboardFocus())
+    {
+        component = nullptr;
+    }
+
+    if (focusedComponent == component)
+    {
+        return;
+    }
+
+    if (focusedComponent != nullptr)
+    {
+        focusedComponent->focusLost();
+    }
+
+    focusedComponent = component;
+
+    if (focusedComponent != nullptr)
+    {
+        focusedComponent->focusGained();
     }
 }
 
@@ -348,6 +374,18 @@ bool Window::handleEvent(const SDL_Event &event)
         return false;
     }
 
+    if (event.type == SDL_EVENT_KEY_DOWN)
+    {
+        return focusedComponent != nullptr &&
+               focusedComponent->keyDown(event.key);
+    }
+
+    if (event.type == SDL_EVENT_TEXT_INPUT)
+    {
+        return focusedComponent != nullptr &&
+               focusedComponent->textInput(event.text.text);
+    }
+
     const auto plan = planWindowEventHandling(event.type, rootComponent != nullptr);
     if (!plan.handled)
     {
@@ -379,6 +417,16 @@ bool Window::handleEvent(const SDL_Event &event)
         handleMouseEvent(makeMouseEvent(event));
     }
 
+    if (closeRequested)
+    {
+        closeRequested = false;
+        if (onClose)
+        {
+            onClose();
+        }
+        close();
+    }
+
     return true;
 }
 
@@ -403,6 +451,13 @@ bool Window::handleMouseEvent(const MouseEvent &mouseEvent)
         updateComponentUnderMouse(mouseEvent.mouseXi, mouseEvent.mouseYi);
     }
 
+    if (mouseEvent.type == DOWN && focusedComponent != nullptr &&
+        (componentUnderMouse == nullptr ||
+         !Component::isComponentOrChildOf(componentUnderMouse, focusedComponent)))
+    {
+        setFocusedComponent(nullptr);
+    }
+
     if (plan.sendLeaveToCaptureBeforeDispatch)
     {
         capturingComponent->mouseLeave();
@@ -421,6 +476,16 @@ bool Window::handleMouseEvent(const MouseEvent &mouseEvent)
     if (plan.clearCaptureAfterDispatch)
     {
         capturingComponent = nullptr;
+    }
+
+    if (closeRequested)
+    {
+        closeRequested = false;
+        if (onClose)
+        {
+            onClose();
+        }
+        close();
     }
 
     return true;

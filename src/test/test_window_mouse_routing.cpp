@@ -119,7 +119,7 @@ TEST_CASE("Window event planning extracts window IDs and mouse events", "[gui]")
     REQUIRE(event.buttonState.left);
 }
 
-TEST_CASE("Window event planning supports button, wheel, and unsupported events",
+TEST_CASE("Window event planning supports button, wheel, key, and unsupported events",
           "[gui]")
 {
     SDL_Event button{};
@@ -158,8 +158,16 @@ TEST_CASE("Window event planning supports button, wheel, and unsupported events"
     REQUIRE(wheelDraft.wheelX == -1.0f);
     REQUIRE(wheelDraft.wheelY == 2.0f);
 
+    SDL_Event keyDown{};
+    keyDown.type = SDL_EVENT_KEY_DOWN;
+    keyDown.key.windowID = 21;
+    const auto keyWindowId = cupuacu::gui::getWindowEventWindowId(keyDown);
+    REQUIRE(keyWindowId.has_value());
+    REQUIRE(*keyWindowId == 21);
+    REQUIRE_FALSE(cupuacu::gui::draftWindowMouseEvent(keyDown).valid);
+
     SDL_Event unsupported{};
-    unsupported.type = SDL_EVENT_KEY_DOWN;
+    unsupported.type = SDL_EVENT_FINGER_DOWN;
     REQUIRE_FALSE(cupuacu::gui::getWindowEventWindowId(unsupported).has_value());
     REQUIRE_FALSE(cupuacu::gui::draftWindowMouseEvent(unsupported).valid);
 }

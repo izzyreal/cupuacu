@@ -9,6 +9,7 @@
 #include <memory>
 #include <string>
 #include <cstdint>
+#include <string_view>
 
 namespace cupuacu
 {
@@ -190,6 +191,20 @@ namespace cupuacu::gui
         virtual bool shouldCaptureMouse() const
         {
             return true;
+        }
+        virtual bool acceptsKeyboardFocus() const
+        {
+            return false;
+        }
+        virtual void focusGained() {}
+        virtual void focusLost() {}
+        virtual bool keyDown(const SDL_KeyboardEvent &)
+        {
+            return false;
+        }
+        virtual bool textInput(const std::string_view)
+        {
+            return false;
         }
         virtual void timerCallback() {}
         virtual void resized() {}

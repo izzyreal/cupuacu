@@ -114,6 +114,13 @@ void DropdownMenu::setFontSize(const int fontSize)
     {
         label->setFontSize(getFontSize());
     }
+    if (!expanded)
+    {
+        const int targetHeight =
+            collapsedHeight > 0 ? std::max(collapsedHeight, getRowHeight())
+                                : getRowHeight();
+        setSize(getWidth(), targetHeight);
+    }
     resized();
     setDirty();
 }
@@ -124,6 +131,13 @@ void DropdownMenu::setItemMargin(const int margin)
     for (auto *label : itemLabels)
     {
         label->setMargin(itemMargin * state->pixelScale);
+    }
+    if (!expanded)
+    {
+        const int targetHeight =
+            collapsedHeight > 0 ? std::max(collapsedHeight, getRowHeight())
+                                : getRowHeight();
+        setSize(getWidth(), targetHeight);
     }
     resized();
     setDirty();
@@ -136,7 +150,7 @@ void DropdownMenu::setOnSelectionChanged(std::function<void(int)> callback)
 
 void DropdownMenu::setCollapsedHeight(const int height)
 {
-    collapsedHeight = height;
+    collapsedHeight = std::max(height, getRowHeight());
     if (!expanded && collapsedHeight > 0)
     {
         setSize(getWidth(), collapsedHeight);

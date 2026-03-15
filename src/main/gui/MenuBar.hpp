@@ -13,8 +13,9 @@ namespace cupuacu::gui
     private:
         OpaqueRect *background;
         Menu *fileMenu;
-        Menu *viewMenu;
         Menu *editMenu;
+        Menu *viewMenu;
+        Menu *effectsMenu;
         Menu *optionsMenu;
         bool openSubMenuOnMouseOver = false;
         std::string logoData;

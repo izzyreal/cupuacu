@@ -1,6 +1,8 @@
 #include "State.hpp"
 
 #include "gui/Waveform.hpp"
+#include "gui/AmplifyFadeWindow.hpp"
+#include "gui/DevicePropertiesWindow.hpp"
 #include "actions/Undoable.hpp"
 
 int64_t getMaxSampleOffset(const cupuacu::State *state)
@@ -21,6 +23,13 @@ int64_t getMaxSampleOffset(const cupuacu::State *state)
     const int64_t maxOffset = frameCount - visibleSampleCount;
     return std::max<int64_t>(0, maxOffset);
 }
+
+void cupuacu::destroyAmplifyFadeWindow(gui::AmplifyFadeWindow *window)
+{
+    delete window;
+}
+
+cupuacu::State::~State() = default;
 
 void cupuacu::State::addUndoable(
     std::shared_ptr<cupuacu::actions::Undoable> undoable)

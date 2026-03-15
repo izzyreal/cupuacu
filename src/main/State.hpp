@@ -31,6 +31,7 @@ namespace cupuacu
 
     namespace gui
     {
+        class AmplifyFadeWindow;
         class DevicePropertiesWindow;
         class Component;
         class Waveform;
@@ -39,6 +40,8 @@ namespace cupuacu
         class VuMeterContainer;
         class TransportButtonsContainer;
     } // namespace gui
+
+    void destroyAmplifyFadeWindow(gui::AmplifyFadeWindow *);
 
     struct State
     {
@@ -59,11 +62,16 @@ namespace cupuacu
         std::vector<gui::Window *> windows;
         std::unique_ptr<gui::DocumentSessionWindow> mainDocumentSessionWindow;
         std::unique_ptr<gui::DevicePropertiesWindow> devicePropertiesWindow;
+        std::unique_ptr<gui::AmplifyFadeWindow,
+                        void (*)(gui::AmplifyFadeWindow *)>
+            amplifyFadeWindow{nullptr, destroyAmplifyFadeWindow};
         gui::MainView *mainView;
         gui::Component *statusBar;
         gui::VuMeterContainer *vuMeterContainer;
         gui::TransportButtonsContainer *transportButtonsContainer = nullptr;
         gui::VuMeter *vuMeter;
+
+        ~State();
 
         void addUndoable(std::shared_ptr<actions::Undoable>);
         void addAndDoUndoable(std::shared_ptr<actions::Undoable>);

@@ -4,6 +4,7 @@
 #include "gui/MainView.hpp"
 #include "State.hpp"
 #include "actions/audio/Cut.hpp"
+#include "actions/audio/EffectCommands.hpp"
 #include "actions/audio/EditCommands.hpp"
 #include "actions/audio/Paste.hpp"
 #include "actions/audio/RecordedChunkApplier.hpp"
@@ -37,6 +38,34 @@ namespace
         for (int64_t i = 0; i < document.getFrameCount(); ++i)
         {
             result[static_cast<size_t>(i)] = document.getSample(0, i);
+        }
+        return result;
+    }
+
+    void initializeStereoDocument(cupuacu::State &state,
+                                  const std::vector<float> &leftSamples,
+                                  const std::vector<float> &rightSamples)
+    {
+        REQUIRE(leftSamples.size() == rightSamples.size());
+
+        auto &document = state.activeDocumentSession.document;
+        document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2,
+                            static_cast<int64_t>(leftSamples.size()));
+        for (size_t i = 0; i < leftSamples.size(); ++i)
+        {
+            document.setSample(0, static_cast<int64_t>(i), leftSamples[i], false);
+            document.setSample(1, static_cast<int64_t>(i), rightSamples[i], false);
+        }
+    }
+
+    std::vector<float> readChannelSamples(const cupuacu::Document &document,
+                                          const int64_t channel)
+    {
+        std::vector<float> result(
+            static_cast<size_t>(document.getFrameCount()));
+        for (int64_t i = 0; i < document.getFrameCount(); ++i)
+        {
+            result[static_cast<size_t>(i)] = document.getSample(channel, i);
         }
         return result;
     }
@@ -364,6 +393,56 @@ TEST_CASE("SetSampleValue undoable changes one sample and restores it", "[action
     state.redo();
     REQUIRE(readMonoSamples(state.activeDocumentSession.document) ==
             std::vector<float>({0, 42, 2}));
+}
+
+TEST_CASE("Amplify/Fade applies across the whole document on all channels",
+          "[actions]")
+{
+    cupuacu::State state{};
+    initializeStereoDocument(state, {1, 2, 3}, {4, 5, 6});
+
+    cupuacu::actions::audio::performAmplifyFade(&state, 200.0, 200.0, 0);
+
+    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 0) ==
+            std::vector<float>({2, 4, 6}));
+    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 1) ==
+            std::vector<float>({8, 10, 12}));
+
+    state.undo();
+
+    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 0) ==
+            std::vector<float>({1, 2, 3}));
+    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 1) ==
+            std::vector<float>({4, 5, 6}));
+}
+
+TEST_CASE("Amplify/Fade limits selected stereo edits to the chosen channel",
+          "[actions]")
+{
+    cupuacu::State state{};
+    initializeStereoDocument(state, {1, 2, 3, 4}, {10, 20, 30, 40});
+    state.activeDocumentSession.selection.setHighest(4.0);
+    state.activeDocumentSession.selection.setValue1(1.0);
+    state.activeDocumentSession.selection.setValue2(3.0);
+
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &state.activeDocumentSession, "main", 640, 360,
+            SDL_WINDOW_HIDDEN);
+    state.mainDocumentSessionWindow->getViewState().selectedChannels =
+        cupuacu::SelectedChannels::RIGHT;
+
+    cupuacu::actions::audio::performAmplifyFade(&state, 50.0, 50.0, 0);
+
+    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 0) ==
+            std::vector<float>({1, 2, 3, 4}));
+    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 1) ==
+            std::vector<float>({10, 10, 15, 40}));
+
+    state.undo();
+
+    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 1) ==
+            std::vector<float>({10, 20, 30, 40}));
 }
 
 TEST_CASE("Recorded chunk applier initializes empty document from chunk", "[actions]")

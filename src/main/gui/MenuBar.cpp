@@ -7,6 +7,7 @@
 #include "gui/Menu.hpp"
 #include "gui/MenuBarPlanning.hpp"
 #include "gui/Window.hpp"
+#include "gui/AmplifyFadeWindow.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/Colors.hpp"
 #include "gui/UiScale.hpp"
@@ -29,9 +30,12 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
     background = emplaceChild<OpaqueRect>(state, Colors::background);
     disableParentClipping();
 
-    // File and View menus
+    // File, Edit, View, Effects, Options menus
     fileMenu = emplaceChild<Menu>(state, "File");
+    editMenu = emplaceChild<Menu>(state, "Edit");
     viewMenu = emplaceChild<Menu>(state, "View");
+    effectsMenu = emplaceChild<Menu>(state, "Effects");
+    optionsMenu = emplaceChild<Menu>(state, "Options");
 
 #ifdef __APPLE__
     constexpr std::string openText{"Open (Cmd + O)"};
@@ -80,10 +84,6 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
                          {
                              actions::zoomInVertically(state, 1);
                          });
-
-    // Edit menu
-    editMenu = emplaceChild<Menu>(state, "Edit");
-    optionsMenu = emplaceChild<Menu>(state, "Options");
 
     std::function<std::string()> undoMenuNameGetter = [&]
     {
@@ -183,6 +183,20 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
             return isPasteAvailable(state);
         });
 
+    effectsMenu->addSubMenu(
+        state, "Amplify/Fade",
+        [&]
+        {
+            if (!state->amplifyFadeWindow || !state->amplifyFadeWindow->isOpen())
+            {
+                state->amplifyFadeWindow.reset(new AmplifyFadeWindow(state));
+            }
+            else
+            {
+                state->amplifyFadeWindow->raise();
+            }
+        });
+
     optionsMenu->addSubMenu(
         state, "Device Properties",
         [&]
@@ -237,8 +251,9 @@ void MenuBar::onDraw(SDL_Renderer *renderer)
 void MenuBar::hideSubMenus()
 {
     fileMenu->hideSubMenus();
-    viewMenu->hideSubMenus();
     editMenu->hideSubMenus();
+    viewMenu->hideSubMenus();
+    effectsMenu->hideSubMenus();
     optionsMenu->hideSubMenus();
     if (const auto window = getWindow())
     {
@@ -255,8 +270,9 @@ void MenuBar::resized()
     const float scale = getCanvasSpaceScale(state) * 4.0f;
 
     const int fileW = int(40 * scale);
-    const int viewW = int(40 * scale);
     const int editW = int(40 * scale); // wide enough for Undo/Redo text
+    const int viewW = int(40 * scale);
+    const int effectsW = int(56 * scale);
     const int optionsW =
         int(60 * scale); // wide enough for Device Properties text
     const int h = getHeight();
@@ -269,9 +285,11 @@ void MenuBar::resized()
     }
 
     fileMenu->setBounds(logoSpace, 0, fileW, h);
-    viewMenu->setBounds(logoSpace + fileW, 0, viewW, h);
-    editMenu->setBounds(logoSpace + fileW + viewW, 0, editW, h);
-    optionsMenu->setBounds(logoSpace + fileW + viewW + editW, 0, optionsW, h);
+    editMenu->setBounds(logoSpace + fileW, 0, editW, h);
+    viewMenu->setBounds(logoSpace + fileW + editW, 0, viewW, h);
+    effectsMenu->setBounds(logoSpace + fileW + editW + viewW, 0, effectsW, h);
+    optionsMenu->setBounds(logoSpace + fileW + editW + viewW + effectsW, 0,
+                           optionsW, h);
 
     SDL_Rect backgroundBounds = getLocalBounds();
     backgroundBounds.x = optionsMenu->getBounds().x + optionsW;
@@ -291,13 +309,17 @@ Menu *MenuBar::getOpenMenu() const
     {
         return fileMenu;
     }
+    if (editMenu->isOpen())
+    {
+        return editMenu;
+    }
     if (viewMenu->isOpen())
     {
         return viewMenu;
     }
-    if (editMenu->isOpen())
+    if (effectsMenu->isOpen())
     {
-        return editMenu;
+        return effectsMenu;
     }
     if (optionsMenu->isOpen())
     {

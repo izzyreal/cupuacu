@@ -93,8 +93,11 @@ set(CUPUACU_SHARED_SOURCES
     src/main/gui/TextButton.cpp
     src/main/gui/Label.cpp
     src/main/gui/DropdownMenu.cpp
+    src/main/gui/AmplifyFadeWindow.cpp
     src/main/gui/DevicePropertiesWindow.cpp
     src/main/gui/ScrollBar.cpp
+    src/main/gui/Slider.cpp
+    src/main/gui/TextInput.cpp
     src/main/gui/WaveformsUnderlay.cpp
     src/main/gui/Waveforms.cpp
     src/main/gui/Waveform.cpp
