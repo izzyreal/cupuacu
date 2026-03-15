@@ -16,6 +16,8 @@ namespace cupuacu
 
     struct DynamicsSettings
     {
+        double thresholdPercent = 50.0;
+        int ratioIndex = 1;
     };
 
     struct EffectSettings

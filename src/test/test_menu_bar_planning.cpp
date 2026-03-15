@@ -13,7 +13,6 @@
 #include "gui/Menu.hpp"
 #include "gui/MenuBar.hpp"
 #include "gui/MenuBarPlanning.hpp"
-#include "gui/NormalizeWindow.hpp"
 #include "gui/TextButton.hpp"
 #include "gui/DropdownMenu.hpp"
 #include "gui/Slider.hpp"
@@ -227,7 +226,7 @@ TEST_CASE("Effects menu opens AmplifyFadeWindow", "[gui]")
     REQUIRE(topLevelMenus.size() == 5);
     auto *effectsMenu = topLevelMenus[3];
     auto effectSubMenus = menuChildren(effectsMenu);
-    REQUIRE(effectSubMenus.size() == 3);
+    REQUIRE(effectSubMenus.size() == 2);
 
     REQUIRE(state.amplifyFadeWindow == nullptr);
     REQUIRE(effectSubMenus[0]->mouseDown(cupuacu::gui::MouseEvent{
@@ -244,22 +243,8 @@ TEST_CASE("Effects menu opens AmplifyFadeWindow", "[gui]")
     REQUIRE(state.amplifyFadeWindow != nullptr);
     REQUIRE(state.amplifyFadeWindow->isOpen());
 
-    REQUIRE(state.normalizeWindow == nullptr);
-    REQUIRE(effectSubMenus[1]->mouseDown(cupuacu::gui::MouseEvent{
-        cupuacu::gui::DOWN,
-        5,
-        5,
-        5.0f,
-        5.0f,
-        0.0f,
-        0.0f,
-        cupuacu::gui::MouseButtonState{true, false, false},
-        1}));
-    REQUIRE(state.normalizeWindow != nullptr);
-    REQUIRE(state.normalizeWindow->isOpen());
-
     REQUIRE(state.dynamicsWindow == nullptr);
-    REQUIRE(effectSubMenus[2]->mouseDown(cupuacu::gui::MouseEvent{
+    REQUIRE(effectSubMenus[1]->mouseDown(cupuacu::gui::MouseEvent{
         cupuacu::gui::DOWN,
         5,
         5,
@@ -301,6 +286,9 @@ TEST_CASE("AmplifyFadeWindow presets update values and curve row does not overla
     auto *resetButton = dynamic_cast<cupuacu::gui::TextButton *>(
         const_cast<cupuacu::gui::Component *>(
             findByNameRecursive(root, "TextButton:Reset")));
+    auto *normalizeButton = dynamic_cast<cupuacu::gui::TextButton *>(
+        const_cast<cupuacu::gui::Component *>(
+            findByNameRecursive(root, "TextButton:Normalize")));
     auto *fadeInButton = dynamic_cast<cupuacu::gui::TextButton *>(
         const_cast<cupuacu::gui::Component *>(
             findByNameRecursive(root, "TextButton:Fade in")));
@@ -311,6 +299,7 @@ TEST_CASE("AmplifyFadeWindow presets update values and curve row does not overla
     REQUIRE(curveLabel != nullptr);
     REQUIRE(curveDropdown != nullptr);
     REQUIRE(resetButton != nullptr);
+    REQUIRE(normalizeButton != nullptr);
     REQUIRE(fadeInButton != nullptr);
     REQUIRE(fadeOutButton != nullptr);
 
@@ -345,6 +334,24 @@ TEST_CASE("AmplifyFadeWindow presets update values and curve row does not overla
         1}));
     REQUIRE(amplifyFadeWindow->getStartPercent() == 0.0);
     REQUIRE(amplifyFadeWindow->getEndPercent() == 100.0);
+
+    state.activeDocumentSession.document.initialize(cupuacu::SampleFormat::FLOAT32,
+                                                    44100, 1, 3);
+    state.activeDocumentSession.document.setSample(0, 0, 0.25f, false);
+    state.activeDocumentSession.document.setSample(0, 1, -0.5f, false);
+    state.activeDocumentSession.document.setSample(0, 2, 0.1f, false);
+    REQUIRE(normalizeButton->mouseDown(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN,
+        5,
+        5,
+        5.0f,
+        5.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE(amplifyFadeWindow->getStartPercent() == Catch::Approx(200.0));
+    REQUIRE(amplifyFadeWindow->getEndPercent() == Catch::Approx(200.0));
 
     REQUIRE(resetButton->mouseDown(cupuacu::gui::MouseEvent{
         cupuacu::gui::DOWN,
@@ -486,6 +493,70 @@ TEST_CASE("AmplifyFadeWindow lock and apply respect selected channels",
     REQUIRE(state.activeDocumentSession.document.getSample(1, 3) == 40.0f);
 
     REQUIRE_FALSE(amplifyFadeWindow->isOpen());
+}
+
+TEST_CASE("DynamicsWindow apply compresses the current target range", "[gui]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::State state{};
+    state.effectSettings.dynamics.thresholdPercent = 50.0;
+    state.effectSettings.dynamics.ratioIndex = 1;
+    state.activeDocumentSession.document.initialize(cupuacu::SampleFormat::FLOAT32,
+                                                    44100, 1, 4);
+    state.activeDocumentSession.document.setSample(0, 0, 0.2f, false);
+    state.activeDocumentSession.document.setSample(0, 1, 0.5f, false);
+    state.activeDocumentSession.document.setSample(0, 2, 0.9f, false);
+    state.activeDocumentSession.document.setSample(0, 3, -1.0f, false);
+    state.activeDocumentSession.selection.setHighest(4.0);
+    state.activeDocumentSession.selection.setValue1(1.0);
+    state.activeDocumentSession.selection.setValue2(4.0);
+
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &state.activeDocumentSession, "main", 640, 360,
+            SDL_WINDOW_HIDDEN);
+    state.windows.push_back(state.mainDocumentSessionWindow->getWindow());
+
+    auto dynamicsWindow = std::make_unique<cupuacu::gui::DynamicsWindow>(&state);
+    REQUIRE(dynamicsWindow->isOpen());
+
+    auto *root = dynamicsWindow->getWindow()->getRootComponent();
+    REQUIRE(root != nullptr);
+    auto *applyButton = dynamic_cast<cupuacu::gui::TextButton *>(
+        const_cast<cupuacu::gui::Component *>(
+            findByNameRecursive(root, "TextButton:Apply")));
+    REQUIRE(applyButton != nullptr);
+
+    REQUIRE(applyButton->mouseDown(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN,
+        5,
+        5,
+        5.0f,
+        5.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE(applyButton->mouseUp(cupuacu::gui::MouseEvent{
+        cupuacu::gui::UP,
+        5,
+        5,
+        5.0f,
+        5.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+
+    REQUIRE(state.activeDocumentSession.document.getSample(0, 0) ==
+            Catch::Approx(0.2f));
+    REQUIRE(state.activeDocumentSession.document.getSample(0, 1) ==
+            Catch::Approx(0.5f));
+    REQUIRE(state.activeDocumentSession.document.getSample(0, 2) ==
+            Catch::Approx(0.6f));
+    REQUIRE(state.activeDocumentSession.document.getSample(0, 3) ==
+            Catch::Approx(-0.625f));
 }
 
 TEST_CASE("AmplifyFadeWindow reopens with last remembered settings", "[gui]")

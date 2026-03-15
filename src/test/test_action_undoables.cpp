@@ -470,6 +470,48 @@ TEST_CASE("Amplify/Fade processes the full selected range and stops at selection
             Catch::Approx(10.0f));
 }
 
+TEST_CASE("Normalize percent reflects the peak of the selected target range",
+          "[actions]")
+{
+    cupuacu::State state{};
+    initializeStereoDocument(state, {0.25f, 0.5f, 0.75f}, {0.1f, 0.2f, 0.3f});
+    state.activeDocumentSession.selection.setHighest(3.0);
+    state.activeDocumentSession.selection.setValue1(1.0);
+    state.activeDocumentSession.selection.setValue2(3.0);
+
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &state.activeDocumentSession, "main", 640, 360,
+            SDL_WINDOW_HIDDEN);
+    state.mainDocumentSessionWindow->getViewState().selectedChannels =
+        cupuacu::SelectedChannels::RIGHT;
+
+    REQUIRE(cupuacu::actions::audio::computeNormalizePercent(&state) ==
+            Catch::Approx(333.333333).epsilon(0.001));
+}
+
+TEST_CASE("Dynamics compresses selected samples and respects undo", "[actions]")
+{
+    cupuacu::State state{};
+    initializeMonoDocument(state, {0.2f, 0.5f, 0.9f, -1.0f});
+
+    state.activeDocumentSession.selection.setHighest(4.0);
+    state.activeDocumentSession.selection.setValue1(1.0);
+    state.activeDocumentSession.selection.setValue2(4.0);
+
+    cupuacu::actions::audio::performDynamics(&state, 50.0, 1);
+
+    const auto processed = readMonoSamples(state.activeDocumentSession.document);
+    REQUIRE(processed[0] == Catch::Approx(0.2f));
+    REQUIRE(processed[1] == Catch::Approx(0.5f));
+    REQUIRE(processed[2] == Catch::Approx(0.6f));
+    REQUIRE(processed[3] == Catch::Approx(-0.625f));
+
+    state.undo();
+    REQUIRE(readMonoSamples(state.activeDocumentSession.document) ==
+            std::vector<float>({0.2f, 0.5f, 0.9f, -1.0f}));
+}
+
 TEST_CASE("Recorded chunk applier initializes empty document from chunk", "[actions]")
 {
     cupuacu::Document doc;

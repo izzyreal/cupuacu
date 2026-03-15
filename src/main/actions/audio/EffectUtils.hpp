@@ -1,0 +1,123 @@
+#pragma once
+
+#include "../../SelectedChannels.hpp"
+#include "State.hpp"
+
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <vector>
+
+namespace cupuacu::actions::audio
+{
+    inline std::vector<int64_t> getEffectTargetChannels(cupuacu::State *state)
+    {
+        std::vector<int64_t> targetChannels;
+        if (!state)
+        {
+            return targetChannels;
+        }
+
+        auto &session = state->activeDocumentSession;
+        auto &document = session.document;
+        const int64_t channelCount = document.getChannelCount();
+        if (channelCount <= 0)
+        {
+            return targetChannels;
+        }
+
+        if (!session.selection.isActive())
+        {
+            for (int64_t channel = 0; channel < channelCount; ++channel)
+            {
+                targetChannels.push_back(channel);
+            }
+            return targetChannels;
+        }
+
+        SelectedChannels selectedChannels = SelectedChannels::BOTH;
+        if (state->mainDocumentSessionWindow)
+        {
+            selectedChannels =
+                state->mainDocumentSessionWindow->getViewState().selectedChannels;
+        }
+
+        if (channelCount <= 1 || selectedChannels == SelectedChannels::BOTH)
+        {
+            for (int64_t channel = 0; channel < channelCount; ++channel)
+            {
+                targetChannels.push_back(channel);
+            }
+        }
+        else if (selectedChannels == SelectedChannels::LEFT)
+        {
+            targetChannels.push_back(0);
+        }
+        else
+        {
+            targetChannels.push_back(std::min<int64_t>(1, channelCount - 1));
+        }
+
+        return targetChannels;
+    }
+
+    inline bool getEffectTargetRange(cupuacu::State *state, int64_t &startFrameOut,
+                                     int64_t &frameCountOut)
+    {
+        startFrameOut = 0;
+        frameCountOut = 0;
+        if (!state)
+        {
+            return false;
+        }
+
+        auto &session = state->activeDocumentSession;
+        auto &document = session.document;
+        if (document.getFrameCount() <= 0 || document.getChannelCount() <= 0)
+        {
+            return false;
+        }
+
+        if (session.selection.isActive())
+        {
+            startFrameOut = session.selection.getStartInt();
+            frameCountOut = session.selection.getLengthInt();
+        }
+        else
+        {
+            startFrameOut = 0;
+            frameCountOut = document.getFrameCount();
+        }
+
+        return frameCountOut > 0;
+    }
+
+    inline float computeEffectPeakAbsolute(cupuacu::State *state)
+    {
+        int64_t startFrame = 0;
+        int64_t frameCount = 0;
+        if (!getEffectTargetRange(state, startFrame, frameCount))
+        {
+            return 0.0f;
+        }
+
+        const auto targetChannels = getEffectTargetChannels(state);
+        if (targetChannels.empty())
+        {
+            return 0.0f;
+        }
+
+        auto &document = state->activeDocumentSession.document;
+        float peak = 0.0f;
+        for (const auto channel : targetChannels)
+        {
+            for (int64_t frame = 0; frame < frameCount; ++frame)
+            {
+                peak = std::max(
+                    peak,
+                    std::fabs(document.getSample(channel, startFrame + frame)));
+            }
+        }
+        return peak;
+    }
+} // namespace cupuacu::actions::audio

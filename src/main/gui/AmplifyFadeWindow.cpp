@@ -89,6 +89,8 @@ AmplifyFadeWindow::AmplifyFadeWindow(State *stateToUse) : state(stateToUse)
         rootComponent->emplaceChild<TextButton>(state, "Lock", ButtonType::Toggle);
     curveDropdown = rootComponent->emplaceChild<DropdownMenu>(state);
     resetButton = rootComponent->emplaceChild<TextButton>(state, "Reset");
+    normalizeButton =
+        rootComponent->emplaceChild<TextButton>(state, "Normalize");
     fadeInButton = rootComponent->emplaceChild<TextButton>(state, "Fade in");
     fadeOutButton = rootComponent->emplaceChild<TextButton>(state, "Fade out");
     cancelButton = rootComponent->emplaceChild<TextButton>(state, "Cancel");
@@ -339,6 +341,15 @@ void AmplifyFadeWindow::setDefaults()
     renderOnce();
 }
 
+void AmplifyFadeWindow::applyNormalizePreset()
+{
+    const double normalizePercent =
+        cupuacu::actions::audio::computeNormalizePercent(state);
+    setStartPercent(normalizePercent);
+    setEndPercent(normalizePercent);
+    renderOnce();
+}
+
 void AmplifyFadeWindow::applyFadeInPreset()
 {
     setStartPercent(0.0);
@@ -405,6 +416,7 @@ void AmplifyFadeWindow::bindTextInputs()
 void AmplifyFadeWindow::bindButtons()
 {
     resetButton->setOnPress([this]() { setDefaults(); });
+    normalizeButton->setOnPress([this]() { applyNormalizePreset(); });
     fadeInButton->setOnPress([this]() { applyFadeInPreset(); });
     fadeOutButton->setOnPress([this]() { applyFadeOutPreset(); });
     lockButton->setOnToggle([this](const bool isEnabled) { setLocked(isEnabled); });
@@ -487,12 +499,14 @@ void AmplifyFadeWindow::layoutComponents() const
 
     const int buttonGap = padding;
     const int buttonWidth =
-        std::max(80, (canvasWi - padding * 2 - buttonGap * 2) / 3);
+        std::max(72, (canvasWi - padding * 2 - buttonGap * 3) / 4);
 
     resetButton->setBounds(padding, y, buttonWidth, rowHeight);
-    fadeInButton->setBounds(padding + buttonWidth + buttonGap, y, buttonWidth,
-                            rowHeight);
-    fadeOutButton->setBounds(padding + (buttonWidth + buttonGap) * 2, y,
+    normalizeButton->setBounds(padding + buttonWidth + buttonGap, y, buttonWidth,
+                               rowHeight);
+    fadeInButton->setBounds(padding + (buttonWidth + buttonGap) * 2, y,
+                             buttonWidth, rowHeight);
+    fadeOutButton->setBounds(padding + (buttonWidth + buttonGap) * 3, y,
                              buttonWidth, rowHeight);
 
     const int bottomButtonWidth = std::max(96, scaleUi(state, 120.0f));

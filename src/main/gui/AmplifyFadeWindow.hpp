@@ -66,6 +66,7 @@ namespace cupuacu::gui
         TextButton *lockButton = nullptr;
         DropdownMenu *curveDropdown = nullptr;
         TextButton *resetButton = nullptr;
+        TextButton *normalizeButton = nullptr;
         TextButton *fadeInButton = nullptr;
         TextButton *fadeOutButton = nullptr;
         TextButton *cancelButton = nullptr;
@@ -91,6 +92,7 @@ namespace cupuacu::gui
         void applyEffect();
         void syncSettings() const;
         void setDefaults();
+        void applyNormalizePreset();
         void applyFadeInPreset();
         void applyFadeOutPreset();
         void bindTextInputs();

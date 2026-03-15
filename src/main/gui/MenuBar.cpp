@@ -10,7 +10,6 @@
 #include "gui/AmplifyFadeWindow.hpp"
 #include "gui/DynamicsWindow.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
-#include "gui/NormalizeWindow.hpp"
 #include "gui/Colors.hpp"
 #include "gui/UiScale.hpp"
 #include "gui/Helpers.hpp"
@@ -196,19 +195,6 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
             else
             {
                 state->amplifyFadeWindow->raise();
-            }
-        });
-    effectsMenu->addSubMenu(
-        state, "Normalize",
-        [&]
-        {
-            if (!state->normalizeWindow || !state->normalizeWindow->isOpen())
-            {
-                state->normalizeWindow.reset(new NormalizeWindow(state));
-            }
-            else
-            {
-                state->normalizeWindow->raise();
             }
         });
     effectsMenu->addSubMenu(

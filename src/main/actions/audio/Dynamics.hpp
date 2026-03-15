@@ -1,7 +1,6 @@
 #pragma once
 
 #include "../Undoable.hpp"
-#include "../../SelectedChannels.hpp"
 #include "../../gui/MainView.hpp"
 #include "../../gui/Waveform.hpp"
 #include "EffectUtils.hpp"
@@ -9,25 +8,20 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
+#include <string>
 #include <vector>
 
 namespace cupuacu::actions::audio
 {
-    class AmplifyFade : public Undoable
+    class Dynamics : public Undoable
     {
     public:
-        enum class Curve
-        {
-            Linear,
-            Exponential,
-            Logarithmic
-        };
-
-        AmplifyFade(State *stateToUse, const double startPercentToUse,
-                    const double endPercentToUse, const int curveIndexToUse)
-            : Undoable(stateToUse), startPercent(startPercentToUse),
-              endPercent(endPercentToUse),
-              curve(clampCurve(curveIndexToUse))
+        Dynamics(State *stateToUse, const double thresholdPercentToUse,
+                 const int ratioIndexToUse)
+            : Undoable(stateToUse),
+              thresholdPercent(std::clamp(thresholdPercentToUse, 0.0, 100.0)),
+              ratioIndex(std::clamp(ratioIndexToUse, 0, 3))
         {
             captureTargetsAndSamples();
             updateGui = [this]
@@ -53,78 +47,64 @@ namespace cupuacu::actions::audio
 
         std::string getUndoDescription() override
         {
-            return "Amplify/Fade";
+            return "Dynamics";
         }
 
         std::string getRedoDescription() override
         {
-            return "Amplify/Fade";
+            return "Dynamics";
         }
 
     private:
-        double startPercent = 100.0;
-        double endPercent = 100.0;
-        Curve curve = Curve::Linear;
+        double thresholdPercent = 100.0;
+        int ratioIndex = 1;
         int64_t startFrame = 0;
         int64_t frameCount = 0;
         std::vector<int64_t> targetChannels;
         std::vector<std::vector<float>> oldSamples;
         std::vector<std::vector<float>> newSamples;
 
-        static Curve clampCurve(const int curveIndex)
+        double getRatio() const
         {
-            switch (curveIndex)
+            switch (ratioIndex)
             {
+            case 0:
+                return 2.0;
             case 1:
-                return Curve::Exponential;
+                return 4.0;
             case 2:
-                return Curve::Logarithmic;
+                return 8.0;
             default:
-                return Curve::Linear;
+                return std::numeric_limits<double>::infinity();
             }
         }
 
-        static double computeCurveWeight(const Curve curveToUse,
-                                         const double linearWeight)
+        float processSample(const float sample) const
         {
-            switch (curveToUse)
+            const double threshold = thresholdPercent / 100.0;
+            if (threshold <= 0.0)
             {
-            case Curve::Exponential:
-                return linearWeight * linearWeight;
-            case Curve::Logarithmic:
-                return std::log1p(linearWeight * 9.0) / std::log1p(9.0);
-            case Curve::Linear:
-            default:
-                return linearWeight;
-            }
-        }
-
-        double gainForFrame(const int64_t frameIndex) const
-        {
-            const double startGain = startPercent / 100.0;
-            const double endGain = endPercent / 100.0;
-            if (frameCount <= 1)
-            {
-                return startGain;
+                return 0.0f;
             }
 
-            const double linearWeight =
-                static_cast<double>(frameIndex) /
-                static_cast<double>(frameCount - 1);
-            const double curvedWeight = computeCurveWeight(curve, linearWeight);
-            return startGain + (endGain - startGain) * curvedWeight;
+            const double magnitude = std::fabs(sample);
+            if (magnitude <= threshold)
+            {
+                return sample;
+            }
+
+            const double ratio = getRatio();
+            double compressedMagnitude = threshold;
+            if (std::isfinite(ratio))
+            {
+                compressedMagnitude += (magnitude - threshold) / ratio;
+            }
+            return static_cast<float>(std::copysign(compressedMagnitude, sample));
         }
 
         void captureTargetsAndSamples()
         {
             if (!state)
-            {
-                return;
-            }
-
-            auto &session = state->activeDocumentSession;
-            auto &document = session.document;
-            if (document.getChannelCount() <= 0)
             {
                 return;
             }
@@ -140,6 +120,7 @@ namespace cupuacu::actions::audio
                 return;
             }
 
+            auto &document = state->activeDocumentSession.document;
             oldSamples.resize(targetChannels.size());
             newSamples.resize(targetChannels.size());
 
@@ -158,7 +139,7 @@ namespace cupuacu::actions::audio
                         document.getSample(channel, startFrame + frame);
                     oldChannel[static_cast<size_t>(frame)] = oldValue;
                     newChannel[static_cast<size_t>(frame)] =
-                        static_cast<float>(oldValue * gainForFrame(frame));
+                        processSample(oldValue);
                 }
             }
         }
