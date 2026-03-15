@@ -750,11 +750,6 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
 
         const bool columnVisible =
             drawXi >= xStart && drawXi < xEndExclusive;
-        const bool connectorTouchesVisibleRange =
-            connectFromPrevious &&
-            ((prevX < xStart && drawXi >= xStart) ||
-             (prevX >= xStart && prevX < xEndExclusive));
-
         if (columnVisible)
         {
             if (y1 != y2)
@@ -765,11 +760,6 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
             {
                 SDL_RenderPoint(renderer, drawXi, y1);
             }
-        }
-
-        if (connectorTouchesVisibleRange)
-        {
-            SDL_RenderLine(renderer, prevX, prevY, drawXi, midY);
         }
 
         prevX = drawXi;
