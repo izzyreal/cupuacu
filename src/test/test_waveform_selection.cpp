@@ -21,6 +21,34 @@ TEST_CASE("Block-mode selection rect covers boundary pixels for sample ranges",
     REQUIRE(rect.h == 20.0f);
 }
 
+TEST_CASE("Block-mode selection fill rect excludes partially covered boundary pixels",
+          "[selection]")
+{
+    SDL_FRect rect{};
+
+    // With 10 samples per pixel, [15,25) intersects pixels 1 and 2 but fully
+    // covers neither, so the filled selection area should not include either.
+    const bool ok = cupuacu::gui::Waveform::computeBlockModeSelectionFillRect(
+        15, 25, 0, 10.0, 100, 20, rect);
+
+    REQUIRE_FALSE(ok);
+}
+
+TEST_CASE("Block-mode selection fill rect keeps fully covered interior pixels",
+          "[selection]")
+{
+    SDL_FRect rect{};
+
+    // With 10 samples per pixel, [10,30) fully covers pixels 1 and 2.
+    const bool ok = cupuacu::gui::Waveform::computeBlockModeSelectionFillRect(
+        10, 30, 0, 10.0, 100, 20, rect);
+
+    REQUIRE(ok);
+    REQUIRE(rect.x == 1.0f);
+    REQUIRE(rect.w == 2.0f);
+    REQUIRE(rect.h == 20.0f);
+}
+
 TEST_CASE("Block-mode selection rect expands to cache-bin boundaries",
           "[selection]")
 {

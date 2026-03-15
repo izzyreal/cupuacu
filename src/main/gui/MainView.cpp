@@ -501,7 +501,11 @@ void MainView::updateTriangleMarkerBounds() const
             const int64_t lastSampleExclusive =
                 session.selection.getEndExclusiveInt();
 
-            if (Waveform::computeBlockModeSelectionEdgePixels(
+            if (Waveform::computeBlockModeSelectionFillEdgePixels(
+                    firstSample, lastSampleExclusive, sampleOffset,
+                    samplesPerPixel, waveforms->getWidth(), startX,
+                    endX) == false &&
+                Waveform::computeBlockModeSelectionEdgePixels(
                     firstSample, lastSampleExclusive, sampleOffset,
                     samplesPerPixel, waveforms->getWidth(), startX, endX, 1,
                     false) == false)

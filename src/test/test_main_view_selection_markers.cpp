@@ -81,6 +81,12 @@ TEST_CASE("Selection markers align with block selection edges", "[gui]")
     int32_t expectedStartEdge = 0;
     int32_t expectedEndEdge = 0;
     const bool hasSelectionEdges =
+        cupuacu::gui::Waveform::computeBlockModeSelectionFillEdgePixels(
+            session.selection.getStartInt(),
+            session.selection.getEndExclusiveInt(),
+            viewState.sampleOffset, viewState.samplesPerPixel,
+            state.waveforms[0]->getWidth(), expectedStartEdge,
+            expectedEndEdge) ||
         cupuacu::gui::Waveform::computeBlockModeSelectionEdgePixels(
             session.selection.getStartInt(),
             session.selection.getEndExclusiveInt(),

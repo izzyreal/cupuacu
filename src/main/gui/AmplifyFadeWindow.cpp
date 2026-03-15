@@ -326,6 +326,21 @@ void AmplifyFadeWindow::applyEffect()
     }
 
     commitInputValues();
+    if (state->mainDocumentSessionWindow)
+    {
+        const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+        const auto &selection = state->activeDocumentSession.selection;
+        SDL_Log(
+            "CUPUACU_DEBUG_FADE_BOUNDARY: apply start=%.2f end=%.2f curve=%d pixelScale=%u samplesPerPixel=%.6f sampleOffset=%lld selectionActive=%d selection=[%lld,%lld)",
+            startPercent, endPercent, getCurveIndex(),
+            static_cast<unsigned>(state->pixelScale), viewState.samplesPerPixel,
+            static_cast<long long>(viewState.sampleOffset),
+            selection.isActive() ? 1 : 0,
+            static_cast<long long>(selection.isActive() ? selection.getStartInt()
+                                                        : 0),
+            static_cast<long long>(
+                selection.isActive() ? selection.getEndExclusiveInt() : 0));
+    }
     cupuacu::actions::audio::performAmplifyFade(
         state, startPercent, endPercent, getCurveIndex());
 

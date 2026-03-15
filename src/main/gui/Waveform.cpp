@@ -215,7 +215,11 @@ bool Waveform::ensureBaseTexture(SDL_Renderer *renderer) const
 
     const auto newKey = computeBaseTextureCacheKey();
     const bool isBlockMode = newKey.samplesPerPixel >= 1.0;
-    if (isBlockMode && canRenderCurrentViewFromCachedBlockTexture(newKey))
+    const bool selectionActive =
+        state && state->activeDocumentSession.selection.isActive();
+    const bool allowBlockCoverageReuse = isBlockMode && !selectionActive;
+    if (allowBlockCoverageReuse &&
+        canRenderCurrentViewFromCachedBlockTexture(newKey))
     {
         return true;
     }
@@ -241,7 +245,8 @@ bool Waveform::ensureBaseTexture(SDL_Renderer *renderer) const
     }
 
     const auto targetKey =
-        isBlockMode ? makeCurrentBlockTextureCoverageKey(newKey) : newKey;
+        allowBlockCoverageReuse ? makeCurrentBlockTextureCoverageKey(newKey)
+                                : newKey;
 
     if (!cachedBaseTexture ||
         cachedBaseTextureKey.width != targetKey.width ||
@@ -289,7 +294,7 @@ bool Waveform::ensureBaseTexture(SDL_Renderer *renderer) const
 
     cachedBaseTextureKey = targetKey;
     cachedBaseTextureValid = true;
-    if (isBlockMode)
+    if (allowBlockCoverageReuse)
     {
         canRenderCurrentViewFromCachedBlockTexture(newKey);
     }
@@ -494,6 +499,65 @@ bool Waveform::computeBlockModeSelectionRect(
     const int drawWidth = std::max(1, drawEnd - drawStart);
     outRect = {static_cast<float>(drawStart), 0.0f,
                static_cast<float>(drawWidth), static_cast<float>(height)};
+    return true;
+}
+
+bool Waveform::computeBlockModeSelectionFillRect(
+    const int64_t firstSample, const int64_t lastSampleExclusive,
+    const int64_t sampleOffset, const double samplesPerPixel, const int width,
+    const int height, SDL_FRect &outRect)
+{
+    if (samplesPerPixel <= 0.0 || width <= 0 || height <= 0 ||
+        lastSampleExclusive <= firstSample)
+    {
+        return false;
+    }
+
+    const double startPxD =
+        (static_cast<double>(firstSample) - static_cast<double>(sampleOffset)) /
+        samplesPerPixel;
+    const double endPxD =
+        (static_cast<double>(lastSampleExclusive) -
+         static_cast<double>(sampleOffset)) /
+        samplesPerPixel;
+
+    const int startPx = static_cast<int>(std::ceil(startPxD));
+    const int endPx = static_cast<int>(std::floor(endPxD));
+
+    if (endPx <= 0 || startPx >= width)
+    {
+        return false;
+    }
+
+    const int drawStart = std::clamp(startPx, 0, width);
+    const int drawEnd = std::clamp(endPx, 0, width);
+    if (drawEnd <= drawStart)
+    {
+        return false;
+    }
+
+    outRect = {static_cast<float>(drawStart), 0.0f,
+               static_cast<float>(drawEnd - drawStart),
+               static_cast<float>(height)};
+    return true;
+}
+
+bool Waveform::computeBlockModeSelectionFillEdgePixels(
+    const int64_t firstSample, const int64_t lastSampleExclusive,
+    const int64_t sampleOffset, const double samplesPerPixel, const int width,
+    int32_t &outStartEdgePx, int32_t &outEndEdgePxExclusive)
+{
+    SDL_FRect rect{};
+    if (!computeBlockModeSelectionFillRect(firstSample, lastSampleExclusive,
+                                           sampleOffset, samplesPerPixel,
+                                           width, 1, rect))
+    {
+        return false;
+    }
+
+    outStartEdgePx = static_cast<int32_t>(std::lround(rect.x));
+    outEndEdgePxExclusive =
+        static_cast<int32_t>(std::lround(rect.x + rect.w));
     return true;
 }
 
@@ -715,7 +779,10 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
         doc.getAudioBuffer()->getImmutableChannelData(channelIndex);
     const int64_t frameCount = doc.getFrameCount();
 
-    const bool bypassCache = samplesPerPixel < WaveformCache::BASE_BLOCK_SIZE;
+    const double cacheBypassThreshold =
+        static_cast<double>(WaveformCache::BASE_BLOCK_SIZE) *
+        static_cast<double>(std::max<uint8_t>(1, state->pixelScale));
+    const bool bypassCache = samplesPerPixel < cacheBypassThreshold;
 
     auto &waveformCache = doc.getWaveformCache(channelIndex);
 
@@ -740,6 +807,46 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
         bypassCache ? 0 : waveformCache.samplesPerPeakForLevel(cacheLevel);
     const std::vector<Peak> *peaks =
         bypassCache ? nullptr : &waveformCache.getLevel(samplesPerPixel);
+    const auto &selection = session.selection;
+    const bool logSelectionBoundary = selection.isActive();
+    const int64_t selectionStartSample =
+        logSelectionBoundary ? selection.getStartInt() : 0;
+    const int64_t selectionEndSample =
+        logSelectionBoundary ? selection.getEndExclusiveInt() : 0;
+    int32_t selectionStartEdgeX = std::numeric_limits<int32_t>::min();
+    int32_t selectionEndEdgeX = std::numeric_limits<int32_t>::min();
+    const bool channelSelectionActive =
+        selection.isActive() &&
+        (viewState.selectedChannels == BOTH ||
+         (channelIndex == 0 && viewState.selectedChannels == LEFT) ||
+         (channelIndex == 1 && viewState.selectedChannels == RIGHT));
+    const bool hasSelectionEdges =
+        channelSelectionActive &&
+        (computeBlockModeSelectionFillEdgePixels(
+             selectionStartSample, selectionEndSample, sampleOffset,
+             samplesPerPixel, widthToUse, selectionStartEdgeX,
+             selectionEndEdgeX) ||
+         computeBlockModeSelectionEdgePixels(
+             selectionStartSample, selectionEndSample, sampleOffset,
+             samplesPerPixel, widthToUse, selectionStartEdgeX,
+             selectionEndEdgeX, 1, false));
+
+    if (logSelectionBoundary)
+    {
+        if (hasSelectionEdges)
+        {
+            SDL_Log(
+                "CUPUACU_DEBUG_FADE_BOUNDARY: channel=%u pixelScale=%u width=%d sampleOffset=%lld samplesPerPixel=%.6f bypassCache=%d cacheLevel=%d samplesPerPeak=%lld selection=[%lld,%lld) edges=[%d,%d) drawRange=[%d,%d)",
+                static_cast<unsigned>(channelIndex),
+                static_cast<unsigned>(state->pixelScale), widthToUse,
+                static_cast<long long>(sampleOffset), samplesPerPixel,
+                bypassCache ? 1 : 0, cacheLevel,
+                static_cast<long long>(samplesPerPeak),
+                static_cast<long long>(selectionStartSample),
+                static_cast<long long>(selectionEndSample),
+                selectionStartEdgeX, selectionEndEdgeX, xStart, xEndExclusive);
+        }
+    }
 
     auto accumulateRawPeakRange = [&](const int64_t startSample,
                                       const int64_t endSampleExclusive,
@@ -771,7 +878,8 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
         ioPeak.max = std::max(ioPeak.max, maxv);
     };
 
-    auto getPeakForPixel = [&](const int x, Peak &out) -> bool
+    auto getPeakForPixel = [&](const int x, const int drawXi,
+                               Peak &out) -> bool
     {
         double aD = 0.0;
         double bD = 0.0;
@@ -791,6 +899,28 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
         int64_t b = (int64_t)std::floor(bD);
         a = std::clamp<int64_t>(a, 0, frameCount - 1);
         b = std::clamp<int64_t>(b, a + 1, frameCount);
+
+        if (hasSelectionEdges)
+        {
+            if (drawXi < selectionStartEdgeX)
+            {
+                b = std::min<int64_t>(b, selectionStartSample);
+            }
+            else if (drawXi >= selectionEndEdgeX)
+            {
+                a = std::max<int64_t>(a, selectionEndSample);
+            }
+            else
+            {
+                a = std::max<int64_t>(a, selectionStartSample);
+                b = std::min<int64_t>(b, selectionEndSample);
+            }
+
+            if (b <= a)
+            {
+                return false;
+            }
+        }
 
         if (bypassCache)
         {
@@ -853,6 +983,24 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
         }
 
         out = peak;
+
+        if (logSelectionBoundary)
+        {
+            if (drawXi >= 0 && drawXi <= widthToUse)
+            {
+                const bool touchesSelectionBoundary =
+                    a < selectionEndSample + samplesPerPeak &&
+                    b > selectionEndSample - samplesPerPeak;
+                if (touchesSelectionBoundary)
+                {
+                    SDL_Log(
+                        "CUPUACU_DEBUG_FADE_BOUNDARY: column x=%d drawXi=%d window=[%lld,%lld) peak=[%.6f,%.6f]",
+                        x, drawXi, static_cast<long long>(a),
+                        static_cast<long long>(b), out.min, out.max);
+                }
+            }
+        }
+
         return true;
     };
 
@@ -871,12 +1019,6 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
 
     for (int x = lookupStart; x < lookupEndExclusive; ++x)
     {
-        Peak p{};
-        if (!getPeakForPixel(x, p))
-        {
-            continue;
-        }
-
         const float drawX = static_cast<float>(x - blockRenderPhasePx);
         const int drawXi = static_cast<int>(std::lround(drawX));
         if (drawXi < 0 || drawXi > widthToUse)
@@ -889,10 +1031,24 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
             continue;
         }
 
+        Peak p{};
+        if (!getPeakForPixel(x, drawXi, p))
+        {
+            continue;
+        }
+
         const int y1 = static_cast<int>(centerY - p.max * scale);
         const int y2 = static_cast<int>(centerY - p.min * scale);
         const int midY = (y1 + y2) / 2;
-        const bool connectFromPrevious = hasPrev && prevX != drawXi;
+        const bool crossesSelectionStart =
+            hasSelectionEdges && prevX < selectionStartEdgeX &&
+            drawXi >= selectionStartEdgeX;
+        const bool crossesSelectionEnd =
+            hasSelectionEdges && prevX < selectionEndEdgeX &&
+            drawXi >= selectionEndEdgeX;
+        const bool connectFromPrevious =
+            hasPrev && prevX != drawXi && !crossesSelectionStart &&
+            !crossesSelectionEnd;
 
         const bool columnVisible =
             drawXi >= xStart && drawXi < xEndExclusive;
@@ -912,9 +1068,7 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
         }
 
         const bool connectorTouchesVisibleRange =
-            connectFromPrevious &&
-            ((prevX < xStart && drawXi >= xStart) ||
-             (prevX >= xStart && prevX < xEndExclusive));
+            connectFromPrevious && drawXi >= xStart && drawXi < xEndExclusive;
 
         if (connectorTouchesVisibleRange)
         {
@@ -962,10 +1116,10 @@ void Waveform::drawSelection(SDL_Renderer *renderer) const
         if (samplesPerPixel >= 1.0)
         {
             SDL_FRect selectionRect{};
-            if (computeBlockModeSelectionRect(firstSample, lastSample,
-                                              sampleOffset, samplesPerPixel,
-                                              getWidth(), getHeight(),
-                                              selectionRect, 1, false))
+            if (computeBlockModeSelectionFillRect(firstSample, lastSample,
+                                                  sampleOffset,
+                                                  samplesPerPixel, getWidth(),
+                                                  getHeight(), selectionRect))
             {
                 SDL_RenderFillRect(renderer, &selectionRect);
             }
