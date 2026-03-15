@@ -633,21 +633,36 @@ void Waveform::renderSmoothWaveform(SDL_Renderer *renderer) const
                 2.0f));
     };
 
+    std::vector<SDL_Vertex> vertices;
+    std::vector<int> indices;
+    vertices.reserve(input.sampleX.size() * 4);
+    indices.reserve(input.sampleX.size() * 6);
+
     for (std::size_t i = 0; i + 1 < input.sampleX.size(); ++i)
     {
-        const int x1 = static_cast<int>(std::lround(input.sampleX[i]));
-        const int x2 = static_cast<int>(std::lround(input.sampleX[i + 1]));
-        const int y1 = sampleYToScreenY(input.sampleY[i]);
-        const int y2 = sampleYToScreenY(input.sampleY[i + 1]);
+        const float x1 = static_cast<float>(input.sampleX[i]);
+        const float x2 = static_cast<float>(input.sampleX[i + 1]);
+        const float y1 = static_cast<float>(sampleYToScreenY(input.sampleY[i]));
+        const float y2 =
+            static_cast<float>(sampleYToScreenY(input.sampleY[i + 1]));
 
-        if (x1 == x2 && y1 == y2)
+        if (std::lround(x1) == std::lround(x2) &&
+            std::lround(y1) == std::lround(y2))
         {
-            SDL_RenderPoint(renderer, x1, y1);
+            appendPointQuad(vertices, indices, static_cast<int>(std::lround(x1)),
+                            static_cast<int>(std::lround(y1)), waveformFColor);
         }
         else
         {
-            SDL_RenderLine(renderer, x1, y1, x2, y2);
+            appendLineQuad(vertices, indices, x1, y1, x2, y2, waveformFColor);
         }
+    }
+
+    if (!vertices.empty() && !indices.empty())
+    {
+        SDL_RenderGeometry(renderer, nullptr, vertices.data(),
+                           static_cast<int>(vertices.size()), indices.data(),
+                           static_cast<int>(indices.size()));
     }
 }
 
