@@ -38,11 +38,16 @@ namespace cupuacu::gui
             return input;
         }
 
+        const int64_t leadingSamples = sampleOffset > 0 ? 1 : 0;
+        const int64_t trailingSamples =
+            sampleOffset < frameCount ? 1 : 0;
         const int64_t neededInputSamples =
             static_cast<int64_t>(std::ceil((width + 1) * samplesPerPixel));
-        const int64_t availableSamples = frameCount - sampleOffset;
+        const int64_t fetchStart = std::max<int64_t>(0, sampleOffset - leadingSamples);
+        const int64_t availableSamples = frameCount - fetchStart;
         const int64_t actualInputSamples =
-            std::min(neededInputSamples, availableSamples);
+            std::min(neededInputSamples + leadingSamples + trailingSamples,
+                     availableSamples);
         if (actualInputSamples < 1)
         {
             return input;
@@ -52,10 +57,13 @@ namespace cupuacu::gui
         input.sampleY.resize(static_cast<std::size_t>(actualInputSamples));
         for (int64_t i = 0; i < actualInputSamples; ++i)
         {
+            const int64_t sampleIndex = fetchStart + i;
             input.sampleX[static_cast<std::size_t>(i)] =
-                static_cast<double>(i) / samplesPerPixel + halfSampleWidth;
+                (static_cast<double>(sampleIndex - sampleOffset) /
+                 samplesPerPixel) +
+                halfSampleWidth;
             input.sampleY[static_cast<std::size_t>(i)] =
-                static_cast<double>(getSampleValue(sampleOffset + i));
+                static_cast<double>(getSampleValue(sampleIndex));
         }
 
         input.queryX.resize(static_cast<std::size_t>(width + 1));

@@ -625,18 +625,20 @@ void Waveform::renderSmoothWaveform(SDL_Renderer *renderer) const
         return;
     }
 
+    const auto sampleYToScreenY = [&](const double sampleValue)
+    {
+        return static_cast<int>(std::lround(
+            heightToUse / 2.0f -
+            static_cast<float>(sampleValue) * verticalZoom * drawableHeight /
+                2.0f));
+    };
+
     for (std::size_t i = 0; i + 1 < input.sampleX.size(); ++i)
     {
         const int x1 = static_cast<int>(std::lround(input.sampleX[i]));
         const int x2 = static_cast<int>(std::lround(input.sampleX[i + 1]));
-        const int y1 = static_cast<int>(
-            std::lround(heightToUse / 2.0f -
-                        static_cast<float>(input.sampleY[i]) * verticalZoom *
-                            drawableHeight / 2.0f));
-        const int y2 = static_cast<int>(
-            std::lround(heightToUse / 2.0f -
-                        static_cast<float>(input.sampleY[i + 1]) *
-                            verticalZoom * drawableHeight / 2.0f));
+        const int y1 = sampleYToScreenY(input.sampleY[i]);
+        const int y2 = sampleYToScreenY(input.sampleY[i + 1]);
 
         if (x1 == x2 && y1 == y2)
         {

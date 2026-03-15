@@ -238,11 +238,13 @@ TEST_CASE("Waveform smooth render helpers plan input buffers and quads", "[gui]"
             return static_cast<float>(sampleIndex);
         });
 
-    REQUIRE(input.sampleX.size() == 2);
-    REQUIRE(input.sampleY.size() == 2);
+    REQUIRE(input.sampleX.size() == 4);
+    REQUIRE(input.sampleY.size() == 4);
     REQUIRE(input.queryX.size() == 4);
-    REQUIRE(input.sampleX[0] == Catch::Approx(1.0));
-    REQUIRE(input.sampleY[0] == Catch::Approx(2.0));
+    REQUIRE(input.sampleX[0] == Catch::Approx(-1.0));
+    REQUIRE(input.sampleX[1] == Catch::Approx(1.0));
+    REQUIRE(input.sampleY[0] == Catch::Approx(1.0));
+    REQUIRE(input.sampleY[1] == Catch::Approx(2.0));
     REQUIRE(input.queryX[3] == Catch::Approx(3.0));
 
     const auto quad =
