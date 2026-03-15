@@ -17,6 +17,61 @@
 
 using namespace cupuacu::gui;
 
+namespace
+{
+    void appendColoredQuad(std::vector<SDL_Vertex> &vertices,
+                           std::vector<int> &indices,
+                           const std::array<SDL_FPoint, 4> &positions,
+                           const SDL_FColor color)
+    {
+        const int baseIndex = static_cast<int>(vertices.size());
+        for (const auto &position : positions)
+        {
+            vertices.push_back({position, color, {0.0f, 0.0f}});
+        }
+
+        const int quadIndices[6] = {0, 1, 2, 0, 2, 3};
+        for (const int index : quadIndices)
+        {
+            indices.push_back(baseIndex + index);
+        }
+    }
+
+    void appendPointQuad(std::vector<SDL_Vertex> &vertices,
+                         std::vector<int> &indices, const int x, const int y,
+                         const SDL_FColor color)
+    {
+        appendColoredQuad(
+            vertices, indices,
+            {SDL_FPoint{static_cast<float>(x) - 0.5f,
+                        static_cast<float>(y) - 0.5f},
+             SDL_FPoint{static_cast<float>(x) + 0.5f,
+                        static_cast<float>(y) - 0.5f},
+             SDL_FPoint{static_cast<float>(x) + 0.5f,
+                        static_cast<float>(y) + 0.5f},
+             SDL_FPoint{static_cast<float>(x) - 0.5f,
+                        static_cast<float>(y) + 0.5f}},
+            color);
+    }
+
+    void appendLineQuad(std::vector<SDL_Vertex> &vertices,
+                        std::vector<int> &indices, const float x1,
+                        const float y1, const float x2, const float y2,
+                        const SDL_FColor color)
+    {
+        const auto quad =
+            planWaveformSmoothSegmentQuad(x1, x2, y1, y2, 1.0f);
+        if (!quad)
+        {
+            appendPointQuad(vertices, indices, static_cast<int>(std::lround(x1)),
+                            static_cast<int>(std::lround(y1)), color);
+            return;
+        }
+
+        appendColoredQuad(vertices, indices, quad->vertices, color);
+    }
+}
+
 Waveform::Waveform(State *state, const uint8_t channelIndexToUse)
     : Component(state, "Waveform"), channelIndex(channelIndexToUse)
 {
@@ -719,6 +774,11 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
     int prevY = 0;
     bool hasPrev = false;
     int lastDrawXi = std::numeric_limits<int>::min();
+    std::vector<SDL_Vertex> vertices;
+    std::vector<int> indices;
+    const int visibleWidth = xEndExclusive - xStart;
+    vertices.reserve(static_cast<std::size_t>(visibleWidth) * 8);
+    indices.reserve(static_cast<std::size_t>(visibleWidth) * 12);
 
     const int lookupStart = std::max(0, xStart - 1);
     const int lookupEndExclusive = std::min(widthToUse + 1, xEndExclusive + 1);
@@ -754,18 +814,41 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
         {
             if (y1 != y2)
             {
-                SDL_RenderLine(renderer, drawXi, y1, drawXi, y2);
+                appendLineQuad(vertices, indices, static_cast<float>(drawXi),
+                               static_cast<float>(y1),
+                               static_cast<float>(drawXi),
+                               static_cast<float>(y2), waveformFColor);
             }
             else
             {
-                SDL_RenderPoint(renderer, drawXi, y1);
+                appendPointQuad(vertices, indices, drawXi, y1, waveformFColor);
             }
+        }
+
+        const bool connectorTouchesVisibleRange =
+            connectFromPrevious &&
+            ((prevX < xStart && drawXi >= xStart) ||
+             (prevX >= xStart && prevX < xEndExclusive));
+
+        if (connectorTouchesVisibleRange)
+        {
+            appendLineQuad(vertices, indices, static_cast<float>(prevX),
+                           static_cast<float>(prevY),
+                           static_cast<float>(drawXi),
+                           static_cast<float>(midY), waveformFColor);
         }
 
         prevX = drawXi;
         prevY = midY;
         hasPrev = true;
         lastDrawXi = drawXi;
+    }
+
+    if (!vertices.empty() && !indices.empty())
+    {
+        SDL_RenderGeometry(renderer, nullptr, vertices.data(),
+                           static_cast<int>(vertices.size()), indices.data(),
+                           static_cast<int>(indices.size()));
     }
 }
 
