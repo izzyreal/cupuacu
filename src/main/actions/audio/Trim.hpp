@@ -1,6 +1,8 @@
 #pragma once
 #include "DurationMutationUndoable.hpp"
+#include "../ViewPolicy.hpp"
 #include "../../Document.hpp"
+#include "../../gui/Waveform.hpp"
 #include <vector>
 #include <cstdint>
 #include <algorithm>
@@ -10,6 +12,21 @@ namespace cupuacu::actions::audio
 
     class Trim : public DurationMutationUndoable
     {
+        struct ViewSnapshot
+        {
+            double samplesPerPixel = 1.0;
+            double verticalZoom = 1.0;
+            int64_t sampleOffset = 0;
+        };
+
+        enum class PendingViewRestore
+        {
+            None,
+            CapturePostRedo,
+            RestorePreUndo,
+            RestorePostRedo
+        };
+
         int64_t startFrame;
         int64_t length;
 
@@ -24,15 +41,87 @@ namespace cupuacu::actions::audio
         std::vector<std::vector<float>> before;
         std::vector<std::vector<float>> after;
 
+        ViewSnapshot preTrimView{};
+        ViewSnapshot postTrimView{};
+        bool hasPostTrimView = false;
+        PendingViewRestore pendingViewRestore = PendingViewRestore::None;
+
+        static ViewSnapshot captureViewSnapshot(const State *state)
+        {
+            ViewSnapshot snapshot{};
+            if (!state || !state->mainDocumentSessionWindow)
+            {
+                return snapshot;
+            }
+
+            const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+            snapshot.samplesPerPixel = viewState.samplesPerPixel;
+            snapshot.verticalZoom = viewState.verticalZoom;
+            snapshot.sampleOffset = viewState.sampleOffset;
+            return snapshot;
+        }
+
+        void restoreViewSnapshot(const ViewSnapshot &snapshot) const
+        {
+            if (!state || !state->mainDocumentSessionWindow)
+            {
+                return;
+            }
+
+            auto &viewState = state->mainDocumentSessionWindow->getViewState();
+            viewState.samplesPerPixel = snapshot.samplesPerPixel;
+            viewState.verticalZoom = snapshot.verticalZoom;
+            updateSampleOffset(state, snapshot.sampleOffset);
+        }
+
+        void refreshWaveformUi() const
+        {
+            gui::Waveform::updateAllSamplePoints(state);
+            gui::Waveform::setAllWaveformsDirty(state);
+
+            if (state->mainView)
+            {
+                state->mainView->setDirty();
+            }
+        }
+
     public:
         Trim(State *state, int64_t start, int64_t lengthToKeep)
             : DurationMutationUndoable(state), startFrame(start),
               length(lengthToKeep)
         {
+            preTrimView = captureViewSnapshot(state);
+            updateGui = [this]
+            {
+                switch (pendingViewRestore)
+                {
+                case PendingViewRestore::CapturePostRedo:
+                    cupuacu::actions::applyDurationChangeViewPolicy(this->state);
+                    postTrimView = captureViewSnapshot(this->state);
+                    hasPostTrimView = true;
+                    break;
+                case PendingViewRestore::RestorePreUndo:
+                    restoreViewSnapshot(preTrimView);
+                    refreshWaveformUi();
+                    break;
+                case PendingViewRestore::RestorePostRedo:
+                    restoreViewSnapshot(postTrimView);
+                    refreshWaveformUi();
+                    break;
+                case PendingViewRestore::None:
+                    break;
+                }
+
+                pendingViewRestore = PendingViewRestore::None;
+            };
         }
 
         void redo() override
         {
+            pendingViewRestore = hasPostTrimView
+                                     ? PendingViewRestore::RestorePostRedo
+                                     : PendingViewRestore::CapturePostRedo;
+
             auto &session = state->activeDocumentSession;
             auto &doc = session.document;
             const int64_t ch = doc.getChannelCount();
@@ -42,6 +131,7 @@ namespace cupuacu::actions::audio
 
             if (startFrame < 0 || length <= 0 || startFrame >= oldTotal)
             {
+                pendingViewRestore = PendingViewRestore::None;
                 return;
             }
 
@@ -96,6 +186,8 @@ namespace cupuacu::actions::audio
 
         void undo() override
         {
+            pendingViewRestore = PendingViewRestore::RestorePreUndo;
+
             auto &session = state->activeDocumentSession;
             auto &doc = session.document;
             const int64_t ch = doc.getChannelCount();

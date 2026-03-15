@@ -194,6 +194,37 @@ TEST_CASE("Trim keeps zoom when new duration still covers visible range",
     REQUIRE(viewState.samplesPerPixel == zoomBefore);
 }
 
+TEST_CASE("Trim undo restores pre-trim zoom and sample offset", "[session]")
+{
+    cupuacu::State state{};
+    auto &session = state.activeDocumentSession;
+    [[maybe_unused]] auto ui = cupuacu::test::createSessionUi(&state, 5000);
+
+    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+    viewState.samplesPerPixel = 4.0;
+    viewState.verticalZoom = 2.2;
+    updateSampleOffset(&state, 1200);
+    const double zoomBefore = viewState.samplesPerPixel;
+    const double verticalZoomBefore = viewState.verticalZoom;
+    const int64_t offsetBefore = viewState.sampleOffset;
+
+    session.selection.setValue1(1500.0);
+    session.selection.setValue2(2500.0);
+    cupuacu::actions::audio::performTrim(&state);
+
+    REQUIRE(session.document.getFrameCount() == 1000);
+    REQUIRE(viewState.samplesPerPixel == zoomBefore);
+    REQUIRE(viewState.verticalZoom == verticalZoomBefore);
+    REQUIRE(viewState.sampleOffset == offsetBefore);
+
+    state.undo();
+
+    REQUIRE(session.document.getFrameCount() == 5000);
+    REQUIRE(viewState.samplesPerPixel == zoomBefore);
+    REQUIRE(viewState.verticalZoom == verticalZoomBefore);
+    REQUIRE(viewState.sampleOffset == offsetBefore);
+}
+
 TEST_CASE("Paste undo applies duration-change policy and restores fit zoom",
           "[session]")
 {
