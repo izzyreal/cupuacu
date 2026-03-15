@@ -617,16 +617,21 @@ void Waveform::renderSmoothWaveform(SDL_Renderer *renderer) const
         return;
     }
 
+    const auto smoothedY = evaluateWaveformSmoothSpline(input);
+    if (smoothedY.empty())
+    {
+        return;
+    }
+
     SDL_SetRenderDrawColor(renderer, waveformColor.r, waveformColor.g,
                            waveformColor.b, waveformColor.a);
 
-    if (input.sampleX.size() == 1)
+    if (smoothedY.size() == 1 || input.queryX.size() == 1)
     {
-        const int x = static_cast<int>(std::lround(input.sampleX.front()));
+        const int x = static_cast<int>(std::lround(input.queryX.front()));
         const int y = static_cast<int>(
-            std::lround(heightToUse / 2.0f -
-                        static_cast<float>(input.sampleY.front()) *
-                            verticalZoom * drawableHeight / 2.0f));
+            std::lround(heightToUse / 2.0f - smoothedY.front() * verticalZoom *
+                                                  drawableHeight / 2.0f));
         SDL_RenderPoint(renderer, x, y);
         return;
     }
@@ -641,16 +646,16 @@ void Waveform::renderSmoothWaveform(SDL_Renderer *renderer) const
 
     std::vector<SDL_Vertex> vertices;
     std::vector<int> indices;
-    vertices.reserve(input.sampleX.size() * 4);
-    indices.reserve(input.sampleX.size() * 6);
+    vertices.reserve(smoothedY.size() * 4);
+    indices.reserve(smoothedY.size() * 6);
 
-    for (std::size_t i = 0; i + 1 < input.sampleX.size(); ++i)
+    for (std::size_t i = 0; i + 1 < smoothedY.size() && i + 1 < input.queryX.size();
+         ++i)
     {
-        const float x1 = static_cast<float>(input.sampleX[i]);
-        const float x2 = static_cast<float>(input.sampleX[i + 1]);
-        const float y1 = static_cast<float>(sampleYToScreenY(input.sampleY[i]));
-        const float y2 =
-            static_cast<float>(sampleYToScreenY(input.sampleY[i + 1]));
+        const float x1 = static_cast<float>(input.queryX[i]);
+        const float x2 = static_cast<float>(input.queryX[i + 1]);
+        const float y1 = static_cast<float>(sampleYToScreenY(smoothedY[i]));
+        const float y2 = static_cast<float>(sampleYToScreenY(smoothedY[i + 1]));
 
         if (std::lround(x1) == std::lround(x2) &&
             std::lround(y1) == std::lround(y2))

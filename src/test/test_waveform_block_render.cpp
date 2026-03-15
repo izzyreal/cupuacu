@@ -247,6 +247,18 @@ TEST_CASE("Waveform smooth render helpers plan input buffers and quads", "[gui]"
     REQUIRE(input.sampleY[1] == Catch::Approx(2.0));
     REQUIRE(input.queryX[3] == Catch::Approx(3.0));
 
+    const cupuacu::gui::WaveformSmoothRenderInput curvedInput{
+        {-1.0, 1.0, 3.0, 5.0},
+        {0.0, 1.0, 0.0, 1.0},
+        {0.0, 1.0, 2.0, 3.0, 4.0}};
+    const auto smoothed =
+        cupuacu::gui::evaluateWaveformSmoothSpline(curvedInput);
+    REQUIRE(smoothed.size() == curvedInput.queryX.size());
+    REQUIRE(smoothed[0] == Catch::Approx(0.75f));
+    REQUIRE(smoothed[1] == Catch::Approx(1.0f));
+    REQUIRE(smoothed[2] == Catch::Approx(0.5f));
+    REQUIRE(smoothed[4] == Catch::Approx(0.25f));
+
     const auto quad =
         cupuacu::gui::planWaveformSmoothSegmentQuad(0.0f, 2.0f, 0.0f, 0.0f, 1.0f);
     REQUIRE(quad.has_value());

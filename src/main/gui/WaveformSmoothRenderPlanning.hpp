@@ -26,6 +26,19 @@ namespace cupuacu::gui
         std::array<SDL_FPoint, 4> vertices{};
     };
 
+    inline std::vector<float> evaluateWaveformSmoothSpline(
+        const WaveformSmoothRenderInput &input)
+    {
+        if (input.sampleX.size() < 2 || input.sampleY.size() < 2 ||
+            input.queryX.empty())
+        {
+            return {};
+        }
+
+        return splineInterpolateNonUniform(input.sampleX, input.sampleY,
+                                           input.queryX);
+    }
+
     inline WaveformSmoothRenderInput planWaveformSmoothRenderInput(
         const int width, const double samplesPerPixel,
         const int64_t sampleOffset, const double halfSampleWidth,
