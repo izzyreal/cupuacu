@@ -116,6 +116,38 @@ namespace cupuacu::gui
                                                          samplesPerPixel)));
         }
 
+        static int64_t quantizeBlockScrollOffset(const int64_t desiredOffset,
+                                                 const int64_t maxOffset,
+                                                 const double samplesPerPixel,
+                                                 const uint8_t pixelScale)
+        {
+            const int64_t clamped =
+                std::clamp<int64_t>(desiredOffset, 0, std::max<int64_t>(0, maxOffset));
+            if (samplesPerPixel < 1.0 ||
+                shouldShowSamplePoints(samplesPerPixel, pixelScale))
+            {
+                return clamped;
+            }
+
+            const int64_t step = std::max<int64_t>(
+                1, static_cast<int64_t>(std::llround(samplesPerPixel)));
+            if (clamped <= step / 2)
+            {
+                return 0;
+            }
+            if (clamped >= maxOffset - step / 2)
+            {
+                return std::max<int64_t>(0, maxOffset);
+            }
+
+            return std::clamp<int64_t>(
+                static_cast<int64_t>(
+                    std::llround(static_cast<double>(clamped) /
+                                 static_cast<double>(step))) *
+                    step,
+                0, std::max<int64_t>(0, maxOffset));
+        }
+
         static double getBlockRenderSampleAnchor(const int64_t sampleOffset,
                                                  const double samplesPerPixel)
         {

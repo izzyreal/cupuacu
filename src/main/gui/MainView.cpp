@@ -403,7 +403,13 @@ MainView::MainView(State *state) : Component(state, "MainView")
         {
             auto &viewState = state->mainDocumentSessionWindow->getViewState();
             const int64_t oldOffset = viewState.sampleOffset;
-            updateSampleOffset(state, static_cast<int64_t>(std::llround(value)));
+            const int64_t requestedOffset =
+                static_cast<int64_t>(std::llround(value));
+            const int64_t snappedOffset =
+                Waveform::quantizeBlockScrollOffset(
+                    requestedOffset, getMaxSampleOffset(state),
+                    viewState.samplesPerPixel, state->pixelScale);
+            updateSampleOffset(state, snappedOffset);
             if (oldOffset == viewState.sampleOffset)
             {
                 return;
@@ -411,7 +417,11 @@ MainView::MainView(State *state) : Component(state, "MainView")
 
             resetSampleValueUnderMouseCursor(state);
             clearWaveformHighlights(state);
-            refreshWaveforms(state, true, true);
+            refreshWaveforms(
+                state,
+                Waveform::shouldShowSamplePoints(viewState.samplesPerPixel,
+                                                state->pixelScale),
+                true);
         });
 
     waveforms = emplaceChild<Waveforms>(state);

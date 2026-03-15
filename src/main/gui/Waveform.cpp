@@ -236,7 +236,7 @@ bool Waveform::ensureBaseTexture(SDL_Renderer *renderer) const
     }
 
     int pixelShift = 0;
-    if (!isBlockMode && cachedBaseTextureValid && cachedBaseTexture &&
+    if (isBlockMode && cachedBaseTextureValid && cachedBaseTexture &&
         canReuseBlockTextureForHorizontalShift(newKey, pixelShift) &&
         rebuildShiftedBlockTexture(renderer, newKey, pixelShift))
     {

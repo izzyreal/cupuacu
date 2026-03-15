@@ -285,7 +285,12 @@ void WaveformsUnderlay::timerCallback()
             ? std::min(-1.0, viewState.samplesToScroll)
             : std::max(1.0, viewState.samplesToScroll);
     const int64_t oldOffset = viewState.sampleOffset;
-    updateSampleOffset(state, viewState.sampleOffset + samplesToScroll);
+    const int64_t requestedOffset = static_cast<int64_t>(
+        std::llround(static_cast<double>(viewState.sampleOffset) + samplesToScroll));
+    const int64_t snappedOffset = Waveform::quantizeBlockScrollOffset(
+        requestedOffset, getMaxSampleOffset(state), viewState.samplesPerPixel,
+        state->pixelScale);
+    updateSampleOffset(state, snappedOffset);
     if (oldOffset == viewState.sampleOffset)
     {
         return;
@@ -335,8 +340,13 @@ bool WaveformsUnderlay::applyPendingHorizontalWheelScroll()
     }
 
     const int64_t oldOffset = viewState.sampleOffset;
-    updateSampleOffset(state, oldOffset + wholeSamples);
-    horizontalWheelRemainder -= static_cast<double>(wholeSamples);
+    const int64_t requestedOffset = oldOffset + wholeSamples;
+    const int64_t snappedOffset = Waveform::quantizeBlockScrollOffset(
+        requestedOffset, getMaxSampleOffset(state), viewState.samplesPerPixel,
+        state->pixelScale);
+    updateSampleOffset(state, snappedOffset);
+    horizontalWheelRemainder -=
+        static_cast<double>(viewState.sampleOffset - oldOffset);
 
     if (oldOffset == viewState.sampleOffset)
     {
