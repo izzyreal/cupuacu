@@ -3,6 +3,7 @@
 #include "Waveform.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <vector>
@@ -22,10 +23,10 @@ namespace cupuacu::gui
         return 32 / pixelScale;
     }
 
-    inline int getWaveformYPosForSampleValue(const float sampleValue,
-                                             const uint16_t waveformHeight,
-                                             const double verticalZoom,
-                                             const uint16_t samplePointSize)
+    inline float getWaveformCenterYForSampleValue(const float sampleValue,
+                                                  const uint16_t waveformHeight,
+                                                  const double verticalZoom,
+                                                  const uint16_t samplePointSize)
     {
         const float drawableHeight = waveformHeight - samplePointSize;
         return waveformHeight * 0.5f -
@@ -64,14 +65,15 @@ namespace cupuacu::gui
         {
             const int sampleX = static_cast<int>(
                 static_cast<double>(i) / samplesPerPixel + halfSampleWidth);
-            const int sampleY = getWaveformYPosForSampleValue(
+            const float sampleCenterY = getWaveformCenterYForSampleValue(
                 getSampleValue(sampleOffset + i), static_cast<uint16_t>(height),
                 verticalZoom, samplePointSize);
 
             result.push_back(WaveformSamplePointLayout{
                 sampleOffset + i,
                 std::max(0, sampleX - samplePointSize / 2),
-                sampleY - samplePointSize / 2,
+                static_cast<int>(std::lround(
+                    sampleCenterY - static_cast<float>(samplePointSize) * 0.5f)),
                 samplePointSize});
         }
 
