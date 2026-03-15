@@ -78,15 +78,6 @@ TEST_CASE("Selection markers align with block selection edges", "[gui]")
     REQUIRE_FALSE(cursorTop->isVisible());
     REQUIRE_FALSE(cursorBottom->isVisible());
 
-    int64_t samplesPerPeakForDisplay = 1;
-    if (viewState.samplesPerPixel >= cupuacu::gui::WaveformCache::BASE_BLOCK_SIZE)
-    {
-        const auto &waveformCache = session.document.getWaveformCache(0);
-        const int cacheLevel = waveformCache.getLevelIndex(viewState.samplesPerPixel);
-        samplesPerPeakForDisplay =
-            waveformCache.samplesPerPeakForLevel(cacheLevel);
-    }
-
     int32_t expectedStartEdge = 0;
     int32_t expectedEndEdge = 0;
     const bool hasSelectionEdges =
@@ -95,7 +86,7 @@ TEST_CASE("Selection markers align with block selection edges", "[gui]")
             session.selection.getEndExclusiveInt(),
             viewState.sampleOffset, viewState.samplesPerPixel,
             state.waveforms[0]->getWidth(), expectedStartEdge, expectedEndEdge,
-            samplesPerPeakForDisplay, true);
+            1, false);
     REQUIRE(hasSelectionEdges);
 
     const int waveformsAbsoluteX = state.waveforms[0]->getAbsoluteBounds().x;

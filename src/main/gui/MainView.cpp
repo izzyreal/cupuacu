@@ -501,23 +501,10 @@ void MainView::updateTriangleMarkerBounds() const
             const int64_t lastSampleExclusive =
                 session.selection.getEndExclusiveInt();
 
-            const bool bypassCache =
-                samplesPerPixel < WaveformCache::BASE_BLOCK_SIZE;
-            int64_t samplesPerPeakForDisplay = 1;
-            if (!bypassCache && state->activeDocumentSession.document.getChannelCount() > 0)
-            {
-                const auto &doc = state->activeDocumentSession.document;
-                const auto &waveformCache = doc.getWaveformCache(0);
-                const int cacheLevel =
-                    waveformCache.getLevelIndex(samplesPerPixel);
-                samplesPerPeakForDisplay =
-                    waveformCache.samplesPerPeakForLevel(cacheLevel);
-            }
-
             if (Waveform::computeBlockModeSelectionEdgePixels(
                     firstSample, lastSampleExclusive, sampleOffset,
-                    samplesPerPixel, waveforms->getWidth(),
-                    startX, endX, samplesPerPeakForDisplay, true) == false)
+                    samplesPerPixel, waveforms->getWidth(), startX, endX, 1,
+                    false) == false)
             {
                 startX = std::numeric_limits<int32_t>::min();
                 endX = std::numeric_limits<int32_t>::min();

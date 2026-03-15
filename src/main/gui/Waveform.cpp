@@ -741,6 +741,36 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
     const std::vector<Peak> *peaks =
         bypassCache ? nullptr : &waveformCache.getLevel(samplesPerPixel);
 
+    auto accumulateRawPeakRange = [&](const int64_t startSample,
+                                      const int64_t endSampleExclusive,
+                                      Peak &ioPeak,
+                                      bool &ioHasPeak) -> void
+    {
+        if (startSample >= endSampleExclusive)
+        {
+            return;
+        }
+
+        float minv = sampleData[startSample];
+        float maxv = sampleData[startSample];
+        for (int64_t i = startSample + 1; i < endSampleExclusive; ++i)
+        {
+            const float v = sampleData[i];
+            minv = std::min(minv, v);
+            maxv = std::max(maxv, v);
+        }
+
+        if (!ioHasPeak)
+        {
+            ioPeak = {minv, maxv};
+            ioHasPeak = true;
+            return;
+        }
+
+        ioPeak.min = std::min(ioPeak.min, minv);
+        ioPeak.max = std::max(ioPeak.max, maxv);
+    };
+
     auto getPeakForPixel = [&](const int x, Peak &out) -> bool
     {
         double aD = 0.0;
@@ -781,20 +811,48 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
             return false;
         }
 
-        const int64_t i0 = std::clamp<int64_t>(a / samplesPerPeak, 0,
-                                               (int64_t)peaks->size() - 1);
-        const int64_t i1 = std::clamp<int64_t>((b - 1) / samplesPerPeak, 0,
-                                               (int64_t)peaks->size() - 1);
+        Peak peak{};
+        bool hasPeak = false;
 
-        float minv = (*peaks)[i0].min;
-        float maxv = (*peaks)[i0].max;
-        for (int64_t i = i0 + 1; i <= i1; ++i)
+        const int64_t firstFullBlockStart =
+            ((a + samplesPerPeak - 1) / samplesPerPeak) * samplesPerPeak;
+        const int64_t lastFullBlockEnd =
+            (b / samplesPerPeak) * samplesPerPeak;
+
+        accumulateRawPeakRange(a, std::min(b, firstFullBlockStart), peak,
+                               hasPeak);
+
+        if (firstFullBlockStart < lastFullBlockEnd)
         {
-            minv = std::min(minv, (*peaks)[i].min);
-            maxv = std::max(maxv, (*peaks)[i].max);
+            const int64_t i0 = std::clamp<int64_t>(
+                firstFullBlockStart / samplesPerPeak, 0,
+                static_cast<int64_t>(peaks->size()) - 1);
+            const int64_t i1Exclusive = std::clamp<int64_t>(
+                lastFullBlockEnd / samplesPerPeak, 0,
+                static_cast<int64_t>(peaks->size()));
+
+            for (int64_t i = i0; i < i1Exclusive; ++i)
+            {
+                if (!hasPeak)
+                {
+                    peak = (*peaks)[i];
+                    hasPeak = true;
+                    continue;
+                }
+
+                peak.min = std::min(peak.min, (*peaks)[i].min);
+                peak.max = std::max(peak.max, (*peaks)[i].max);
+            }
         }
 
-        out = {minv, maxv};
+        accumulateRawPeakRange(std::max(a, lastFullBlockEnd), b, peak, hasPeak);
+
+        if (!hasPeak)
+        {
+            return false;
+        }
+
+        out = peak;
         return true;
     };
 
@@ -903,25 +961,11 @@ void Waveform::drawSelection(SDL_Renderer *renderer) const
 
         if (samplesPerPixel >= 1.0)
         {
-            const bool bypassCache =
-                samplesPerPixel < WaveformCache::BASE_BLOCK_SIZE;
-            int64_t samplesPerPeakForDisplay = 1;
-            if (!bypassCache)
-            {
-                const auto &doc = state->activeDocumentSession.document;
-                const auto &waveformCache = doc.getWaveformCache(channelIndex);
-                const int cacheLevel =
-                    waveformCache.getLevelIndex(samplesPerPixel);
-                samplesPerPeakForDisplay =
-                    waveformCache.samplesPerPeakForLevel(cacheLevel);
-            }
-
             SDL_FRect selectionRect{};
             if (computeBlockModeSelectionRect(firstSample, lastSample,
                                               sampleOffset, samplesPerPixel,
                                               getWidth(), getHeight(),
-                                              selectionRect,
-                                              samplesPerPeakForDisplay, true))
+                                              selectionRect, 1, false))
             {
                 SDL_RenderFillRect(renderer, &selectionRect);
             }
