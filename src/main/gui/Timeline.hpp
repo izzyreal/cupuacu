@@ -2,12 +2,9 @@
 
 #include "Component.hpp"
 #include "Waveform.hpp"
+#include "TimelinePlanning.hpp"
 
 #include "Ruler.hpp"
-#include <vector>
-#include <string>
-#include <sstream>
-#include <iomanip>
 
 namespace cupuacu::gui
 {
@@ -54,8 +51,9 @@ namespace cupuacu::gui
         {
             const auto &viewState =
                 state->mainDocumentSessionWindow->getViewState();
-            if (viewState.samplesPerPixel != lastSamplesPerPixel ||
-                viewState.sampleOffset != lastSampleOffset)
+            if (planTimelineNeedsRefresh(lastSamplesPerPixel, lastSampleOffset,
+                                         viewState.samplesPerPixel,
+                                         viewState.sampleOffset))
             {
                 lastSamplesPerPixel = viewState.samplesPerPixel;
                 lastSampleOffset = viewState.sampleOffset;
@@ -73,124 +71,24 @@ namespace cupuacu::gui
             }
 
             const int waveformWidth = Waveform::getWaveformWidth(state);
-
-            double maxTicks = waveformWidth * state->pixelScale / 85.f;
-            maxTicks = std::max(1.0, maxTicks);
-
-            const int totalVisibleSamples =
-                Waveform::getSampleIndexForXPos(waveformWidth - 1,
-                                                viewState.sampleOffset,
-                                                viewState.samplesPerPixel) -
-                viewState.sampleOffset;
-
-            const int rawSamplesPerTick = std::max(
-                1, int(std::ceil(double(totalVisibleSamples) / maxTicks)));
-
-            static const std::vector<int> niceSteps = {
-                1,       2,         5,         10,        20,        50,
-                100,     200,       500,       1000,      2000,      5000,
-                10'000,  20'000,    50'000,    100'000,   200'000,   400'000,
-                800'000, 1'600'000, 3'200'000, 6'400'000, 12'800'000};
-
-            int samplesPerTick = niceSteps.back();
-            for (const int step : niceSteps)
-            {
-                if (step >= rawSamplesPerTick)
-                {
-                    samplesPerTick = step;
-                    break;
-                }
-            }
-
-            const bool highZoom = Waveform::shouldShowSamplePoints(
+            const bool showSamplePoints = Waveform::shouldShowSamplePoints(
                 viewState.samplesPerPixel, state->pixelScale);
-
-            int firstSampleWithTick =
-                (viewState.sampleOffset + samplesPerTick - 1) / samplesPerTick *
-                samplesPerTick;
-            firstSampleWithTick =
-                std::max(0, firstSampleWithTick - samplesPerTick);
-
-            const int lastVisibleSample = Waveform::getSampleIndexForXPos(
-                waveformWidth - 1, viewState.sampleOffset,
-                viewState.samplesPerPixel);
-
-            const int lastSampleWithTick =
-                (lastVisibleSample + samplesPerTick - 1) / samplesPerTick *
-                samplesPerTick;
-
-            const float firstTickX =
-                highZoom
-                    ? Waveform::getXPosForSampleIndex(firstSampleWithTick,
-                                                      viewState.sampleOffset,
-                                                      viewState.samplesPerPixel)
-                    : Waveform::getDoubleXPosForSampleIndex(
-                          firstSampleWithTick, viewState.sampleOffset,
-                          viewState.samplesPerPixel);
-
-            const float lastTickX =
-                highZoom
-                    ? Waveform::getXPosForSampleIndex(lastSampleWithTick,
-                                                      viewState.sampleOffset,
-                                                      viewState.samplesPerPixel)
-                    : Waveform::getDoubleXPosForSampleIndex(
-                          lastSampleWithTick, viewState.sampleOffset,
-                          viewState.samplesPerPixel);
-
-            const int visibleTickCount =
-                (lastSampleWithTick - firstSampleWithTick) / samplesPerTick;
-            const float tickSpacingPx =
-                visibleTickCount > 0
-                    ? (lastTickX - firstTickX) / visibleTickCount
-                    : samplesPerTick;
-
-            ruler->setLongTickSpacingPx(tickSpacingPx);
-
-            std::vector<std::string> labels{"smpl"};
-
-            for (int samplePos = firstSampleWithTick + samplesPerTick;
-                 samplePos <= lastSampleWithTick; samplePos += samplesPerTick)
+            const auto plan = planTimelineRuler(
+                waveformWidth, state->pixelScale, viewState.sampleOffset,
+                viewState.samplesPerPixel,
+                state->activeDocumentSession.document.getSampleRate(),
+                mode == Mode::Samples ? TimelinePlanningMode::Samples
+                                      : TimelinePlanningMode::Decimal,
+                showSamplePoints);
+            if (!plan.valid)
             {
-                std::string text;
-
-                if (mode == Mode::Samples)
-                {
-                    text = std::to_string(samplePos);
-                }
-                else
-                {
-                    const double seconds =
-                        double(samplePos) /
-                        state->activeDocumentSession.document.getSampleRate();
-                    const int mm = int(seconds / 60);
-                    const double ss = seconds - mm * 60;
-                    std::ostringstream oss;
-                    oss << mm << ":" << std::fixed << std::setprecision(3)
-                        << ss;
-                    text = oss.str();
-                }
-
-                labels.push_back(text);
+                return;
             }
 
-            int subdivisions;
-            if (viewState.samplesPerPixel < 1 / 200.0f)
-            {
-                subdivisions = 1;
-            }
-            else
-            {
-                int temp = samplesPerTick;
-                while (temp >= 10)
-                {
-                    temp /= 10;
-                }
-                subdivisions = temp == 2 ? 2 : 5;
-            }
-
-            ruler->setLongTickSubdivisions(subdivisions);
-            ruler->setLabels(labels);
-            ruler->setScrollOffsetPx(firstTickX);
+            ruler->setLongTickSpacingPx(plan.tickSpacingPx);
+            ruler->setLongTickSubdivisions(plan.subdivisions);
+            ruler->setLabels(plan.labels);
+            ruler->setScrollOffsetPx(plan.scrollOffsetPx);
             ruler->resized();
         }
 

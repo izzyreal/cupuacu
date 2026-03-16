@@ -1,6 +1,7 @@
 #include "gui/Menu.hpp"
 
 #include "gui/MenuBar.hpp"
+#include "gui/MenuPlanning.hpp"
 #include "gui/Label.hpp"
 #include "gui/Window.hpp"
 #include "gui/Helpers.hpp"
@@ -187,36 +188,11 @@ void Menu::onDraw(SDL_Renderer *renderer)
 
 bool Menu::mouseDown(const MouseEvent &e)
 {
-    const bool wasCurrentlyOpen = currentlyOpen;
-
-    if (subMenus.empty())
+    const auto plan =
+        planMenuMouseDown(subMenus.empty() == false, currentlyOpen, isAvailable());
+    if (const auto window = getWindow(); window && window->getMenuBar())
     {
-        if (!isAvailable())
-        {
-            return true;
-        }
-        if (action)
-        {
-            if (const auto window = getWindow(); window && window->getMenuBar())
-            {
-                window->getMenuBar()->hideSubMenus();
-            }
-            action();
-        }
-        else
-        {
-            if (const auto window = getWindow(); window && window->getMenuBar())
-            {
-                window->getMenuBar()->hideSubMenus();
-            }
-        }
-        return true;
-    }
-
-    if (wasCurrentlyOpen)
-    {
-        hideSubMenus();
-        if (const auto window = getWindow(); window && window->getMenuBar())
+        if (plan.hideMenuBarSubMenus)
         {
             window->getMenuBar()->hideSubMenus();
             if (const auto root = window->getRootComponent())
@@ -224,19 +200,19 @@ bool Menu::mouseDown(const MouseEvent &e)
                 root->setDirty();
             }
         }
-        return true;
     }
-
-    if (const auto window = getWindow(); window && window->getMenuBar())
+    if (plan.hideSelfSubMenus)
     {
-        window->getMenuBar()->hideSubMenus();
-        if (const auto root = window->getRootComponent())
-        {
-            root->setDirty();
-        }
+        hideSubMenus();
     }
-    showSubMenus();
-
+    if (plan.showSelfSubMenus)
+    {
+        showSubMenus();
+    }
+    if (plan.invokeAction && action)
+    {
+        action();
+    }
     return true;
 }
 
@@ -262,13 +238,16 @@ void Menu::mouseLeave()
         const bool componentUnderMouseIsMenuBarChild =
             window->getMenuBar() &&
             window->getMenuBar()->hasChild(window->getComponentUnderMouse());
-        if (componentUnderMouseIsMenuBar || componentUnderMouseIsMenuBarChild)
+        const auto plan = planMenuMouseLeave(
+            componentUnderMouseIsMenuBar || componentUnderMouseIsMenuBarChild,
+            window->getMenuBar() && window->getMenuBar()->hasMenuOpen());
+        if (plan.hideMenuBarSubMenus)
         {
-            if (window->getMenuBar() && window->getMenuBar()->hasMenuOpen())
-            {
-                window->getMenuBar()->hideSubMenus();
-                window->getMenuBar()->setOpenSubMenuOnMouseOver(true);
-            }
+            window->getMenuBar()->hideSubMenus();
+        }
+        if (plan.enableOpenOnHover)
+        {
+            window->getMenuBar()->setOpenSubMenuOnMouseOver(true);
         }
     }
 }
@@ -281,12 +260,17 @@ void Menu::mouseEnter()
         return;
     }
 
-    if (!subMenus.empty() &&
-        ((window->getMenuBar()->getOpenMenu() != nullptr &&
-          window->getMenuBar()->getOpenMenu() != this) ||
-         window->getMenuBar()->shouldOpenSubMenuOnMouseOver()))
+    const auto plan = planMenuMouseEnter(
+        !subMenus.empty(),
+        window->getMenuBar()->getOpenMenu() != nullptr &&
+            window->getMenuBar()->getOpenMenu() != this,
+        window->getMenuBar()->shouldOpenSubMenuOnMouseOver());
+    if (plan.hideMenuBarSubMenus)
     {
         window->getMenuBar()->hideSubMenus();
+    }
+    if (plan.showSelfSubMenus)
+    {
         showSubMenus();
     }
 

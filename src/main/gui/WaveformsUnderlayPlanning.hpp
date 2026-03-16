@@ -9,6 +9,23 @@
 
 namespace cupuacu::gui
 {
+    struct WaveformsUnderlayAutoScrollPlan
+    {
+        double samplesToScroll = 0.0;
+    };
+
+    struct WaveformsUnderlayWheelStepPlan
+    {
+        double stepPixels = 0.0;
+        double remainingPendingPixels = 0.0;
+    };
+
+    struct WaveformsUnderlayWheelDeltaPlan
+    {
+        int64_t wholeSamples = 0;
+        double remainingSamples = 0.0;
+    };
+
     inline SelectedChannels planWaveformsUnderlayHoveredChannels(
         const int32_t mouseY, const int height, const int channelCount)
     {
@@ -89,5 +106,77 @@ namespace cupuacu::gui
         {
             selection.setValue2(samplePos + 1.0);
         }
+    }
+
+    inline WaveformsUnderlayAutoScrollPlan
+    planWaveformsUnderlayAutoScroll(const int32_t mouseX, const int width,
+                                    const double samplesPerPixel)
+    {
+        WaveformsUnderlayAutoScrollPlan plan{};
+        if (width <= 0 || samplesPerPixel <= 0.0)
+        {
+            return plan;
+        }
+
+        if (mouseX > width || mouseX < 0)
+        {
+            const int32_t diff = mouseX < 0 ? mouseX : mouseX - width;
+            plan.samplesToScroll =
+                static_cast<double>(diff) * samplesPerPixel;
+        }
+
+        return plan;
+    }
+
+    inline WaveformsUnderlayWheelStepPlan
+    planWaveformsUnderlayWheelStep(const double pendingPixels,
+                                   const uint64_t lastWheelEventTicks,
+                                   const uint64_t nowTicks,
+                                   const double snapThresholdPixels = 0.5,
+                                   const double smoothingFactor = 0.3,
+                                   const uint64_t streamTimeoutMs = 20)
+    {
+        WaveformsUnderlayWheelStepPlan plan{};
+        if (pendingPixels == 0.0)
+        {
+            return plan;
+        }
+
+        const bool wheelStreamTimedOut =
+            lastWheelEventTicks > 0 &&
+            nowTicks > lastWheelEventTicks + streamTimeoutMs;
+        const double appliedSmoothing =
+            wheelStreamTimedOut ? 1.0 : smoothingFactor;
+        const double absPending = std::abs(pendingPixels);
+        plan.stepPixels =
+            absPending <= snapThresholdPixels
+                ? pendingPixels
+                : pendingPixels * appliedSmoothing;
+        plan.remainingPendingPixels = pendingPixels - plan.stepPixels;
+        if (std::abs(plan.remainingPendingPixels) < 1e-6)
+        {
+            plan.remainingPendingPixels = 0.0;
+        }
+        return plan;
+    }
+
+    inline WaveformsUnderlayWheelDeltaPlan
+    planWaveformsUnderlayWheelDelta(const double sampleRemainder,
+                                    const double stepPixels,
+                                    const double samplesPerPixel)
+    {
+        WaveformsUnderlayWheelDeltaPlan plan{};
+        if (samplesPerPixel <= 0.0 || stepPixels == 0.0)
+        {
+            plan.remainingSamples = sampleRemainder;
+            return plan;
+        }
+
+        const double totalSamples =
+            sampleRemainder + stepPixels * samplesPerPixel;
+        plan.wholeSamples = static_cast<int64_t>(std::trunc(totalSamples));
+        plan.remainingSamples =
+            totalSamples - static_cast<double>(plan.wholeSamples);
+        return plan;
     }
 } // namespace cupuacu::gui

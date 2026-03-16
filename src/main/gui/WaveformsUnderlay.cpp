@@ -251,26 +251,17 @@ bool WaveformsUnderlay::applyPendingHorizontalWheelScroll()
         return false;
     }
 
-    const double absPending = std::abs(horizontalWheelPendingPixels);
-    const uint64_t nowTicks = SDL_GetTicks();
-    const bool wheelStreamTimedOut =
-        lastHorizontalWheelEventTicks > 0 &&
-        nowTicks > lastHorizontalWheelEventTicks + kWheelStreamTimeoutMs;
-    const double smoothingFactor =
-        wheelStreamTimedOut ? 1.0 : kWheelSmoothingFactor;
-    const double stepPixels =
-        absPending <= kWheelSnapThresholdPixels
-            ? horizontalWheelPendingPixels
-            : horizontalWheelPendingPixels * smoothingFactor;
-    horizontalWheelPendingPixels -= stepPixels;
-    if (std::abs(horizontalWheelPendingPixels) < 1e-6)
-    {
-        horizontalWheelPendingPixels = 0.0;
-    }
+    const auto stepPlan = planWaveformsUnderlayWheelStep(
+        horizontalWheelPendingPixels, lastHorizontalWheelEventTicks,
+        SDL_GetTicks(), kWheelSnapThresholdPixels, kWheelSmoothingFactor,
+        kWheelStreamTimeoutMs);
+    horizontalWheelPendingPixels = stepPlan.remainingPendingPixels;
 
-    horizontalWheelRemainder += stepPixels * viewState.samplesPerPixel;
-    const int64_t wholeSamples =
-        static_cast<int64_t>(std::trunc(horizontalWheelRemainder));
+    const auto deltaPlan = planWaveformsUnderlayWheelDelta(
+        horizontalWheelRemainder, stepPlan.stepPixels,
+        viewState.samplesPerPixel);
+    horizontalWheelRemainder = deltaPlan.remainingSamples;
+    const int64_t wholeSamples = deltaPlan.wholeSamples;
     if (wholeSamples == 0)
     {
         return false;
@@ -282,8 +273,8 @@ bool WaveformsUnderlay::applyPendingHorizontalWheelScroll()
         requestedOffset, getMaxSampleOffset(state), viewState.samplesPerPixel,
         state->pixelScale);
     updateSampleOffset(state, snappedOffset);
-    horizontalWheelRemainder -=
-        static_cast<double>(viewState.sampleOffset - oldOffset);
+    horizontalWheelRemainder -= static_cast<double>(
+        (viewState.sampleOffset - oldOffset) - wholeSamples);
 
     if (oldOffset == viewState.sampleOffset)
     {
@@ -332,15 +323,7 @@ void WaveformsUnderlay::markAllWaveformsDirty() const
 void WaveformsUnderlay::handleScroll(const int32_t mouseX) const
 {
     auto &viewState = state->mainDocumentSessionWindow->getViewState();
-    if (mouseX > getWidth() || mouseX < 0)
-    {
-        const auto samplesPerPixel = viewState.samplesPerPixel;
-        const auto diff = mouseX < 0 ? mouseX : mouseX - getWidth();
-        const auto samplesToScroll = diff * samplesPerPixel;
-        viewState.samplesToScroll = samplesToScroll;
-    }
-    else
-    {
-        viewState.samplesToScroll = 0;
-    }
+    const auto plan = planWaveformsUnderlayAutoScroll(
+        mouseX, getWidth(), viewState.samplesPerPixel);
+    viewState.samplesToScroll = plan.samplesToScroll;
 }
