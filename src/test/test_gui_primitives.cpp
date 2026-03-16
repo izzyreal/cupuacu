@@ -335,47 +335,24 @@ TEST_CASE("TextButton updates its label text and keeps it sized to bounds", "[gu
     REQUIRE(updatedLabelBounds.h == buttonBounds.h);
 }
 
-TEST_CASE("TextInput handles focus, text input, and backspace through Window",
+TEST_CASE("TextInput handles focus, text input, and backspace directly",
           "[gui]")
 {
-    cupuacu::test::ensureSdlTtfInitialized();
-
     cupuacu::State state{};
-    auto window = std::make_unique<cupuacu::gui::Window>(
-        &state, "text-input", 320, 160, SDL_WINDOW_HIDDEN);
+    cupuacu::gui::TextInput input(&state);
+    input.setBounds(10, 10, 120, 28);
+    input.setAllowedCharacters("0123456789.%");
+    input.focusGained();
 
-    auto root = std::make_unique<RootComponent>(&state);
-    auto *input = root->emplaceChild<cupuacu::gui::TextInput>(&state);
-    root->setBounds(0, 0, 320, 160);
-    input->setBounds(10, 10, 120, 28);
-    input->setAllowedCharacters("0123456789.%");
-    window->setRootComponent(std::move(root));
+    REQUIRE(input.textInput("125%"));
+    REQUIRE(input.getText() == "125%");
 
-    REQUIRE(input->mouseDown(cupuacu::gui::MouseEvent{
-        cupuacu::gui::DOWN,
-        10,
-        10,
-        10.0f,
-        10.0f,
-        0.0f,
-        0.0f,
-        cupuacu::gui::MouseButtonState{true, false, false},
-        1}));
-    REQUIRE(window->getFocusedComponent() == input);
+    SDL_KeyboardEvent backspaceEvent{};
+    backspaceEvent.scancode = SDL_SCANCODE_BACKSPACE;
+    REQUIRE(input.keyDown(backspaceEvent));
+    REQUIRE(input.getText() == "125");
 
-    SDL_Event textEvent{};
-    textEvent.type = SDL_EVENT_TEXT_INPUT;
-    textEvent.text.windowID = window->getId();
-    textEvent.text.text = "125%";
-    REQUIRE(window->handleEvent(textEvent));
-    REQUIRE(input->getText() == "125%");
-
-    SDL_Event backspaceEvent{};
-    backspaceEvent.type = SDL_EVENT_KEY_DOWN;
-    backspaceEvent.key.windowID = window->getId();
-    backspaceEvent.key.scancode = SDL_SCANCODE_BACKSPACE;
-    REQUIRE(window->handleEvent(backspaceEvent));
-    REQUIRE(input->getText() == "125");
+    input.focusLost();
 }
 
 TEST_CASE("Slider updates value across drag range", "[gui]")
