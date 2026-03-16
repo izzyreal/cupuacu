@@ -125,13 +125,13 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_wheel_scroll.cpp
     src/test/test_session_loading.cpp
     src/test/test_wav_writer.cpp
-    src/test/test_component_dirty_rects.cpp
+    src/test/test_component_layout_and_dirty.cpp
     src/test/test_audio_device_properties_persistence.cpp
     src/test/test_audio_callback_core.cpp
     src/test/test_action_undoables.cpp
     src/test/test_audio_devices_orchestration.cpp
     src/test/test_window_menu_behavior.cpp
-    src/test/test_menu_bar_planning.cpp
+    src/test/test_menu_bar_effects.cpp
     src/test/test_window_mouse_routing.cpp
     src/test/test_gui_primitives.cpp
     src/test/test_render_helpers.cpp

@@ -384,6 +384,18 @@ TEST_CASE("Effects menu opens AmplifyFadeWindow", "[gui]")
         REQUIRE(state.amplifyFadeDialog->getStartPercent() == 100.0);
         REQUIRE(state.amplifyFadeDialog->getEndPercent() == 100.0);
 
+        REQUIRE(lockButton->mouseDown(cupuacu::gui::MouseEvent{
+            cupuacu::gui::DOWN,
+            5,
+            5,
+            5.0f,
+            5.0f,
+            0.0f,
+            0.0f,
+            cupuacu::gui::MouseButtonState{true, false, false},
+            1}));
+        REQUIRE_FALSE(state.amplifyFadeDialog->isLocked());
+
         REQUIRE(fadeOutButton->mouseDown(cupuacu::gui::MouseEvent{
             cupuacu::gui::DOWN,
             5,
@@ -396,6 +408,7 @@ TEST_CASE("Effects menu opens AmplifyFadeWindow", "[gui]")
             1}));
         curveDropdown->setSelectedIndex(2);
         state.effectSettings.amplifyFade.curveIndex = 2;
+        state.effectSettings.amplifyFade.lockEnabled = false;
 
         state.amplifyFadeDialog.reset();
         state.modalWindow = nullptr;
