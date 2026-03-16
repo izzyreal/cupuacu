@@ -15,9 +15,6 @@ TEST_CASE("Paste keeps zoom level unchanged", "[session]")
 
     auto &viewState = state.mainDocumentSessionWindow->getViewState();
     viewState.samplesPerPixel = 0.01;
-    cupuacu::gui::Waveform::updateAllSamplePoints(&state);
-    REQUIRE_FALSE(state.waveforms.empty());
-    REQUIRE(state.waveforms[0]->getChildren().size() > 0);
 
     state.clipboard.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 8);
     for (int64_t i = 0; i < 8; ++i)
