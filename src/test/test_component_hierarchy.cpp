@@ -1,0 +1,153 @@
+#include <catch2/catch_test_macros.hpp>
+
+#include "TestSdlTtfGuard.hpp"
+#include "gui/Component.hpp"
+#include "gui/DevicePropertiesWindow.hpp"
+#include "gui/Window.hpp"
+#include "State.hpp"
+
+#include <algorithm>
+
+using namespace cupuacu::gui;
+
+static std::unique_ptr<Window> makeTestWindow(cupuacu::State *state)
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+    auto window =
+        std::make_unique<Window>(state, "test", 320, 240, SDL_WINDOW_HIDDEN);
+    REQUIRE(window->isOpen());
+    return window;
+}
+
+static bool contains_rect(const std::vector<SDL_Rect> &vec, const SDL_Rect &r)
+{
+    return std::any_of(vec.begin(), vec.end(),
+                       [&](const SDL_Rect &e)
+                       {
+                           return e.x == r.x && e.y == r.y && e.w == r.w &&
+                                  e.h == r.h;
+                       });
+}
+
+struct DummyA : public Component
+{
+    DummyA(cupuacu::State *s, const std::string &name) : Component(s, name) {}
+};
+struct DummyB : public Component
+{
+    DummyB(cupuacu::State *s, const std::string &name) : Component(s, name) {}
+};
+
+TEST_CASE("removeChild pushes old child's bounds into dirtyRects",
+          "[removeChild]")
+{
+    cupuacu::State state{};
+    auto window = makeTestWindow(&state);
+
+    Component root(&state, "root");
+    root.setWindow(window.get());
+    root.setVisible(true);
+    root.setBounds(0, 0, 300, 300);
+
+    Component *child = root.emplaceChild<Component>(&state, "child");
+    child->setBounds(10, 20, 50, 40);
+
+    window->getDirtyRects().clear();
+
+    SDL_Rect oldBounds = child->getAbsoluteBounds();
+    root.removeChild(child);
+
+    REQUIRE(contains_rect(window->getDirtyRects(), oldBounds));
+}
+
+TEST_CASE("sendToBack and bringToFront mark parent dirty and reorder children",
+          "[zorder]")
+{
+    cupuacu::State state{};
+    auto window = makeTestWindow(&state);
+
+    Component root(&state, "root");
+    root.setWindow(window.get());
+    root.setVisible(true);
+    root.setBounds(0, 0, 500, 500);
+
+    Component *c1 = root.emplaceChild<Component>(&state, "c1");
+    c1->setBounds(0, 0, 10, 10);
+
+    Component *c2 = root.emplaceChild<Component>(&state, "c2");
+    c2->setBounds(20, 0, 10, 10);
+
+    window->getDirtyRects().clear();
+
+    c2->sendToBack();
+    REQUIRE(contains_rect(window->getDirtyRects(), root.getAbsoluteBounds()));
+
+    window->getDirtyRects().clear();
+    c2->bringToFront();
+    REQUIRE(contains_rect(window->getDirtyRects(), root.getAbsoluteBounds()));
+
+    auto &children = root.getChildren();
+    REQUIRE(children.back().get() == c2);
+}
+
+TEST_CASE("removeChildrenOfType removes matching children and sets dirty",
+          "[removeChildrenOfType]")
+{
+    cupuacu::State state{};
+    auto window = makeTestWindow(&state);
+
+    Component root(&state, "root");
+    root.setWindow(window.get());
+    root.setVisible(true);
+    root.setBounds(0, 0, 200, 200);
+
+    DummyA *a1 = root.emplaceChild<DummyA>(&state, "a1");
+    a1->setBounds(0, 0, 10, 10);
+
+    DummyA *a2 = root.emplaceChild<DummyA>(&state, "a2");
+    a2->setBounds(15, 0, 10, 10);
+
+    DummyB *b1 = root.emplaceChild<DummyB>(&state, "b1");
+    b1->setBounds(30, 0, 10, 10);
+
+    window->getDirtyRects().clear();
+
+    root.removeChildrenOfType<DummyA>();
+
+    REQUIRE(contains_rect(window->getDirtyRects(), root.getAbsoluteBounds()));
+
+    const auto &children = root.getChildren();
+    REQUIRE(children.size() == 1);
+    REQUIRE(children.front()->getComponentName() == "b1");
+}
+
+TEST_CASE(
+    "containsAbsoluteCoordinate respects parent clipping and "
+    "disableParentClipping",
+    "[clipping]")
+{
+    cupuacu::State state{};
+    auto window = makeTestWindow(&state);
+
+    Component root(&state, "root");
+    root.setWindow(window.get());
+    root.setVisible(true);
+    root.setBounds(0, 0, 50, 50);
+
+    Component *parent = root.emplaceChild<Component>(&state, "parent");
+    parent->setBounds(10, 10, 20, 20);
+
+    Component *child = parent->emplaceChild<Component>(&state, "child");
+    child->setBounds(-5, -5, 40, 40);
+
+    window->getDirtyRects().clear();
+
+    int testX = 8;
+    int testY = 8;
+
+    REQUIRE(!child->containsAbsoluteCoordinate(testX, testY));
+
+    child->disableParentClipping();
+
+    REQUIRE(child->containsAbsoluteCoordinate(testX, testY));
+}
