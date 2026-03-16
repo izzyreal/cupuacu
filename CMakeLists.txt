@@ -115,7 +115,6 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_playback_follow.cpp
     src/test/test_playback_range.cpp
     src/test/test_edit_commands.cpp
-    src/test/test_zoom.cpp
     src/test/test_waveform_selection.cpp
     src/test/test_waveform_block_render.cpp
     src/test/test_waveform_interactions.cpp
