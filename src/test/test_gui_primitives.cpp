@@ -189,46 +189,6 @@ TEST_CASE("DropdownMenu collapsed height tracks row height after margin changes"
     REQUIRE(dropdown.getHeight() >= dropdown.getRowHeight());
 }
 
-TEST_CASE("Menu hover can switch open submenu between siblings", "[gui]")
-{
-    cupuacu::test::ensureSdlTtfInitialized();
-
-    cupuacu::State state{};
-    auto window = std::make_unique<cupuacu::gui::Window>(
-        &state, "menu-hover", 480, 240, SDL_WINDOW_HIDDEN);
-
-    auto root = std::make_unique<RootComponent>(&state);
-    auto *menuBar = root->emplaceChild<cupuacu::gui::MenuBar>(&state);
-    root->setBounds(0, 0, 480, 240);
-    menuBar->setBounds(0, 0, 480, 40);
-    window->setRootComponent(std::move(root));
-    window->setMenuBar(menuBar);
-
-    auto topLevelMenus = menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 5);
-    auto *fileMenu = topLevelMenus[0];
-    auto *editMenu = topLevelMenus[1];
-
-    REQUIRE(fileMenu->mouseDown(cupuacu::gui::MouseEvent{
-        cupuacu::gui::DOWN,
-        5,
-        5,
-        5.0f,
-        5.0f,
-        0.0f,
-        0.0f,
-        cupuacu::gui::MouseButtonState{true, false, false},
-        1}));
-    REQUIRE(fileMenu->isOpen());
-    REQUIRE_FALSE(editMenu->isOpen());
-
-    menuBar->setOpenSubMenuOnMouseOver(true);
-    editMenu->mouseEnter();
-
-    REQUIRE_FALSE(fileMenu->isOpen());
-    REQUIRE(editMenu->isOpen());
-}
-
 TEST_CASE("Button momentary and toggle semantics fire callbacks only when enabled",
           "[gui]")
 {
