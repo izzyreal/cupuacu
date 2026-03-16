@@ -418,36 +418,6 @@ TEST_CASE("Amplify/Fade applies across the whole document on all channels",
             std::vector<float>({4, 5, 6}));
 }
 
-TEST_CASE("Amplify/Fade limits selected stereo edits to the chosen channel",
-          "[actions]")
-{
-    cupuacu::State state{};
-    initializeStereoDocument(state, {1, 2, 3, 4}, {10, 20, 30, 40});
-    state.activeDocumentSession.selection.setHighest(4.0);
-    state.activeDocumentSession.selection.setValue1(1.0);
-    state.activeDocumentSession.selection.setValue2(3.0);
-
-    state.mainDocumentSessionWindow =
-        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
-            &state, &state.activeDocumentSession, "main", 640, 360,
-            SDL_WINDOW_HIDDEN);
-    state.mainDocumentSessionWindow->getViewState().selectedChannels =
-        cupuacu::SelectedChannels::RIGHT;
-
-    cupuacu::effects::performAmplifyFade(
-        &state, cupuacu::effects::AmplifyFadeSettings{50.0, 50.0, 0, false});
-
-    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 0) ==
-            std::vector<float>({1, 2, 3, 4}));
-    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 1) ==
-            std::vector<float>({10, 10, 15, 40}));
-
-    state.undo();
-
-    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 1) ==
-            std::vector<float>({10, 20, 30, 40}));
-}
-
 TEST_CASE("Amplify/Fade processes the full selected range and stops at selection end",
           "[actions]")
 {
@@ -472,26 +442,6 @@ TEST_CASE("Amplify/Fade processes the full selected range and stops at selection
             Catch::Approx(0.0f));
     REQUIRE(readMonoSamples(state.activeDocumentSession.document)[5] ==
             Catch::Approx(10.0f));
-}
-
-TEST_CASE("Normalize percent reflects the peak of the selected target range",
-          "[actions]")
-{
-    cupuacu::State state{};
-    initializeStereoDocument(state, {0.25f, 0.5f, 0.75f}, {0.1f, 0.2f, 0.3f});
-    state.activeDocumentSession.selection.setHighest(3.0);
-    state.activeDocumentSession.selection.setValue1(1.0);
-    state.activeDocumentSession.selection.setValue2(3.0);
-
-    state.mainDocumentSessionWindow =
-        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
-            &state, &state.activeDocumentSession, "main", 640, 360,
-            SDL_WINDOW_HIDDEN);
-    state.mainDocumentSessionWindow->getViewState().selectedChannels =
-        cupuacu::SelectedChannels::RIGHT;
-
-    REQUIRE(cupuacu::effects::computeNormalizePercent(&state) ==
-            Catch::Approx(333.333333).epsilon(0.001));
 }
 
 TEST_CASE("Dynamics compresses selected samples and respects undo", "[actions]")

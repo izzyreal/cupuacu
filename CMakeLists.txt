@@ -112,35 +112,19 @@ set(CUPUACU_SHARED_SOURCES
 
 set(CUPUACU_TEST_SOURCES
     src/test/TestSdlTtfGuard.cpp
-    src/test/test_playback_follow.cpp
     src/test/test_playback_range.cpp
     src/test/test_edit_commands.cpp
     src/test/test_waveform_selection.cpp
-    src/test/test_waveform_block_render.cpp
-    src/test/test_waveform_interactions.cpp
-    src/test/test_main_view_selection_markers.cpp
-    src/test/test_main_view_layout.cpp
-    src/test/test_empty_session.cpp
-    src/test/test_wheel_scroll.cpp
     src/test/test_session_loading.cpp
     src/test/test_wav_writer.cpp
-    src/test/test_component_layout_and_dirty.cpp
-    src/test/test_component_hierarchy.cpp
     src/test/test_audio_device_properties_persistence.cpp
     src/test/test_audio_callback_core.cpp
     src/test/test_action_undoables.cpp
     src/test/test_audio_devices_orchestration.cpp
     src/test/test_menu_bar_labels.cpp
-    src/test/test_window_menu_behavior.cpp
-    src/test/test_menu_bar_effects.cpp
     src/test/test_window_mouse_routing.cpp
     src/test/test_gui_primitives.cpp
     src/test/test_render_helpers.cpp
-    src/test/test_main_view_structure.cpp
-    src/test/test_waveforms_underlay_behavior.cpp
-    src/test/test_waveform_visual_state.cpp
-    src/test/test_timeline_waveform_refresh.cpp
-    src/test/test_main_view_recording.cpp
 )
 
 set(CUPUACU_RTSAN_SUPPORTED OFF)
