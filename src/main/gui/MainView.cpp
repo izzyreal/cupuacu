@@ -11,6 +11,7 @@
 #include "ScrollBar.hpp"
 #include "Timeline.hpp"
 #include "MainViewLayoutPlanning.hpp"
+#include "MainViewSelectionMarkerPlanning.hpp"
 #include "UiScale.hpp"
 #include "WaveformRefresh.hpp"
 #include "WaveformCache.hpp"
@@ -535,14 +536,14 @@ void MainView::updateTriangleMarkerBounds() const
 
         if (startX >= 0 && startX <= waveforms->getWidth())
         {
-            selStartTop->setVisible(true);
-            selStartBot->setVisible(true);
-            selStartTop->setBounds(startX + borderWidth, scrollBarHeight,
-                                   static_cast<int>(triHeight + 1.f),
-                                   static_cast<int>(triHeight));
-            selStartBot->setBounds(startX + borderWidth, 0,
-                                   static_cast<int>(triHeight + 1.f),
-                                   static_cast<int>(triHeight));
+            const auto topPlan = planTopSelectionStartMarker(
+                startX, borderWidth, scrollBarHeight, triHeight);
+            const auto bottomPlan =
+                planBottomSelectionStartMarker(startX, borderWidth, triHeight);
+            selStartTop->setVisible(topPlan.visible);
+            selStartBot->setVisible(bottomPlan.visible);
+            selStartTop->setBounds(topPlan.rect);
+            selStartBot->setBounds(bottomPlan.rect);
         }
         else
         {
@@ -552,14 +553,14 @@ void MainView::updateTriangleMarkerBounds() const
 
         if (endX >= 0 && endX <= waveforms->getWidth())
         {
-            selEndTop->setVisible(true);
-            selEndBot->setVisible(true);
-            selEndTop->setBounds(
-                endX + borderWidth - static_cast<int>(triHeight), scrollBarHeight,
-                static_cast<int>(triHeight), static_cast<int>(triHeight));
-            selEndBot->setBounds(
-                endX + borderWidth - static_cast<int>(triHeight), 0,
-                static_cast<int>(triHeight), static_cast<int>(triHeight));
+            const auto topPlan = planTopSelectionEndMarker(
+                endX, borderWidth, scrollBarHeight, triHeight);
+            const auto bottomPlan =
+                planBottomSelectionEndMarker(endX, borderWidth, triHeight);
+            selEndTop->setVisible(topPlan.visible);
+            selEndBot->setVisible(bottomPlan.visible);
+            selEndTop->setBounds(topPlan.rect);
+            selEndBot->setBounds(bottomPlan.rect);
         }
         else
         {
@@ -578,16 +579,14 @@ void MainView::updateTriangleMarkerBounds() const
             session.cursor, sampleOffset, samplesPerPixel);
         if (xPos >= 0 && xPos <= waveforms->getWidth())
         {
-            const int cursorX = xPos + borderWidth;
-            cursorTop->setVisible(true);
-            cursorBottom->setVisible(true);
-            cursorTop->setBounds(cursorX - static_cast<int>(halfBase) + 1,
-                                 scrollBarHeight,
-                                 static_cast<int>(halfBase * 2),
-                                 static_cast<int>(triHeight));
-            cursorBottom->setBounds(cursorX - static_cast<int>(halfBase) + 1, 0,
-                                    static_cast<int>(halfBase * 2),
-                                    static_cast<int>(triHeight));
+            const auto topPlan = planTopCursorMarker(
+                xPos, borderWidth, scrollBarHeight, halfBase, triHeight);
+            const auto bottomPlan =
+                planBottomCursorMarker(xPos, borderWidth, halfBase, triHeight);
+            cursorTop->setVisible(topPlan.visible);
+            cursorBottom->setVisible(bottomPlan.visible);
+            cursorTop->setBounds(topPlan.rect);
+            cursorBottom->setBounds(bottomPlan.rect);
         }
         else
         {

@@ -126,6 +126,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_gui_primitives.cpp
     src/test/test_render_helpers.cpp
     src/test/test_main_view_layout_planning.cpp
+    src/test/test_main_view_selection_marker_planning.cpp
     src/test/test_waveforms_underlay_planning.cpp
     src/test/test_component_planning.cpp
     src/test/test_wheel_scroll_planning.cpp

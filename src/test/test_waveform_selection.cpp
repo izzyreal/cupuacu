@@ -153,6 +153,10 @@ TEST_CASE("Waveform visual planning helpers compute markers and rects",
         cupuacu::gui::planWaveformCursorMarker(true, 15, 10, 2.0, 10);
     REQUIRE_FALSE(hiddenCursorMarker.visible);
 
+    REQUIRE(cupuacu::gui::shouldRenderWaveformSamplePoints(-1, 0.01, 1));
+    REQUIRE_FALSE(cupuacu::gui::shouldRenderWaveformSamplePoints(42, 0.01, 1));
+    REQUIRE_FALSE(cupuacu::gui::shouldRenderWaveformSamplePoints(-1, 0.1, 1));
+
     const auto highlightRect =
         cupuacu::gui::planWaveformHighlightRect(true, 15, 32, 10, 2.0, 20);
     REQUIRE(highlightRect.visible);
@@ -162,6 +166,10 @@ TEST_CASE("Waveform visual planning helpers compute markers and rects",
     const auto hiddenHighlightRect =
         cupuacu::gui::planWaveformHighlightRect(false, 15, 32, 10, 2.0, 20);
     REQUIRE_FALSE(hiddenHighlightRect.visible);
+
+    const auto invalidHighlightRect =
+        cupuacu::gui::planWaveformHighlightRect(true, 40, 32, 10, 2.0, 20);
+    REQUIRE_FALSE(invalidHighlightRect.visible);
 
     const auto selectionRect = cupuacu::gui::planWaveformLinearSelectionRect(
         true, 12, 16, 10, 2.0, 20);
@@ -174,4 +182,9 @@ TEST_CASE("Waveform visual planning helpers compute markers and rects",
                                                       20);
     REQUIRE(minimumWidthSelectionRect.visible);
     REQUIRE(minimumWidthSelectionRect.rect.w == 1.0f);
+
+    const auto hiddenSelectionRect =
+        cupuacu::gui::planWaveformLinearSelectionRect(false, 12, 16, 10, 2.0,
+                                                      20);
+    REQUIRE_FALSE(hiddenSelectionRect.visible);
 }
