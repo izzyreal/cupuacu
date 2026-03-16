@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "TestSdlTtfGuard.hpp"
 #include "gui/Component.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/Window.hpp"
@@ -11,7 +12,11 @@ using namespace cupuacu::gui;
 
 static std::unique_ptr<Window> makeTestWindow(cupuacu::State *state)
 {
-    return std::make_unique<Window>(state, "test", 320, 240, SDL_WINDOW_HIDDEN);
+    cupuacu::test::ensureSdlTtfInitialized();
+    auto window =
+        std::make_unique<Window>(state, "test", 320, 240, SDL_WINDOW_HIDDEN);
+    REQUIRE(window->isOpen());
+    return window;
 }
 
 // helper to check if a rect exists in a vector

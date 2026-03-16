@@ -392,27 +392,36 @@ namespace cupuacu::file
         {
             std::filesystem::path input(
                 state->activeDocumentSession.currentFile);
-            std::filesystem::path output(
-                std::filesystem::temp_directory_path() / input.filename());
+            std::filesystem::path output = input;
+            output += ".cupuacu.tmp";
 
-            auto ifs = openInputFileStream(input);
-            if (!is16BitPcmWavFile(ifs))
+            if (std::filesystem::exists(output))
             {
-                throw std::invalid_argument("Not a 16-bit PCM WAV file");
+                std::filesystem::remove(output);
             }
 
-            auto ofs = openOutputFileStream(output);
+            {
+                auto ifs = openInputFileStream(input);
+                if (!is16BitPcmWavFile(ifs))
+                {
+                    throw std::invalid_argument("Not a 16-bit PCM WAV file");
+                }
 
-            copyBytesBeforeDataChunk(ifs, ofs);
-            writeDataChunk(state, ifs, ofs);
-            copyBytesAfterDataChunk(ifs, ofs);
+                auto ofs = openOutputFileStream(output);
 
-            ofs.flush();
-            ofs.close();
+                copyBytesBeforeDataChunk(ifs, ofs);
+                writeDataChunk(state, ifs, ofs);
+                copyBytesAfterDataChunk(ifs, ofs);
+
+                ofs.flush();
+                ofs.close();
+                ifs.close();
+            }
 
             [[maybe_unused]] const bool identical =
                 isCopyBinaryIdentical(input, output);
 
+            std::filesystem::remove(input);
             std::filesystem::rename(output, input);
         }
     };
