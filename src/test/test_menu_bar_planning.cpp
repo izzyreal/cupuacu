@@ -242,6 +242,15 @@ TEST_CASE("Effects menu opens AmplifyFadeWindow", "[gui]")
 
     REQUIRE(state.amplifyFadeDialog != nullptr);
     REQUIRE(state.amplifyFadeDialog->isOpen());
+    REQUIRE(state.modalWindow == state.amplifyFadeDialog->getWindow());
+    {
+        auto *root = state.amplifyFadeDialog->getWindow()->getRootComponent();
+        REQUIRE(root != nullptr);
+        auto *previewButton = dynamic_cast<cupuacu::gui::TextButton *>(
+            const_cast<cupuacu::gui::Component *>(
+                findByNameRecursive(root, "TextButton:Preview")));
+        REQUIRE(previewButton != nullptr);
+    }
 
     REQUIRE(state.dynamicsDialog == nullptr);
     REQUIRE(effectSubMenus[1]->mouseDown(cupuacu::gui::MouseEvent{
@@ -256,33 +265,6 @@ TEST_CASE("Effects menu opens AmplifyFadeWindow", "[gui]")
         1}));
     REQUIRE(state.dynamicsDialog != nullptr);
     REQUIRE(state.dynamicsDialog->isOpen());
-}
-
-TEST_CASE("Effect dialogs are modal and include preview button", "[gui]")
-{
-    cupuacu::test::ensureSdlTtfInitialized();
-
-    cupuacu::State state{};
-    state.mainDocumentSessionWindow =
-        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
-            &state, &state.activeDocumentSession, "main", 640, 360,
-            SDL_WINDOW_HIDDEN);
-    state.windows.push_back(state.mainDocumentSessionWindow->getWindow());
-
-    auto amplifyFadeDialog =
-        std::make_unique<cupuacu::effects::AmplifyFadeDialog>(&state);
-    REQUIRE(amplifyFadeDialog->isOpen());
-    REQUIRE(state.modalWindow == amplifyFadeDialog->getWindow());
-
-    auto *root = amplifyFadeDialog->getWindow()->getRootComponent();
-    REQUIRE(root != nullptr);
-    auto *previewButton = dynamic_cast<cupuacu::gui::TextButton *>(
-        const_cast<cupuacu::gui::Component *>(
-            findByNameRecursive(root, "TextButton:Preview")));
-    REQUIRE(previewButton != nullptr);
-
-    amplifyFadeDialog.reset();
-    REQUIRE(state.modalWindow == nullptr);
 }
 
 TEST_CASE("AmplifyFadeWindow presets update values and curve row does not overlap",
