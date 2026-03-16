@@ -93,10 +93,9 @@ set(CUPUACU_SHARED_SOURCES
     src/main/gui/TextButton.cpp
     src/main/gui/Label.cpp
     src/main/gui/DropdownMenu.cpp
-    src/main/gui/AmplifyFadeWindow.cpp
-    src/main/gui/DynamicsWindow.cpp
     src/main/gui/DevicePropertiesWindow.cpp
-    src/main/gui/NormalizeWindow.cpp
+    src/main/effects/AmplifyFadeEffect.cpp
+    src/main/effects/DynamicsEffect.cpp
     src/main/gui/ScrollBar.cpp
     src/main/gui/Slider.cpp
     src/main/gui/TextInput.cpp

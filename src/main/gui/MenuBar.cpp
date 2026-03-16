@@ -2,13 +2,13 @@
 
 #include "State.hpp"
 #include "ResourceUtil.hpp"
+#include "effects/AmplifyFadeEffect.hpp"
+#include "effects/DynamicsEffect.hpp"
 
 #include "gui/OpaqueRect.hpp"
 #include "gui/Menu.hpp"
 #include "gui/MenuBarPlanning.hpp"
 #include "gui/Window.hpp"
-#include "gui/AmplifyFadeWindow.hpp"
-#include "gui/DynamicsWindow.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/Colors.hpp"
 #include "gui/UiScale.hpp"
@@ -188,26 +188,27 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
         state, "Amplify/Fade",
         [&]
         {
-            if (!state->amplifyFadeWindow || !state->amplifyFadeWindow->isOpen())
+            if (!state->amplifyFadeDialog || !state->amplifyFadeDialog->isOpen())
             {
-                state->amplifyFadeWindow.reset(new AmplifyFadeWindow(state));
+                state->amplifyFadeDialog.reset(
+                    new effects::AmplifyFadeDialog(state));
             }
             else
             {
-                state->amplifyFadeWindow->raise();
+                state->amplifyFadeDialog->raise();
             }
         });
     effectsMenu->addSubMenu(
         state, "Dynamics",
         [&]
         {
-            if (!state->dynamicsWindow || !state->dynamicsWindow->isOpen())
+            if (!state->dynamicsDialog || !state->dynamicsDialog->isOpen())
             {
-                state->dynamicsWindow.reset(new DynamicsWindow(state));
+                state->dynamicsDialog.reset(new effects::DynamicsDialog(state));
             }
             else
             {
-                state->dynamicsWindow->raise();
+                state->dynamicsDialog->raise();
             }
         });
 

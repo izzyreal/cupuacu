@@ -1,6 +1,5 @@
 #pragma once
 
-#include "../../SelectedChannels.hpp"
 #include "State.hpp"
 
 #include <algorithm>
@@ -8,9 +7,9 @@
 #include <cstdint>
 #include <vector>
 
-namespace cupuacu::actions::audio
+namespace cupuacu::effects
 {
-    inline std::vector<int64_t> getEffectTargetChannels(cupuacu::State *state)
+    inline std::vector<int64_t> getTargetChannels(cupuacu::State *state)
     {
         std::vector<int64_t> targetChannels;
         if (!state)
@@ -61,8 +60,8 @@ namespace cupuacu::actions::audio
         return targetChannels;
     }
 
-    inline bool getEffectTargetRange(cupuacu::State *state, int64_t &startFrameOut,
-                                     int64_t &frameCountOut)
+    inline bool getTargetRange(cupuacu::State *state, int64_t &startFrameOut,
+                               int64_t &frameCountOut)
     {
         startFrameOut = 0;
         frameCountOut = 0;
@@ -85,23 +84,22 @@ namespace cupuacu::actions::audio
         }
         else
         {
-            startFrameOut = 0;
             frameCountOut = document.getFrameCount();
         }
 
         return frameCountOut > 0;
     }
 
-    inline float computeEffectPeakAbsolute(cupuacu::State *state)
+    inline float computeTargetPeakAbsolute(cupuacu::State *state)
     {
         int64_t startFrame = 0;
         int64_t frameCount = 0;
-        if (!getEffectTargetRange(state, startFrame, frameCount))
+        if (!getTargetRange(state, startFrame, frameCount))
         {
             return 0.0f;
         }
 
-        const auto targetChannels = getEffectTargetChannels(state);
+        const auto targetChannels = getTargetChannels(state);
         if (targetChannels.empty())
         {
             return 0.0f;
@@ -120,4 +118,4 @@ namespace cupuacu::actions::audio
         }
         return peak;
     }
-} // namespace cupuacu::actions::audio
+} // namespace cupuacu::effects

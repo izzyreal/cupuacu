@@ -6,7 +6,7 @@
 
 #include "SelectedChannels.hpp"
 #include "DocumentSession.hpp"
-#include "EffectSettings.hpp"
+#include "effects/EffectSettings.hpp"
 #include "Paths.hpp"
 #include "gui/DocumentSessionWindow.hpp"
 
@@ -32,10 +32,7 @@ namespace cupuacu
 
     namespace gui
     {
-        class AmplifyFadeWindow;
-        class DynamicsWindow;
         class DevicePropertiesWindow;
-        class NormalizeWindow;
         class Component;
         class Waveform;
         class MainView;
@@ -44,9 +41,14 @@ namespace cupuacu
         class TransportButtonsContainer;
     } // namespace gui
 
-    void destroyAmplifyFadeWindow(gui::AmplifyFadeWindow *);
-    void destroyNormalizeWindow(gui::NormalizeWindow *);
-    void destroyDynamicsWindow(gui::DynamicsWindow *);
+    namespace effects
+    {
+        class AmplifyFadeDialog;
+        class DynamicsDialog;
+    } // namespace effects
+
+    void destroyAmplifyFadeDialog(effects::AmplifyFadeDialog *);
+    void destroyDynamicsDialog(effects::DynamicsDialog *);
 
     struct State
     {
@@ -62,19 +64,18 @@ namespace cupuacu
         uint64_t playbackRangeEnd = 0;
         DocumentSession activeDocumentSession;
         Document clipboard;
-        EffectSettings effectSettings;
+        effects::EffectSettings effectSettings;
 
         std::vector<gui::Waveform *> waveforms;
         std::vector<gui::Window *> windows;
         std::unique_ptr<gui::DocumentSessionWindow> mainDocumentSessionWindow;
         std::unique_ptr<gui::DevicePropertiesWindow> devicePropertiesWindow;
-        std::unique_ptr<gui::AmplifyFadeWindow,
-                        void (*)(gui::AmplifyFadeWindow *)>
-            amplifyFadeWindow{nullptr, destroyAmplifyFadeWindow};
-        std::unique_ptr<gui::NormalizeWindow, void (*)(gui::NormalizeWindow *)>
-            normalizeWindow{nullptr, destroyNormalizeWindow};
-        std::unique_ptr<gui::DynamicsWindow, void (*)(gui::DynamicsWindow *)>
-            dynamicsWindow{nullptr, destroyDynamicsWindow};
+        std::unique_ptr<effects::AmplifyFadeDialog,
+                        void (*)(effects::AmplifyFadeDialog *)>
+            amplifyFadeDialog{nullptr, destroyAmplifyFadeDialog};
+        std::unique_ptr<effects::DynamicsDialog,
+                        void (*)(effects::DynamicsDialog *)>
+            dynamicsDialog{nullptr, destroyDynamicsDialog};
         gui::MainView *mainView;
         gui::Component *statusBar;
         gui::VuMeterContainer *vuMeterContainer;

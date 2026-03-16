@@ -1,10 +1,11 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include "effects/AmplifyFadeEffect.hpp"
+#include "effects/DynamicsEffect.hpp"
 #include "gui/MainView.hpp"
 #include "State.hpp"
 #include "actions/audio/Cut.hpp"
-#include "actions/audio/EffectCommands.hpp"
 #include "actions/audio/EditCommands.hpp"
 #include "actions/audio/Paste.hpp"
 #include "actions/audio/RecordedChunkApplier.hpp"
@@ -401,7 +402,8 @@ TEST_CASE("Amplify/Fade applies across the whole document on all channels",
     cupuacu::State state{};
     initializeStereoDocument(state, {1, 2, 3}, {4, 5, 6});
 
-    cupuacu::actions::audio::performAmplifyFade(&state, 200.0, 200.0, 0);
+    cupuacu::effects::performAmplifyFade(
+        &state, cupuacu::effects::AmplifyFadeSettings{200.0, 200.0, 0, false});
 
     REQUIRE(readChannelSamples(state.activeDocumentSession.document, 0) ==
             std::vector<float>({2, 4, 6}));
@@ -432,7 +434,8 @@ TEST_CASE("Amplify/Fade limits selected stereo edits to the chosen channel",
     state.mainDocumentSessionWindow->getViewState().selectedChannels =
         cupuacu::SelectedChannels::RIGHT;
 
-    cupuacu::actions::audio::performAmplifyFade(&state, 50.0, 50.0, 0);
+    cupuacu::effects::performAmplifyFade(
+        &state, cupuacu::effects::AmplifyFadeSettings{50.0, 50.0, 0, false});
 
     REQUIRE(readChannelSamples(state.activeDocumentSession.document, 0) ==
             std::vector<float>({1, 2, 3, 4}));
@@ -454,7 +457,8 @@ TEST_CASE("Amplify/Fade processes the full selected range and stops at selection
     state.activeDocumentSession.selection.setValue1(1.0);
     state.activeDocumentSession.selection.setValue2(5.0);
 
-    cupuacu::actions::audio::performAmplifyFade(&state, 100.0, 0.0, 0);
+    cupuacu::effects::performAmplifyFade(
+        &state, cupuacu::effects::AmplifyFadeSettings{100.0, 0.0, 0, false});
 
     REQUIRE(readMonoSamples(state.activeDocumentSession.document)[0] ==
             Catch::Approx(10.0f));
@@ -486,7 +490,7 @@ TEST_CASE("Normalize percent reflects the peak of the selected target range",
     state.mainDocumentSessionWindow->getViewState().selectedChannels =
         cupuacu::SelectedChannels::RIGHT;
 
-    REQUIRE(cupuacu::actions::audio::computeNormalizePercent(&state) ==
+    REQUIRE(cupuacu::effects::computeNormalizePercent(&state) ==
             Catch::Approx(333.333333).epsilon(0.001));
 }
 
@@ -499,7 +503,8 @@ TEST_CASE("Dynamics compresses selected samples and respects undo", "[actions]")
     state.activeDocumentSession.selection.setValue1(1.0);
     state.activeDocumentSession.selection.setValue2(4.0);
 
-    cupuacu::actions::audio::performDynamics(&state, 50.0, 1);
+    cupuacu::effects::performDynamics(
+        &state, cupuacu::effects::DynamicsSettings{50.0, 1});
 
     const auto processed = readMonoSamples(state.activeDocumentSession.document);
     REQUIRE(processed[0] == Catch::Approx(0.2f));

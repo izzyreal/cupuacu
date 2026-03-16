@@ -1,10 +1,10 @@
 #include "State.hpp"
 
+#include "effects/AmplifyFadeEffect.hpp"
+#include "effects/DynamicsEffect.hpp"
+
 #include "gui/Waveform.hpp"
-#include "gui/AmplifyFadeWindow.hpp"
-#include "gui/DynamicsWindow.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
-#include "gui/NormalizeWindow.hpp"
 #include "actions/Undoable.hpp"
 
 int64_t getMaxSampleOffset(const cupuacu::State *state)
@@ -26,19 +26,14 @@ int64_t getMaxSampleOffset(const cupuacu::State *state)
     return std::max<int64_t>(0, maxOffset);
 }
 
-void cupuacu::destroyAmplifyFadeWindow(gui::AmplifyFadeWindow *window)
+void cupuacu::destroyAmplifyFadeDialog(effects::AmplifyFadeDialog *dialog)
 {
-    delete window;
+    delete dialog;
 }
 
-void cupuacu::destroyNormalizeWindow(gui::NormalizeWindow *window)
+void cupuacu::destroyDynamicsDialog(effects::DynamicsDialog *dialog)
 {
-    delete window;
-}
-
-void cupuacu::destroyDynamicsWindow(gui::DynamicsWindow *window)
-{
-    delete window;
+    delete dialog;
 }
 
 cupuacu::State::~State() = default;

@@ -2,7 +2,7 @@
 #include <catch2/catch_approx.hpp>
 
 #include "TestStateBuilders.hpp"
-#include "actions/audio/EffectCommands.hpp"
+#include "effects/AmplifyFadeEffect.hpp"
 #include "gui/DocumentSessionWindow.hpp"
 #include "gui/Gui.hpp"
 #include "gui/SamplePointInteractionPlanning.hpp"
@@ -348,7 +348,8 @@ TEST_CASE("Block waveform render does not keep full-height columns just inside a
 
     session.selection.setValue1(0.0);
     session.selection.setValue2(static_cast<double>(selectionEnd));
-    cupuacu::actions::audio::performAmplifyFade(&state, 100.0, 0.0, 0);
+    cupuacu::effects::performAmplifyFade(
+        &state, cupuacu::effects::AmplifyFadeSettings{100.0, 0.0, 0, false});
     REQUIRE(std::fabs(session.document.getSample(0, selectionEnd - 1)) < 0.01f);
     REQUIRE(std::fabs(session.document.getSample(0, selectionEnd)) > 0.9f);
 
@@ -606,7 +607,8 @@ TEST_CASE("Block waveform apply keeps selection-edge columns continuous for a fa
         1}));
     REQUIRE(session.selection.isActive());
 
-    cupuacu::actions::audio::performAmplifyFade(&state, 0.0, 100.0, 0);
+    cupuacu::effects::performAmplifyFade(
+        &state, cupuacu::effects::AmplifyFadeSettings{0.0, 100.0, 0, false});
     window->renderFrameIfDirty();
 
     auto surface = readWindowCanvas(window);

@@ -1,39 +1,34 @@
 #pragma once
 
-#include "../Undoable.hpp"
-#include "../../SelectedChannels.hpp"
-#include "../../gui/MainView.hpp"
-#include "../../gui/Waveform.hpp"
-#include "EffectUtils.hpp"
+#include "EffectDialogWindow.hpp"
+#include "EffectSettings.hpp"
+#include "EffectTargeting.hpp"
+
+#include "actions/Undoable.hpp"
+#include "gui/MainView.hpp"
+#include "gui/Waveform.hpp"
 
 #include <algorithm>
 #include <cmath>
-#include <cstdint>
+#include <limits>
+#include <memory>
+#include <string>
 #include <vector>
 
-namespace cupuacu::actions::audio
+namespace cupuacu::effects
 {
-    class AmplifyFade : public Undoable
+    class DynamicsUndoable : public cupuacu::actions::Undoable
     {
     public:
-        enum class Curve
-        {
-            Linear,
-            Exponential,
-            Logarithmic
-        };
-
-        AmplifyFade(State *stateToUse, const double startPercentToUse,
-                    const double endPercentToUse, const int curveIndexToUse)
-            : Undoable(stateToUse), startPercent(startPercentToUse),
-              endPercent(endPercentToUse),
-              curve(clampCurve(curveIndexToUse))
+        DynamicsUndoable(cupuacu::State *stateToUse,
+                         const DynamicsSettings &settingsToUse)
+            : Undoable(stateToUse), settings(settingsToUse)
         {
             captureTargetsAndSamples();
             updateGui = [this]
             {
-                gui::Waveform::updateAllSamplePoints(state);
-                gui::Waveform::setAllWaveformsDirty(state);
+                cupuacu::gui::Waveform::updateAllSamplePoints(state);
+                cupuacu::gui::Waveform::setAllWaveformsDirty(state);
                 if (state->mainView)
                 {
                     state->mainView->setDirty();
@@ -53,66 +48,58 @@ namespace cupuacu::actions::audio
 
         std::string getUndoDescription() override
         {
-            return "Amplify/Fade";
+            return "Dynamics";
         }
 
         std::string getRedoDescription() override
         {
-            return "Amplify/Fade";
+            return "Dynamics";
         }
 
     private:
-        double startPercent = 100.0;
-        double endPercent = 100.0;
-        Curve curve = Curve::Linear;
+        DynamicsSettings settings{};
         int64_t startFrame = 0;
         int64_t frameCount = 0;
         std::vector<int64_t> targetChannels;
         std::vector<std::vector<float>> oldSamples;
         std::vector<std::vector<float>> newSamples;
 
-        static Curve clampCurve(const int curveIndex)
+        double getRatio() const
         {
-            switch (curveIndex)
+            switch (settings.ratioIndex)
             {
+            case 0:
+                return 2.0;
             case 1:
-                return Curve::Exponential;
+                return 4.0;
             case 2:
-                return Curve::Logarithmic;
+                return 8.0;
             default:
-                return Curve::Linear;
+                return std::numeric_limits<double>::infinity();
             }
         }
 
-        static double computeCurveWeight(const Curve curveToUse,
-                                         const double linearWeight)
+        float processSample(const float sample) const
         {
-            switch (curveToUse)
+            const double threshold = settings.thresholdPercent / 100.0;
+            if (threshold <= 0.0)
             {
-            case Curve::Exponential:
-                return linearWeight * linearWeight;
-            case Curve::Logarithmic:
-                return std::log1p(linearWeight * 9.0) / std::log1p(9.0);
-            case Curve::Linear:
-            default:
-                return linearWeight;
-            }
-        }
-
-        double gainForFrame(const int64_t frameIndex) const
-        {
-            const double startGain = startPercent / 100.0;
-            const double endGain = endPercent / 100.0;
-            if (frameCount <= 1)
-            {
-                return startGain;
+                return 0.0f;
             }
 
-            const double linearWeight =
-                static_cast<double>(frameIndex) /
-                static_cast<double>(frameCount - 1);
-            const double curvedWeight = computeCurveWeight(curve, linearWeight);
-            return startGain + (endGain - startGain) * curvedWeight;
+            const double magnitude = std::fabs(sample);
+            if (magnitude <= threshold)
+            {
+                return sample;
+            }
+
+            const double ratio = getRatio();
+            double compressedMagnitude = threshold;
+            if (std::isfinite(ratio))
+            {
+                compressedMagnitude += (magnitude - threshold) / ratio;
+            }
+            return static_cast<float>(std::copysign(compressedMagnitude, sample));
         }
 
         void captureTargetsAndSamples()
@@ -122,27 +109,19 @@ namespace cupuacu::actions::audio
                 return;
             }
 
-            auto &session = state->activeDocumentSession;
-            auto &document = session.document;
-            if (document.getChannelCount() <= 0)
+            if (!getTargetRange(state, startFrame, frameCount))
             {
                 return;
             }
-
-            if (!getEffectTargetRange(state, startFrame, frameCount))
-            {
-                return;
-            }
-
-            targetChannels = getEffectTargetChannels(state);
+            targetChannels = getTargetChannels(state);
             if (targetChannels.empty())
             {
                 return;
             }
 
+            auto &document = state->activeDocumentSession.document;
             oldSamples.resize(targetChannels.size());
             newSamples.resize(targetChannels.size());
-
             for (size_t channelIndex = 0; channelIndex < targetChannels.size();
                  ++channelIndex)
             {
@@ -151,14 +130,13 @@ namespace cupuacu::actions::audio
                 auto &newChannel = newSamples[channelIndex];
                 oldChannel.resize(static_cast<size_t>(frameCount));
                 newChannel.resize(static_cast<size_t>(frameCount));
-
                 for (int64_t frame = 0; frame < frameCount; ++frame)
                 {
                     const float oldValue =
                         document.getSample(channel, startFrame + frame);
                     oldChannel[static_cast<size_t>(frame)] = oldValue;
                     newChannel[static_cast<size_t>(frame)] =
-                        static_cast<float>(oldValue * gainForFrame(frame));
+                        processSample(oldValue);
                 }
             }
         }
@@ -187,4 +165,50 @@ namespace cupuacu::actions::audio
             document.updateWaveformCache();
         }
     };
-} // namespace cupuacu::actions::audio
+
+    inline void performDynamics(cupuacu::State *state,
+                                const DynamicsSettings &settings)
+    {
+        if (!state ||
+            state->activeDocumentSession.document.getFrameCount() <= 0 ||
+            state->activeDocumentSession.document.getChannelCount() <= 0)
+        {
+            return;
+        }
+
+        const bool hasSelection = state->activeDocumentSession.selection.isActive();
+        if (hasSelection &&
+            state->activeDocumentSession.selection.getLengthInt() <= 0)
+        {
+            return;
+        }
+
+        state->addAndDoUndoable(
+            std::make_shared<DynamicsUndoable>(state, settings));
+    }
+
+    class DynamicsDialog
+    {
+    public:
+        explicit DynamicsDialog(cupuacu::State *stateToUse);
+
+        bool isOpen() const
+        {
+            return dialog && dialog->isOpen();
+        }
+        void raise() const
+        {
+            if (dialog)
+            {
+                dialog->raise();
+            }
+        }
+        cupuacu::gui::Window *getWindow() const
+        {
+            return dialog ? dialog->getWindow() : nullptr;
+        }
+
+    private:
+        std::unique_ptr<EffectDialogWindow<DynamicsSettings>> dialog;
+    };
+} // namespace cupuacu::effects

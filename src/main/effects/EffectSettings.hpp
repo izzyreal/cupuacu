@@ -1,6 +1,6 @@
 #pragma once
 
-namespace cupuacu
+namespace cupuacu::effects
 {
     struct AmplifyFadeSettings
     {
@@ -8,10 +8,6 @@ namespace cupuacu
         double endPercent = 100.0;
         int curveIndex = 0;
         bool lockEnabled = false;
-    };
-
-    struct NormalizeSettings
-    {
     };
 
     struct DynamicsSettings
@@ -23,7 +19,6 @@ namespace cupuacu
     struct EffectSettings
     {
         AmplifyFadeSettings amplifyFade{};
-        NormalizeSettings normalize{};
         DynamicsSettings dynamics{};
     };
-} // namespace cupuacu
+} // namespace cupuacu::effects

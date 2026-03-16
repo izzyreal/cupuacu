@@ -1,12 +1,12 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include "effects/AmplifyFadeEffect.hpp"
+#include "effects/DynamicsEffect.hpp"
 #include "State.hpp"
 #include "TestSdlTtfGuard.hpp"
 #include "actions/Undoable.hpp"
 #include "gui/Component.hpp"
-#include "gui/AmplifyFadeWindow.hpp"
-#include "gui/DynamicsWindow.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/DocumentSessionWindow.hpp"
 #include "gui/Label.hpp"
@@ -228,7 +228,7 @@ TEST_CASE("Effects menu opens AmplifyFadeWindow", "[gui]")
     auto effectSubMenus = menuChildren(effectsMenu);
     REQUIRE(effectSubMenus.size() == 2);
 
-    REQUIRE(state.amplifyFadeWindow == nullptr);
+    REQUIRE(state.amplifyFadeDialog == nullptr);
     REQUIRE(effectSubMenus[0]->mouseDown(cupuacu::gui::MouseEvent{
         cupuacu::gui::DOWN,
         5,
@@ -240,10 +240,10 @@ TEST_CASE("Effects menu opens AmplifyFadeWindow", "[gui]")
         cupuacu::gui::MouseButtonState{true, false, false},
         1}));
 
-    REQUIRE(state.amplifyFadeWindow != nullptr);
-    REQUIRE(state.amplifyFadeWindow->isOpen());
+    REQUIRE(state.amplifyFadeDialog != nullptr);
+    REQUIRE(state.amplifyFadeDialog->isOpen());
 
-    REQUIRE(state.dynamicsWindow == nullptr);
+    REQUIRE(state.dynamicsDialog == nullptr);
     REQUIRE(effectSubMenus[1]->mouseDown(cupuacu::gui::MouseEvent{
         cupuacu::gui::DOWN,
         5,
@@ -254,8 +254,8 @@ TEST_CASE("Effects menu opens AmplifyFadeWindow", "[gui]")
         0.0f,
         cupuacu::gui::MouseButtonState{true, false, false},
         1}));
-    REQUIRE(state.dynamicsWindow != nullptr);
-    REQUIRE(state.dynamicsWindow->isOpen());
+    REQUIRE(state.dynamicsDialog != nullptr);
+    REQUIRE(state.dynamicsDialog->isOpen());
 }
 
 TEST_CASE("AmplifyFadeWindow presets update values and curve row does not overlap",
@@ -271,7 +271,7 @@ TEST_CASE("AmplifyFadeWindow presets update values and curve row does not overla
     state.windows.push_back(state.mainDocumentSessionWindow->getWindow());
 
     auto amplifyFadeWindow =
-        std::make_unique<cupuacu::gui::AmplifyFadeWindow>(&state);
+        std::make_unique<cupuacu::effects::AmplifyFadeDialog>(&state);
     REQUIRE(amplifyFadeWindow->isOpen());
 
     auto *root = amplifyFadeWindow->getWindow()->getRootComponent();
@@ -394,7 +394,7 @@ TEST_CASE("AmplifyFadeWindow lock and apply respect selected channels",
     state.windows.push_back(state.mainDocumentSessionWindow->getWindow());
 
     auto amplifyFadeWindow =
-        std::make_unique<cupuacu::gui::AmplifyFadeWindow>(&state);
+        std::make_unique<cupuacu::effects::AmplifyFadeDialog>(&state);
     REQUIRE(amplifyFadeWindow->isOpen());
 
     auto *root = amplifyFadeWindow->getWindow()->getRootComponent();
@@ -518,7 +518,7 @@ TEST_CASE("DynamicsWindow apply compresses the current target range", "[gui]")
             SDL_WINDOW_HIDDEN);
     state.windows.push_back(state.mainDocumentSessionWindow->getWindow());
 
-    auto dynamicsWindow = std::make_unique<cupuacu::gui::DynamicsWindow>(&state);
+    auto dynamicsWindow = std::make_unique<cupuacu::effects::DynamicsDialog>(&state);
     REQUIRE(dynamicsWindow->isOpen());
 
     auto *root = dynamicsWindow->getWindow()->getRootComponent();
@@ -572,7 +572,7 @@ TEST_CASE("AmplifyFadeWindow reopens with last remembered settings", "[gui]")
 
     {
         auto amplifyFadeWindow =
-            std::make_unique<cupuacu::gui::AmplifyFadeWindow>(&state);
+            std::make_unique<cupuacu::effects::AmplifyFadeDialog>(&state);
         REQUIRE(amplifyFadeWindow->isOpen());
 
         auto *root = amplifyFadeWindow->getWindow()->getRootComponent();
@@ -604,7 +604,7 @@ TEST_CASE("AmplifyFadeWindow reopens with last remembered settings", "[gui]")
     }
 
     auto reopenedWindow =
-        std::make_unique<cupuacu::gui::AmplifyFadeWindow>(&state);
+        std::make_unique<cupuacu::effects::AmplifyFadeDialog>(&state);
     REQUIRE(reopenedWindow->isOpen());
     REQUIRE(reopenedWindow->getStartPercent() == 100.0);
     REQUIRE(reopenedWindow->getEndPercent() == 0.0);
