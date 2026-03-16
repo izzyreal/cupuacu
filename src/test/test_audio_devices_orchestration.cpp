@@ -60,3 +60,188 @@ TEST_CASE("Device selection short-circuits unchanged values and stores new ones"
     REQUIRE(stored.outputDeviceIndex == -1);
     REQUIRE(stored.inputDeviceIndex == -1);
 }
+
+TEST_CASE("Loop playback update uses new end after pending switch when end is ahead",
+          "[audio]")
+{
+    cupuacu::audio::AudioDevices devices(false);
+    cupuacu::Document document{};
+    document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 128);
+
+    devices.applyMessageImmediate(cupuacu::audio::Play{
+        .document = &document,
+        .startPos = 10,
+        .endPos = 31,
+        .loopEnabled = true,
+        .selectionIsActive = true,
+        .selectedChannels = cupuacu::SelectedChannels::BOTH,
+        .vuMeter = nullptr});
+
+    std::vector<float> output(64, 0.0f);
+
+    devices.processCallbackCycle(nullptr, output.data(), 12); // pos 22
+    REQUIRE(devices.getPlaybackPosition() == 22);
+
+    devices.applyMessageImmediate(cupuacu::audio::UpdatePlayback{
+        .startPos = 12,
+        .endPos = 27,
+        .loopEnabled = true,
+        .selectionIsActive = true,
+        .selectedChannels = cupuacu::SelectedChannels::BOTH});
+
+    devices.processCallbackCycle(nullptr, output.data(), 4); // pos 26
+    REQUIRE(devices.getPlaybackPosition() == 26);
+
+    devices.processCallbackCycle(nullptr, output.data(), 1); // hit new end
+    REQUIRE(devices.getPlaybackPosition() == 27);
+
+    devices.processCallbackCycle(nullptr, output.data(), 1); // loop + emit start
+    REQUIRE(devices.isPlaying());
+    REQUIRE(devices.getPlaybackPosition() == 13);
+}
+
+TEST_CASE("Playback update keeps previous end when new non-loop end is behind current position",
+          "[audio]")
+{
+    cupuacu::audio::AudioDevices devices(false);
+    cupuacu::Document document{};
+    document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 128);
+
+    devices.applyMessageImmediate(cupuacu::audio::Play{
+        .document = &document,
+        .startPos = 10,
+        .endPos = 31,
+        .loopEnabled = false,
+        .selectionIsActive = true,
+        .selectedChannels = cupuacu::SelectedChannels::BOTH,
+        .vuMeter = nullptr});
+
+    std::vector<float> output(64, 0.0f);
+
+    devices.processCallbackCycle(nullptr, output.data(), 4); // pos 14
+    REQUIRE(devices.getPlaybackPosition() == 14);
+
+    devices.processCallbackCycle(nullptr, output.data(), 8); // pos 22
+    REQUIRE(devices.isPlaying());
+    REQUIRE(devices.getPlaybackPosition() == 22);
+
+    devices.applyMessageImmediate(cupuacu::audio::UpdatePlayback{
+        .startPos = 12,
+        .endPos = 21,
+        .loopEnabled = false,
+        .selectionIsActive = true,
+        .selectedChannels = cupuacu::SelectedChannels::BOTH});
+
+    devices.processCallbackCycle(nullptr, output.data(), 1);
+    REQUIRE(devices.isPlaying());
+
+    devices.processCallbackCycle(nullptr, output.data(), 8);
+    REQUIRE(devices.isPlaying());
+
+    devices.processCallbackCycle(nullptr, output.data(), 1);
+    REQUIRE_FALSE(devices.isPlaying());
+}
+
+TEST_CASE("Playback update uses new non-loop end when it is ahead of current position",
+          "[audio]")
+{
+    cupuacu::audio::AudioDevices devices(false);
+    cupuacu::Document document{};
+    document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 128);
+
+    devices.applyMessageImmediate(cupuacu::audio::Play{
+        .document = &document,
+        .startPos = 10,
+        .endPos = 31,
+        .loopEnabled = false,
+        .selectionIsActive = true,
+        .selectedChannels = cupuacu::SelectedChannels::BOTH,
+        .vuMeter = nullptr});
+
+    std::vector<float> output(64, 0.0f);
+
+    devices.processCallbackCycle(nullptr, output.data(), 4); // pos 14
+    REQUIRE(devices.getPlaybackPosition() == 14);
+
+    devices.applyMessageImmediate(cupuacu::audio::UpdatePlayback{
+        .startPos = 12,
+        .endPos = 26,
+        .loopEnabled = false,
+        .selectionIsActive = true,
+        .selectedChannels = cupuacu::SelectedChannels::BOTH});
+
+    devices.processCallbackCycle(nullptr, output.data(), 12); // pos 26
+    REQUIRE(devices.isPlaying());
+
+    devices.processCallbackCycle(nullptr, output.data(), 1);
+    REQUIRE_FALSE(devices.isPlaying());
+}
+
+TEST_CASE("Loop playback update keeps old loop until boundary when new end is behind current position",
+          "[audio]")
+{
+    cupuacu::audio::AudioDevices devices(false);
+    cupuacu::Document document{};
+    document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 128);
+
+    devices.applyMessageImmediate(cupuacu::audio::Play{
+        .document = &document,
+        .startPos = 10,
+        .endPos = 31,
+        .loopEnabled = true,
+        .selectionIsActive = true,
+        .selectedChannels = cupuacu::SelectedChannels::BOTH,
+        .vuMeter = nullptr});
+
+    std::vector<float> output(64, 0.0f);
+
+    devices.processCallbackCycle(nullptr, output.data(), 12); // pos 22
+    REQUIRE(devices.getPlaybackPosition() == 22);
+
+    devices.applyMessageImmediate(cupuacu::audio::UpdatePlayback{
+        .startPos = 12,
+        .endPos = 21,
+        .loopEnabled = true,
+        .selectionIsActive = true,
+        .selectedChannels = cupuacu::SelectedChannels::BOTH});
+
+    devices.processCallbackCycle(nullptr, output.data(), 8); // pos 30
+    REQUIRE(devices.getPlaybackPosition() == 30);
+
+    devices.processCallbackCycle(nullptr, output.data(), 1); // hit old end
+    REQUIRE(devices.getPlaybackPosition() == 31);
+
+    devices.processCallbackCycle(nullptr, output.data(), 1); // loop + emit new start
+    REQUIRE(devices.isPlaying());
+    REQUIRE(devices.getPlaybackPosition() == 13);
+}
+
+TEST_CASE("Loop playback update keeps old loop while dragging equivalent update is deferred",
+          "[audio]")
+{
+    cupuacu::audio::AudioDevices devices(false);
+    cupuacu::Document document{};
+    document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 128);
+
+    devices.applyMessageImmediate(cupuacu::audio::Play{
+        .document = &document,
+        .startPos = 10,
+        .endPos = 31,
+        .loopEnabled = true,
+        .selectionIsActive = true,
+        .selectedChannels = cupuacu::SelectedChannels::BOTH,
+        .vuMeter = nullptr});
+
+    std::vector<float> output(64, 0.0f);
+
+    devices.processCallbackCycle(nullptr, output.data(), 4); // pos 14
+    REQUIRE(devices.getPlaybackPosition() == 14);
+
+    // Equivalent to the UI deferring the update until drag release:
+    // no UpdatePlayback is sent while dragging, so old range remains active.
+    const int64_t framesToLoopSample = 18;
+    devices.processCallbackCycle(nullptr, output.data(),
+                                 static_cast<unsigned long>(framesToLoopSample));
+    REQUIRE(devices.isPlaying());
+    REQUIRE(devices.getPlaybackPosition() == 11);
+}
