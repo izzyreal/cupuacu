@@ -3,9 +3,34 @@
 #include "TestStateBuilders.hpp"
 #include "actions/Play.hpp"
 #include "gui/Waveform.hpp"
+#include "gui/Waveforms.hpp"
 #include "gui/WaveformsUnderlay.hpp"
 
 #include <vector>
+
+namespace
+{
+    cupuacu::gui::WaveformsUnderlay *findUnderlay(cupuacu::gui::MainView *mainView)
+    {
+        for (const auto &child : mainView->getChildren())
+        {
+            if (auto *waveforms =
+                    dynamic_cast<cupuacu::gui::Waveforms *>(child.get()))
+            {
+                for (const auto &grandchild : waveforms->getChildren())
+                {
+                    if (auto *underlay =
+                            dynamic_cast<cupuacu::gui::WaveformsUnderlay *>(
+                                grandchild.get()))
+                    {
+                        return underlay;
+                    }
+                }
+            }
+        }
+        return nullptr;
+    }
+} // namespace
 
 TEST_CASE("Playback follow does not mutate DocumentSession cursor", "[session]")
 {
@@ -38,6 +63,8 @@ TEST_CASE("Playback range update while dragging keeps previous end", "[session]"
 
     std::vector<float> output(64, 0.0f);
     auto *window = state.mainDocumentSessionWindow->getWindow();
+    auto *underlay = findUnderlay(ui.mainView.get());
+    REQUIRE(underlay != nullptr);
 
     cupuacu::actions::play(&state);
     state.audioDevices->processCallbackCycle(nullptr, output.data(), 4); // pos 14
@@ -45,8 +72,7 @@ TEST_CASE("Playback range update while dragging keeps previous end", "[session]"
 
     session.selection.setValue1(12.0);
     session.selection.setValue2(21.0); // R2 => end 21 (>14 now)
-    cupuacu::gui::WaveformsUnderlay draggingSentinel(&state);
-    window->setCapturingComponent(&draggingSentinel);
+    window->setCapturingComponent(underlay);
     ui.mainView->timerCallback(); // must not apply while dragging
 
     state.audioDevices->processCallbackCycle(nullptr, output.data(), 8); // pos 22
@@ -104,6 +130,8 @@ TEST_CASE("Loop playback update while dragging keeps old loop end/start", "[sess
 
     std::vector<float> output(64, 0.0f);
     auto *window = state.mainDocumentSessionWindow->getWindow();
+    auto *underlay = findUnderlay(ui.mainView.get());
+    REQUIRE(underlay != nullptr);
 
     cupuacu::actions::play(&state);
     state.audioDevices->processCallbackCycle(nullptr, output.data(), 4); // pos 14
@@ -113,8 +141,7 @@ TEST_CASE("Loop playback update while dragging keeps old loop end/start", "[sess
 
     session.selection.setValue1(40.0);
     session.selection.setValue2(51.0); // R2 => [40, 51)
-    cupuacu::gui::WaveformsUnderlay draggingSentinel(&state);
-    window->setCapturingComponent(&draggingSentinel);
+    window->setCapturingComponent(underlay);
     ui.mainView->timerCallback(); // must not apply while dragging
 
     const int64_t framesToLoopSample =
