@@ -47,4 +47,39 @@ cmake --build build --config Debug --target Cupuacu
 
 The `CMakeLists.txt` creates a nice little `compile_commands.json` in the root of the repo, making it play nice with `vim` and `YouCompleteMe`.
 
-Enjoy!
+## Developer notes
+
+There is now a separate developer-oriented guide in [`DEV.md`](./DEV.md).
+
+It covers:
+
+- codebase structure and architecture
+- effect implementation patterns
+- realtime preview design
+- modal dialog behavior
+- sanitizer targets (`RTSan` / `TSan`)
+- SDL-backed test behavior and platform-specific test notes, especially on Windows
+
+Typical local test commands:
+
+```sh
+cmake --build build-coverage-macos --target cupuacu-tests -j2
+./build-coverage-macos/cupuacu-tests "[audio]"
+./build-coverage-macos/cupuacu-tests "[actions]"
+./build-coverage-macos/cupuacu-tests "[gui]"
+./build-coverage-macos/cupuacu-tests "[file]"
+```
+
+Where supported, sanitizer targets are also available:
+
+```sh
+cmake --build build-coverage-macos --target cupuacu-tests-rtsan -j2
+./build-coverage-macos/cupuacu-tests-rtsan
+```
+
+and:
+
+```sh
+cmake --build build-coverage-macos --target cupuacu-tests-tsan -j2
+./build-coverage-macos/cupuacu-tests-tsan
+```

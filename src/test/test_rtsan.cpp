@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "Document.hpp"
+#include "effects/AmplifyFadeEffect.hpp"
 #include "audio/AudioDevices.hpp"
 #include "audio/AudioMessage.hpp"
 #include "actions/audio/RecordedChunkApplier.hpp"
@@ -140,4 +141,66 @@ TEST_CASE("recording append scenario is safe", "[rtsan]")
     REQUIRE(doc.getSample(1, 4) == Catch::Approx(-10.f));
     REQUIRE(doc.getSample(0, 6) == Catch::Approx(12.f));
     REQUIRE(doc.getSample(1, 6) == Catch::Approx(-12.f));
+}
+
+TEST_CASE("preview playback with live parameter updates is safe", "[rtsan]")
+{
+    __rtsan::Initialize();
+
+    cupuacu::Document doc;
+    doc.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 4);
+    for (int64_t i = 0; i < 4; ++i)
+    {
+        doc.setSample(0, i, 1.0f, false);
+        doc.setSample(1, i, 1.0f, false);
+    }
+
+    auto previewSession =
+        std::make_shared<cupuacu::effects::AmplifyFadePreviewSession>(
+            cupuacu::effects::AmplifyFadeSettings{100.0, 100.0, 0, false});
+
+    cupuacu::audio::AudioDevices devices(false);
+    std::array<float, 4> output{};
+
+    cupuacu::audio::Play playMsg{};
+    playMsg.document = &doc;
+    playMsg.startPos = 0;
+    playMsg.endPos = 2;
+    playMsg.loopEnabled = false;
+    playMsg.selectionIsActive = false;
+    playMsg.selectedChannels = cupuacu::SelectedChannels::BOTH;
+    playMsg.vuMeter = nullptr;
+    playMsg.previewProcessor = previewSession->getProcessor();
+    devices.enqueue(playMsg);
+
+    {
+        __rtsan::ScopedSanitizeRealtime realtimeScope;
+        devices.processCallbackCycle(nullptr, output.data(), 2);
+    }
+
+    REQUIRE(output[0] == Catch::Approx(1.0f));
+    REQUIRE(output[1] == Catch::Approx(1.0f));
+
+    previewSession->updateSettings(
+        cupuacu::effects::AmplifyFadeSettings{50.0, 50.0, 0, false});
+
+    output = {};
+    cupuacu::audio::Play secondPlayMsg{};
+    secondPlayMsg.document = &doc;
+    secondPlayMsg.startPos = 2;
+    secondPlayMsg.endPos = 4;
+    secondPlayMsg.loopEnabled = false;
+    secondPlayMsg.selectionIsActive = false;
+    secondPlayMsg.selectedChannels = cupuacu::SelectedChannels::BOTH;
+    secondPlayMsg.vuMeter = nullptr;
+    secondPlayMsg.previewProcessor = previewSession->getProcessor();
+    devices.enqueue(secondPlayMsg);
+
+    {
+        __rtsan::ScopedSanitizeRealtime realtimeScope;
+        devices.processCallbackCycle(nullptr, output.data(), 2);
+    }
+
+    REQUIRE(output[0] == Catch::Approx(0.5f));
+    REQUIRE(output[1] == Catch::Approx(0.5f));
 }
