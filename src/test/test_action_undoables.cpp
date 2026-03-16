@@ -8,6 +8,7 @@
 #include "actions/audio/Cut.hpp"
 #include "actions/audio/EditCommands.hpp"
 #include "actions/audio/Paste.hpp"
+#include "actions/audio/RecordEdit.hpp"
 #include "actions/audio/RecordedChunkApplier.hpp"
 #include "actions/audio/SetSampleValue.hpp"
 #include "actions/audio/Trim.hpp"
@@ -527,4 +528,89 @@ TEST_CASE("Recorded chunk applier expands channel layout and appends frames",
     REQUIRE(doc.getSample(1, 1) == Catch::Approx(2.0f));
     REQUIRE(doc.getSample(0, 3) == Catch::Approx(5.0f));
     REQUIRE(doc.getSample(1, 3) == Catch::Approx(6.0f));
+}
+
+TEST_CASE("RecordEdit restores overwritten samples and session state on undo",
+          "[actions]")
+{
+    cupuacu::State state{};
+    initializeStereoDocument(state, {0.0f, 1.0f, 2.0f, 3.0f},
+                             {0.0f, -1.0f, -2.0f, -3.0f});
+
+    cupuacu::actions::audio::RecordEditData data;
+    data.startFrame = 2;
+    data.endFrame = 4;
+    data.oldFrameCount = 4;
+    data.oldChannelCount = 2;
+    data.targetChannelCount = 2;
+    data.oldSampleRate = 44100;
+    data.newSampleRate = 44100;
+    data.oldFormat = cupuacu::SampleFormat::FLOAT32;
+    data.newFormat = cupuacu::SampleFormat::FLOAT32;
+    data.oldCursor = 2;
+    data.newCursor = 4;
+    data.overwrittenOldSamples = {{2.0f, 3.0f}, {-2.0f, -3.0f}};
+    data.recordedSamples = {{100.0f, 101.0f}, {-100.0f, -101.0f}};
+
+    state.addAndDoUndoable(
+        std::make_shared<cupuacu::actions::audio::RecordEdit>(&state, data));
+
+    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 0) ==
+            std::vector<float>({0.0f, 1.0f, 100.0f, 101.0f}));
+    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 1) ==
+            std::vector<float>({0.0f, -1.0f, -100.0f, -101.0f}));
+    REQUIRE(state.activeDocumentSession.cursor == 4);
+
+    state.undo();
+
+    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 0) ==
+            std::vector<float>({0.0f, 1.0f, 2.0f, 3.0f}));
+    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 1) ==
+            std::vector<float>({0.0f, -1.0f, -2.0f, -3.0f}));
+    REQUIRE(state.activeDocumentSession.cursor == 2);
+
+    state.redo();
+    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 0) ==
+            std::vector<float>({0.0f, 1.0f, 100.0f, 101.0f}));
+}
+
+TEST_CASE("RecordEdit appends recorded frames and removes them on undo",
+          "[actions]")
+{
+    cupuacu::State state{};
+    initializeStereoDocument(state, {0.0f, 1.0f, 2.0f, 3.0f},
+                             {0.0f, -1.0f, -2.0f, -3.0f});
+
+    cupuacu::actions::audio::RecordEditData data;
+    data.startFrame = 4;
+    data.endFrame = 7;
+    data.oldFrameCount = 4;
+    data.oldChannelCount = 2;
+    data.targetChannelCount = 2;
+    data.oldSampleRate = 44100;
+    data.newSampleRate = 44100;
+    data.oldFormat = cupuacu::SampleFormat::FLOAT32;
+    data.newFormat = cupuacu::SampleFormat::FLOAT32;
+    data.oldCursor = 4;
+    data.newCursor = 7;
+    data.overwrittenOldSamples = {{}, {}};
+    data.recordedSamples = {{10.0f, 11.0f, 12.0f}, {-10.0f, -11.0f, -12.0f}};
+
+    state.addAndDoUndoable(
+        std::make_shared<cupuacu::actions::audio::RecordEdit>(&state, data));
+
+    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 0) ==
+            std::vector<float>({0.0f, 1.0f, 2.0f, 3.0f, 10.0f, 11.0f, 12.0f}));
+    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 1) ==
+            std::vector<float>({0.0f, -1.0f, -2.0f, -3.0f, -10.0f, -11.0f,
+                                -12.0f}));
+    REQUIRE(state.activeDocumentSession.cursor == 7);
+
+    state.undo();
+
+    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 0) ==
+            std::vector<float>({0.0f, 1.0f, 2.0f, 3.0f}));
+    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 1) ==
+            std::vector<float>({0.0f, -1.0f, -2.0f, -3.0f}));
+    REQUIRE(state.activeDocumentSession.cursor == 4);
 }

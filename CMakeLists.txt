@@ -132,6 +132,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_wheel_scroll_planning.cpp
     src/test/test_timeline_planning.cpp
     src/test/test_menu_planning.cpp
+    src/test/test_waveform_interaction_planning.cpp
 )
 
 set(CUPUACU_RTSAN_SUPPORTED OFF)
