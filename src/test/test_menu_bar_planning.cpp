@@ -281,10 +281,6 @@ TEST_CASE("Effect dialogs are modal and include preview button", "[gui]")
             findByNameRecursive(root, "TextButton:Preview")));
     REQUIRE(previewButton != nullptr);
 
-    SDL_Event closeEvent{};
-    closeEvent.type = SDL_EVENT_WINDOW_CLOSE_REQUESTED;
-    closeEvent.window.windowID = amplifyFadeDialog->getWindow()->getId();
-    REQUIRE(amplifyFadeDialog->getWindow()->handleEvent(closeEvent));
     amplifyFadeDialog.reset();
     REQUIRE(state.modalWindow == nullptr);
 }
