@@ -10,6 +10,7 @@
 #include "OpaqueRect.hpp"
 #include "ScrollBar.hpp"
 #include "Timeline.hpp"
+#include "MainViewLayoutPlanning.hpp"
 #include "UiScale.hpp"
 #include "WaveformRefresh.hpp"
 #include "WaveformCache.hpp"
@@ -456,30 +457,29 @@ void MainView::rebuildWaveforms() const
 
 void MainView::resized()
 {
-    const auto borderWidth = computeBorderWidth();
     const int width = getWidth();
     const int height = getHeight();
+    const auto plan =
+        planMainViewLayout(width, height, state->uiScale, state->pixelScale);
 
-    const int timelineHeight = scaleUi(state, 60.0f);
-    const int scrollBarHeight = computeScrollBarHeightForScale(state);
+    horizontalScrollBar->setBounds(plan.horizontalScrollBar.x,
+                                   plan.horizontalScrollBar.y,
+                                   plan.horizontalScrollBar.w,
+                                   plan.horizontalScrollBar.h);
+    waveforms->setBounds(plan.waveforms.x, plan.waveforms.y, plan.waveforms.w,
+                         plan.waveforms.h);
 
-    horizontalScrollBar->setBounds(borderWidth, 0,
-                                   width - 2 * borderWidth, scrollBarHeight);
-    waveforms->setBounds(borderWidth, borderWidth + scrollBarHeight,
-                         width - 2 * borderWidth,
-                         height - 2 * borderWidth - timelineHeight -
-                             scrollBarHeight);
+    borders[0]->setBounds(plan.topBorder.x, plan.topBorder.y, plan.topBorder.w,
+                          plan.topBorder.h);
+    borders[1]->setBounds(plan.bottomBorder.x, plan.bottomBorder.y,
+                          plan.bottomBorder.w, plan.bottomBorder.h);
+    borders[2]->setBounds(plan.leftBorder.x, plan.leftBorder.y,
+                          plan.leftBorder.w, plan.leftBorder.h);
+    borders[3]->setBounds(plan.rightBorder.x, plan.rightBorder.y,
+                          plan.rightBorder.w, plan.rightBorder.h);
 
-    borders[0]->setBounds(0, 0, width, borderWidth + scrollBarHeight);
-    borders[1]->setBounds(0, height - borderWidth, width, borderWidth);
-    borders[2]->setBounds(0, borderWidth + scrollBarHeight, borderWidth,
-                          height - 2 * borderWidth - scrollBarHeight);
-    borders[3]->setBounds(width - borderWidth, borderWidth + scrollBarHeight,
-                          borderWidth,
-                          height - 2 * borderWidth - scrollBarHeight);
-
-    timeline->setBounds(borderWidth, height - borderWidth - timelineHeight,
-                        width - 2 * borderWidth, timelineHeight);
+    timeline->setBounds(plan.timeline.x, plan.timeline.y, plan.timeline.w,
+                        plan.timeline.h);
 
     updateTriangleMarkerBounds();
 }

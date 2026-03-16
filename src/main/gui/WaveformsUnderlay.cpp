@@ -1,6 +1,7 @@
 #include "WaveformsUnderlay.hpp"
 
 #include "Waveform.hpp"
+#include "WaveformsUnderlayPlanning.hpp"
 #include "WaveformRefresh.hpp"
 #include "Window.hpp"
 #include <algorithm>
@@ -17,20 +18,6 @@ namespace
     constexpr double kWheelSnapThresholdPixels = 0.5;
     constexpr uint64_t kWheelStreamTimeoutMs = 20;
 } // namespace
-
-int64_t getValidSampleIndexUnderMouseCursor(const int32_t mouseX,
-                                            const double samplesPerPixel,
-                                            const int64_t sampleOffset,
-                                            const int64_t frameCount)
-{
-    if (frameCount <= 0)
-    {
-        return 0;
-    }
-    const int64_t sampleIndex =
-        static_cast<int64_t>(mouseX * samplesPerPixel) + sampleOffset;
-    return std::clamp(sampleIndex, int64_t{0}, frameCount - 1);
-}
 
 WaveformsUnderlay::WaveformsUnderlay(State *stateToUse)
     : Component(stateToUse, "WaveformsUnderlay")
@@ -55,25 +42,13 @@ bool WaveformsUnderlay::mouseDown(const MouseEvent &e)
     const auto samplesPerPixel = viewState.samplesPerPixel;
     if (e.numClicks >= 2)
     {
-        const double startSample = viewState.sampleOffset;
-        double endSample =
-            viewState.sampleOffset + getWidth() * samplesPerPixel;
-
-        endSample = std::min((double)doc.getFrameCount(), endSample);
-
-        if (samplesPerPixel < 1.0)
+        double startSample = 0.0;
+        double endSample = 0.0;
+        if (!planWaveformsUnderlayVisibleRangeSelection(
+                doc.getFrameCount(), viewState.sampleOffset, samplesPerPixel,
+                getWidth(), startSample, endSample))
         {
-            const double endFloor = std::floor(endSample);
-            const double coverage = endSample - endFloor;
-
-            if (coverage < 1.0)
-            {
-                endSample = endFloor;
-            }
-            else
-            {
-                endSample = endFloor + 1.0;
-            }
+            return false;
         }
 
         session.selection.setValue1(startSample);
@@ -88,8 +63,8 @@ bool WaveformsUnderlay::mouseDown(const MouseEvent &e)
     const bool shiftPressed =
         keyboard[SDL_SCANCODE_LSHIFT] || keyboard[SDL_SCANCODE_RSHIFT];
 
-    const double samplePos =
-        viewState.sampleOffset + e.mouseXf * samplesPerPixel;
+    const double samplePos = planWaveformsUnderlaySamplePosition(
+        viewState.sampleOffset, samplesPerPixel, e.mouseXf);
 
     if (shiftPressed)
     {
@@ -125,39 +100,8 @@ void WaveformsUnderlay::handleChannelSelection(
     const int32_t mouseY, const bool isMouseDownEvent) const
 {
     auto &viewState = state->mainDocumentSessionWindow->getViewState();
-    bool isLeftOnly = false;
-    bool isRightOnly = false;
-
-    for (size_t i = 0; i < state->waveforms.size(); ++i)
-    {
-        const uint16_t yStart = i * channelHeight();
-        const uint16_t yEnd = yStart + channelHeight();
-
-        if (i == 0 && mouseY < yStart + channelHeight() / 4)
-        {
-            isLeftOnly = true;
-        }
-        else if (i == state->waveforms.size() - 1 &&
-                 mouseY >= yEnd - channelHeight() / 4)
-        {
-            isRightOnly = true;
-        }
-    }
-
-    assert(!(isLeftOnly && isRightOnly));
-
-    if (isLeftOnly)
-    {
-        viewState.hoveringOverChannels = LEFT;
-    }
-    else if (isRightOnly)
-    {
-        viewState.hoveringOverChannels = RIGHT;
-    }
-    else
-    {
-        viewState.hoveringOverChannels = BOTH;
-    }
+    viewState.hoveringOverChannels = planWaveformsUnderlayHoveredChannels(
+        mouseY, getHeight(), static_cast<int>(state->waveforms.size()));
 
     if ((getWindow() && getWindow()->getCapturingComponent() == this) ||
         isMouseDownEvent)
@@ -197,7 +141,7 @@ bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
         }
     }
 
-    const int64_t sampleIndex = getValidSampleIndexUnderMouseCursor(
+    const int64_t sampleIndex = planWaveformsUnderlayValidSampleIndex(
         e.mouseXi, viewState.samplesPerPixel, viewState.sampleOffset,
         doc.getFrameCount());
 
@@ -219,16 +163,9 @@ bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
 
     if (lastNumClicks == 1)
     {
-        const double samplePos =
-            viewState.sampleOffset + e.mouseXi * viewState.samplesPerPixel;
-        const bool selectionWasActive = session.selection.isActive();
-
-        session.selection.setValue2(samplePos);
-
-        if (selectionWasActive && !session.selection.isActive())
-        {
-            session.selection.setValue2(samplePos + 1);
-        }
+        applyWaveformsUnderlayDraggedSelection(
+            session.selection, viewState.sampleOffset,
+            viewState.samplesPerPixel, e.mouseXi);
     }
 
     markAllWaveformsDirty();

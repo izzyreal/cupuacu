@@ -1,6 +1,7 @@
 #include "Waveforms.hpp"
 
 #include "Waveform.hpp"
+#include "MainViewLayoutPlanning.hpp"
 #include "WaveformsUnderlay.hpp"
 
 #include "../State.hpp"
@@ -49,16 +50,12 @@ void Waveforms::resizeWaveforms() const
     const int numChannels = static_cast<int>(state->waveforms.size());
     if (numChannels > 0)
     {
-        const int totalHeight = getHeight();
-        const int baseHeight = totalHeight / numChannels;
-        const int remainder = totalHeight % numChannels;
-
-        int yPos = 0;
+        const auto tiles =
+            planWaveformChannelTiles(getWidth(), getHeight(), numChannels);
         for (int ch = 0; ch < numChannels; ++ch)
         {
-            const int channelHeight = baseHeight + (ch < remainder ? 1 : 0);
-            state->waveforms[ch]->setBounds(0, yPos, getWidth(), channelHeight);
-            yPos += channelHeight;
+            const auto &tile = tiles[static_cast<size_t>(ch)];
+            state->waveforms[ch]->setBounds(tile.x, tile.y, tile.w, tile.h);
         }
     }
 
