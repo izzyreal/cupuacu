@@ -105,10 +105,13 @@ bool AudioDevices::fillOutputBuffer(PaData &data, float *out,
         state->playbackPosition, data.playbackStartPos, data.playbackEndPos,
         data.playbackLoopEnabled, data.playbackHasPendingSwitch,
         data.playbackPendingStartPos, data.playbackPendingEndPos,
-        state->isPlaying, out, framesPerBuffer, peakLeft, peakRight);
+        state->isPlaying, out, framesPerBuffer, peakLeft, peakRight,
+        data.previewProcessor.get(), data.playbackStartPos, data.playbackEndPos,
+        data.selectedChannels);
     if (!state->isPlaying)
     {
         data.playbackDocument = nullptr;
+        data.previewProcessor.reset();
     }
     return playedAnyFrame;
 }
@@ -351,6 +354,7 @@ void AudioDevices::applyMessage(const AudioMessage &msg) noexcept
                                 paData.selectedChannels = m.selectedChannels;
                                 paData.selectionIsActive = m.selectionIsActive;
                                 paData.vuMeter = m.vuMeter;
+                                paData.previewProcessor = m.previewProcessor;
                             },
                             [&](const Stop &)
                             {
@@ -358,6 +362,7 @@ void AudioDevices::applyMessage(const AudioMessage &msg) noexcept
                                 paData.recordingDocument = nullptr;
                                 paData.playbackLoopEnabled = false;
                                 paData.playbackHasPendingSwitch = false;
+                                paData.previewProcessor.reset();
                                 paData.recordingBoundedToEnd = false;
                                 activeState.playbackPosition = -1;
                                 activeState.recordingPosition = -1;

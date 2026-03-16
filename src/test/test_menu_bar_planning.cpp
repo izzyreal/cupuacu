@@ -258,6 +258,37 @@ TEST_CASE("Effects menu opens AmplifyFadeWindow", "[gui]")
     REQUIRE(state.dynamicsDialog->isOpen());
 }
 
+TEST_CASE("Effect dialogs are modal and include preview button", "[gui]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::State state{};
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &state.activeDocumentSession, "main", 640, 360,
+            SDL_WINDOW_HIDDEN);
+    state.windows.push_back(state.mainDocumentSessionWindow->getWindow());
+
+    auto amplifyFadeDialog =
+        std::make_unique<cupuacu::effects::AmplifyFadeDialog>(&state);
+    REQUIRE(amplifyFadeDialog->isOpen());
+    REQUIRE(state.modalWindow == amplifyFadeDialog->getWindow());
+
+    auto *root = amplifyFadeDialog->getWindow()->getRootComponent();
+    REQUIRE(root != nullptr);
+    auto *previewButton = dynamic_cast<cupuacu::gui::TextButton *>(
+        const_cast<cupuacu::gui::Component *>(
+            findByNameRecursive(root, "TextButton:Preview")));
+    REQUIRE(previewButton != nullptr);
+
+    SDL_Event closeEvent{};
+    closeEvent.type = SDL_EVENT_WINDOW_CLOSE_REQUESTED;
+    closeEvent.window.windowID = amplifyFadeDialog->getWindow()->getId();
+    REQUIRE(amplifyFadeDialog->getWindow()->handleEvent(closeEvent));
+    amplifyFadeDialog.reset();
+    REQUIRE(state.modalWindow == nullptr);
+}
+
 TEST_CASE("AmplifyFadeWindow presets update values and curve row does not overlap",
           "[gui]")
 {

@@ -202,10 +202,46 @@ namespace cupuacu::gui
         return nullptr;
     }
 
+    static bool isInteractiveEventBlockedByModal(State *state,
+                                                 Window *eventWindow,
+                                                 const SDL_Event *event)
+    {
+        if (!state || !state->modalWindow || !state->modalWindow->isOpen())
+        {
+            return false;
+        }
+
+        if (eventWindow == state->modalWindow)
+        {
+            return false;
+        }
+
+        switch (event->type)
+        {
+            case SDL_EVENT_MOUSE_MOTION:
+            case SDL_EVENT_MOUSE_BUTTON_DOWN:
+            case SDL_EVENT_MOUSE_BUTTON_UP:
+            case SDL_EVENT_MOUSE_WHEEL:
+            case SDL_EVENT_KEY_DOWN:
+            case SDL_EVENT_TEXT_INPUT:
+                if (state->modalWindow->getSdlWindow())
+                {
+                    SDL_RaiseWindow(state->modalWindow->getSdlWindow());
+                }
+                return true;
+            default:
+                return false;
+        }
+    }
+
     inline SDL_AppResult handleAppEvent(State *state, SDL_Event *event)
     {
         auto *mainWindow = state->mainDocumentSessionWindow->getWindow();
         Window *eventWindow = findWindowForEvent(state, event);
+        if (isInteractiveEventBlockedByModal(state, eventWindow, event))
+        {
+            return SDL_APP_CONTINUE;
+        }
         switch (event->type)
         {
             case SDL_EVENT_QUIT:

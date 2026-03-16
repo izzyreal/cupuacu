@@ -25,7 +25,10 @@ bool cupuacu::audio::callback_core::fillOutputBuffer(
     const bool playbackLoopEnabled, bool &playbackHasPendingSwitch,
     uint64_t &playbackPendingStartPos, uint64_t &playbackPendingEndPos,
     bool &isPlaying, float *out,
-    const unsigned long framesPerBuffer, float &peakLeft, float &peakRight)
+    const unsigned long framesPerBuffer, float &peakLeft, float &peakRight,
+    const cupuacu::audio::AudioProcessor *processor,
+    const uint64_t effectStartPos, const uint64_t effectEndPos,
+    const cupuacu::SelectedChannels processorChannels)
 {
     if (!out)
     {
@@ -52,7 +55,11 @@ bool cupuacu::audio::callback_core::fillOutputBuffer(
         !selectionIsActive || selectedChannels == cupuacu::SelectedChannels::BOTH ||
         selectedChannels == cupuacu::SelectedChannels::RIGHT;
 
+    float *const outputStart = out;
     bool playedAnyFrame = false;
+    bool capturedBufferStart = false;
+    int64_t bufferStartFrame = 0;
+    unsigned long playedFrameCount = 0;
     for (unsigned long i = 0; i < framesPerBuffer; ++i)
     {
         if (!isPlaying || playbackPosition < 0)
@@ -86,6 +93,12 @@ bool cupuacu::audio::callback_core::fillOutputBuffer(
             }
         }
 
+        if (!capturedBufferStart)
+        {
+            bufferStartFrame = playbackPosition;
+            capturedBufferStart = true;
+        }
+
         const float outL = shouldPlayChannelL ? chBufL[playbackPosition] : 0.0f;
         const float outR = shouldPlayChannelR ? chBufR[playbackPosition] : 0.0f;
 
@@ -95,7 +108,18 @@ bool cupuacu::audio::callback_core::fillOutputBuffer(
         peakLeft = std::max(peakLeft, std::abs(outL));
         peakRight = std::max(peakRight, std::abs(outR));
         ++playbackPosition;
+        ++playedFrameCount;
         playedAnyFrame = true;
+    }
+
+    if (playedAnyFrame && processor && effectEndPos > effectStartPos)
+    {
+        processor->process(outputStart, playedFrameCount,
+                           {.bufferStartFrame = bufferStartFrame,
+                            .frameCount = playedFrameCount,
+                            .effectStartFrame = effectStartPos,
+                            .effectEndFrame = effectEndPos,
+                            .targetChannels = processorChannels});
     }
 
     return playedAnyFrame;

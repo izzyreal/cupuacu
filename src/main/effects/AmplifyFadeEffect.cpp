@@ -24,6 +24,11 @@ namespace cupuacu::effects
             {
                 performAmplifyFade(state, settings);
             };
+            definition.createPreviewSession =
+                [](cupuacu::State *, const AmplifyFadeSettings &settings)
+            {
+                return std::make_shared<AmplifyFadePreviewSession>(settings);
+            };
 
             definition.parameters.push_back(
                 EffectParameterSpec<AmplifyFadeSettings>::percent(

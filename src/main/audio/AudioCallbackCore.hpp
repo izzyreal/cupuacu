@@ -2,6 +2,7 @@
 
 #include "../Document.hpp"
 #include "../SelectedChannels.hpp"
+#include "AudioProcessor.hpp"
 #include "RecordedChunk.hpp"
 
 #include <cstdint>
@@ -22,7 +23,12 @@ namespace cupuacu::audio::callback_core
                           uint64_t &playbackPendingStartPos,
                           uint64_t &playbackPendingEndPos, bool &isPlaying, float *out,
                           unsigned long framesPerBuffer, float &peakLeft,
-                          float &peakRight);
+                          float &peakRight,
+                          const cupuacu::audio::AudioProcessor *processor = nullptr,
+                          uint64_t effectStartPos = 0,
+                          uint64_t effectEndPos = 0,
+                          cupuacu::SelectedChannels processorChannels =
+                              cupuacu::SelectedChannels::BOTH);
 
     void recordInputIntoChunks(const float *input, unsigned long framesPerBuffer,
                                uint8_t recordingChannels,

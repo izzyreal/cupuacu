@@ -118,4 +118,45 @@ namespace cupuacu::effects
         }
         return peak;
     }
+
+    inline bool getPreviewRange(cupuacu::State *state, uint64_t &startOut,
+                                uint64_t &endOut)
+    {
+        startOut = 0;
+        endOut = 0;
+
+        int64_t startFrame = 0;
+        int64_t frameCount = 0;
+        if (!getTargetRange(state, startFrame, frameCount))
+        {
+            return false;
+        }
+
+        startOut = static_cast<uint64_t>(std::max<int64_t>(0, startFrame));
+        endOut = startOut + static_cast<uint64_t>(frameCount);
+        return endOut > startOut;
+    }
+
+    inline cupuacu::SelectedChannels getPreviewSelectedChannels(
+        cupuacu::State *state)
+    {
+        if (!state)
+        {
+            return cupuacu::SelectedChannels::BOTH;
+        }
+
+        const auto &document = state->activeDocumentSession.document;
+        if (document.getChannelCount() <= 1)
+        {
+            return cupuacu::SelectedChannels::BOTH;
+        }
+
+        if (!state->activeDocumentSession.selection.isActive() ||
+            !state->mainDocumentSessionWindow)
+        {
+            return cupuacu::SelectedChannels::BOTH;
+        }
+
+        return state->mainDocumentSessionWindow->getViewState().selectedChannels;
+    }
 } // namespace cupuacu::effects

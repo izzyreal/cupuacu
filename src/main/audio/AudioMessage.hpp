@@ -2,6 +2,7 @@
 
 #include "SelectedChannels.hpp"
 
+#include <memory>
 #include <variant>
 
 namespace cupuacu::gui
@@ -16,6 +17,8 @@ namespace cupuacu
 
 namespace cupuacu::audio
 {
+    class AudioProcessor;
+
     struct Play
     {
         cupuacu::Document *document;
@@ -25,6 +28,7 @@ namespace cupuacu::audio
         bool selectionIsActive;
         SelectedChannels selectedChannels;
         gui::VuMeter *vuMeter;
+        std::shared_ptr<const AudioProcessor> previewProcessor;
     };
 
     struct UpdatePlayback

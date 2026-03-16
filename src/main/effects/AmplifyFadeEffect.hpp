@@ -4,11 +4,13 @@
 #include "EffectSettings.hpp"
 #include "EffectTargeting.hpp"
 
+#include "audio/AudioProcessor.hpp"
 #include "actions/Undoable.hpp"
 #include "gui/MainView.hpp"
 #include "gui/Waveform.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <memory>
 #include <string>
@@ -63,15 +65,7 @@ namespace cupuacu::effects
             return "Amplify/Fade";
         }
 
-    private:
-        AmplifyFadeSettings settings{};
-        Curve curve = Curve::Linear;
-        int64_t startFrame = 0;
-        int64_t frameCount = 0;
-        std::vector<int64_t> targetChannels;
-        std::vector<std::vector<float>> oldSamples;
-        std::vector<std::vector<float>> newSamples;
-
+    public:
         static Curve clampCurve(const int curveIndex)
         {
             switch (curveIndex)
@@ -100,20 +94,38 @@ namespace cupuacu::effects
             }
         }
 
-        double gainForFrame(const int64_t frameIndex) const
+        static double gainForRelativeFrame(const AmplifyFadeSettings &settingsToUse,
+                                           const Curve curveToUse,
+                                           const int64_t frameIndex,
+                                           const int64_t totalFrameCount)
         {
-            const double startGain = settings.startPercent / 100.0;
-            const double endGain = settings.endPercent / 100.0;
-            if (frameCount <= 1)
+            const double startGain = settingsToUse.startPercent / 100.0;
+            const double endGain = settingsToUse.endPercent / 100.0;
+            if (totalFrameCount <= 1)
             {
                 return startGain;
             }
 
             const double linearWeight =
                 static_cast<double>(frameIndex) /
-                static_cast<double>(frameCount - 1);
-            const double curvedWeight = computeCurveWeight(curve, linearWeight);
+                static_cast<double>(totalFrameCount - 1);
+            const double curvedWeight =
+                computeCurveWeight(curveToUse, linearWeight);
             return startGain + (endGain - startGain) * curvedWeight;
+        }
+
+    private:
+        AmplifyFadeSettings settings{};
+        Curve curve = Curve::Linear;
+        int64_t startFrame = 0;
+        int64_t frameCount = 0;
+        std::vector<int64_t> targetChannels;
+        std::vector<std::vector<float>> oldSamples;
+        std::vector<std::vector<float>> newSamples;
+
+        double gainForFrame(const int64_t frameIndex) const
+        {
+            return gainForRelativeFrame(settings, curve, frameIndex, frameCount);
         }
 
         void captureTargetsAndSamples()
@@ -216,6 +228,98 @@ namespace cupuacu::effects
         }
         return std::clamp(100.0 / static_cast<double>(peak), 0.0, 1000.0);
     }
+
+    class AmplifyFadePreviewProcessor : public cupuacu::audio::AudioProcessor
+    {
+    public:
+        explicit AmplifyFadePreviewProcessor(
+            const AmplifyFadeSettings &settingsToUse)
+        {
+            updateSettings(settingsToUse);
+        }
+
+        void updateSettings(const AmplifyFadeSettings &settingsToUse)
+        {
+            std::atomic_store_explicit(
+                &settingsSnapshot,
+                std::make_shared<const AmplifyFadeSettings>(settingsToUse),
+                std::memory_order_release);
+        }
+
+        void process(float *interleavedStereo, const unsigned long frameCount,
+                     const cupuacu::audio::AudioProcessContext &context) const override
+        {
+            const auto settings =
+                std::atomic_load_explicit(&settingsSnapshot, std::memory_order_acquire);
+            if (!settings)
+            {
+                return;
+            }
+
+            if (!interleavedStereo || frameCount == 0 ||
+                context.effectEndFrame <= context.effectStartFrame)
+            {
+                return;
+            }
+
+            const auto curve =
+                AmplifyFadeUndoable::clampCurve(settings->curveIndex);
+            const int64_t totalFrameCount = static_cast<int64_t>(
+                context.effectEndFrame - context.effectStartFrame);
+            for (unsigned long i = 0; i < frameCount; ++i)
+            {
+                const int64_t absoluteFrame =
+                    context.bufferStartFrame + static_cast<int64_t>(i);
+                if (absoluteFrame < static_cast<int64_t>(context.effectStartFrame) ||
+                    absoluteFrame >= static_cast<int64_t>(context.effectEndFrame))
+                {
+                    continue;
+                }
+
+                const int64_t relativeFrame =
+                    absoluteFrame - static_cast<int64_t>(context.effectStartFrame);
+                const float gain = static_cast<float>(
+                    AmplifyFadeUndoable::gainForRelativeFrame(
+                        *settings, curve, relativeFrame, totalFrameCount));
+                float *frame = interleavedStereo + i * 2;
+                if (context.targetChannels != cupuacu::SelectedChannels::RIGHT)
+                {
+                    frame[0] *= gain;
+                }
+                if (context.targetChannels != cupuacu::SelectedChannels::LEFT)
+                {
+                    frame[1] *= gain;
+                }
+            }
+        }
+
+    private:
+        mutable std::shared_ptr<const AmplifyFadeSettings> settingsSnapshot;
+    };
+
+    class AmplifyFadePreviewSession
+        : public EffectPreviewSession<AmplifyFadeSettings>
+    {
+    public:
+        explicit AmplifyFadePreviewSession(const AmplifyFadeSettings &settings)
+            : processor(std::make_shared<AmplifyFadePreviewProcessor>(settings))
+        {
+        }
+
+        std::shared_ptr<const cupuacu::audio::AudioProcessor>
+        getProcessor() const override
+        {
+            return processor;
+        }
+
+        void updateSettings(const AmplifyFadeSettings &settings) override
+        {
+            processor->updateSettings(settings);
+        }
+
+    private:
+        std::shared_ptr<AmplifyFadePreviewProcessor> processor;
+    };
 
     class AmplifyFadeDialog
     {

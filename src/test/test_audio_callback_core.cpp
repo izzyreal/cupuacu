@@ -1,9 +1,28 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include "Document.hpp"
 #include "audio/AudioCallbackCore.hpp"
+#include "audio/AudioProcessor.hpp"
+#include "effects/AmplifyFadeEffect.hpp"
 
 #include <vector>
+
+namespace
+{
+    class HalfGainProcessor : public cupuacu::audio::AudioProcessor
+    {
+    public:
+        void process(float *interleavedStereo, const unsigned long frameCount,
+                     const cupuacu::audio::AudioProcessContext &) const override
+        {
+            for (unsigned long i = 0; i < frameCount * 2; ++i)
+            {
+                interleavedStereo[i] *= 0.5f;
+            }
+        }
+    };
+}
 
 TEST_CASE("AudioCallbackCore fillOutputBuffer handles invalid negative playback position",
           "[audio]")
@@ -85,4 +104,113 @@ TEST_CASE("AudioCallbackCore writes silence after non-loop stop in buffer",
     {
         REQUIRE(out[i] == 0.0f);
     }
+}
+
+TEST_CASE("AudioCallbackCore preview processor transforms only played frames",
+          "[audio]")
+{
+    cupuacu::Document doc{};
+    doc.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 4);
+    doc.setSample(0, 0, 1.0f, false);
+    doc.setSample(0, 1, 0.8f, false);
+    doc.setSample(0, 2, 0.6f, false);
+    doc.setSample(0, 3, 0.4f, false);
+    doc.setSample(1, 0, -1.0f, false);
+    doc.setSample(1, 1, -0.8f, false);
+    doc.setSample(1, 2, -0.6f, false);
+    doc.setSample(1, 3, -0.4f, false);
+
+    int64_t playbackPosition = 1;
+    uint64_t playbackStartPos = 1;
+    uint64_t playbackEndPos = 3;
+    bool playbackHasPendingSwitch = false;
+    uint64_t playbackPendingStartPos = 0;
+    uint64_t playbackPendingEndPos = 0;
+    bool isPlaying = true;
+    float peakLeft = 0.0f;
+    float peakRight = 0.0f;
+    std::vector<float> out(8, 0.0f);
+    HalfGainProcessor processor{};
+
+    const bool playedAnyFrame = cupuacu::audio::callback_core::fillOutputBuffer(
+        &doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
+        playbackStartPos, playbackEndPos, false, playbackHasPendingSwitch,
+        playbackPendingStartPos, playbackPendingEndPos, isPlaying, out.data(), 4,
+        peakLeft, peakRight, &processor, playbackStartPos, playbackEndPos,
+        cupuacu::SelectedChannels::BOTH);
+
+    REQUIRE(playedAnyFrame);
+    REQUIRE(out[0] == Catch::Approx(0.4f));
+    REQUIRE(out[1] == Catch::Approx(-0.4f));
+    REQUIRE(out[2] == Catch::Approx(0.3f));
+    REQUIRE(out[3] == Catch::Approx(-0.3f));
+    REQUIRE(out[4] == 0.0f);
+    REQUIRE(out[5] == 0.0f);
+    REQUIRE(out[6] == 0.0f);
+    REQUIRE(out[7] == 0.0f);
+}
+
+TEST_CASE("Amplify/Fade preview processor picks up updated settings between buffers",
+          "[audio]")
+{
+    cupuacu::Document doc{};
+    doc.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 4);
+    for (int64_t i = 0; i < 4; ++i)
+    {
+        doc.setSample(0, i, 1.0f, false);
+        doc.setSample(1, i, 1.0f, false);
+    }
+
+    auto previewSession =
+        std::make_shared<cupuacu::effects::AmplifyFadePreviewSession>(
+            cupuacu::effects::AmplifyFadeSettings{100.0, 100.0, 0, false});
+    auto processor = previewSession->getProcessor();
+
+    int64_t playbackPosition = 0;
+    uint64_t playbackStartPos = 0;
+    uint64_t playbackEndPos = 2;
+    bool playbackHasPendingSwitch = false;
+    uint64_t playbackPendingStartPos = 0;
+    uint64_t playbackPendingEndPos = 0;
+    bool isPlaying = true;
+    float peakLeft = 0.0f;
+    float peakRight = 0.0f;
+    std::vector<float> out(4, 0.0f);
+
+    const bool playedAnyFrame = cupuacu::audio::callback_core::fillOutputBuffer(
+        &doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
+        playbackStartPos, playbackEndPos, false, playbackHasPendingSwitch,
+        playbackPendingStartPos, playbackPendingEndPos, isPlaying, out.data(), 2,
+        peakLeft, peakRight, processor.get(), playbackStartPos, playbackEndPos,
+        cupuacu::SelectedChannels::BOTH);
+
+    REQUIRE(playedAnyFrame);
+    REQUIRE(out[0] == Catch::Approx(1.0f));
+    REQUIRE(out[1] == Catch::Approx(1.0f));
+
+    previewSession->updateSettings(
+        cupuacu::effects::AmplifyFadeSettings{50.0, 50.0, 0, false});
+
+    playbackPosition = 2;
+    playbackStartPos = 2;
+    playbackEndPos = 4;
+    playbackHasPendingSwitch = false;
+    playbackPendingStartPos = 0;
+    playbackPendingEndPos = 0;
+    isPlaying = true;
+    peakLeft = 0.0f;
+    peakRight = 0.0f;
+    out.assign(4, 0.0f);
+
+    const bool playedUpdatedFrame =
+        cupuacu::audio::callback_core::fillOutputBuffer(
+            &doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
+            playbackStartPos, playbackEndPos, false, playbackHasPendingSwitch,
+            playbackPendingStartPos, playbackPendingEndPos, isPlaying,
+            out.data(), 2, peakLeft, peakRight, processor.get(),
+            playbackStartPos, playbackEndPos, cupuacu::SelectedChannels::BOTH);
+
+    REQUIRE(playedUpdatedFrame);
+    REQUIRE(out[0] == Catch::Approx(0.5f));
+    REQUIRE(out[1] == Catch::Approx(0.5f));
 }

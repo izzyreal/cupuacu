@@ -4,6 +4,7 @@
 #include "audio/AudioDeviceState.hpp"
 #include "audio/AudioDeviceView.hpp"
 #include "audio/AudioMessage.hpp"
+#include "audio/AudioProcessor.hpp"
 #include "audio/RecordedChunk.hpp"
 
 #include <cstdint>
@@ -93,6 +94,7 @@ namespace cupuacu::audio
             bool playbackHasPendingSwitch = false;
             uint64_t playbackPendingStartPos = 0;
             uint64_t playbackPendingEndPos = 0;
+            std::shared_ptr<const AudioProcessor> previewProcessor;
             uint64_t recordingEndPos = std::numeric_limits<uint64_t>::max();
             bool recordingBoundedToEnd = false;
             uint8_t recordingChannelCount = 0;

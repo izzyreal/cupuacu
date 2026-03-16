@@ -23,6 +23,11 @@ namespace cupuacu::effects
             {
                 performDynamics(state, settings);
             };
+            definition.createPreviewSession =
+                [](cupuacu::State *, const DynamicsSettings &settings)
+            {
+                return std::make_shared<DynamicsPreviewSession>(settings);
+            };
 
             definition.parameters.push_back(
                 EffectParameterSpec<DynamicsSettings>::percent(

@@ -1,5 +1,8 @@
 #pragma once
 
+#include "EffectTargeting.hpp"
+
+#include "audio/AudioDevices.hpp"
 #include "gui/Colors.hpp"
 #include "gui/Component.hpp"
 #include "gui/DropdownMenu.hpp"
@@ -11,6 +14,9 @@
 #include "gui/UiScale.hpp"
 #include "gui/Window.hpp"
 #include "gui/text.hpp"
+#include "audio/AudioMessage.hpp"
+
+#include "actions/Play.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -107,12 +113,25 @@ namespace cupuacu::effects
     };
 
     template <typename Settings>
+    class EffectPreviewSession
+    {
+    public:
+        virtual ~EffectPreviewSession() = default;
+        virtual std::shared_ptr<const cupuacu::audio::AudioProcessor>
+        getProcessor() const = 0;
+        virtual void updateSettings(const Settings &settings) = 0;
+    };
+
+    template <typename Settings>
     struct EffectDialogDefinition
     {
         std::string title;
         std::function<Settings(cupuacu::State *)> loadSettings;
         std::function<void(cupuacu::State *, const Settings &)> saveSettings;
         std::function<void(cupuacu::State *, const Settings &)> applySettings;
+        std::function<std::shared_ptr<EffectPreviewSession<Settings>>(
+            cupuacu::State *, const Settings &)>
+            createPreviewSession;
         std::vector<EffectParameterSpec<Settings>> parameters;
         std::vector<EffectActionSpec<Settings>> actions;
     };
@@ -145,6 +164,7 @@ namespace cupuacu::effects
             }
 
             state->windows.push_back(window.get());
+            state->modalWindow = window.get();
             if (auto *mainWindow = state->mainDocumentSessionWindow
                                        ? state->mainDocumentSessionWindow
                                              ->getWindow()
@@ -164,12 +184,17 @@ namespace cupuacu::effects
             buildParameterControls(rootComponent.get());
             buildActionButtons(rootComponent.get());
 
+            previewButton =
+                rootComponent->template emplaceChild<cupuacu::gui::TextButton>(
+                    state, "Preview");
             cancelButton = rootComponent->template emplaceChild<cupuacu::gui::TextButton>(
                 state, "Cancel");
             applyButton = rootComponent->template emplaceChild<cupuacu::gui::TextButton>(
                 state, "Apply");
+            previewButton->setTriggerOnMouseUp(true);
             cancelButton->setTriggerOnMouseUp(true);
             applyButton->setTriggerOnMouseUp(true);
+            previewButton->setOnPress([this]() { togglePreview(); });
             cancelButton->setOnPress([this]() { closeNow(); });
             applyButton->setOnPress([this]() { applyAndClose(); });
 
@@ -193,6 +218,10 @@ namespace cupuacu::effects
                     {
                         state->windows.erase(it);
                     }
+                    if (state->modalWindow == window.get())
+                    {
+                        state->modalWindow = nullptr;
+                    }
                 });
 
             window->setRootComponent(std::move(rootComponent));
@@ -211,6 +240,10 @@ namespace cupuacu::effects
                 if (it != state->windows.end())
                 {
                     state->windows.erase(it);
+                }
+                if (state->modalWindow == window.get())
+                {
+                    state->modalWindow = nullptr;
                 }
             }
         }
@@ -256,11 +289,14 @@ namespace cupuacu::effects
         cupuacu::gui::OpaqueRect *background = nullptr;
         std::vector<ParameterControl> controls;
         std::vector<cupuacu::gui::TextButton *> actionButtons;
+        cupuacu::gui::TextButton *previewButton = nullptr;
         cupuacu::gui::TextButton *cancelButton = nullptr;
         cupuacu::gui::TextButton *applyButton = nullptr;
         int windowWidth = 560;
         int windowHeight = 320;
         bool syncingControls = false;
+        bool previewStartedByDialog = false;
+        std::shared_ptr<EffectPreviewSession<Settings>> previewSession;
 
         static constexpr Uint32 getHighDensityWindowFlag()
         {
@@ -541,6 +577,10 @@ namespace cupuacu::effects
         {
             mutation();
             persistSettings();
+            if (previewSession)
+            {
+                previewSession->updateSettings(settings);
+            }
             syncAllControls();
             if (shouldRender)
             {
@@ -558,6 +598,7 @@ namespace cupuacu::effects
 
         void applyAndClose()
         {
+            stopPreview();
             if (definition.applySettings)
             {
                 definition.applySettings(state, settings);
@@ -567,10 +608,92 @@ namespace cupuacu::effects
 
         void closeNow()
         {
+            stopPreview();
             if (window)
             {
                 window->requestClose();
             }
+        }
+
+        bool isPreviewPlaying() const
+        {
+            return previewStartedByDialog && state && state->audioDevices &&
+                   state->audioDevices->isPlaying();
+        }
+
+        void togglePreview()
+        {
+            if (isPreviewPlaying())
+            {
+                stopPreview();
+            }
+            else
+            {
+                startPreview();
+            }
+        }
+
+        void startPreview()
+        {
+            if (!state || !state->audioDevices || !definition.createPreviewSession)
+            {
+                return;
+            }
+
+            auto &document = state->activeDocumentSession.document;
+            if (document.getFrameCount() <= 0 || document.getChannelCount() <= 0)
+            {
+                return;
+            }
+
+            uint64_t start = 0;
+            uint64_t end = 0;
+            if (!getPreviewRange(state, start, end) || end <= start)
+            {
+                return;
+            }
+
+            previewSession = definition.createPreviewSession(state, settings);
+            if (!previewSession)
+            {
+                return;
+            }
+
+            auto processor = previewSession->getProcessor();
+            if (!processor)
+            {
+                previewSession.reset();
+                return;
+            }
+
+            cupuacu::actions::requestStop(state);
+
+            cupuacu::audio::Play playMsg{};
+            playMsg.document = &document;
+            playMsg.startPos = start;
+            playMsg.endPos = end;
+            playMsg.loopEnabled = false;
+            playMsg.selectionIsActive =
+                state->activeDocumentSession.selection.isActive();
+            playMsg.selectedChannels = getPreviewSelectedChannels(state);
+            playMsg.vuMeter = state->vuMeter;
+            playMsg.previewProcessor = std::move(processor);
+            state->audioDevices->enqueue(std::move(playMsg));
+            state->playbackRangeStart = start;
+            state->playbackRangeEnd = end;
+            previewStartedByDialog = true;
+        }
+
+        void stopPreview()
+        {
+            if (!previewStartedByDialog || !state || !state->audioDevices)
+            {
+                return;
+            }
+
+            cupuacu::actions::requestStop(state);
+            previewStartedByDialog = false;
+            previewSession.reset();
         }
 
         void layoutComponents() const
@@ -675,6 +798,9 @@ namespace cupuacu::effects
             const int bottomButtonWidth =
                 std::max(96, cupuacu::gui::scaleUi(state, 120.0f));
             const int bottomY = canvasHi - padding - rowHeight;
+            previewButton->setBounds(
+                canvasWi - padding * 3 - bottomButtonWidth * 3, bottomY,
+                bottomButtonWidth, rowHeight);
             applyButton->setBounds(canvasWi - padding - bottomButtonWidth, bottomY,
                                    bottomButtonWidth, rowHeight);
             cancelButton->setBounds(canvasWi - padding * 2 - bottomButtonWidth * 2,

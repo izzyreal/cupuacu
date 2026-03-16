@@ -76,6 +76,7 @@ namespace cupuacu
         std::unique_ptr<effects::DynamicsDialog,
                         void (*)(effects::DynamicsDialog *)>
             dynamicsDialog{nullptr, destroyDynamicsDialog};
+        gui::Window *modalWindow = nullptr;
         gui::MainView *mainView;
         gui::Component *statusBar;
         gui::VuMeterContainer *vuMeterContainer;
