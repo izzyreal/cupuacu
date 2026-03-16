@@ -41,6 +41,9 @@ namespace cupuacu::test
             std::make_unique<cupuacu::gui::DocumentSessionWindow>(
                 state, &session, "test", windowWidth, windowHeight,
                 SDL_WINDOW_HIDDEN);
+        REQUIRE(state->mainDocumentSessionWindow != nullptr);
+        REQUIRE(state->mainDocumentSessionWindow->getWindow() != nullptr);
+        REQUIRE(state->mainDocumentSessionWindow->getWindow()->isOpen());
 
         SessionUi ui{};
         ui.mainView = std::make_unique<cupuacu::gui::MainView>(state);

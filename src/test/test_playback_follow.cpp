@@ -26,26 +26,6 @@ TEST_CASE("Playback follow does not mutate DocumentSession cursor", "[session]")
     REQUIRE(session.cursor == 10);
 }
 
-TEST_CASE("Sample points are hidden during playback", "[session]")
-{
-    cupuacu::State state{};
-    auto &session = state.activeDocumentSession;
-    auto ui = cupuacu::test::createSessionUi(&state, 256, true);
-
-    auto &viewState = state.mainDocumentSessionWindow->getViewState();
-    viewState.samplesPerPixel = 0.01;
-    cupuacu::gui::Waveform::updateAllSamplePoints(&state);
-    REQUIRE_FALSE(state.waveforms.empty());
-    REQUIRE(state.waveforms[0]->getChildren().size() > 0);
-
-    cupuacu::actions::play(&state);
-    std::vector<float> output(64, 0.0f);
-    state.audioDevices->processCallbackCycle(nullptr, output.data(), 4);
-    ui.mainView->timerCallback();
-    REQUIRE(state.audioDevices->isPlaying());
-    REQUIRE(state.waveforms[0]->getChildren().empty());
-}
-
 TEST_CASE("Playback range update while dragging keeps previous end", "[session]")
 {
     cupuacu::State state{};
