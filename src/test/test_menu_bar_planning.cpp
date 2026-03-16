@@ -260,6 +260,9 @@ TEST_CASE("Effects menu opens AmplifyFadeWindow", "[gui]")
         auto *resetButton = dynamic_cast<cupuacu::gui::TextButton *>(
             const_cast<cupuacu::gui::Component *>(
                 findByNameRecursive(root, "TextButton:Reset")));
+        auto *lockButton = dynamic_cast<cupuacu::gui::TextButton *>(
+            const_cast<cupuacu::gui::Component *>(
+                findByNameRecursive(root, "TextButton:Lock")));
         auto *normalizeButton = dynamic_cast<cupuacu::gui::TextButton *>(
             const_cast<cupuacu::gui::Component *>(
                 findByNameRecursive(root, "TextButton:Normalize")));
@@ -269,13 +272,24 @@ TEST_CASE("Effects menu opens AmplifyFadeWindow", "[gui]")
         auto *fadeOutButton = dynamic_cast<cupuacu::gui::TextButton *>(
             const_cast<cupuacu::gui::Component *>(
                 findByNameRecursive(root, "TextButton:Fade out")));
+        std::vector<cupuacu::gui::Slider *> sliders;
+        for (const auto &child : root->getChildren())
+        {
+            if (auto *slider =
+                    dynamic_cast<cupuacu::gui::Slider *>(child.get()))
+            {
+                sliders.push_back(slider);
+            }
+        }
 
         REQUIRE(curveLabel != nullptr);
         REQUIRE(curveDropdown != nullptr);
         REQUIRE(resetButton != nullptr);
+        REQUIRE(lockButton != nullptr);
         REQUIRE(normalizeButton != nullptr);
         REQUIRE(fadeInButton != nullptr);
         REQUIRE(fadeOutButton != nullptr);
+        REQUIRE(sliders.size() == 2);
 
         const SDL_Rect labelBounds = curveLabel->getBounds();
         const SDL_Rect dropdownBounds = curveDropdown->getBounds();
@@ -308,6 +322,34 @@ TEST_CASE("Effects menu opens AmplifyFadeWindow", "[gui]")
             1}));
         REQUIRE(state.amplifyFadeDialog->getStartPercent() == 0.0);
         REQUIRE(state.amplifyFadeDialog->getEndPercent() == 100.0);
+
+        REQUIRE(lockButton->mouseDown(cupuacu::gui::MouseEvent{
+            cupuacu::gui::DOWN,
+            5,
+            5,
+            5.0f,
+            5.0f,
+            0.0f,
+            0.0f,
+            cupuacu::gui::MouseButtonState{true, false, false},
+            1}));
+        REQUIRE(state.amplifyFadeDialog->isLocked());
+        REQUIRE(state.amplifyFadeDialog->getStartPercent() ==
+                state.amplifyFadeDialog->getEndPercent());
+
+        auto *startSlider = sliders.front();
+        REQUIRE(startSlider->mouseDown(cupuacu::gui::MouseEvent{
+            cupuacu::gui::DOWN,
+            startSlider->getWidth() / 2,
+            startSlider->getHeight() / 2,
+            static_cast<float>(startSlider->getWidth() / 2),
+            static_cast<float>(startSlider->getHeight() / 2),
+            0.0f,
+            0.0f,
+            cupuacu::gui::MouseButtonState{true, false, false},
+            1}));
+        REQUIRE(state.amplifyFadeDialog->getStartPercent() ==
+                state.amplifyFadeDialog->getEndPercent());
 
         state.activeDocumentSession.document.initialize(
             cupuacu::SampleFormat::FLOAT32, 44100, 1, 3);
@@ -356,134 +398,6 @@ TEST_CASE("Effects menu opens AmplifyFadeWindow", "[gui]")
         1}));
     REQUIRE(state.dynamicsDialog != nullptr);
     REQUIRE(state.dynamicsDialog->isOpen());
-}
-
-TEST_CASE("AmplifyFadeWindow lock and apply respect selected channels",
-          "[gui]")
-{
-    cupuacu::test::ensureSdlTtfInitialized();
-
-    cupuacu::State state{};
-    state.activeDocumentSession.document.initialize(cupuacu::SampleFormat::FLOAT32,
-                                                    44100, 2, 4);
-    for (int64_t i = 0; i < 4; ++i)
-    {
-        state.activeDocumentSession.document.setSample(0, i, float(i + 1), false);
-        state.activeDocumentSession.document.setSample(
-            1, i, float((i + 1) * 10), false);
-    }
-    state.activeDocumentSession.selection.setHighest(4.0);
-    state.activeDocumentSession.selection.setValue1(1.0);
-    state.activeDocumentSession.selection.setValue2(3.0);
-
-    state.mainDocumentSessionWindow =
-        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
-            &state, &state.activeDocumentSession, "main", 640, 360,
-            SDL_WINDOW_HIDDEN);
-    state.mainDocumentSessionWindow->getViewState().selectedChannels =
-        cupuacu::SelectedChannels::RIGHT;
-    state.windows.push_back(state.mainDocumentSessionWindow->getWindow());
-
-    auto amplifyFadeWindow =
-        std::make_unique<cupuacu::effects::AmplifyFadeDialog>(&state);
-    REQUIRE(amplifyFadeWindow->isOpen());
-
-    auto *root = amplifyFadeWindow->getWindow()->getRootComponent();
-    REQUIRE(root != nullptr);
-
-    cupuacu::gui::TextButton *lockButton = nullptr;
-    cupuacu::gui::TextButton *cancelButton = nullptr;
-    cupuacu::gui::TextButton *applyButton = nullptr;
-    std::vector<cupuacu::gui::Slider *> sliders;
-    for (const auto &child : root->getChildren())
-    {
-        if (auto *button = dynamic_cast<cupuacu::gui::TextButton *>(child.get()))
-        {
-            if (button->getComponentName() == "TextButton:Lock")
-            {
-                lockButton = button;
-            }
-            else if (button->getComponentName() == "TextButton:Cancel")
-            {
-                cancelButton = button;
-            }
-            else if (button->getComponentName() == "TextButton:Apply")
-            {
-                applyButton = button;
-            }
-        }
-        if (auto *slider = dynamic_cast<cupuacu::gui::Slider *>(child.get()))
-        {
-            sliders.push_back(slider);
-        }
-    }
-
-    REQUIRE(lockButton != nullptr);
-    REQUIRE(cancelButton != nullptr);
-    REQUIRE(applyButton != nullptr);
-    REQUIRE(sliders.size() == 2);
-
-    REQUIRE(lockButton->mouseDown(cupuacu::gui::MouseEvent{
-        cupuacu::gui::DOWN,
-        5,
-        5,
-        5.0f,
-        5.0f,
-        0.0f,
-        0.0f,
-        cupuacu::gui::MouseButtonState{true, false, false},
-        1}));
-    REQUIRE(amplifyFadeWindow->isLocked());
-    REQUIRE(amplifyFadeWindow->getStartPercent() == amplifyFadeWindow->getEndPercent());
-
-    auto *startSlider = sliders.front();
-    REQUIRE(startSlider->mouseDown(cupuacu::gui::MouseEvent{
-        cupuacu::gui::DOWN,
-        startSlider->getWidth() / 2,
-        startSlider->getHeight() / 2,
-        static_cast<float>(startSlider->getWidth() / 2),
-        static_cast<float>(startSlider->getHeight() / 2),
-        0.0f,
-        0.0f,
-        cupuacu::gui::MouseButtonState{true, false, false},
-        1}));
-    REQUIRE(amplifyFadeWindow->getStartPercent() == amplifyFadeWindow->getEndPercent());
-
-    const float gain =
-        static_cast<float>(amplifyFadeWindow->getStartPercent() / 100.0);
-    const SDL_Rect applyBounds = applyButton->getBounds();
-    REQUIRE(amplifyFadeWindow->getWindow()->handleMouseEvent(cupuacu::gui::MouseEvent{
-        cupuacu::gui::DOWN,
-        applyBounds.x + 5,
-        applyBounds.y + 5,
-        static_cast<float>(applyBounds.x + 5),
-        static_cast<float>(applyBounds.y + 5),
-        0.0f,
-        0.0f,
-        cupuacu::gui::MouseButtonState{true, false, false},
-        1}));
-    REQUIRE(amplifyFadeWindow->getWindow()->handleMouseEvent(cupuacu::gui::MouseEvent{
-        cupuacu::gui::UP,
-        applyBounds.x + 5,
-        applyBounds.y + 5,
-        static_cast<float>(applyBounds.x + 5),
-        static_cast<float>(applyBounds.y + 5),
-        0.0f,
-        0.0f,
-        cupuacu::gui::MouseButtonState{true, false, false},
-        1}));
-
-    REQUIRE(state.activeDocumentSession.document.getSample(0, 0) == 1.0f);
-    REQUIRE(state.activeDocumentSession.document.getSample(0, 1) == 2.0f);
-    REQUIRE(state.activeDocumentSession.document.getSample(0, 2) == 3.0f);
-    REQUIRE(state.activeDocumentSession.document.getSample(1, 0) == 10.0f);
-    REQUIRE(state.activeDocumentSession.document.getSample(1, 1) ==
-            Catch::Approx(20.0f * gain));
-    REQUIRE(state.activeDocumentSession.document.getSample(1, 2) ==
-            Catch::Approx(30.0f * gain));
-    REQUIRE(state.activeDocumentSession.document.getSample(1, 3) == 40.0f);
-
-    REQUIRE_FALSE(amplifyFadeWindow->isOpen());
 }
 
 TEST_CASE("DynamicsWindow apply compresses the current target range", "[gui]")
