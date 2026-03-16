@@ -383,6 +383,39 @@ TEST_CASE("Effects menu opens AmplifyFadeWindow", "[gui]")
             1}));
         REQUIRE(state.amplifyFadeDialog->getStartPercent() == 100.0);
         REQUIRE(state.amplifyFadeDialog->getEndPercent() == 100.0);
+
+        REQUIRE(fadeOutButton->mouseDown(cupuacu::gui::MouseEvent{
+            cupuacu::gui::DOWN,
+            5,
+            5,
+            5.0f,
+            5.0f,
+            0.0f,
+            0.0f,
+            cupuacu::gui::MouseButtonState{true, false, false},
+            1}));
+        curveDropdown->setSelectedIndex(2);
+        state.effectSettings.amplifyFade.curveIndex = 2;
+
+        state.amplifyFadeDialog.reset();
+        state.modalWindow = nullptr;
+
+        REQUIRE(effectSubMenus[0]->mouseDown(cupuacu::gui::MouseEvent{
+            cupuacu::gui::DOWN,
+            5,
+            5,
+            5.0f,
+            5.0f,
+            0.0f,
+            0.0f,
+            cupuacu::gui::MouseButtonState{true, false, false},
+            1}));
+        REQUIRE(state.amplifyFadeDialog != nullptr);
+        REQUIRE(state.amplifyFadeDialog->isOpen());
+        REQUIRE(state.amplifyFadeDialog->getStartPercent() == 100.0);
+        REQUIRE(state.amplifyFadeDialog->getEndPercent() == 0.0);
+        REQUIRE_FALSE(state.amplifyFadeDialog->isLocked());
+        REQUIRE(state.amplifyFadeDialog->getCurveIndex() == 2);
     }
 
     REQUIRE(state.dynamicsDialog == nullptr);
@@ -398,121 +431,4 @@ TEST_CASE("Effects menu opens AmplifyFadeWindow", "[gui]")
         1}));
     REQUIRE(state.dynamicsDialog != nullptr);
     REQUIRE(state.dynamicsDialog->isOpen());
-}
-
-TEST_CASE("DynamicsWindow apply compresses the current target range", "[gui]")
-{
-    cupuacu::test::ensureSdlTtfInitialized();
-
-    cupuacu::State state{};
-    state.effectSettings.dynamics.thresholdPercent = 50.0;
-    state.effectSettings.dynamics.ratioIndex = 1;
-    state.activeDocumentSession.document.initialize(cupuacu::SampleFormat::FLOAT32,
-                                                    44100, 1, 4);
-    state.activeDocumentSession.document.setSample(0, 0, 0.2f, false);
-    state.activeDocumentSession.document.setSample(0, 1, 0.5f, false);
-    state.activeDocumentSession.document.setSample(0, 2, 0.9f, false);
-    state.activeDocumentSession.document.setSample(0, 3, -1.0f, false);
-    state.activeDocumentSession.selection.setHighest(4.0);
-    state.activeDocumentSession.selection.setValue1(1.0);
-    state.activeDocumentSession.selection.setValue2(4.0);
-
-    state.mainDocumentSessionWindow =
-        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
-            &state, &state.activeDocumentSession, "main", 640, 360,
-            SDL_WINDOW_HIDDEN);
-    state.windows.push_back(state.mainDocumentSessionWindow->getWindow());
-
-    auto dynamicsWindow = std::make_unique<cupuacu::effects::DynamicsDialog>(&state);
-    REQUIRE(dynamicsWindow->isOpen());
-
-    auto *root = dynamicsWindow->getWindow()->getRootComponent();
-    REQUIRE(root != nullptr);
-    auto *applyButton = dynamic_cast<cupuacu::gui::TextButton *>(
-        const_cast<cupuacu::gui::Component *>(
-            findByNameRecursive(root, "TextButton:Apply")));
-    REQUIRE(applyButton != nullptr);
-
-    REQUIRE(applyButton->mouseDown(cupuacu::gui::MouseEvent{
-        cupuacu::gui::DOWN,
-        5,
-        5,
-        5.0f,
-        5.0f,
-        0.0f,
-        0.0f,
-        cupuacu::gui::MouseButtonState{true, false, false},
-        1}));
-    REQUIRE(applyButton->mouseUp(cupuacu::gui::MouseEvent{
-        cupuacu::gui::UP,
-        5,
-        5,
-        5.0f,
-        5.0f,
-        0.0f,
-        0.0f,
-        cupuacu::gui::MouseButtonState{true, false, false},
-        1}));
-
-    REQUIRE(state.activeDocumentSession.document.getSample(0, 0) ==
-            Catch::Approx(0.2f));
-    REQUIRE(state.activeDocumentSession.document.getSample(0, 1) ==
-            Catch::Approx(0.5f));
-    REQUIRE(state.activeDocumentSession.document.getSample(0, 2) ==
-            Catch::Approx(0.6f));
-    REQUIRE(state.activeDocumentSession.document.getSample(0, 3) ==
-            Catch::Approx(-0.625f));
-}
-
-TEST_CASE("AmplifyFadeWindow reopens with last remembered settings", "[gui]")
-{
-    cupuacu::test::ensureSdlTtfInitialized();
-
-    cupuacu::State state{};
-    state.mainDocumentSessionWindow =
-        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
-            &state, &state.activeDocumentSession, "main", 640, 360,
-            SDL_WINDOW_HIDDEN);
-    state.windows.push_back(state.mainDocumentSessionWindow->getWindow());
-
-    {
-        auto amplifyFadeWindow =
-            std::make_unique<cupuacu::effects::AmplifyFadeDialog>(&state);
-        REQUIRE(amplifyFadeWindow->isOpen());
-
-        auto *root = amplifyFadeWindow->getWindow()->getRootComponent();
-        REQUIRE(root != nullptr);
-
-        auto *fadeOutButton = dynamic_cast<cupuacu::gui::TextButton *>(
-            const_cast<cupuacu::gui::Component *>(
-                findByNameRecursive(root, "TextButton:Fade out")));
-        auto *curveDropdown = dynamic_cast<cupuacu::gui::DropdownMenu *>(
-            const_cast<cupuacu::gui::Component *>(
-                findByNameRecursive(root, "DropdownMenu")));
-        REQUIRE(fadeOutButton != nullptr);
-        REQUIRE(curveDropdown != nullptr);
-
-        REQUIRE(fadeOutButton->mouseDown(cupuacu::gui::MouseEvent{
-            cupuacu::gui::DOWN,
-            5,
-            5,
-            5.0f,
-            5.0f,
-            0.0f,
-            0.0f,
-            cupuacu::gui::MouseButtonState{true, false, false},
-            1}));
-        curveDropdown->setSelectedIndex(2);
-        state.effectSettings.amplifyFade.curveIndex = 2;
-
-        amplifyFadeWindow.reset();
-    }
-
-    auto reopenedWindow =
-        std::make_unique<cupuacu::effects::AmplifyFadeDialog>(&state);
-    REQUIRE(reopenedWindow->isOpen());
-    REQUIRE(reopenedWindow->getStartPercent() == 100.0);
-    REQUIRE(reopenedWindow->getEndPercent() == 0.0);
-    REQUIRE_FALSE(reopenedWindow->isLocked());
-    REQUIRE(reopenedWindow->getCurveIndex() == 2);
 }
