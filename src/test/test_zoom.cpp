@@ -1,17 +1,41 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "TestSdlTtfGuard.hpp"
 #include "TestStateBuilders.hpp"
 #include "actions/audio/EditCommands.hpp"
 #include "actions/Zoom.hpp"
+#include "gui/DevicePropertiesWindow.hpp"
+#include "gui/DocumentSessionWindow.hpp"
 #include "gui/Waveform.hpp"
 
 #include <cmath>
+
+namespace
+{
+    void initializeZoomSession(cupuacu::State *state, const int64_t frameCount,
+                               const int channels = 2,
+                               const int sampleRate = 44100)
+    {
+        cupuacu::test::ensureSdlTtfInitialized();
+
+        auto &session = state->activeDocumentSession;
+        session.document.initialize(cupuacu::SampleFormat::FLOAT32, sampleRate,
+                                    channels, frameCount);
+
+        state->mainDocumentSessionWindow =
+            std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+                state, &session, "test-zoom", 800, 400, SDL_WINDOW_HIDDEN);
+        REQUIRE(state->mainDocumentSessionWindow != nullptr);
+        REQUIRE(state->mainDocumentSessionWindow->getWindow() != nullptr);
+        REQUIRE(state->mainDocumentSessionWindow->getWindow()->isOpen());
+    }
+} // namespace
 
 TEST_CASE("Paste keeps zoom level unchanged", "[session]")
 {
     cupuacu::State state{};
     auto &session = state.activeDocumentSession;
-    [[maybe_unused]] auto ui = cupuacu::test::createSessionUi(&state, 256);
+    initializeZoomSession(&state, 256);
 
     auto &viewState = state.mainDocumentSessionWindow->getViewState();
     viewState.samplesPerPixel = 0.01;

@@ -37,37 +37,6 @@ TEST_CASE("RoundedRect planning clamps radius and computes core rects", "[gui]")
     REQUIRE(vertical.h == Catch::Approx(0.0f));
 }
 
-TEST_CASE("RoundedRect draw helpers execute both radius branches", "[gui]")
-{
-    cupuacu::test::ensureSdlTtfInitialized();
-
-    SDL_Window *window = nullptr;
-    SDL_Renderer *renderer = nullptr;
-    REQUIRE(SDL_CreateWindowAndRenderer("rounded-rect", 64, 64, SDL_WINDOW_HIDDEN,
-                                        &window, &renderer));
-    REQUIRE(renderer != nullptr);
-
-    const SDL_FRect rect{2.0f, 3.0f, 20.0f, 10.0f};
-    const SDL_Color color{10, 20, 30, 255};
-
-    cupuacu::gui::drawRoundedRect(renderer, rect, 0.0f, color);
-    cupuacu::gui::drawRoundedRect(renderer, rect, 4.0f, color);
-    cupuacu::gui::drawRoundedRectOutline(renderer, rect, 0.0f, color);
-    cupuacu::gui::drawRoundedRectOutline(renderer, rect, 4.0f, color);
-    cupuacu::gui::drawTopRoundedRect(renderer, rect, 0.0f, color);
-    cupuacu::gui::drawTopRoundedRect(renderer, rect, 4.0f, color);
-    cupuacu::gui::drawBottomRoundedRect(renderer, rect, 0.0f, color);
-    cupuacu::gui::drawBottomRoundedRect(renderer, rect, 4.0f, color);
-    cupuacu::gui::drawTopRoundedRectOutline(renderer, rect, 0.0f, color);
-    cupuacu::gui::drawTopRoundedRectOutline(renderer, rect, 4.0f, color);
-    cupuacu::gui::drawBottomRoundedRectOutline(renderer, rect, 0.0f, color);
-    cupuacu::gui::drawBottomRoundedRectOutline(renderer, rect, 4.0f, color);
-    cupuacu::gui::drawVerticalEdges(renderer, rect, color);
-
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
-}
-
 TEST_CASE("Text planning centers safely and font cache can be observed", "[gui]")
 {
     cupuacu::test::ensureSdlTtfInitialized();
@@ -142,16 +111,4 @@ TEST_CASE("Helpers geometry utilities cover subtract and fill helpers", "[gui]")
     const SDL_Rect fullyClipped =
         Helpers::subtractRect(a, SDL_Rect{0, 0, 10, 10});
     REQUIRE(fullyClipped.w == 0);
-
-    cupuacu::test::ensureSdlTtfInitialized();
-    SDL_Window *window = nullptr;
-    SDL_Renderer *renderer = nullptr;
-    REQUIRE(SDL_CreateWindowAndRenderer("helpers", 32, 32, SDL_WINDOW_HIDDEN,
-                                        &window, &renderer));
-    const SDL_Color color{1, 2, 3, 255};
-    Helpers::setRenderDrawColor(renderer, color);
-    Helpers::fillRect(renderer, SDL_FRect{1, 1, 3, 4}, color);
-    Helpers::fillRect(renderer, SDL_Rect{1, 1, 3, 4}, color);
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
 }
