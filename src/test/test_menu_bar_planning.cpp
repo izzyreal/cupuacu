@@ -250,6 +250,97 @@ TEST_CASE("Effects menu opens AmplifyFadeWindow", "[gui]")
             const_cast<cupuacu::gui::Component *>(
                 findByNameRecursive(root, "TextButton:Preview")));
         REQUIRE(previewButton != nullptr);
+
+        auto *curveLabel = dynamic_cast<cupuacu::gui::Label *>(
+            const_cast<cupuacu::gui::Component *>(
+                findByNameRecursive(root, "Label: Curve")));
+        auto *curveDropdown = dynamic_cast<cupuacu::gui::DropdownMenu *>(
+            const_cast<cupuacu::gui::Component *>(
+                findByNameRecursive(root, "DropdownMenu")));
+        auto *resetButton = dynamic_cast<cupuacu::gui::TextButton *>(
+            const_cast<cupuacu::gui::Component *>(
+                findByNameRecursive(root, "TextButton:Reset")));
+        auto *normalizeButton = dynamic_cast<cupuacu::gui::TextButton *>(
+            const_cast<cupuacu::gui::Component *>(
+                findByNameRecursive(root, "TextButton:Normalize")));
+        auto *fadeInButton = dynamic_cast<cupuacu::gui::TextButton *>(
+            const_cast<cupuacu::gui::Component *>(
+                findByNameRecursive(root, "TextButton:Fade in")));
+        auto *fadeOutButton = dynamic_cast<cupuacu::gui::TextButton *>(
+            const_cast<cupuacu::gui::Component *>(
+                findByNameRecursive(root, "TextButton:Fade out")));
+
+        REQUIRE(curveLabel != nullptr);
+        REQUIRE(curveDropdown != nullptr);
+        REQUIRE(resetButton != nullptr);
+        REQUIRE(normalizeButton != nullptr);
+        REQUIRE(fadeInButton != nullptr);
+        REQUIRE(fadeOutButton != nullptr);
+
+        const SDL_Rect labelBounds = curveLabel->getBounds();
+        const SDL_Rect dropdownBounds = curveDropdown->getBounds();
+        REQUIRE(labelBounds.x + labelBounds.w < dropdownBounds.x);
+        REQUIRE(std::abs((labelBounds.y + labelBounds.h / 2) -
+                         (dropdownBounds.y + dropdownBounds.h / 2)) <= 1);
+
+        REQUIRE(fadeOutButton->mouseDown(cupuacu::gui::MouseEvent{
+            cupuacu::gui::DOWN,
+            5,
+            5,
+            5.0f,
+            5.0f,
+            0.0f,
+            0.0f,
+            cupuacu::gui::MouseButtonState{true, false, false},
+            1}));
+        REQUIRE(state.amplifyFadeDialog->getStartPercent() == 100.0);
+        REQUIRE(state.amplifyFadeDialog->getEndPercent() == 0.0);
+
+        REQUIRE(fadeInButton->mouseDown(cupuacu::gui::MouseEvent{
+            cupuacu::gui::DOWN,
+            5,
+            5,
+            5.0f,
+            5.0f,
+            0.0f,
+            0.0f,
+            cupuacu::gui::MouseButtonState{true, false, false},
+            1}));
+        REQUIRE(state.amplifyFadeDialog->getStartPercent() == 0.0);
+        REQUIRE(state.amplifyFadeDialog->getEndPercent() == 100.0);
+
+        state.activeDocumentSession.document.initialize(
+            cupuacu::SampleFormat::FLOAT32, 44100, 1, 3);
+        state.activeDocumentSession.document.setSample(0, 0, 0.25f, false);
+        state.activeDocumentSession.document.setSample(0, 1, -0.5f, false);
+        state.activeDocumentSession.document.setSample(0, 2, 0.1f, false);
+        REQUIRE(normalizeButton->mouseDown(cupuacu::gui::MouseEvent{
+            cupuacu::gui::DOWN,
+            5,
+            5,
+            5.0f,
+            5.0f,
+            0.0f,
+            0.0f,
+            cupuacu::gui::MouseButtonState{true, false, false},
+            1}));
+        REQUIRE(state.amplifyFadeDialog->getStartPercent() ==
+                Catch::Approx(200.0));
+        REQUIRE(state.amplifyFadeDialog->getEndPercent() ==
+                Catch::Approx(200.0));
+
+        REQUIRE(resetButton->mouseDown(cupuacu::gui::MouseEvent{
+            cupuacu::gui::DOWN,
+            5,
+            5,
+            5.0f,
+            5.0f,
+            0.0f,
+            0.0f,
+            cupuacu::gui::MouseButtonState{true, false, false},
+            1}));
+        REQUIRE(state.amplifyFadeDialog->getStartPercent() == 100.0);
+        REQUIRE(state.amplifyFadeDialog->getEndPercent() == 100.0);
     }
 
     REQUIRE(state.dynamicsDialog == nullptr);
@@ -265,115 +356,6 @@ TEST_CASE("Effects menu opens AmplifyFadeWindow", "[gui]")
         1}));
     REQUIRE(state.dynamicsDialog != nullptr);
     REQUIRE(state.dynamicsDialog->isOpen());
-}
-
-TEST_CASE("AmplifyFadeWindow presets update values and curve row does not overlap",
-          "[gui]")
-{
-    cupuacu::test::ensureSdlTtfInitialized();
-
-    cupuacu::State state{};
-    state.mainDocumentSessionWindow =
-        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
-            &state, &state.activeDocumentSession, "main", 640, 360,
-            SDL_WINDOW_HIDDEN);
-    state.windows.push_back(state.mainDocumentSessionWindow->getWindow());
-
-    auto amplifyFadeWindow =
-        std::make_unique<cupuacu::effects::AmplifyFadeDialog>(&state);
-    REQUIRE(amplifyFadeWindow->isOpen());
-
-    auto *root = amplifyFadeWindow->getWindow()->getRootComponent();
-    REQUIRE(root != nullptr);
-
-    auto *curveLabel = dynamic_cast<cupuacu::gui::Label *>(
-        const_cast<cupuacu::gui::Component *>(
-            findByNameRecursive(root, "Label: Curve")));
-    auto *curveDropdown = dynamic_cast<cupuacu::gui::DropdownMenu *>(
-        const_cast<cupuacu::gui::Component *>(
-            findByNameRecursive(root, "DropdownMenu")));
-    auto *resetButton = dynamic_cast<cupuacu::gui::TextButton *>(
-        const_cast<cupuacu::gui::Component *>(
-            findByNameRecursive(root, "TextButton:Reset")));
-    auto *normalizeButton = dynamic_cast<cupuacu::gui::TextButton *>(
-        const_cast<cupuacu::gui::Component *>(
-            findByNameRecursive(root, "TextButton:Normalize")));
-    auto *fadeInButton = dynamic_cast<cupuacu::gui::TextButton *>(
-        const_cast<cupuacu::gui::Component *>(
-            findByNameRecursive(root, "TextButton:Fade in")));
-    auto *fadeOutButton = dynamic_cast<cupuacu::gui::TextButton *>(
-        const_cast<cupuacu::gui::Component *>(
-            findByNameRecursive(root, "TextButton:Fade out")));
-
-    REQUIRE(curveLabel != nullptr);
-    REQUIRE(curveDropdown != nullptr);
-    REQUIRE(resetButton != nullptr);
-    REQUIRE(normalizeButton != nullptr);
-    REQUIRE(fadeInButton != nullptr);
-    REQUIRE(fadeOutButton != nullptr);
-
-    const SDL_Rect labelBounds = curveLabel->getBounds();
-    const SDL_Rect dropdownBounds = curveDropdown->getBounds();
-    REQUIRE(labelBounds.x + labelBounds.w < dropdownBounds.x);
-    REQUIRE(std::abs((labelBounds.y + labelBounds.h / 2) -
-                     (dropdownBounds.y + dropdownBounds.h / 2)) <= 1);
-
-    REQUIRE(fadeOutButton->mouseDown(cupuacu::gui::MouseEvent{
-        cupuacu::gui::DOWN,
-        5,
-        5,
-        5.0f,
-        5.0f,
-        0.0f,
-        0.0f,
-        cupuacu::gui::MouseButtonState{true, false, false},
-        1}));
-    REQUIRE(amplifyFadeWindow->getStartPercent() == 100.0);
-    REQUIRE(amplifyFadeWindow->getEndPercent() == 0.0);
-
-    REQUIRE(fadeInButton->mouseDown(cupuacu::gui::MouseEvent{
-        cupuacu::gui::DOWN,
-        5,
-        5,
-        5.0f,
-        5.0f,
-        0.0f,
-        0.0f,
-        cupuacu::gui::MouseButtonState{true, false, false},
-        1}));
-    REQUIRE(amplifyFadeWindow->getStartPercent() == 0.0);
-    REQUIRE(amplifyFadeWindow->getEndPercent() == 100.0);
-
-    state.activeDocumentSession.document.initialize(cupuacu::SampleFormat::FLOAT32,
-                                                    44100, 1, 3);
-    state.activeDocumentSession.document.setSample(0, 0, 0.25f, false);
-    state.activeDocumentSession.document.setSample(0, 1, -0.5f, false);
-    state.activeDocumentSession.document.setSample(0, 2, 0.1f, false);
-    REQUIRE(normalizeButton->mouseDown(cupuacu::gui::MouseEvent{
-        cupuacu::gui::DOWN,
-        5,
-        5,
-        5.0f,
-        5.0f,
-        0.0f,
-        0.0f,
-        cupuacu::gui::MouseButtonState{true, false, false},
-        1}));
-    REQUIRE(amplifyFadeWindow->getStartPercent() == Catch::Approx(200.0));
-    REQUIRE(amplifyFadeWindow->getEndPercent() == Catch::Approx(200.0));
-
-    REQUIRE(resetButton->mouseDown(cupuacu::gui::MouseEvent{
-        cupuacu::gui::DOWN,
-        5,
-        5,
-        5.0f,
-        5.0f,
-        0.0f,
-        0.0f,
-        cupuacu::gui::MouseButtonState{true, false, false},
-        1}));
-    REQUIRE(amplifyFadeWindow->getStartPercent() == 100.0);
-    REQUIRE(amplifyFadeWindow->getEndPercent() == 100.0);
 }
 
 TEST_CASE("AmplifyFadeWindow lock and apply respect selected channels",
