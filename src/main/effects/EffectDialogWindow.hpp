@@ -10,6 +10,7 @@
 #include "gui/TextInput.hpp"
 #include "gui/UiScale.hpp"
 #include "gui/Window.hpp"
+#include "gui/text.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -589,7 +590,23 @@ namespace cupuacu::effects
             const int canvasWi = static_cast<int>(canvasW);
             const int canvasHi = static_cast<int>(canvasH);
             const int padding = std::max(4, cupuacu::gui::scaleUi(state, 12.0f));
-            const int labelWidth = std::max(88, cupuacu::gui::scaleUi(state, 104.0f));
+            const int labelFontSize = state ? state->menuFontSize : 30;
+            int measuredLabelWidth = 0;
+            for (const auto &control : controls)
+            {
+                const auto &spec = definition.parameters[control.specIndex];
+                if (spec.kind == EffectParameterKind::Toggle || spec.label.empty())
+                {
+                    continue;
+                }
+                const auto [textWidth, textHeight] =
+                    cupuacu::gui::measureText(spec.label, labelFontSize);
+                measuredLabelWidth = std::max(measuredLabelWidth, textWidth);
+                measuredLabelWidth = std::max(measuredLabelWidth, textHeight);
+            }
+            const int labelWidth = std::max(
+                std::max(88, cupuacu::gui::scaleUi(state, 104.0f)),
+                measuredLabelWidth + std::max(8, padding / 2));
             const int inputWidth = std::max(90, cupuacu::gui::scaleUi(state, 110.0f));
             const int rowHeight = std::max(30, cupuacu::gui::scaleUi(state, 34.0f));
             const int sliderHeight = std::max(22, cupuacu::gui::scaleUi(state, 24.0f));
