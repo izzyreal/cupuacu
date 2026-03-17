@@ -30,6 +30,8 @@ option(CUPUACU_ENABLE_RTSAN_LIBS
     "Enable RTSan standalone runtime via rtsan-libs-cmake" OFF)
 option(CUPUACU_ENABLE_COVERAGE
     "Enable compiler and linker coverage instrumentation for supported targets" OFF)
+option(CUPUACU_BUILD_INTEGRATION_TESTS
+    "Build SDL/Xvfb-backed integration tests in a dedicated target" OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
@@ -133,6 +135,19 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_timeline_planning.cpp
     src/test/test_menu_planning.cpp
     src/test/test_waveform_interaction_planning.cpp
+)
+
+set(CUPUACU_INTEGRATION_TEST_SOURCES
+    src/test/TestSdlTtfGuard.cpp
+    src/test/integration/IntegrationTestHelpers.hpp
+    src/test/integration/test_runtime_contract.cpp
+    src/test/integration/test_empty_session.cpp
+    src/test/integration/test_main_view_structure.cpp
+    src/test/integration/test_window_rendering.cpp
+    src/test/integration/test_window_menu_behavior.cpp
+    src/test/integration/test_menu_bar_effects.cpp
+    src/test/integration/test_playback_follow.cpp
+    src/test/integration/test_main_view_recording.cpp
 )
 
 set(CUPUACU_RTSAN_SUPPORTED OFF)
@@ -259,6 +274,20 @@ cupuacu_enable_coverage_for_target(cupuacu-tests)
 
 _bundle_resources(Cupuacu)
 target_link_libraries(cupuacu-tests PUBLIC cupuacu::rc)
+
+if(CUPUACU_BUILD_INTEGRATION_TESTS)
+    add_executable(cupuacu-tests-integration
+        ${CUPUACU_INTEGRATION_TEST_SOURCES}
+    )
+    target_link_libraries(cupuacu-tests-integration PRIVATE cupuacu_core
+        Catch2::Catch2WithMain)
+    target_compile_definitions(cupuacu-tests-integration PRIVATE
+        CUPUACU_RTSAN_LIBS_ENABLED=0
+        CUPUACU_TSAN_ENABLED=0
+    )
+    cupuacu_enable_coverage_for_target(cupuacu-tests-integration)
+    target_link_libraries(cupuacu-tests-integration PUBLIC cupuacu::rc)
+endif()
 
 if(CUPUACU_RTSAN_SUPPORTED)
     add_executable(cupuacu-tests-rtsan

@@ -83,6 +83,10 @@ When adding realtime code:
 
 The main test executable is `cupuacu-tests`.
 
+SDL/window/render integration tests are intentionally separate and should not
+be mixed back into the ordinary unit suite. The unit suite is expected to stay
+cross-platform and headless-friendly.
+
 Important test slices:
 
 - `[audio]`
@@ -105,6 +109,60 @@ General guidance:
 - prefer targeted component/window tests over broad end-to-end GUI tests when possible
 
 This matters especially on Windows, where hidden-window creation can fail differently than on macOS/Linux and otherwise turn into misleading crashes later in the test.
+
+## Integration Test Contract
+
+Integration tests should run only in one explicitly supported environment:
+
+- Linux
+- Xvfb
+- `SDL_VIDEODRIVER=x11`
+- `SDL_AUDIODRIVER=dummy`
+- `SDL_RENDER_DRIVER=software`
+- pinned fonts and X11 packages from the Docker image
+
+The dedicated target is:
+
+- `cupuacu-tests-integration`
+
+Enable it with:
+
+```sh
+cmake -G Ninja -B build-integration-linux -DCUPUACU_BUILD_INTEGRATION_TESTS=ON
+cmake --build build-integration-linux --target cupuacu-tests-integration -j2
+```
+
+Run it under the blessed runtime contract:
+
+```sh
+DISPLAY=:99 SDL_VIDEODRIVER=x11 SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software \
+  ./build-integration-linux/cupuacu-tests-integration
+```
+
+There is also a helper script:
+
+```sh
+./scripts/run-integration-linux.sh
+```
+
+For local iteration on macOS, use Podman to run the same Linux image and
+runtime contract:
+
+```sh
+podman machine start
+./scripts/run-integration-podman.sh
+```
+
+And a pinned Docker image definition:
+
+- [`docker/integration/linux/Dockerfile`](/Users/izmar/git/cupuacu/docker/integration/linux/Dockerfile)
+
+The intention is:
+
+- `cupuacu-tests`: pure unit/planner/action/audio tests
+- `cupuacu-tests-integration`: real SDL/window/event/render integration tests
+
+Do not add integration tests back into `cupuacu-tests`.
 
 ## Sanitizer Targets
 

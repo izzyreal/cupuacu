@@ -74,6 +74,30 @@ pipelines:
           - run: docker run --rm --platform linux/arm64 --user "$(id -u):$(id -g)" -v "$CCACHE_DIR:/ccache" cupuacu-linux-arm64-cross bash -lc 'export CCACHE_DIR=/ccache && ccache --show-stats'
           - run: cp build/linux-arm64/Cupuacu dist/cupuacu-linux-arm64
 
+      - id: linux-amd64-integration
+        runs_on:
+          executor: script
+          shell: posix
+          os: linux
+          arch: amd64
+        requires:
+          tools:
+            git: "*"
+            docker: "*"
+        timeout_seconds: 3600
+        artifacts:
+          - dist/integration-junit.xml
+        caches: *build_caches
+        steps:
+          - run: mkdir -p build/linux-amd64-integration dist
+          - run: mkdir -p "$CIWI_FETCHCONTENT_SOURCES_DIR"
+          - run: docker build -t cupuacu-integration-linux-ci -f docker/integration/linux/Dockerfile .
+          - test:
+              name: cupuacu-tests-integration
+              command: docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e DISPLAY=:99 -e SDL_VIDEODRIVER=x11 -e SDL_AUDIODRIVER=dummy -e SDL_RENDER_DRIVER=software -v "$PWD:/work" -v "$CIWI_FETCHCONTENT_SOURCES_DIR:/ciwi-fetchcontent" -w /work cupuacu-integration-linux-ci bash -lc 'Xvfb "$DISPLAY" -screen 0 1920x1080x24 >/tmp/cupuacu-xvfb.log 2>&1 & XVFB_PID=$!; trap "kill $XVFB_PID >/dev/null 2>&1 || true" EXIT; cmake -G Ninja -S . -B build/linux-amd64-integration -DCUPUACU_BUILD_INTEGRATION_TESTS=ON -DFETCHCONTENT_CACHE_ROOT=/ciwi-fetchcontent && cmake --build build/linux-amd64-integration --target cupuacu-tests-integration -j2 && ./build/linux-amd64-integration/cupuacu-tests-integration --reporter JUnit --out dist/integration-junit.xml'
+              format: junit-xml
+              report: dist/integration-junit.xml
+
       - id: linux-amd64-coverage
         runs_on:
           executor: script

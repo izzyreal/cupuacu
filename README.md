@@ -70,6 +70,29 @@ cmake --build build-coverage-macos --target cupuacu-tests -j2
 ./build-coverage-macos/cupuacu-tests "[file]"
 ```
 
+Integration tests are intentionally separate from the unit suite. They are
+meant to run only in a pinned Linux/Xvfb environment:
+
+```sh
+cmake -G Ninja -B build-integration-linux -DCUPUACU_BUILD_INTEGRATION_TESTS=ON
+cmake --build build-integration-linux --target cupuacu-tests-integration -j2
+DISPLAY=:99 SDL_VIDEODRIVER=x11 SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software \
+  ./build-integration-linux/cupuacu-tests-integration
+```
+
+There is also a helper script for the blessed Linux contract:
+
+```sh
+./scripts/run-integration-linux.sh
+```
+
+On macOS, you can run that same Linux contract locally through Podman:
+
+```sh
+podman machine start
+./scripts/run-integration-podman.sh
+```
+
 Where supported, sanitizer targets are also available:
 
 ```sh
