@@ -31,9 +31,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1-mesa-dev \
     && rm -rf /var/lib/apt/lists/*
 
+COPY docker/integration/linux/alsa.conf /etc/cupuacu-alsa.conf
+
 WORKDIR /work
 
 ENV DISPLAY=:99
+ENV ALSA_CONFIG_PATH=/etc/cupuacu-alsa.conf
+ENV CUPUACU_SUPPRESS_PORTAUDIO_ERRORS=1
 ENV SDL_VIDEODRIVER=x11
 ENV SDL_AUDIODRIVER=dummy
 ENV SDL_RENDER_DRIVER=software

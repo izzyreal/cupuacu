@@ -26,6 +26,7 @@ podman run --rm \
     -e SDL_VIDEODRIVER=x11 \
     -e SDL_AUDIODRIVER=dummy \
     -e SDL_RENDER_DRIVER=software \
+    -e CUPUACU_SUPPRESS_PORTAUDIO_ERRORS=1 \
     -v "${ROOT_DIR}:${CONTAINER_WORKDIR}" \
     -w "${CONTAINER_WORKDIR}" \
     "${IMAGE_TAG}" \

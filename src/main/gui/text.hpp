@@ -61,6 +61,11 @@ namespace cupuacu::gui
 
     static TTF_Font *getFont(const uint8_t pointSize)
     {
+        if (!TTF_WasInit())
+        {
+            return nullptr;
+        }
+
         auto &cache = getFontCache();
         const std::pair<uint8_t, int> cacheKey{pointSize, getFontDpi()};
         const auto it = cache.find(cacheKey);

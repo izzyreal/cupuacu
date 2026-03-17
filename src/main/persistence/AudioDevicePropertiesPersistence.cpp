@@ -38,6 +38,25 @@ namespace cupuacu::persistence
             return gResolverOverride.has_value();
         }
 
+        bool selectionRequiresPortAudio(
+            const cupuacu::audio::AudioDevices::DeviceSelection &selection)
+        {
+            return selection.hostApiIndex >= 0 || selection.outputDeviceIndex >= 0 ||
+                   selection.inputDeviceIndex >= 0;
+        }
+
+        bool persistedNamesRequirePortAudio(const nlohmann::json &json)
+        {
+            const std::string hostApiName =
+                json.value("hostApiName", std::string{});
+            const std::string outputDeviceName =
+                json.value("outputDeviceName", std::string{});
+            const std::string inputDeviceName =
+                json.value("inputDeviceName", std::string{});
+            return !hostApiName.empty() || !outputDeviceName.empty() ||
+                   !inputDeviceName.empty();
+        }
+
         void terminatePortAudioIfNeeded(const bool initializedHere)
         {
             if (initializedHere)
@@ -260,7 +279,7 @@ namespace cupuacu::persistence
 
         const auto &resolver = currentResolver();
         bool initializedHere = false;
-        if (!hasResolverOverride() &&
+        if (!hasResolverOverride() && selectionRequiresPortAudio(selection) &&
             !ensurePortAudioInitialized(initializedHere))
         {
             return false;
@@ -300,17 +319,9 @@ namespace cupuacu::persistence
         }
 
         const auto &resolver = currentResolver();
-        bool initializedHere = false;
-        if (!hasResolverOverride() &&
-            !ensurePortAudioInitialized(initializedHere))
-        {
-            return std::nullopt;
-        }
-
         std::ifstream in(path, std::ios::binary);
         if (!in)
         {
-            terminatePortAudioIfNeeded(initializedHere);
             return std::nullopt;
         }
 
@@ -318,13 +329,18 @@ namespace cupuacu::persistence
         try
         {
             in >> json;
+            bool initializedHere = false;
+            if (!hasResolverOverride() && persistedNamesRequirePortAudio(json) &&
+                !ensurePortAudioInitialized(initializedHere))
+            {
+                return std::nullopt;
+            }
             auto selection = deserializeSelection(json, resolver);
             terminatePortAudioIfNeeded(initializedHere);
             return selection;
         }
         catch (...)
         {
-            terminatePortAudioIfNeeded(initializedHere);
             return std::nullopt;
         }
     }

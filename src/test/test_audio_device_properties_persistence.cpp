@@ -368,9 +368,6 @@ TEST_CASE("Audio device properties persistence default resolver round-trips empt
 
     cupuacu::persistence::AudioDevicePropertiesPersistence::resetResolverForTesting();
 
-    const int initResult = Pa_Initialize();
-    REQUIRE((initResult == paNoError || initResult == paCanNotInitializeRecursively));
-
     cupuacu::audio::AudioDevices::DeviceSelection selection;
     selection.hostApiIndex = -1;
     selection.outputDeviceIndex = -1;
@@ -397,9 +394,4 @@ TEST_CASE("Audio device properties persistence default resolver round-trips empt
     REQUIRE(loaded->hostApiIndex == -1);
     REQUIRE(loaded->outputDeviceIndex == -1);
     REQUIRE(loaded->inputDeviceIndex == -1);
-
-    if (initResult == paNoError)
-    {
-        REQUIRE(Pa_Terminate() == paNoError);
-    }
 }
