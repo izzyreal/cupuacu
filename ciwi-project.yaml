@@ -111,10 +111,7 @@ pipelines:
         requires:
           tools:
             git: "*"
-            cmake: "*"
-            ccache: "*"
-            lcov: "*"
-            xorg-dev: "*"
+            docker: "*"
         timeout_seconds: 1800
         artifacts:
           - dist/junit-unit.xml
@@ -125,22 +122,21 @@ pipelines:
           - run: mkdir -p build/linux-amd64-coverage dist
           - run: mkdir -p "$CIWI_FETCHCONTENT_SOURCES_DIR"
           - run: mkdir -p "$CCACHE_DIR"
-          - run: if command -v ccache >/dev/null 2>&1; then ccache --zero-stats; else echo "ccache not found"; fi
-          - run: CCACHE_COMPILERCHECK=content cmake -S . -B build/linux-amd64-coverage -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Debug -DCUPUACU_BUILD_CCACHE_ENABLED=ON -DCUPUACU_ENABLE_COVERAGE=ON -DCUPUACU_BUILD_INTEGRATION_TESTS=ON -DFETCHCONTENT_CACHE_ROOT="$CIWI_FETCHCONTENT_SOURCES_DIR"
-          - run: CCACHE_COMPILERCHECK=content cmake --build build/linux-amd64-coverage --target cupuacu-tests cupuacu-tests-integration
+          - run: docker build -t cupuacu-integration-linux-ci -f docker/integration/linux/Dockerfile .
+          - run: docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e CCACHE_DIR=/ccache -e CCACHE_BASEDIR=/work -e CCACHE_NOHASHDIR=true -e CCACHE_COMPILERCHECK=content -v "$PWD:/work" -v "$CIWI_FETCHCONTENT_SOURCES_DIR:/ciwi-fetchcontent" -v "$CCACHE_DIR:/ccache" -w /work cupuacu-integration-linux-ci bash -lc 'ccache --zero-stats && cmake -G Ninja -S . -B build/linux-amd64-coverage -DCMAKE_BUILD_TYPE=Debug -DCUPUACU_BUILD_CCACHE_ENABLED=ON -DCUPUACU_ENABLE_COVERAGE=ON -DCUPUACU_BUILD_INTEGRATION_TESTS=ON -DFETCHCONTENT_CACHE_ROOT=/ciwi-fetchcontent && cmake --build build/linux-amd64-coverage --target cupuacu-tests cupuacu-tests-integration -j2'
           - test:
               name: cupuacu-tests-coverage-unit
-              command: mkdir -p dist && SDL_VIDEODRIVER=offscreen ./build/linux-amd64-coverage/cupuacu-tests --reporter JUnit --out dist/junit-unit.xml
+              command: mkdir -p dist && docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e SDL_VIDEODRIVER=offscreen -v "$PWD:/work" -w /work cupuacu-integration-linux-ci bash -lc './build/linux-amd64-coverage/cupuacu-tests --reporter JUnit --out dist/junit-unit.xml'
               format: junit-xml
               report: dist/junit-unit.xml
           - test:
               name: cupuacu-tests-coverage-integration
-              command: mkdir -p dist && Xvfb :99 -screen 0 1920x1080x24 >/tmp/cupuacu-coverage-xvfb.log 2>&1 & XVFB_PID=$!; trap 'kill "$XVFB_PID" >/dev/null 2>&1 || true' EXIT; DISPLAY=:99 SDL_VIDEODRIVER=x11 SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software ./build/linux-amd64-coverage/cupuacu-tests-integration --reporter JUnit --out dist/junit-integration.xml && lcov --capture --directory build/linux-amd64-coverage --base-directory "$PWD" --output-file dist/coverage.raw.info && lcov --extract dist/coverage.raw.info "*/src/main/*" --output-file dist/coverage.info && perl -pe 's{^SF:.*/src/main/}{SF:src/main/}' dist/coverage.info > dist/coverage.info.tmp && mv dist/coverage.info.tmp dist/coverage.info
+              command: mkdir -p dist && docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e DISPLAY=:99 -e SDL_VIDEODRIVER=x11 -e SDL_AUDIODRIVER=dummy -e SDL_RENDER_DRIVER=software -v "$PWD:/work" -w /work cupuacu-integration-linux-ci bash -lc 'Xvfb "$DISPLAY" -screen 0 1920x1080x24 >/tmp/cupuacu-coverage-xvfb.log 2>&1 & XVFB_PID=$!; trap "kill $XVFB_PID >/dev/null 2>&1 || true" EXIT; ./build/linux-amd64-coverage/cupuacu-tests-integration --reporter JUnit --out dist/junit-integration.xml && lcov --capture --directory build/linux-amd64-coverage --base-directory /work --output-file dist/coverage.raw.info && lcov --extract dist/coverage.raw.info "*/src/main/*" --output-file dist/coverage.info && perl -pe '"'"'s{^SF:.*/src/main/}{SF:src/main/}'"'"' dist/coverage.info > dist/coverage.info.tmp && mv dist/coverage.info.tmp dist/coverage.info'
               format: junit-xml
               report: dist/junit-integration.xml
               coverage_format: lcov
               coverage_report: dist/coverage.info
-          - run: if command -v ccache >/dev/null 2>&1; then ccache --show-stats; else echo "ccache not found"; fi
+          - run: docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e CCACHE_DIR=/ccache -v "$CCACHE_DIR:/ccache" cupuacu-integration-linux-ci bash -lc 'ccache --show-stats'
 
       - id: macos-universal
         runs_on:

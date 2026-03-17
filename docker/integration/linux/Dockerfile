@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     ccache \
     cmake \
+    lcov \
     ninja-build \
     pkg-config \
     git \
