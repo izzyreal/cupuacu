@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include "State.hpp"
 #include "file/file_loading.hpp"
@@ -96,6 +97,31 @@ namespace
         sf_close(file);
         REQUIRE(written == frameCount);
     }
+
+    void writeTestWavWithFormat(const std::filesystem::path &path,
+                                const int sampleRate, const int channels,
+                                const int format,
+                                const std::vector<double> &interleavedFrames)
+    {
+        REQUIRE(channels > 0);
+        REQUIRE(interleavedFrames.size() % channels == 0);
+
+        SF_INFO info{};
+        info.samplerate = sampleRate;
+        info.channels = channels;
+        info.format = format;
+
+        SNDFILE *file = sf_open(path.string().c_str(), SFM_WRITE, &info);
+        REQUIRE(file != nullptr);
+
+        const sf_count_t frameCount =
+            static_cast<sf_count_t>(interleavedFrames.size() / channels);
+        const sf_count_t written =
+            sf_writef_double(file, interleavedFrames.data(), frameCount);
+
+        sf_close(file);
+        REQUIRE(written == frameCount);
+    }
 } // namespace
 
 TEST_CASE("Loading a file resets session selection and cursor", "[session]")
@@ -177,4 +203,48 @@ TEST_CASE("Loading a second file fully reinitializes document cache and shape",
 
     REQUIRE(session.document.getSample(0, 0) == Catch::Approx(0.0f));
     REQUIRE(session.document.getSample(0, 31) == Catch::Approx(31.0f / 64.0f));
+}
+
+TEST_CASE("Loading PCM16 and FLOAT64 files maps sample formats correctly",
+          "[session]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-session-init-c"));
+
+    const auto pcm16Path = cleanup.path() / "pcm16.wav";
+    const auto float64Path = cleanup.path() / "float64.wav";
+
+    writeTestWavWithFormat(pcm16Path, 32000, 1, SF_FORMAT_WAV | SF_FORMAT_PCM_16,
+                           {0.25, -0.25, 0.5, -0.5});
+    writeTestWavWithFormat(float64Path, 96000, 2, SF_FORMAT_WAV | SF_FORMAT_DOUBLE,
+                           {0.1, -0.1, 0.2, -0.2, 0.3, -0.3});
+
+    cupuacu::State state{};
+    auto &session = state.activeDocumentSession;
+
+    session.currentFile = pcm16Path.string();
+    cupuacu::file::loadSampleData(&state);
+    REQUIRE(session.document.getSampleFormat() ==
+            cupuacu::SampleFormat::PCM_S16);
+    REQUIRE(session.document.getSampleRate() == 32000);
+    REQUIRE(session.document.getChannelCount() == 1);
+    REQUIRE(session.document.getFrameCount() == 4);
+
+    session.currentFile = float64Path.string();
+    cupuacu::file::loadSampleData(&state);
+    REQUIRE(session.document.getSampleFormat() ==
+            cupuacu::SampleFormat::FLOAT64);
+    REQUIRE(session.document.getSampleRate() == 96000);
+    REQUIRE(session.document.getChannelCount() == 2);
+    REQUIRE(session.document.getFrameCount() == 3);
+}
+
+TEST_CASE("Loading a missing file throws a descriptive error", "[session]")
+{
+    cupuacu::State state{};
+    state.activeDocumentSession.currentFile =
+        (makeUniqueTempDir("cupuacu-test-session-missing") / "missing.wav")
+            .string();
+
+    REQUIRE_THROWS_WITH(cupuacu::file::loadSampleData(&state),
+                        Catch::Matchers::StartsWith("Failed to open file: "));
 }

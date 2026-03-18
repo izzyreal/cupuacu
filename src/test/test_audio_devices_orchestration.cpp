@@ -245,3 +245,31 @@ TEST_CASE("Loop playback update keeps old loop while dragging equivalent update 
     REQUIRE(devices.isPlaying());
     REQUIRE(devices.getPlaybackPosition() == 11);
 }
+
+TEST_CASE("Bounded recording stops exactly at the requested end position",
+          "[audio]")
+{
+    cupuacu::audio::AudioDevices devices(false);
+    cupuacu::Document document{};
+    document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 128);
+
+    devices.applyMessageImmediate(cupuacu::audio::Record{
+        .document = &document,
+        .startPos = 5,
+        .endPos = 9,
+        .boundedToEnd = true,
+        .vuMeter = nullptr});
+
+    std::vector<float> input(2 * 16, 0.25f);
+    std::vector<float> output(2 * 16, 0.0f);
+
+    devices.processCallbackCycle(input.data(), output.data(), 16);
+
+    REQUIRE_FALSE(devices.isRecording());
+    REQUIRE(devices.getRecordingPosition() == 9);
+
+    cupuacu::audio::AudioDevices::RecordedChunk chunk{};
+    REQUIRE(devices.popRecordedChunk(chunk));
+    REQUIRE(chunk.startFrame == 5);
+    REQUIRE(chunk.frameCount == 4);
+}

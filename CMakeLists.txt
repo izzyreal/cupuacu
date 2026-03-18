@@ -115,6 +115,7 @@ set(CUPUACU_SHARED_SOURCES
 set(CUPUACU_TEST_SOURCES
     src/test/TestSdlTtfGuard.cpp
     src/test/test_playback_range.cpp
+    src/test/test_zoom.cpp
     src/test/test_edit_commands.cpp
     src/test/test_waveform_selection.cpp
     src/test/test_session_loading.cpp

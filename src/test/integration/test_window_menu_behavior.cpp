@@ -14,6 +14,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -93,6 +94,26 @@ namespace
             return description;
         }
     };
+
+    template <typename T>
+    void collectChildrenRecursive(cupuacu::gui::Component *root,
+                                  std::vector<T *> &out)
+    {
+        if (!root)
+        {
+            return;
+        }
+
+        if (auto *match = dynamic_cast<T *>(root))
+        {
+            out.push_back(match);
+        }
+
+        for (const auto &child : root->getChildren())
+        {
+            collectChildrenRecursive<T>(child.get(), out);
+        }
+    }
 } // namespace
 
 TEST_CASE("Window integration clears capture on mouse up and updates hover",
@@ -227,4 +248,91 @@ TEST_CASE("Menu integration undo and redo actions reflect undo stack state",
     REQUIRE(undoable->redoCount == 1);
     REQUIRE(state.undoables.size() == 1);
     REQUIRE(state.redoables.empty());
+}
+
+TEST_CASE("Options menu integration opens device properties window once",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::State state{};
+    auto sessionUi =
+        cupuacu::test::integration::createSessionUi(&state, 512, false);
+    REQUIRE(state.mainDocumentSessionWindow != nullptr);
+
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "options-device-properties", 480, 240, SDL_WINDOW_HIDDEN);
+
+    auto root =
+        std::make_unique<cupuacu::test::integration::RootComponent>(&state);
+    auto *menuBar = root->emplaceChild<cupuacu::gui::MenuBar>(&state);
+    root->setBounds(0, 0, 480, 240);
+    menuBar->setBounds(0, 0, 480, 40);
+    window->setRootComponent(std::move(root));
+    window->setMenuBar(menuBar);
+
+    auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
+    REQUIRE(topLevelMenus.size() == 5);
+    auto *optionsMenu = topLevelMenus[4];
+
+    auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
+    REQUIRE(optionEntries.size() == 1);
+    auto *devicePropertiesEntry = optionEntries[0];
+
+    REQUIRE(state.devicePropertiesWindow == nullptr);
+    const auto initialWindowCount = state.windows.size();
+
+    optionsMenu->mouseDown(cupuacu::test::integration::leftMouseDown());
+    REQUIRE(optionsMenu->isOpen());
+
+    devicePropertiesEntry->mouseDown(cupuacu::test::integration::leftMouseDown());
+    REQUIRE(state.devicePropertiesWindow != nullptr);
+    REQUIRE(state.devicePropertiesWindow->isOpen());
+    REQUIRE(state.windows.size() == initialWindowCount + 1);
+
+    std::vector<cupuacu::gui::DropdownMenu *> dropdowns;
+    std::vector<cupuacu::gui::Label *> labels;
+    collectChildrenRecursive(state.devicePropertiesWindow->getWindow()->getRootComponent(),
+                             dropdowns);
+    collectChildrenRecursive(state.devicePropertiesWindow->getWindow()->getRootComponent(),
+                             labels);
+
+    REQUIRE(dropdowns.size() == 3);
+    REQUIRE(labels.size() >= 3);
+    for (auto *dropdown : dropdowns)
+    {
+        REQUIRE(dropdown->getSelectedIndex() >= 0);
+        REQUIRE(dropdown->getHeight() >= dropdown->getRowHeight());
+    }
+
+    auto *openedWindow = state.devicePropertiesWindow.get();
+    optionsMenu->mouseDown(cupuacu::test::integration::leftMouseDown());
+    devicePropertiesEntry->mouseDown(cupuacu::test::integration::leftMouseDown());
+    REQUIRE(state.devicePropertiesWindow.get() == openedWindow);
+    REQUIRE(state.windows.size() == initialWindowCount + 1);
+
+    state.devicePropertiesWindow.reset();
+    REQUIRE(state.windows.size() == initialWindowCount);
+}
+
+TEST_CASE("Secondary window integration handles escape-close callback",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::State state{};
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "secondary-window-escape", 320, 240, SDL_WINDOW_HIDDEN);
+
+    int onCloseCount = 0;
+    window->setOnClose([&]() { ++onCloseCount; });
+
+    SDL_Event event{};
+    event.type = SDL_EVENT_KEY_DOWN;
+    event.key.windowID = window->getId();
+    event.key.scancode = SDL_SCANCODE_ESCAPE;
+
+    REQUIRE(window->handleEvent(event));
+    REQUIRE(onCloseCount == 1);
+    REQUIRE_FALSE(window->isOpen());
 }
