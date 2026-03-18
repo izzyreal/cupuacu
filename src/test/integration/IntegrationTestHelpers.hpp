@@ -70,6 +70,13 @@ namespace cupuacu::test::integration
             cupuacu::gui::MouseButtonState{true, false, false}, 1};
     }
 
+    inline cupuacu::gui::MouseEvent leftMouseUp()
+    {
+        return cupuacu::gui::MouseEvent{
+            cupuacu::gui::UP, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f,
+            cupuacu::gui::MouseButtonState{true, false, false}, 1};
+    }
+
     struct SessionUi
     {
         std::unique_ptr<cupuacu::gui::MainView> mainView;
