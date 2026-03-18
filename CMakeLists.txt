@@ -145,6 +145,7 @@ set(CUPUACU_INTEGRATION_TEST_SOURCES
     src/test/integration/test_empty_session.cpp
     src/test/integration/test_main_view_structure.cpp
     src/test/integration/test_event_and_waveform_runtime.cpp
+    src/test/integration/test_open_file_dialog_callback.cpp
     src/test/integration/test_window_rendering.cpp
     src/test/integration/test_window_menu_behavior.cpp
     src/test/integration/test_menu_bar_effects.cpp
