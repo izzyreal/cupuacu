@@ -93,6 +93,20 @@ podman machine start
 ./scripts/run-integration-podman.sh
 ```
 
+For a clean joint unit+integration coverage run under that same Linux contract:
+
+```sh
+podman machine start
+./scripts/run-joint-coverage-podman.sh
+```
+
+That writes:
+
+- `dist/coverage.info`
+- `dist/coverage-html/index.html`
+- `dist/junit-unit.xml`
+- `dist/junit-integration.xml`
+
 Where supported, sanitizer targets are also available:
 
 ```sh

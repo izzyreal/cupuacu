@@ -153,6 +153,21 @@ podman machine start
 ./scripts/run-integration-podman.sh
 ```
 
+For a clean joint coverage run that combines `cupuacu-tests` and
+`cupuacu-tests-integration` into one `lcov` report:
+
+```sh
+podman machine start
+./scripts/run-joint-coverage-podman.sh
+```
+
+This rebuilds coverage artifacts in a fresh Linux build directory and writes:
+
+- `dist/coverage.info`
+- `dist/coverage-html/index.html`
+- `dist/junit-unit.xml`
+- `dist/junit-integration.xml`
+
 And a pinned Docker image definition:
 
 - [`docker/integration/linux/Dockerfile`](/Users/izmar/git/cupuacu/docker/integration/linux/Dockerfile)
