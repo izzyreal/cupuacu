@@ -685,3 +685,50 @@ TEST_CASE("Options menu integration replaces a closed device properties window i
     REQUIRE(state.devicePropertiesWindow.get() != firstWindow);
     REQUIRE(state.devicePropertiesWindow->isOpen());
 }
+
+TEST_CASE("Device properties integration refreshes layout when pixel scale changes",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::State state{};
+    auto sessionUi =
+        cupuacu::test::integration::createSessionUi(&state, 512, false);
+
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "options-device-properties-refresh", 480, 240,
+        SDL_WINDOW_HIDDEN);
+
+    auto root =
+        std::make_unique<cupuacu::test::integration::RootComponent>(&state);
+    auto *menuBar = root->emplaceChild<cupuacu::gui::MenuBar>(&state);
+    root->setBounds(0, 0, 480, 240);
+    menuBar->setBounds(0, 0, 480, 40);
+    window->setRootComponent(std::move(root));
+    window->setMenuBar(menuBar);
+
+    auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
+    REQUIRE(topLevelMenus.size() == 5);
+    auto *optionsMenu = topLevelMenus[4];
+    auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
+    REQUIRE(optionEntries.size() == 1);
+
+    REQUIRE(optionsMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
+    REQUIRE(optionEntries[0]->mouseDown(
+        cupuacu::test::integration::leftMouseDown()));
+    REQUIRE(state.devicePropertiesWindow != nullptr);
+
+    std::vector<cupuacu::gui::DropdownMenu *> dropdowns;
+    collectChildrenRecursive(
+        state.devicePropertiesWindow->getWindow()->getRootComponent(), dropdowns);
+    REQUIRE(dropdowns.size() == 3);
+
+    const int originalHeight = dropdowns[0]->getHeight();
+    const int originalY = dropdowns[1]->getYPos();
+
+    state.pixelScale = 2;
+    state.devicePropertiesWindow->getWindow()->refreshForScaleOrResize();
+
+    REQUIRE(dropdowns[0]->getHeight() != originalHeight);
+    REQUIRE(dropdowns[1]->getYPos() != originalY);
+}
