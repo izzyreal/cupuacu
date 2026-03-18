@@ -2,6 +2,7 @@
 
 #include "../Constants.hpp"
 #include "../State.hpp"
+#include "ZoomPlanning.hpp"
 #include "../gui/Waveform.hpp"
 
 namespace cupuacu::actions
@@ -10,25 +11,17 @@ namespace cupuacu::actions
     static double getMinSamplesPerPixel(const cupuacu::State *state)
     {
         const auto waveformWidth = gui::Waveform::getWaveformWidth(state);
-        return 1.0 / waveformWidth;
+        return planMinSamplesPerPixel(waveformWidth);
     }
 
     static void resetZoom(cupuacu::State *state)
     {
         auto &viewState = state->mainDocumentSessionWindow->getViewState();
-        const auto waveformWidth = gui::Waveform::getWaveformWidth(state);
-        if (waveformWidth == 0)
-        {
-            viewState.samplesPerPixel = 0;
-        }
-        else
-        {
-            viewState.samplesPerPixel =
-                state->activeDocumentSession.document.getFrameCount() /
-                (float)waveformWidth;
-        }
-
-        viewState.verticalZoom = INITIAL_VERTICAL_ZOOM;
+        const auto plan = planResetZoom(
+            state->activeDocumentSession.document.getFrameCount(),
+            gui::Waveform::getWaveformWidth(state));
+        viewState.samplesPerPixel = plan.samplesPerPixel;
+        viewState.verticalZoom = plan.verticalZoom;
 
         resetSampleValueUnderMouseCursor(state);
 
@@ -37,7 +30,7 @@ namespace cupuacu::actions
             w->clearHighlight();
         }
 
-        updateSampleOffset(state, 0);
+        updateSampleOffset(state, plan.sampleOffset);
     }
 
     static void resetZoomAndRefreshWaveforms(cupuacu::State *state)
@@ -50,26 +43,17 @@ namespace cupuacu::actions
     static bool tryZoomInHorizontally(cupuacu::State *state)
     {
         auto &viewState = state->mainDocumentSessionWindow->getViewState();
-        const auto waveformWidth = gui::Waveform::getWaveformWidth(state);
-        const double minSamplesPerPixel = getMinSamplesPerPixel(state);
-
-        if (viewState.samplesPerPixel <= minSamplesPerPixel)
+        const auto plan = planZoomInHorizontally(
+            viewState.samplesPerPixel, viewState.sampleOffset,
+            gui::Waveform::getWaveformWidth(state),
+            state->activeDocumentSession.document.getFrameCount());
+        if (!plan.changed)
         {
             return false;
         }
 
-        const auto centerSampleIndex =
-            ((waveformWidth / 2.0 + 0.5) * viewState.samplesPerPixel) +
-            viewState.sampleOffset;
-
-        viewState.samplesPerPixel =
-            std::max(viewState.samplesPerPixel / 2.0, minSamplesPerPixel);
-
-        const auto newSampleOffset =
-            centerSampleIndex -
-            ((waveformWidth / 2.0 + 0.5) * viewState.samplesPerPixel);
-
-        updateSampleOffset(state, newSampleOffset);
+        viewState.samplesPerPixel = plan.samplesPerPixel;
+        updateSampleOffset(state, plan.sampleOffset);
 
         resetSampleValueUnderMouseCursor(state);
 
@@ -84,30 +68,17 @@ namespace cupuacu::actions
     static bool tryZoomOutHorizontally(cupuacu::State *state)
     {
         auto &viewState = state->mainDocumentSessionWindow->getViewState();
-        const auto waveformWidth = gui::Waveform::getWaveformWidth(state);
-        const float maxSamplesPerPixel =
-            static_cast<float>(
-                state->activeDocumentSession.document.getFrameCount()) /
-            waveformWidth;
-
-        if (viewState.samplesPerPixel >= maxSamplesPerPixel)
+        const auto plan = planZoomOutHorizontally(
+            viewState.samplesPerPixel, viewState.sampleOffset,
+            gui::Waveform::getWaveformWidth(state),
+            state->activeDocumentSession.document.getFrameCount());
+        if (!plan.changed)
         {
             return false;
         }
 
-        const auto centerSampleIndex =
-            ((waveformWidth / 2.0 + 0.5) * viewState.samplesPerPixel) +
-            viewState.sampleOffset;
-
-        viewState.samplesPerPixel =
-            std::min(viewState.samplesPerPixel * 2.0,
-                     static_cast<double>(maxSamplesPerPixel));
-
-        const auto newSampleOffset =
-            centerSampleIndex -
-            ((waveformWidth / 2.0 + 0.5) * viewState.samplesPerPixel);
-
-        updateSampleOffset(state, newSampleOffset);
+        viewState.samplesPerPixel = plan.samplesPerPixel;
+        updateSampleOffset(state, plan.sampleOffset);
 
         resetSampleValueUnderMouseCursor(state);
 
@@ -148,22 +119,19 @@ namespace cupuacu::actions
     static bool tryZoomSelection(cupuacu::State *state)
     {
         auto &viewState = state->mainDocumentSessionWindow->getViewState();
-        if (!state->activeDocumentSession.selection.isActive() ||
-            state->activeDocumentSession.selection.getLengthInt() < 1)
+        const auto plan = planZoomSelection(
+            state->activeDocumentSession.selection.isActive(),
+            state->activeDocumentSession.selection.getLengthInt(),
+            state->activeDocumentSession.selection.getStartInt(),
+            gui::Waveform::getWaveformWidth(state));
+        if (!plan.changed)
         {
             return false;
         }
 
-        viewState.verticalZoom = INITIAL_VERTICAL_ZOOM;
-
-        const auto waveformWidth = gui::Waveform::getWaveformWidth(state);
-        const auto selectionLength =
-            state->activeDocumentSession.selection.getLengthInt();
-
-        viewState.samplesPerPixel =
-            selectionLength / static_cast<double>(waveformWidth);
-        updateSampleOffset(
-            state, state->activeDocumentSession.selection.getStartInt());
+        viewState.verticalZoom = plan.verticalZoom;
+        viewState.samplesPerPixel = plan.samplesPerPixel;
+        updateSampleOffset(state, plan.sampleOffset);
         return true;
     }
 } // namespace cupuacu::actions

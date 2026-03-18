@@ -1,110 +1,78 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include "State.hpp"
-#include "TestSdlTtfGuard.hpp"
-#include "actions/Zoom.hpp"
-#include "gui/DevicePropertiesWindow.hpp"
-#include "gui/DocumentSessionWindow.hpp"
-#include "gui/Waveform.hpp"
+#include "actions/ZoomPlanning.hpp"
 
-#include <SDL3/SDL.h>
-
-#include <memory>
-#include <vector>
-
-namespace
-{
-    struct ZoomHarness
-    {
-        cupuacu::State state;
-        std::unique_ptr<cupuacu::gui::DocumentSessionWindow> sessionWindow;
-        std::vector<std::unique_ptr<cupuacu::gui::Waveform>> ownedWaveforms;
-    };
-
-    std::unique_ptr<ZoomHarness> makeZoomHarness(const int64_t frameCount,
-                                                 const int waveformWidth)
-    {
-        cupuacu::test::ensureSdlTtfInitialized();
-
-        auto harness = std::make_unique<ZoomHarness>();
-        harness->state.activeDocumentSession.document.initialize(
-            cupuacu::SampleFormat::FLOAT32, 44100, 2, frameCount);
-        harness->sessionWindow =
-            std::make_unique<cupuacu::gui::DocumentSessionWindow>(
-                &harness->state, &harness->state.activeDocumentSession,
-                "zoom-harness", 640, 240, SDL_WINDOW_HIDDEN);
-        harness->state.mainDocumentSessionWindow = std::move(harness->sessionWindow);
-
-        for (int channel = 0; channel < 2; ++channel)
-        {
-            auto waveform =
-                std::make_unique<cupuacu::gui::Waveform>(&harness->state,
-                                                         static_cast<uint8_t>(channel));
-            waveform->setVisible(true);
-            waveform->setBounds(0, 0, waveformWidth, 60);
-            harness->state.waveforms.push_back(waveform.get());
-            harness->ownedWaveforms.push_back(std::move(waveform));
-        }
-
-        return harness;
-    }
-} // namespace
-
-TEST_CASE("Reset zoom derives samples-per-pixel from waveform width",
+TEST_CASE("Reset zoom plan derives samples-per-pixel from waveform width",
           "[gui]")
 {
-    auto harness = makeZoomHarness(1000, 200);
-    auto &viewState = harness->state.mainDocumentSessionWindow->getViewState();
-    viewState.samplesPerPixel = 123.0;
-    viewState.verticalZoom = 4.5;
-    viewState.sampleOffset = 77;
-    viewState.sampleValueUnderMouseCursor.emplace(0.75f);
+    const auto plan = cupuacu::actions::planResetZoom(1000, 200);
 
-    cupuacu::actions::resetZoom(&harness->state);
-
-    REQUIRE(viewState.samplesPerPixel == Catch::Approx(5.0));
-    REQUIRE(viewState.verticalZoom == Catch::Approx(cupuacu::INITIAL_VERTICAL_ZOOM));
-    REQUIRE(viewState.sampleOffset == 0);
-    REQUIRE_FALSE(viewState.sampleValueUnderMouseCursor.has_value());
+    REQUIRE(plan.samplesPerPixel == Catch::Approx(5.0));
+    REQUIRE(plan.verticalZoom == Catch::Approx(cupuacu::INITIAL_VERTICAL_ZOOM));
+    REQUIRE(plan.sampleOffset == 0);
 }
 
-TEST_CASE("Horizontal zoom keeps the view centered and respects bounds",
-          "[gui]")
+TEST_CASE("Reset zoom plan handles zero-width waveform safely", "[gui]")
 {
-    auto harness = makeZoomHarness(1000, 200);
-    auto &viewState = harness->state.mainDocumentSessionWindow->getViewState();
-    viewState.samplesPerPixel = 4.0;
-    viewState.sampleOffset = 100;
+    const auto plan = cupuacu::actions::planResetZoom(1000, 0);
 
-    REQUIRE(cupuacu::actions::tryZoomInHorizontally(&harness->state));
-    REQUIRE(viewState.samplesPerPixel == Catch::Approx(2.0));
-    REQUIRE(viewState.sampleOffset == 301);
-
-    REQUIRE(cupuacu::actions::tryZoomOutHorizontally(&harness->state));
-    REQUIRE(viewState.samplesPerPixel == Catch::Approx(4.0));
-    REQUIRE(viewState.sampleOffset == 100);
-
-    viewState.samplesPerPixel = 1.0 / 200.0;
-    REQUIRE_FALSE(cupuacu::actions::tryZoomInHorizontally(&harness->state));
+    REQUIRE(plan.samplesPerPixel == Catch::Approx(0.0));
+    REQUIRE(plan.verticalZoom == Catch::Approx(cupuacu::INITIAL_VERTICAL_ZOOM));
+    REQUIRE(plan.sampleOffset == 0);
 }
 
-TEST_CASE("Zoom selection focuses the selected range and resets vertical zoom",
+TEST_CASE("Horizontal zoom-in plan keeps the view centered and respects bounds",
           "[gui]")
 {
-    auto harness = makeZoomHarness(1000, 250);
-    auto &selection = harness->state.activeDocumentSession.selection;
-    auto &viewState = harness->state.mainDocumentSessionWindow->getViewState();
+    const auto plan =
+        cupuacu::actions::planZoomInHorizontally(4.0, 100, 200, 1000);
 
-    REQUIRE_FALSE(cupuacu::actions::tryZoomSelection(&harness->state));
+    REQUIRE(plan.changed);
+    REQUIRE(plan.samplesPerPixel == Catch::Approx(2.0));
+    REQUIRE(plan.sampleOffset == 301);
+}
 
-    selection.setHighest(1000.0);
-    selection.setValue1(100.0);
-    selection.setValue2(300.0);
-    viewState.verticalZoom = 3.0;
+TEST_CASE("Horizontal zoom-out plan keeps the view centered and respects bounds",
+          "[gui]")
+{
+    const auto plan =
+        cupuacu::actions::planZoomOutHorizontally(2.0, 301, 200, 1000);
 
-    REQUIRE(cupuacu::actions::tryZoomSelection(&harness->state));
-    REQUIRE(viewState.verticalZoom == Catch::Approx(cupuacu::INITIAL_VERTICAL_ZOOM));
-    REQUIRE(viewState.samplesPerPixel == Catch::Approx(200.0 / 250.0));
-    REQUIRE(viewState.sampleOffset == 100);
+    REQUIRE(plan.changed);
+    REQUIRE(plan.samplesPerPixel == Catch::Approx(4.0));
+    REQUIRE(plan.sampleOffset == 100);
+}
+
+TEST_CASE("Horizontal zoom plans clamp at min and max samples-per-pixel",
+          "[gui]")
+{
+    const auto inPlan = cupuacu::actions::planZoomInHorizontally(
+        1.0 / 200.0, 0, 200, 1000);
+    const auto outPlan =
+        cupuacu::actions::planZoomOutHorizontally(5.0, 0, 200, 1000);
+
+    REQUIRE_FALSE(inPlan.changed);
+    REQUIRE_FALSE(outPlan.changed);
+}
+
+TEST_CASE("Zoom selection plan focuses the selected range", "[gui]")
+{
+    const auto plan =
+        cupuacu::actions::planZoomSelection(true, 200, 100, 250);
+
+    REQUIRE(plan.changed);
+    REQUIRE(plan.samplesPerPixel == Catch::Approx(200.0 / 250.0));
+    REQUIRE(plan.verticalZoom == Catch::Approx(cupuacu::INITIAL_VERTICAL_ZOOM));
+    REQUIRE(plan.sampleOffset == 100);
+}
+
+TEST_CASE("Zoom selection plan rejects inactive and empty selections", "[gui]")
+{
+    REQUIRE_FALSE(
+        cupuacu::actions::planZoomSelection(false, 200, 100, 250).changed);
+    REQUIRE_FALSE(
+        cupuacu::actions::planZoomSelection(true, 0, 100, 250).changed);
+    REQUIRE_FALSE(
+        cupuacu::actions::planZoomSelection(true, 200, 100, 0).changed);
 }
