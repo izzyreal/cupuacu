@@ -8,14 +8,15 @@
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/EventHandling.hpp"
 #include "gui/Gui.hpp"
+#include "gui/LabeledField.hpp"
 #include "gui/SamplePoint.hpp"
+#include "gui/StatusBar.hpp"
 #include "gui/TriangleMarker.hpp"
 #include "gui/Waveform.hpp"
 #include "gui/Window.hpp"
 
 #include <SDL3/SDL.h>
 
-#include <cstring>
 #include <memory>
 
 namespace
@@ -90,6 +91,14 @@ namespace
         }
 
         return nullptr;
+    }
+
+    cupuacu::gui::LabeledField *findStatusField(cupuacu::gui::Component *root,
+                                                const std::string_view label)
+    {
+        return cupuacu::test::integration::findByNameRecursive<
+            cupuacu::gui::LabeledField>(
+            root, std::string("LabeledField for ") + std::string(label));
     }
 } // namespace
 
@@ -201,6 +210,104 @@ TEST_CASE("Event handling integration blocks interactive events behind modal",
     REQUIRE(mainWindow->getComponentUnderMouse() == hovered);
 }
 
+TEST_CASE("Event handling integration still forwards non-interactive window events behind modal",
+          "[integration]")
+{
+    cupuacu::State state{};
+    createBuiltSessionUi(&state, 512);
+
+    auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
+    state.windows.push_back(mainWindow);
+
+    auto modalWindow = std::make_unique<cupuacu::gui::Window>(
+        &state, "modal-window", 240, 160, SDL_WINDOW_HIDDEN);
+    state.modalWindow = modalWindow.get();
+    state.windows.push_back(modalWindow.get());
+
+    int resizeCount = 0;
+    mainWindow->setOnResize([&]() { ++resizeCount; });
+
+    SDL_Event event{};
+    event.type = SDL_EVENT_WINDOW_RESIZED;
+    event.window.windowID = mainWindow->getId();
+
+    REQUIRE(cupuacu::gui::handleAppEvent(&state, &event) == SDL_APP_CONTINUE);
+    REQUIRE(resizeCount == 1);
+}
+
+TEST_CASE("Event handling integration returns success for quit and main-window close requests",
+          "[integration]")
+{
+    SECTION("quit event exits immediately")
+    {
+        cupuacu::State state{};
+        createBuiltSessionUi(&state, 256);
+
+        SDL_Event event{};
+        event.type = SDL_EVENT_QUIT;
+
+        REQUIRE(cupuacu::gui::handleAppEvent(&state, &event) == SDL_APP_SUCCESS);
+        REQUIRE(state.mainDocumentSessionWindow->getWindow()->isOpen());
+    }
+
+    SECTION("main document close request exits and closes the window")
+    {
+        cupuacu::State state{};
+        createBuiltSessionUi(&state, 256);
+
+        auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
+        state.windows.push_back(mainWindow);
+
+        SDL_Event event{};
+        event.type = SDL_EVENT_WINDOW_CLOSE_REQUESTED;
+        event.window.windowID = mainWindow->getId();
+
+        REQUIRE(cupuacu::gui::handleAppEvent(&state, &event) == SDL_APP_SUCCESS);
+        REQUIRE_FALSE(mainWindow->isOpen());
+    }
+}
+
+TEST_CASE("Event handling integration ignores unfocused key and text input",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::State state{};
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &state.activeDocumentSession, "main-doc", 320, 240,
+            SDL_WINDOW_HIDDEN);
+
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "unfocused-input-window", 320, 240, SDL_WINDOW_HIDDEN);
+    state.windows.push_back(window.get());
+
+    auto root =
+        std::make_unique<cupuacu::test::integration::RootComponent>(&state);
+    auto *focused = root->emplaceChild<KeyAwareComponent>(&state);
+    focused->setBounds(0, 0, 100, 50);
+    root->setBounds(0, 0, 320, 240);
+    window->setRootComponent(std::move(root));
+    window->setFocusedComponent(focused);
+
+    SDL_Event keyEvent{};
+    keyEvent.type = SDL_EVENT_KEY_DOWN;
+    keyEvent.key.windowID = window->getId();
+    keyEvent.key.scancode = SDL_SCANCODE_A;
+
+    SDL_Event textEvent{};
+    textEvent.type = SDL_EVENT_TEXT_INPUT;
+    textEvent.text.windowID = window->getId();
+    textEvent.text.text = "a";
+
+    REQUIRE(cupuacu::gui::handleAppEvent(&state, &keyEvent) ==
+            SDL_APP_CONTINUE);
+    REQUIRE(cupuacu::gui::handleAppEvent(&state, &textEvent) ==
+            SDL_APP_CONTINUE);
+    REQUIRE(focused->keyDownCount == 0);
+    REQUIRE(focused->textInputCount == 0);
+}
+
 TEST_CASE("Event handling integration clears waveform highlight on main window mouse leave",
           "[integration]")
 {
@@ -245,6 +352,44 @@ TEST_CASE("Window integration routes focused key input to focused component",
     REQUIRE(window->handleEvent(keyEvent));
     REQUIRE(focused->keyDownCount == 1);
     REQUIRE(focused->textInputCount == 0);
+}
+
+TEST_CASE("Status bar integration lays out labeled fields across the footer",
+          "[integration]")
+{
+    cupuacu::State state{};
+    createBuiltSessionUi(&state, 1024, 44100, 2, 800, 400);
+
+    auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
+    mainWindow->renderFrame();
+
+    auto *statusBar = dynamic_cast<cupuacu::gui::StatusBar *>(state.statusBar);
+    REQUIRE(statusBar != nullptr);
+
+    auto *posField = findStatusField(statusBar, "Pos");
+    auto *startField = findStatusField(statusBar, "St");
+    auto *endField = findStatusField(statusBar, "End");
+    auto *lengthField = findStatusField(statusBar, "Len");
+    auto *valueField = findStatusField(statusBar, "Val");
+
+    REQUIRE(posField != nullptr);
+    REQUIRE(startField != nullptr);
+    REQUIRE(endField != nullptr);
+    REQUIRE(lengthField != nullptr);
+    REQUIRE(valueField != nullptr);
+
+    const auto initialPosBounds = posField->getBounds();
+    const auto initialStartBounds = startField->getBounds();
+    const auto initialEndBounds = endField->getBounds();
+    const auto initialLengthBounds = lengthField->getBounds();
+    const auto initialValueBounds = valueField->getBounds();
+
+    REQUIRE(initialStartBounds.x > initialPosBounds.x);
+    REQUIRE(initialEndBounds.x > initialStartBounds.x);
+    REQUIRE(initialLengthBounds.x > initialEndBounds.x);
+    REQUIRE(initialValueBounds.x > initialLengthBounds.x);
+    REQUIRE(initialPosBounds.w == initialStartBounds.w);
+    REQUIRE(initialStartBounds.w == initialEndBounds.w);
 }
 
 TEST_CASE("Waveform integration toggles sample points with playback state",

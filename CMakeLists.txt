@@ -137,6 +137,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_menu_planning.cpp
     src/test/test_waveform_interaction_planning.cpp
     src/test/test_transport_and_vumeter.cpp
+    src/test/test_waveform_render_and_buffers.cpp
 )
 
 set(CUPUACU_INTEGRATION_TEST_SOURCES
