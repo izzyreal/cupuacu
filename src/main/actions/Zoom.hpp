@@ -4,6 +4,7 @@
 #include "../State.hpp"
 #include "ZoomPlanning.hpp"
 #include "../gui/Waveform.hpp"
+#include "../gui/WaveformRefresh.hpp"
 
 namespace cupuacu::actions
 {
@@ -22,14 +23,7 @@ namespace cupuacu::actions
             gui::Waveform::getWaveformWidth(state));
         viewState.samplesPerPixel = plan.samplesPerPixel;
         viewState.verticalZoom = plan.verticalZoom;
-
-        resetSampleValueUnderMouseCursor(state);
-
-        for (auto w : state->waveforms)
-        {
-            w->clearHighlight();
-        }
-
+        gui::resetWaveformInteractionState(state);
         updateSampleOffset(state, plan.sampleOffset);
     }
 
@@ -54,14 +48,7 @@ namespace cupuacu::actions
 
         viewState.samplesPerPixel = plan.samplesPerPixel;
         updateSampleOffset(state, plan.sampleOffset);
-
-        resetSampleValueUnderMouseCursor(state);
-
-        for (auto w : state->waveforms)
-        {
-            w->clearHighlight();
-        }
-
+        gui::resetWaveformInteractionState(state);
         return true;
     }
 
@@ -79,14 +66,7 @@ namespace cupuacu::actions
 
         viewState.samplesPerPixel = plan.samplesPerPixel;
         updateSampleOffset(state, plan.sampleOffset);
-
-        resetSampleValueUnderMouseCursor(state);
-
-        for (auto w : state->waveforms)
-        {
-            w->clearHighlight();
-        }
-
+        gui::resetWaveformInteractionState(state);
         return true;
     }
 

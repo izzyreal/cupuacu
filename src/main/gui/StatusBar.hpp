@@ -36,6 +36,17 @@ namespace cupuacu::gui
         bool lastSelectionActive = true;
         std::optional<float> lastSampleValueUnderMouseCursor;
 
+        std::optional<int64_t> getPlaybackPositionIfPlaying() const
+        {
+            if (!state || !state->audioDevices ||
+                !state->audioDevices->isPlaying())
+            {
+                return std::nullopt;
+            }
+
+            return state->audioDevices->getPlaybackPosition();
+        }
+
     public:
         StatusBar(State *stateToUse) : Component(stateToUse, "StatusBar")
         {
@@ -73,11 +84,8 @@ namespace cupuacu::gui
             const auto &session = state->activeDocumentSession;
             const auto &viewState =
                 state->mainDocumentSessionWindow->getViewState();
-            const bool isPlaying = state->audioDevices->isPlaying();
-
             const int64_t currentPos =
-                isPlaying ? state->audioDevices->getPlaybackPosition()
-                          : session.cursor;
+                getPlaybackPositionIfPlaying().value_or(session.cursor);
 
             if (currentPos != lastDrawnPos)
             {

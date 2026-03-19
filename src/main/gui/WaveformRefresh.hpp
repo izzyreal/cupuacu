@@ -19,6 +19,17 @@ namespace cupuacu::gui
         }
     }
 
+    inline void resetWaveformInteractionState(cupuacu::State *state)
+    {
+        if (!state)
+        {
+            return;
+        }
+
+        resetSampleValueUnderMouseCursor(state);
+        clearWaveformHighlights(state);
+    }
+
     inline void refreshWaveforms(cupuacu::State *state,
                                  const bool shouldUpdateSamplePoints,
                                  const bool shouldMarkDirty)
@@ -42,5 +53,13 @@ namespace cupuacu::gui
                 waveform->setDirty();
             }
         }
+    }
+
+    inline void refreshWaveformsAfterViewChange(
+        cupuacu::State *state, const bool shouldUpdateSamplePoints,
+        const bool shouldMarkDirty)
+    {
+        resetWaveformInteractionState(state);
+        refreshWaveforms(state, shouldUpdateSamplePoints, shouldMarkDirty);
     }
 } // namespace cupuacu::gui

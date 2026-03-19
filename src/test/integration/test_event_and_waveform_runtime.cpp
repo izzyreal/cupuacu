@@ -392,6 +392,29 @@ TEST_CASE("Status bar integration lays out labeled fields across the footer",
     REQUIRE(initialStartBounds.w == initialEndBounds.w);
 }
 
+TEST_CASE("Status bar integration tolerates missing audio devices",
+          "[integration]")
+{
+    cupuacu::State state{};
+    createBuiltSessionUi(&state, 1024, 44100, 2, 800, 400);
+
+    auto *statusBar = dynamic_cast<cupuacu::gui::StatusBar *>(state.statusBar);
+    REQUIRE(statusBar != nullptr);
+
+    auto *posField = findStatusField(statusBar, "Pos");
+    auto *startField = findStatusField(statusBar, "St");
+    REQUIRE(posField != nullptr);
+    REQUIRE(startField != nullptr);
+
+    state.audioDevices.reset();
+    state.activeDocumentSession.cursor = 321;
+
+    statusBar->timerCallback();
+
+    REQUIRE(posField->isDirty());
+    REQUIRE(startField->isDirty());
+}
+
 TEST_CASE("Waveform integration toggles sample points with playback state",
           "[integration]")
 {

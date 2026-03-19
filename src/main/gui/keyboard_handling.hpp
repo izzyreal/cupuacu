@@ -121,10 +121,7 @@ namespace cupuacu::gui
                 return;
             }
 
-            resetSampleValueUnderMouseCursor(state);
-
-            clearWaveformHighlights(state);
-            updateWaveforms(state);
+            refreshWaveformsAfterViewChange(state, true, true);
         }
         else if (event->key.scancode == SDL_SCANCODE_RIGHT)
         {
@@ -140,10 +137,7 @@ namespace cupuacu::gui
                 return;
             }
 
-            resetSampleValueUnderMouseCursor(state);
-
-            clearWaveformHighlights(state);
-            updateWaveforms(state);
+            refreshWaveformsAfterViewChange(state, true, true);
         }
         else if (event->key.scancode == SDL_SCANCODE_O)
         {

@@ -417,9 +417,7 @@ MainView::MainView(State *state) : Component(state, "MainView")
                 return;
             }
 
-            resetSampleValueUnderMouseCursor(state);
-            clearWaveformHighlights(state);
-            refreshWaveforms(
+            refreshWaveformsAfterViewChange(
                 state,
                 Waveform::shouldShowSamplePoints(viewState.samplesPerPixel,
                                                 state->pixelScale),
