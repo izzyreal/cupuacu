@@ -214,6 +214,83 @@ void MainView::finalizeRecordingUndoCaptureIfComplete()
     recordingUndoCapture = {};
 }
 
+bool MainView::shouldKeepConsumingRecordedAudio(const bool isRecordingNow,
+                                                const uint64_t chunksThisTick,
+                                                const uint64_t perfStart,
+                                                const uint64_t perfFreq) const
+{
+    constexpr double kRecordConsumeBudgetMs = 3.0;
+    const uint64_t maxChunksThisTick = isRecordingNow ? 12 : UINT64_MAX;
+    if (chunksThisTick >= maxChunksThisTick)
+    {
+        return false;
+    }
+
+    if (!isRecordingNow || chunksThisTick == 0)
+    {
+        return true;
+    }
+
+    const uint64_t now = SDL_GetPerformanceCounter();
+    const double elapsedMs =
+        perfFreq > 0
+            ? (1000.0 * static_cast<double>(now - perfStart) /
+               static_cast<double>(perfFreq))
+            : 0.0;
+    return elapsedMs < kRecordConsumeBudgetMs;
+}
+
+void MainView::applyRecordedChunkToSession(
+    const cupuacu::audio::AudioDevices::RecordedChunk &chunk,
+    bool &channelLayoutChanged, bool &waveformCacheChanged)
+{
+    auto &session = state->activeDocumentSession;
+    auto &doc = session.document;
+
+    beginRecordingUndoCaptureIfNeeded(chunk.startFrame);
+    const int64_t oldFrameCount = doc.getFrameCount();
+    const int64_t requiredFrameCount =
+        chunk.startFrame + static_cast<int64_t>(chunk.frameCount);
+
+    const int64_t overwriteEnd =
+        std::min<int64_t>(requiredFrameCount, oldFrameCount) - 1;
+    capturePreOverwriteSamples(overwriteEnd + 1);
+
+    const auto applyResult =
+        cupuacu::actions::audio::applyRecordedChunk(doc, chunk);
+    waveformCacheChanged =
+        waveformCacheChanged || applyResult.waveformCacheChanged;
+    channelLayoutChanged =
+        channelLayoutChanged || applyResult.channelLayoutChanged;
+    captureRecordedChunk(chunk);
+
+    session.cursor = std::max(session.cursor, applyResult.requiredFrameCount);
+}
+
+void MainView::refreshWaveformsAfterRecordedAudio(
+    const bool channelLayoutChanged, const bool waveformCacheChanged)
+{
+    auto &doc = state->activeDocumentSession.document;
+
+    if (waveformCacheChanged)
+    {
+        doc.updateWaveformCache();
+    }
+
+    if (channelLayoutChanged ||
+        static_cast<int>(state->waveforms.size()) != doc.getChannelCount())
+    {
+        rebuildWaveforms();
+        return;
+    }
+
+    for (const auto waveform : state->waveforms)
+    {
+        waveform->updateSamplePoints();
+        waveform->setDirty();
+    }
+}
+
 bool MainView::consumePendingRecordedAudio()
 {
     if (!state->audioDevices)
@@ -222,36 +299,21 @@ bool MainView::consumePendingRecordedAudio()
     }
     const uint64_t perfStart = SDL_GetPerformanceCounter();
     const uint64_t perfFreq = SDL_GetPerformanceFrequency();
-    constexpr double kRecordConsumeBudgetMs = 3.0;
     auto &session = state->activeDocumentSession;
-    auto &doc = session.document;
 
     cupuacu::audio::AudioDevices::RecordedChunk chunk{};
     bool consumedAny = false;
     bool channelLayoutChanged = false;
     bool waveformCacheChanged = false;
     const bool isRecordingNow = state->audioDevices->isRecording();
-    const uint64_t maxChunksThisTick = isRecordingNow ? 12 : UINT64_MAX;
     uint64_t chunksThisTick = 0;
 
     while (true)
     {
-        if (chunksThisTick >= maxChunksThisTick)
+        if (!shouldKeepConsumingRecordedAudio(isRecordingNow, chunksThisTick,
+                                              perfStart, perfFreq))
         {
             break;
-        }
-        if (isRecordingNow && chunksThisTick > 0)
-        {
-            const uint64_t now = SDL_GetPerformanceCounter();
-            const double elapsedMs =
-                perfFreq > 0
-                    ? (1000.0 * static_cast<double>(now - perfStart) /
-                       static_cast<double>(perfFreq))
-                    : 0.0;
-            if (elapsedMs >= kRecordConsumeBudgetMs)
-            {
-                break;
-            }
         }
         if (!state->audioDevices->popRecordedChunk(chunk))
         {
@@ -265,24 +327,8 @@ bool MainView::consumePendingRecordedAudio()
 
         ++chunksThisTick;
         consumedAny = true;
-        beginRecordingUndoCaptureIfNeeded(chunk.startFrame);
-        const int64_t oldFrameCount = doc.getFrameCount();
-        const int64_t requiredFrameCount =
-            chunk.startFrame + static_cast<int64_t>(chunk.frameCount);
-
-        const int64_t overwriteEnd =
-            std::min<int64_t>(requiredFrameCount, oldFrameCount) - 1;
-        capturePreOverwriteSamples(overwriteEnd + 1);
-
-        const auto applyResult =
-            cupuacu::actions::audio::applyRecordedChunk(doc, chunk);
-        waveformCacheChanged =
-            waveformCacheChanged || applyResult.waveformCacheChanged;
-        channelLayoutChanged =
-            channelLayoutChanged || applyResult.channelLayoutChanged;
-        captureRecordedChunk(chunk);
-
-        session.cursor = std::max(session.cursor, applyResult.requiredFrameCount);
+        applyRecordedChunkToSession(chunk, channelLayoutChanged,
+                                    waveformCacheChanged);
     }
 
     if (!consumedAny)
@@ -290,26 +336,8 @@ bool MainView::consumePendingRecordedAudio()
         return false;
     }
     session.syncSelectionAndCursorToDocumentLength();
-
-    if (waveformCacheChanged)
-    {
-        doc.updateWaveformCache();
-    }
-
-    if (channelLayoutChanged ||
-        static_cast<int>(state->waveforms.size()) != doc.getChannelCount())
-    {
-        rebuildWaveforms();
-    }
-    else
-    {
-        for (const auto waveform : state->waveforms)
-        {
-            waveform->updateSamplePoints();
-            waveform->setDirty();
-        }
-    }
-
+    refreshWaveformsAfterRecordedAudio(channelLayoutChanged,
+                                       waveformCacheChanged);
     return true;
 }
 
@@ -376,6 +404,119 @@ bool MainView::followTransportHead()
     }
 
     return changed;
+}
+
+int64_t MainView::getPlaybackPositionForWaveforms() const
+{
+    if (!state->audioDevices || !state->audioDevices->isPlaying())
+    {
+        return -1;
+    }
+
+    return state->audioDevices->getPlaybackPosition();
+}
+
+void MainView::updateWaveformPlaybackPositions() const
+{
+    const int64_t playbackPosition = getPlaybackPositionForWaveforms();
+    for (auto *waveform : state->waveforms)
+    {
+        waveform->setPlaybackPosition(playbackPosition);
+    }
+}
+
+bool MainView::isSelectionInteractionActive() const
+{
+    if (!state->mainDocumentSessionWindow ||
+        !state->mainDocumentSessionWindow->getWindow())
+    {
+        return false;
+    }
+
+    auto *capturing =
+        state->mainDocumentSessionWindow->getWindow()->getCapturingComponent();
+    return dynamic_cast<WaveformsUnderlay *>(capturing) != nullptr ||
+           dynamic_cast<TriangleMarker *>(capturing) != nullptr;
+}
+
+void MainView::syncLivePlaybackRange(const bool selectionActive,
+                                     const SelectedChannels selectedChannels)
+{
+    const bool isPlayingNow =
+        state->audioDevices && state->audioDevices->isPlaying();
+
+    if (isPlayingNow && state->audioDevices && !isSelectionInteractionActive())
+    {
+        const auto range = cupuacu::playback::computeRangeForLiveUpdate(
+            state->activeDocumentSession, state->loopPlaybackEnabled,
+            state->playbackRangeStart, state->playbackRangeEnd);
+        const uint64_t start = range.start;
+        const uint64_t end = range.end;
+
+        const bool shouldUpdatePlayback =
+            start != lastPlaybackUpdateStart || end != lastPlaybackUpdateEnd ||
+            selectionActive != lastPlaybackUpdateSelectionActive ||
+            selectedChannels != lastPlaybackUpdateChannels ||
+            state->loopPlaybackEnabled != lastPlaybackLoopEnabled;
+
+        if (shouldUpdatePlayback)
+        {
+            cupuacu::audio::UpdatePlayback updateMsg{};
+            updateMsg.startPos = start;
+            updateMsg.endPos = end;
+            updateMsg.loopEnabled = state->loopPlaybackEnabled;
+            updateMsg.selectionIsActive = selectionActive;
+            updateMsg.selectedChannels = selectedChannels;
+            state->audioDevices->enqueue(updateMsg);
+
+            lastPlaybackUpdateStart = start;
+            lastPlaybackUpdateEnd = end;
+            lastPlaybackUpdateSelectionActive = selectionActive;
+            lastPlaybackUpdateChannels = selectedChannels;
+            lastPlaybackLoopEnabled = state->loopPlaybackEnabled;
+        }
+
+        return;
+    }
+
+    lastPlaybackUpdateStart = state->playbackRangeStart;
+    lastPlaybackUpdateEnd = state->playbackRangeEnd;
+    lastPlaybackUpdateSelectionActive = selectionActive;
+    lastPlaybackUpdateChannels = selectedChannels;
+    lastPlaybackLoopEnabled = state->loopPlaybackEnabled;
+}
+
+bool MainView::shouldRefreshMarkerBounds(const bool consumedRecordedAudio,
+                                         const bool followedTransport,
+                                         const bool selectionActive,
+                                         const int64_t selectionStart,
+                                         const int64_t selectionEnd) const
+{
+    const auto &session = state->activeDocumentSession;
+    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+
+    return session.cursor != lastDrawnCursor ||
+           selectionActive != lastSelectionIsActive ||
+           viewState.samplesPerPixel != lastSamplesPerPixel ||
+           viewState.sampleOffset != lastSampleOffset ||
+           selectionStart != lastSelectionStart ||
+           selectionEnd != lastSelectionEnd || consumedRecordedAudio ||
+           followedTransport;
+}
+
+void MainView::rememberMarkerInputs(const bool selectionActive,
+                                    const int64_t selectionStart,
+                                    const int64_t selectionEnd)
+{
+    const auto &session = state->activeDocumentSession;
+    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+
+    lastDrawnCursor = session.cursor;
+    lastSelectionIsActive = selectionActive;
+    lastSamplesPerPixel = viewState.samplesPerPixel;
+    lastSampleOffset = viewState.sampleOffset;
+    lastSelectionStart = selectionStart;
+    lastSelectionEnd = selectionEnd;
 }
 
 MainView::MainView(State *state) : Component(state, "MainView")
@@ -600,72 +741,15 @@ void MainView::timerCallback()
     auto &viewState = state->mainDocumentSessionWindow->getViewState();
     const bool consumedRecordedAudio = consumePendingRecordedAudio();
     const bool followedTransport = followTransportHead();
-    const bool isPlayingNow =
-        state->audioDevices && state->audioDevices->isPlaying();
     const bool isRecordingNow =
         state->audioDevices && state->audioDevices->isRecording();
-    const int64_t playbackPositionNow =
-        (isPlayingNow && state->audioDevices)
-            ? state->audioDevices->getPlaybackPosition()
-            : -1;
-    for (auto *waveform : state->waveforms)
-    {
-        waveform->setPlaybackPosition(playbackPositionNow);
-    }
-    bool selectionInteractionActive = false;
-    if (state->mainDocumentSessionWindow &&
-        state->mainDocumentSessionWindow->getWindow())
-    {
-        auto *capturing =
-            state->mainDocumentSessionWindow->getWindow()->getCapturingComponent();
-        selectionInteractionActive =
-            dynamic_cast<WaveformsUnderlay *>(capturing) != nullptr ||
-            dynamic_cast<TriangleMarker *>(capturing) != nullptr;
-    }
+    updateWaveformPlaybackPositions();
 
     const bool selectionActive = session.selection.isActive();
     const int64_t selectionStart = session.selection.getStartInt();
     const int64_t selectionEnd = session.selection.getEndInt();
 
-    if (isPlayingNow && state->audioDevices && !selectionInteractionActive)
-    {
-        const auto range = cupuacu::playback::computeRangeForLiveUpdate(
-            session, state->loopPlaybackEnabled, state->playbackRangeStart,
-            state->playbackRangeEnd);
-        const uint64_t start = range.start;
-        const uint64_t end = range.end;
-
-        const bool shouldUpdatePlayback =
-            start != lastPlaybackUpdateStart || end != lastPlaybackUpdateEnd ||
-            selectionActive != lastPlaybackUpdateSelectionActive ||
-            viewState.selectedChannels != lastPlaybackUpdateChannels ||
-            state->loopPlaybackEnabled != lastPlaybackLoopEnabled;
-
-        if (shouldUpdatePlayback)
-        {
-            cupuacu::audio::UpdatePlayback updateMsg{};
-            updateMsg.startPos = start;
-            updateMsg.endPos = end;
-            updateMsg.loopEnabled = state->loopPlaybackEnabled;
-            updateMsg.selectionIsActive = selectionActive;
-            updateMsg.selectedChannels = viewState.selectedChannels;
-            state->audioDevices->enqueue(updateMsg);
-
-            lastPlaybackUpdateStart = start;
-            lastPlaybackUpdateEnd = end;
-            lastPlaybackUpdateSelectionActive = selectionActive;
-            lastPlaybackUpdateChannels = viewState.selectedChannels;
-            lastPlaybackLoopEnabled = state->loopPlaybackEnabled;
-        }
-    }
-    else
-    {
-        lastPlaybackUpdateStart = state->playbackRangeStart;
-        lastPlaybackUpdateEnd = state->playbackRangeEnd;
-        lastPlaybackUpdateSelectionActive = selectionActive;
-        lastPlaybackUpdateChannels = viewState.selectedChannels;
-        lastPlaybackLoopEnabled = state->loopPlaybackEnabled;
-    }
+    syncLivePlaybackRange(selectionActive, viewState.selectedChannels);
 
     if (!isRecordingNow && wasRecordingLastTick)
     {
@@ -673,20 +757,11 @@ void MainView::timerCallback()
     }
     wasRecordingLastTick = isRecordingNow;
 
-    if (session.cursor != lastDrawnCursor ||
-        selectionActive != lastSelectionIsActive ||
-        viewState.samplesPerPixel != lastSamplesPerPixel ||
-        viewState.sampleOffset != lastSampleOffset ||
-        selectionStart != lastSelectionStart || selectionEnd != lastSelectionEnd ||
-        consumedRecordedAudio || followedTransport)
+    if (shouldRefreshMarkerBounds(consumedRecordedAudio, followedTransport,
+                                  selectionActive, selectionStart,
+                                  selectionEnd))
     {
-        lastDrawnCursor = session.cursor;
-        lastSelectionIsActive = selectionActive;
-        lastSamplesPerPixel = viewState.samplesPerPixel;
-        lastSampleOffset = viewState.sampleOffset;
-        lastSelectionStart = selectionStart;
-        lastSelectionEnd = selectionEnd;
-
+        rememberMarkerInputs(selectionActive, selectionStart, selectionEnd);
         updateTriangleMarkerBounds();
         setDirty();
     }

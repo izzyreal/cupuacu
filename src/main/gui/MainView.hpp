@@ -57,7 +57,28 @@ namespace cupuacu::gui
         void captureRecordedChunk(
             const cupuacu::audio::AudioDevices::RecordedChunk &chunk);
         void finalizeRecordingUndoCaptureIfComplete();
+        bool shouldKeepConsumingRecordedAudio(bool isRecordingNow,
+                                              uint64_t chunksThisTick,
+                                              uint64_t perfStart,
+                                              uint64_t perfFreq) const;
+        void applyRecordedChunkToSession(
+            const cupuacu::audio::AudioDevices::RecordedChunk &chunk,
+            bool &channelLayoutChanged, bool &waveformCacheChanged);
+        void refreshWaveformsAfterRecordedAudio(bool channelLayoutChanged,
+                                                bool waveformCacheChanged);
         bool followTransportHead();
+        int64_t getPlaybackPositionForWaveforms() const;
+        void updateWaveformPlaybackPositions() const;
+        bool isSelectionInteractionActive() const;
+        void syncLivePlaybackRange(bool selectionActive,
+                                   SelectedChannels selectedChannels);
+        bool shouldRefreshMarkerBounds(bool consumedRecordedAudio,
+                                       bool followedTransport,
+                                       bool selectionActive,
+                                       int64_t selectionStart,
+                                       int64_t selectionEnd) const;
+        void rememberMarkerInputs(bool selectionActive, int64_t selectionStart,
+                                  int64_t selectionEnd);
         TriangleMarker *cursorTop;
         TriangleMarker *cursorBottom;
         TriangleMarker *selStartTop;
