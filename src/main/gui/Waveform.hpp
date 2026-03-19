@@ -267,8 +267,18 @@ namespace cupuacu::gui
         BaseTextureCacheKey computeBaseTextureCacheKey() const;
         BaseTextureCacheKey
         makeCurrentBlockTextureCoverageKey(const BaseTextureCacheKey &) const;
+        BaseTextureCacheKey chooseBaseTextureTargetKey(
+            const BaseTextureCacheKey &, bool allowBlockCoverageReuse) const;
         bool canRenderCurrentViewFromCachedBlockTexture(
             const BaseTextureCacheKey &) const;
+        bool ensureBaseTextureStorage(SDL_Renderer *,
+                                      const BaseTextureCacheKey &) const;
+        void renderBaseTexture(SDL_Renderer *,
+                               const BaseTextureCacheKey &targetKey,
+                               bool isBlockMode) const;
+        void finalizeBaseTextureForView(const BaseTextureCacheKey &newKey,
+                                        const BaseTextureCacheKey &targetKey,
+                                        bool allowBlockCoverageReuse) const;
         bool canReuseBlockTextureForHorizontalShift(
             const BaseTextureCacheKey &newKey, int &outPixelShift) const;
         bool rebuildShiftedBlockTexture(SDL_Renderer *,
@@ -276,7 +286,18 @@ namespace cupuacu::gui
                                         int pixelShift) const;
         void drawBaseWaveformContents(SDL_Renderer *) const;
         void drawHorizontalLines(SDL_Renderer *) const;
+        bool shouldDrawSelection() const;
+        void drawBlockSelection(SDL_Renderer *, int64_t firstSample,
+                                int64_t lastSampleExclusive,
+                                int64_t sampleOffset,
+                                double samplesPerPixel) const;
+        void drawLinearSelection(SDL_Renderer *, bool isSelected,
+                                 int64_t firstSample,
+                                 int64_t lastSampleExclusive,
+                                 int64_t sampleOffset,
+                                 double samplesPerPixel) const;
         void drawSelection(SDL_Renderer *) const;
+        std::optional<int64_t> getHighlightedSampleIndex() const;
         void drawHighlight(SDL_Renderer *) const;
         void renderBlockWaveform(SDL_Renderer *) const;
         void renderBlockWaveformRange(SDL_Renderer *, int xStart,
