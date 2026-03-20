@@ -709,8 +709,7 @@ TEST_CASE("New file dialog integration can be opened and closed repeatedly",
 
         auto *dialogRoot =
             state.newFileDialogWindow->getWindow()->getRootComponent();
-        auto *okButton = cupuacu::test::integration::findFirstRecursive<
-            cupuacu::gui::TextButton>(dialogRoot);
+        auto *okButton = findFirstRecursive<cupuacu::gui::TextButton>(dialogRoot);
         REQUIRE(okButton != nullptr);
 
         clickButton(okButton);
