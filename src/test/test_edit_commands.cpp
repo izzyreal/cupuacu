@@ -1,10 +1,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "State.hpp"
+#include "actions/ViewPolicyPlanning.hpp"
 #include "actions/audio/EditCommands.hpp"
 #include "actions/ViewPolicy.hpp"
-#include "gui/DevicePropertiesWindow.hpp"
-#include "gui/Waveform.hpp"
 
 TEST_CASE("Edit command selection target is inactive without selection", "[session]")
 {
@@ -109,27 +108,18 @@ TEST_CASE("Edit command insert silence replaces the active selection",
     REQUIRE(session.document.getSample(0, 3) == 5.0f);
 }
 
-TEST_CASE("Duration change view policy resets invalid zero-length zoom after insert",
+TEST_CASE("Duration change view policy planning resets invalid zoom after insert",
           "[session]")
 {
-    cupuacu::State state{};
-    state.activeDocumentSession.document.initialize(
-        cupuacu::SampleFormat::PCM_S16, 44100, 2, 0);
-    state.mainDocumentSessionWindow =
-        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
-            &state, &state.activeDocumentSession, "test", 800, 400,
-            SDL_WINDOW_HIDDEN);
+    const auto invalidZoomPlan =
+        cupuacu::actions::planDurationChangeViewPolicy(16, 200.0, 0.0);
+    REQUIRE(invalidZoomPlan.shouldResetZoomToFillWidth);
 
-    auto &viewState = state.mainDocumentSessionWindow->getViewState();
-    viewState.samplesPerPixel = 0.0;
-    viewState.sampleOffset = 123;
-    cupuacu::gui::Waveform waveform(&state, 0);
-    waveform.setBounds(0, 0, 200, 80);
-    state.waveforms.push_back(&waveform);
+    const auto overZoomPlan =
+        cupuacu::actions::planDurationChangeViewPolicy(16, 200.0, 1.0);
+    REQUIRE(overZoomPlan.shouldResetZoomToFillWidth);
 
-    cupuacu::actions::audio::performInsertSilence(&state, 16);
-
-    REQUIRE(state.activeDocumentSession.document.getFrameCount() == 16);
-    REQUIRE(viewState.samplesPerPixel > 0.0);
-    REQUIRE(viewState.sampleOffset == 0);
+    const auto validPlan =
+        cupuacu::actions::planDurationChangeViewPolicy(1000, 200.0, 1.0);
+    REQUIRE_FALSE(validPlan.shouldResetZoomToFillWidth);
 }

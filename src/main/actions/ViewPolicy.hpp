@@ -3,6 +3,7 @@
 #include "../State.hpp"
 #include "../gui/MainViewAccess.hpp"
 #include "../gui/Waveform.hpp"
+#include "ViewPolicyPlanning.hpp"
 #include "Zoom.hpp"
 
 #include <algorithm>
@@ -22,15 +23,10 @@ namespace cupuacu::actions
         const auto frameCount = std::max<int64_t>(0, session.document.getFrameCount());
         const auto waveformWidth =
             static_cast<double>(gui::Waveform::getWaveformWidth(state));
-        const bool hasInvalidHorizontalZoom = viewState.samplesPerPixel <= 0.0;
+        const auto plan = planDurationChangeViewPolicy(
+            frameCount, waveformWidth, viewState.samplesPerPixel);
 
-        const bool shouldResetZoomToFillWidth =
-            hasInvalidHorizontalZoom ||
-            (frameCount > 0 && waveformWidth > 0.0 &&
-            std::ceil(waveformWidth * viewState.samplesPerPixel) >
-                static_cast<double>(frameCount));
-
-        if (shouldResetZoomToFillWidth)
+        if (plan.shouldResetZoomToFillWidth)
         {
             resetZoom(state);
         }

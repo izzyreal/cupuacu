@@ -1,7 +1,6 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include "TestSdlTtfGuard.hpp"
 #include "gui/Helpers.hpp"
 #include "gui/LabelPlanning.hpp"
 #include "gui/RoundedRect.hpp"
@@ -37,10 +36,8 @@ TEST_CASE("RoundedRect planning clamps radius and computes core rects", "[gui]")
     REQUIRE(vertical.h == Catch::Approx(0.0f));
 }
 
-TEST_CASE("Text planning centers safely and font cache can be observed", "[gui]")
+TEST_CASE("Text planning centers safely", "[gui]")
 {
-    cupuacu::test::ensureSdlTtfInitialized();
-
     const SDL_FRect rect{10.0f, 5.0f, 20.0f, 8.0f};
     REQUIRE(cupuacu::gui::planTextXPosition(rect, 8, false) ==
             Catch::Approx(10.0f));
@@ -48,17 +45,6 @@ TEST_CASE("Text planning centers safely and font cache can be observed", "[gui]"
             Catch::Approx(16.0f));
     REQUIRE(cupuacu::gui::planTextXPosition(rect, 40, true) ==
             Catch::Approx(10.0f));
-
-    cupuacu::gui::cleanupFonts();
-    REQUIRE_FALSE(cupuacu::gui::hasCachedFontForPointSize(12));
-    auto *font = cupuacu::gui::getFont(12);
-    REQUIRE(font != nullptr);
-    REQUIRE(cupuacu::gui::hasCachedFontForPointSize(12));
-    const auto size = cupuacu::gui::measureText("Hi", 12);
-    REQUIRE(size.first > 0);
-    REQUIRE(size.second > 0);
-    cupuacu::gui::cleanupFonts();
-    REQUIRE_FALSE(cupuacu::gui::hasCachedFontForPointSize(12));
 }
 
 TEST_CASE("Label planning derives rebuild and destination layout decisions",

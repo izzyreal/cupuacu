@@ -5,6 +5,7 @@
 #include "State.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/Window.hpp"
+#include "gui/text.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -94,4 +95,24 @@ TEST_CASE("Window rendering integration redraws only dirty frames",
     window->renderFrameIfDirty();
     REQUIRE(counter->drawCount == 2);
     REQUIRE(window->getDirtyRects().empty());
+}
+
+TEST_CASE("Window rendering integration exposes font cache and text measurement",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::gui::cleanupFonts();
+    REQUIRE_FALSE(cupuacu::gui::hasCachedFontForPointSize(12));
+
+    auto *font = cupuacu::gui::getFont(12);
+    REQUIRE(font != nullptr);
+    REQUIRE(cupuacu::gui::hasCachedFontForPointSize(12));
+
+    const auto size = cupuacu::gui::measureText("Hi", 12);
+    REQUIRE(size.first > 0);
+    REQUIRE(size.second > 0);
+
+    cupuacu::gui::cleanupFonts();
+    REQUIRE_FALSE(cupuacu::gui::hasCachedFontForPointSize(12));
 }

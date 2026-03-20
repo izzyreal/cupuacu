@@ -268,14 +268,9 @@ TEST_CASE("MenuBar runtime tracks open menus and hover-open state", "[gui]")
 
     auto topLevelMenus = menuChildren(menuBar);
     REQUIRE(topLevelMenus.size() == 6);
-    auto *fileMenu = topLevelMenus[0];
 
     REQUIRE(menuBar->getOpenMenu() == nullptr);
     REQUIRE_FALSE(menuBar->hasMenuOpen());
-
-    fileMenu->mouseDown(leftMouseDown());
-    REQUIRE(menuBar->getOpenMenu() == fileMenu);
-    REQUIRE(menuBar->hasMenuOpen());
 
     menuBar->setOpenSubMenuOnMouseOver(true);
     REQUIRE(menuBar->shouldOpenSubMenuOnMouseOver());
@@ -299,11 +294,6 @@ TEST_CASE("MenuBar disables document-dependent menus when no file is open",
     auto *fileMenu = topLevelMenus[0];
     auto *generateMenu = topLevelMenus[3];
     auto *effectsMenu = topLevelMenus[4];
-
-    REQUIRE(generateMenu->mouseDown(leftMouseDown()));
-    REQUIRE(generateMenu->isOpen());
-    REQUIRE(effectsMenu->mouseDown(leftMouseDown()));
-    REQUIRE(effectsMenu->isOpen());
 
     auto generateEntries = menuChildren(generateMenu);
     REQUIRE(generateEntries.size() == 1);

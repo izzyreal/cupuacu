@@ -1,6 +1,7 @@
 #include "gui/Menu.hpp"
 
 #include "gui/MenuBar.hpp"
+#include "gui/MenuLayoutPlanning.hpp"
 #include "gui/MenuPlanning.hpp"
 #include "gui/Label.hpp"
 #include "gui/Window.hpp"
@@ -122,39 +123,43 @@ void Menu::showSubMenus()
 
     const int nestedHorizontalOverlap = scaleUi(state, 10.0f);
     const bool firstLevel = isFirstLevel();
-    const int subMenuXPos = firstLevel ? 0 : getWidth() - nestedHorizontalOverlap;
-    int subMenuYPos = firstLevel ? getHeight() : 0;
-
     const int menuItemHeight =
         scaleUi(state, static_cast<float>(state->menuFontSize) * 2.0f);
-
-    int subMenuWidth = 1;
-
+    const int subMenuHorizontalMargin = scaleUi(state, 64.0f);
+    std::vector<int> textWidths;
+    std::vector<bool> shouldShow;
+    textWidths.reserve(subMenus.size());
+    shouldShow.reserve(subMenus.size());
     for (const auto &subMenu : subMenus)
     {
-        if (!subMenu->shouldShowAsSubMenuItem())
+        const bool show = subMenu->shouldShowAsSubMenuItem();
+        shouldShow.push_back(show);
+        if (!show)
         {
+            textWidths.push_back(0);
             continue;
         }
+
         const auto subMenuName = subMenu->getMenuName();
         auto [tw, th] = measureText(subMenuName, state->menuFontSize);
-        subMenuWidth = std::max(subMenuWidth, tw);
+        textWidths.push_back(tw);
     }
 
-    const int subMenuHorizontalMargin = scaleUi(state, 64.0f);
+    const auto layoutPlan = planMenuSubMenuLayout(
+        firstLevel, getWidth(), getHeight(), menuItemHeight,
+        nestedHorizontalOverlap, subMenuHorizontalMargin, textWidths,
+        shouldShow);
 
-    for (const auto &subMenu : subMenus)
+    for (std::size_t i = 0; i < subMenus.size(); ++i)
     {
-        if (!subMenu->shouldShowAsSubMenuItem())
+        auto *subMenu = subMenus[i];
+        const auto &item = layoutPlan[i];
+        subMenu->setVisible(item.visible);
+        if (!item.visible)
         {
-            subMenu->setVisible(false);
             continue;
         }
-        subMenu->setBounds(subMenuXPos, subMenuYPos,
-                           subMenuWidth + subMenuHorizontalMargin,
-                           menuItemHeight);
-        subMenu->setVisible(true);
-        subMenuYPos += menuItemHeight;
+        subMenu->setBounds(item.x, item.y, item.width, item.height);
     }
 
     currentlyOpen = true;
