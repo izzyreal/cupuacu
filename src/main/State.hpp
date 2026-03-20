@@ -33,6 +33,8 @@ namespace cupuacu
     namespace gui
     {
         class DevicePropertiesWindow;
+        class NewFileDialogWindow;
+        class GenerateSilenceDialogWindow;
         class Component;
         class Waveform;
     } // namespace gui
@@ -45,6 +47,8 @@ namespace cupuacu
 
     void destroyAmplifyFadeDialog(effects::AmplifyFadeDialog *);
     void destroyDynamicsDialog(effects::DynamicsDialog *);
+    void destroyNewFileDialogWindow(gui::NewFileDialogWindow *);
+    void destroyGenerateSilenceDialogWindow(gui::GenerateSilenceDialogWindow *);
 
     struct State
     {
@@ -61,11 +65,19 @@ namespace cupuacu
         DocumentSession activeDocumentSession;
         Document clipboard;
         effects::EffectSettings effectSettings;
+        std::vector<std::string> recentFiles;
 
         std::vector<gui::Waveform *> waveforms;
         std::vector<gui::Window *> windows;
         std::unique_ptr<gui::DocumentSessionWindow> mainDocumentSessionWindow;
         std::unique_ptr<gui::DevicePropertiesWindow> devicePropertiesWindow;
+        std::unique_ptr<gui::NewFileDialogWindow,
+                        void (*)(gui::NewFileDialogWindow *)>
+            newFileDialogWindow{nullptr, destroyNewFileDialogWindow};
+        std::unique_ptr<gui::GenerateSilenceDialogWindow,
+                        void (*)(gui::GenerateSilenceDialogWindow *)>
+            generateSilenceDialogWindow{nullptr,
+                                        destroyGenerateSilenceDialogWindow};
         std::unique_ptr<effects::AmplifyFadeDialog,
                         void (*)(effects::AmplifyFadeDialog *)>
             amplifyFadeDialog{nullptr, destroyAmplifyFadeDialog};
@@ -103,12 +115,15 @@ static void resetSampleValueUnderMouseCursor(cupuacu::State *state)
 }
 
 static void updateSampleValueUnderMouseCursor(cupuacu::State *state,
-                                              const float sampleValue)
+                                              const float sampleValue,
+                                              const int64_t channel,
+                                              const int64_t frame)
 {
     if (state->mainDocumentSessionWindow)
     {
         state->mainDocumentSessionWindow->getViewState()
-            .sampleValueUnderMouseCursor.emplace(sampleValue);
+            .sampleValueUnderMouseCursor.emplace(
+                cupuacu::gui::HoveredSampleInfo{sampleValue, channel, frame});
     }
 }
 

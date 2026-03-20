@@ -37,6 +37,11 @@ namespace cupuacu::gui
             }
         }
 
+        const std::string &getValue() const
+        {
+            return value;
+        }
+
         void onDraw(SDL_Renderer *renderer) override
         {
             Helpers::fillRect(renderer, getLocalBounds(), background);

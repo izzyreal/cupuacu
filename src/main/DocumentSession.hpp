@@ -11,8 +11,7 @@ namespace cupuacu
 {
     struct DocumentSession
     {
-        std::string currentFile =
-            "/Users/izmar/Documents/VMPC2000XL/Volumes/MPC2000XL.bk2/BOAT.WAV";
+        std::string currentFile;
         Document document;
         gui::Selection<double> selection = gui::Selection<double>(0.0);
         int64_t cursor = 0;

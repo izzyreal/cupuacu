@@ -180,7 +180,7 @@ TEST_CASE("Menu runtime top-level click toggles submenu visibility", "[gui]")
     menuBar->setBounds(0, 0, 480, 40);
 
     auto topLevelMenus = menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 5);
+    REQUIRE(topLevelMenus.size() == 6);
     auto *fileMenu = topLevelMenus[0];
     auto subMenus = menuChildren(fileMenu);
     REQUIRE_FALSE(subMenus.empty());

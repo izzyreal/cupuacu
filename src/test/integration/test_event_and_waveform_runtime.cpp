@@ -4,20 +4,32 @@
 #include "IntegrationTestHelpers.hpp"
 
 #include "State.hpp"
+#include "actions/DocumentLifecycle.hpp"
 #include "actions/ZoomPlanning.hpp"
+#include "gui/DropdownMenu.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/EventHandling.hpp"
+#include "gui/GenerateSilenceDialogWindow.hpp"
 #include "gui/Gui.hpp"
 #include "gui/LabeledField.hpp"
+#include "gui/NewFileDialogWindow.hpp"
 #include "gui/SamplePoint.hpp"
 #include "gui/StatusBar.hpp"
+#include "gui/TextButton.hpp"
+#include "gui/TextInput.hpp"
 #include "gui/TriangleMarker.hpp"
 #include "gui/Waveform.hpp"
 #include "gui/Window.hpp"
 
 #include <SDL3/SDL.h>
+#include <sndfile.h>
 
+#include <chrono>
+#include <filesystem>
 #include <memory>
+#include <random>
+#include <system_error>
+#include <vector>
 
 namespace
 {
@@ -99,6 +111,129 @@ namespace
         return cupuacu::test::integration::findByNameRecursive<
             cupuacu::gui::LabeledField>(
             root, std::string("LabeledField for ") + std::string(label));
+    }
+
+    template <typename T>
+    T *findFirstRecursive(cupuacu::gui::Component *root)
+    {
+        if (!root)
+        {
+            return nullptr;
+        }
+        if (auto *typed = dynamic_cast<T *>(root))
+        {
+            return typed;
+        }
+        for (const auto &child : root->getChildren())
+        {
+            if (auto *found = findFirstRecursive<T>(child.get()))
+            {
+                return found;
+            }
+        }
+        return nullptr;
+    }
+
+    template <typename T>
+    void collectRecursive(cupuacu::gui::Component *root, std::vector<T *> &out)
+    {
+        if (!root)
+        {
+            return;
+        }
+        if (auto *typed = dynamic_cast<T *>(root))
+        {
+            out.push_back(typed);
+        }
+        for (const auto &child : root->getChildren())
+        {
+            collectRecursive(child.get(), out);
+        }
+    }
+
+    void clickButton(cupuacu::gui::TextButton *button)
+    {
+        REQUIRE(button != nullptr);
+        REQUIRE(button->mouseDown(cupuacu::test::integration::leftMouseDown()));
+        REQUIRE(button->mouseUp(cupuacu::test::integration::leftMouseUp()));
+    }
+
+    class ScopedDirCleanup
+    {
+    public:
+        explicit ScopedDirCleanup(std::filesystem::path rootDir)
+            : root(std::move(rootDir))
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(root, ec);
+            std::filesystem::create_directories(root, ec);
+        }
+
+        ~ScopedDirCleanup()
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(root, ec);
+        }
+
+        const std::filesystem::path &path() const
+        {
+            return root;
+        }
+
+    private:
+        std::filesystem::path root;
+    };
+
+    std::filesystem::path makeUniqueTempDir(const std::string &prefix)
+    {
+        const auto tempRoot = std::filesystem::temp_directory_path();
+        std::random_device rd;
+        std::mt19937_64 gen(rd());
+        std::uniform_int_distribution<uint64_t> dis;
+
+        for (int attempt = 0; attempt < 32; ++attempt)
+        {
+            const auto now =
+                std::chrono::high_resolution_clock::now().time_since_epoch();
+            const auto tick =
+                static_cast<uint64_t>(std::chrono::duration_cast<
+                                          std::chrono::nanoseconds>(now)
+                                          .count());
+            const auto candidate =
+                tempRoot / (prefix + "-" + std::to_string(tick) + "-" +
+                            std::to_string(dis(gen)));
+            std::error_code ec;
+            if (!std::filesystem::exists(candidate, ec))
+            {
+                return candidate;
+            }
+        }
+
+        return tempRoot / (prefix + "-fallback");
+    }
+
+    void writeTestWav(const std::filesystem::path &path, const int sampleRate,
+                      const int channels,
+                      const std::vector<float> &interleavedFrames)
+    {
+        REQUIRE(channels > 0);
+        REQUIRE(interleavedFrames.size() % channels == 0);
+
+        SF_INFO info{};
+        info.samplerate = sampleRate;
+        info.channels = channels;
+        info.format = SF_FORMAT_WAV | SF_FORMAT_FLOAT;
+
+        SNDFILE *file = sf_open(path.string().c_str(), SFM_WRITE, &info);
+        REQUIRE(file != nullptr);
+
+        const sf_count_t frameCount =
+            static_cast<sf_count_t>(interleavedFrames.size() / channels);
+        const sf_count_t written =
+            sf_writef_float(file, interleavedFrames.data(), frameCount);
+
+        sf_close(file);
+        REQUIRE(written == frameCount);
     }
 } // namespace
 
@@ -267,6 +402,33 @@ TEST_CASE("Event handling integration returns success for quit and main-window c
     }
 }
 
+TEST_CASE("Startup document restore integration reopens the most recent file",
+          "[integration]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-startup-restore"));
+    const auto wavPath = cleanup.path() / "startup.wav";
+    writeTestWav(wavPath, 48000, 2, {0.1f, -0.1f, 0.2f, -0.2f, 0.3f, -0.3f});
+
+    cupuacu::State state{};
+    state.recentFiles = {wavPath.string()};
+    createBuiltSessionUi(&state, 8);
+
+    state.activeDocumentSession.currentFile = "before.wav";
+    state.activeDocumentSession.selection.setValue1(1.0);
+    state.activeDocumentSession.selection.setValue2(3.0);
+    state.activeDocumentSession.cursor = 2;
+
+    cupuacu::actions::restoreStartupDocument(&state);
+
+    REQUIRE(state.activeDocumentSession.currentFile == wavPath.string());
+    REQUIRE(state.activeDocumentSession.document.getSampleRate() == 48000);
+    REQUIRE(state.activeDocumentSession.document.getChannelCount() == 2);
+    REQUIRE(state.activeDocumentSession.document.getFrameCount() == 3);
+    REQUIRE_FALSE(state.activeDocumentSession.selection.isActive());
+    REQUIRE(state.activeDocumentSession.cursor == 0);
+    REQUIRE(state.recentFiles == std::vector<std::string>{wavPath.string()});
+}
+
 TEST_CASE("Event handling integration ignores unfocused key and text input",
           "[integration]")
 {
@@ -372,12 +534,16 @@ TEST_CASE("Status bar integration lays out labeled fields across the footer",
     auto *endField = findStatusField(statusBar, "End");
     auto *lengthField = findStatusField(statusBar, "Len");
     auto *valueField = findStatusField(statusBar, "Val");
+    auto *rateField = findStatusField(statusBar, "Rate");
+    auto *depthField = findStatusField(statusBar, "Depth");
 
     REQUIRE(posField != nullptr);
     REQUIRE(startField != nullptr);
     REQUIRE(endField != nullptr);
     REQUIRE(lengthField != nullptr);
     REQUIRE(valueField != nullptr);
+    REQUIRE(rateField != nullptr);
+    REQUIRE(depthField != nullptr);
 
     const auto initialPosBounds = posField->getBounds();
     const auto initialStartBounds = startField->getBounds();
@@ -389,6 +555,8 @@ TEST_CASE("Status bar integration lays out labeled fields across the footer",
     REQUIRE(initialEndBounds.x > initialStartBounds.x);
     REQUIRE(initialLengthBounds.x > initialEndBounds.x);
     REQUIRE(initialValueBounds.x > initialLengthBounds.x);
+    REQUIRE(rateField->getBounds().x > initialValueBounds.x);
+    REQUIRE(depthField->getBounds().x > rateField->getBounds().x);
     REQUIRE(initialPosBounds.w == initialStartBounds.w);
     REQUIRE(initialStartBounds.w == initialEndBounds.w);
 }
@@ -417,6 +585,152 @@ TEST_CASE("Status bar integration tolerates missing audio devices",
 
     REQUIRE(posField->isDirty());
     REQUIRE(startField->isDirty());
+}
+
+TEST_CASE("Status bar integration shows sample rate and bit depth",
+          "[integration]")
+{
+    cupuacu::State state{};
+    createBuiltSessionUi(&state, 32, 48000, 2, 800, 400);
+
+    auto *statusBar = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::StatusBar>(
+        state.mainDocumentSessionWindow->getWindow()->getContentLayer(),
+        "StatusBar");
+    REQUIRE(statusBar != nullptr);
+
+    statusBar->timerCallback();
+
+    auto *rateField = findStatusField(statusBar, "Rate");
+    auto *depthField = findStatusField(statusBar, "Depth");
+    REQUIRE(rateField != nullptr);
+    REQUIRE(depthField != nullptr);
+    REQUIRE(rateField->getValue() == "48000");
+    REQUIRE(depthField->getValue() == "32-bit");
+}
+
+TEST_CASE("Status bar integration shows persisted integer sample values for PCM",
+          "[integration]")
+{
+    cupuacu::State state{};
+    createBuiltSessionUi(&state, 32, 44100, 1, 800, 400);
+
+    auto *statusBar = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::StatusBar>(
+        state.mainDocumentSessionWindow->getWindow()->getContentLayer(),
+        "StatusBar");
+    REQUIRE(statusBar != nullptr);
+
+    auto *valueField = findStatusField(statusBar, "Val");
+    REQUIRE(valueField != nullptr);
+
+    auto &session = state.activeDocumentSession;
+
+    SECTION("edited PCM16 samples use the quantized writer code")
+    {
+        session.document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 1);
+        session.document.setSample(0, 0, -1.0f);
+        state.mainDocumentSessionWindow->getViewState().sampleValueUnderMouseCursor =
+            cupuacu::gui::HoveredSampleInfo{-1.0f, 0, 0};
+
+        statusBar->timerCallback();
+
+        REQUIRE(valueField->getValue() == "-32767");
+    }
+
+    SECTION("untouched loaded PCM16 samples preserve the original sample code")
+    {
+        session.document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 1);
+        session.document.setSample(0, 0, -1.0f, false);
+        state.mainDocumentSessionWindow->getViewState().sampleValueUnderMouseCursor =
+            cupuacu::gui::HoveredSampleInfo{-1.0f, 0, 0};
+
+        statusBar->timerCallback();
+
+        REQUIRE(valueField->getValue() == "-32768");
+    }
+
+    SECTION("PCM8 uses the true signed 8-bit range")
+    {
+        session.document.initialize(cupuacu::SampleFormat::PCM_S8, 44100, 1, 1);
+        session.document.setSample(0, 0, 1.0f);
+        state.mainDocumentSessionWindow->getViewState().sampleValueUnderMouseCursor =
+            cupuacu::gui::HoveredSampleInfo{1.0f, 0, 0};
+
+        statusBar->timerCallback();
+
+        REQUIRE(valueField->getValue() == "127");
+    }
+}
+
+TEST_CASE("New file dialog integration creates an empty document with the selected format",
+          "[integration]")
+{
+    cupuacu::State state{};
+    createBuiltSessionUi(&state, 16, 44100, 2, 800, 400);
+
+    state.newFileDialogWindow.reset(new cupuacu::gui::NewFileDialogWindow(&state));
+    REQUIRE(state.newFileDialogWindow != nullptr);
+    REQUIRE(state.newFileDialogWindow->isOpen());
+
+    auto *root = state.newFileDialogWindow->getWindow()->getRootComponent();
+    std::vector<cupuacu::gui::DropdownMenu *> dropdowns;
+    collectRecursive(root, dropdowns);
+    REQUIRE(dropdowns.size() >= 2);
+    dropdowns[0]->setSelectedIndex(4);
+    dropdowns[1]->setSelectedIndex(0);
+
+    auto *okButton =
+        cupuacu::test::integration::findByNameRecursive<cupuacu::gui::TextButton>(
+            root, "TextButton:OK");
+    clickButton(okButton);
+
+    auto &session = state.activeDocumentSession;
+    REQUIRE(session.currentFile.empty());
+    REQUIRE(session.document.getSampleRate() == 96000);
+    REQUIRE(session.document.getSampleFormat() == cupuacu::SampleFormat::PCM_S8);
+    REQUIRE(session.document.getChannelCount() == 2);
+    REQUIRE(session.document.getFrameCount() == 0);
+}
+
+TEST_CASE("Generate silence dialog integration inserts silence at the cursor",
+          "[integration]")
+{
+    cupuacu::State state{};
+    createBuiltSessionUi(&state, 4, 44100, 1, 800, 400);
+
+    auto &doc = state.activeDocumentSession.document;
+    for (int i = 0; i < 4; ++i)
+    {
+        doc.setSample(0, i, static_cast<float>(i + 1), false);
+    }
+    state.activeDocumentSession.cursor = 2;
+
+    state.generateSilenceDialogWindow.reset(
+        new cupuacu::gui::GenerateSilenceDialogWindow(&state));
+    REQUIRE(state.generateSilenceDialogWindow != nullptr);
+    REQUIRE(state.generateSilenceDialogWindow->isOpen());
+
+    auto *root = state.generateSilenceDialogWindow->getWindow()->getRootComponent();
+    auto *durationInput = findFirstRecursive<cupuacu::gui::TextInput>(root);
+    auto *unitDropdown = findFirstRecursive<cupuacu::gui::DropdownMenu>(root);
+    auto *okButton =
+        cupuacu::test::integration::findByNameRecursive<cupuacu::gui::TextButton>(
+            root, "TextButton:OK");
+    REQUIRE(durationInput != nullptr);
+    REQUIRE(unitDropdown != nullptr);
+
+    durationInput->setText("2");
+    unitDropdown->setSelectedIndex(0);
+    clickButton(okButton);
+
+    REQUIRE(doc.getFrameCount() == 6);
+    REQUIRE(doc.getSample(0, 0) == 1.0f);
+    REQUIRE(doc.getSample(0, 1) == 2.0f);
+    REQUIRE(doc.getSample(0, 2) == 0.0f);
+    REQUIRE(doc.getSample(0, 3) == 0.0f);
+    REQUIRE(doc.getSample(0, 4) == 3.0f);
+    REQUIRE(doc.getSample(0, 5) == 4.0f);
 }
 
 TEST_CASE("Waveform integration toggles sample points with playback state",

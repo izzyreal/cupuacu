@@ -9,20 +9,21 @@
 #include "gui/Gui.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/DocumentSessionWindow.hpp"
+#include "gui/GenerateSilenceDialogWindow.hpp"
+#include "gui/NewFileDialogWindow.hpp"
 #include "gui/UiScale.hpp"
 #include "gui/Window.hpp"
+#include "actions/DocumentLifecycle.hpp"
 
 const uint16_t initialDimensions[] = {1280, 720};
 
 #include <cstdint>
 #include <string>
 #include <filesystem>
-#include <algorithm>
-
-#include "file/file_loading.hpp"
 
 #include "audio/AudioDevices.hpp"
 #include "persistence/AudioDevicePropertiesPersistence.hpp"
+#include "persistence/RecentFilesPersistence.hpp"
 
 #if CUPUACU_RTSAN_LIBS_ENABLED
 #include <rtsan_standalone/rtsan_standalone.h>
@@ -58,6 +59,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     {
         state->audioDevices->setDeviceSelection(*persistedSelection);
     }
+
+    state->recentFiles = cupuacu::persistence::RecentFilesPersistence::load(
+        state->paths->recentlyOpenedFilesPath());
 
     *appstate = state;
 
@@ -97,16 +101,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     cupuacu::gui::initCursors();
 
-    if (std::filesystem::exists(session.currentFile))
-    {
-        cupuacu::file::loadSampleData(state);
-        SDL_SetWindowTitle(mainWindow->getSdlWindow(),
-                           session.currentFile.c_str());
-    }
-    else
-    {
-        session.currentFile = "";
-    }
+    cupuacu::actions::restoreStartupDocument(state);
 
     cupuacu::gui::buildComponents(state, mainWindow);
 
@@ -144,6 +139,15 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     {
         state->devicePropertiesWindow.reset();
     }
+    if (state->newFileDialogWindow && !state->newFileDialogWindow->isOpen())
+    {
+        state->newFileDialogWindow.reset();
+    }
+    if (state->generateSilenceDialogWindow &&
+        !state->generateSilenceDialogWindow->isOpen())
+    {
+        state->generateSilenceDialogWindow.reset();
+    }
 
     state->windows.erase(std::remove_if(state->windows.begin(),
                                         state->windows.end(),
@@ -169,6 +173,8 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
     TTF_Quit();
     cupuacu::State *state = (cupuacu::State *)appstate;
+    state->generateSilenceDialogWindow.reset();
+    state->newFileDialogWindow.reset();
     state->devicePropertiesWindow.reset();
     state->mainDocumentSessionWindow.reset();
     state->windows.clear();

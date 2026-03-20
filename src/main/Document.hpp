@@ -28,7 +28,12 @@ namespace cupuacu
         {
             format = sampleFormatToUse;
             sampleRate = sampleRateToUse;
-            buffer = format == SampleFormat::PCM_S16
+            const bool usesIntegerPcm =
+                format == SampleFormat::PCM_S8 ||
+                format == SampleFormat::PCM_S16 ||
+                format == SampleFormat::PCM_S24 ||
+                format == SampleFormat::PCM_S32;
+            buffer = usesIntegerPcm
                          ? std::make_shared<
                                cupuacu::audio::DirtyTrackingAudioBuffer>()
                          : std::make_shared<cupuacu::audio::AudioBuffer>();
@@ -46,7 +51,7 @@ namespace cupuacu
             return waveformCache[channel];
         }
 
-        SampleFormat getSampleFormat()
+        SampleFormat getSampleFormat() const
         {
             return format;
         }

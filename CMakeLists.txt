@@ -83,6 +83,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/State.cpp
     src/main/Paths.cpp
     src/main/persistence/AudioDevicePropertiesPersistence.cpp
+    src/main/persistence/RecentFilesPersistence.cpp
     src/main/audio/AudioDevices.cpp
     src/main/audio/AudioCallbackCore.cpp
     src/main/audio/AudioDeviceView.cpp
@@ -96,6 +97,8 @@ set(CUPUACU_SHARED_SOURCES
     src/main/gui/Label.cpp
     src/main/gui/DropdownMenu.cpp
     src/main/gui/DevicePropertiesWindow.cpp
+    src/main/gui/NewFileDialogWindow.cpp
+    src/main/gui/GenerateSilenceDialogWindow.cpp
     src/main/effects/AmplifyFadeEffect.cpp
     src/main/effects/DynamicsEffect.cpp
     src/main/gui/ScrollBar.cpp
@@ -121,6 +124,8 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_session_loading.cpp
     src/test/test_wav_writer.cpp
     src/test/test_audio_device_properties_persistence.cpp
+    src/test/test_recent_files_persistence.cpp
+    src/test/test_sample_quantization.cpp
     src/test/test_audio_callback_core.cpp
     src/test/test_action_undoables.cpp
     src/test/test_audio_devices_orchestration.cpp

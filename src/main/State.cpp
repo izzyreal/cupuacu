@@ -5,6 +5,8 @@
 
 #include "gui/Waveform.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
+#include "gui/GenerateSilenceDialogWindow.hpp"
+#include "gui/NewFileDialogWindow.hpp"
 #include "actions/Undoable.hpp"
 
 int64_t getMaxSampleOffset(const cupuacu::State *state)
@@ -32,6 +34,17 @@ void cupuacu::destroyAmplifyFadeDialog(effects::AmplifyFadeDialog *dialog)
 }
 
 void cupuacu::destroyDynamicsDialog(effects::DynamicsDialog *dialog)
+{
+    delete dialog;
+}
+
+void cupuacu::destroyNewFileDialogWindow(gui::NewFileDialogWindow *dialog)
+{
+    delete dialog;
+}
+
+void cupuacu::destroyGenerateSilenceDialogWindow(
+    gui::GenerateSilenceDialogWindow *dialog)
 {
     delete dialog;
 }

@@ -4,6 +4,7 @@
 
 #include "State.hpp"
 #include "Paths.hpp"
+#include "actions/DocumentLifecycle.hpp"
 #include "actions/Undoable.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/DropdownMenu.hpp"
@@ -16,10 +17,14 @@
 
 #include <SDL3/SDL.h>
 #include <nlohmann/json.hpp>
+#include <sndfile.h>
 
+#include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -199,6 +204,84 @@ namespace
         std::filesystem::path root;
     };
 
+    class ScopedDirCleanup
+    {
+    public:
+        explicit ScopedDirCleanup(std::filesystem::path rootDir)
+            : root(std::move(rootDir))
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(root, ec);
+            std::filesystem::create_directories(root, ec);
+        }
+
+        ~ScopedDirCleanup()
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(root, ec);
+        }
+
+        const std::filesystem::path &path() const
+        {
+            return root;
+        }
+
+    private:
+        std::filesystem::path root;
+    };
+
+    std::filesystem::path makeUniqueTempDir(const std::string &prefix)
+    {
+        const auto tempRoot = std::filesystem::temp_directory_path();
+        std::random_device rd;
+        std::mt19937_64 gen(rd());
+        std::uniform_int_distribution<uint64_t> dis;
+
+        for (int attempt = 0; attempt < 32; ++attempt)
+        {
+            const auto now =
+                std::chrono::high_resolution_clock::now().time_since_epoch();
+            const auto tick =
+                static_cast<uint64_t>(std::chrono::duration_cast<
+                                          std::chrono::nanoseconds>(now)
+                                          .count());
+            const auto candidate =
+                tempRoot / (prefix + "-" + std::to_string(tick) + "-" +
+                            std::to_string(dis(gen)));
+            std::error_code ec;
+            if (!std::filesystem::exists(candidate, ec))
+            {
+                return candidate;
+            }
+        }
+
+        return tempRoot / (prefix + "-fallback");
+    }
+
+    void writeTestWav(const std::filesystem::path &path, const int sampleRate,
+                      const int channels,
+                      const std::vector<float> &interleavedFrames)
+    {
+        REQUIRE(channels > 0);
+        REQUIRE(interleavedFrames.size() % channels == 0);
+
+        SF_INFO info{};
+        info.samplerate = sampleRate;
+        info.channels = channels;
+        info.format = SF_FORMAT_WAV | SF_FORMAT_FLOAT;
+
+        SNDFILE *file = sf_open(path.string().c_str(), SFM_WRITE, &info);
+        REQUIRE(file != nullptr);
+
+        const sf_count_t frameCount =
+            static_cast<sf_count_t>(interleavedFrames.size() / channels);
+        const sf_count_t written =
+            sf_writef_float(file, interleavedFrames.data(), frameCount);
+
+        sf_close(file);
+        REQUIRE(written == frameCount);
+    }
+
     class ScopedResolverOverride
     {
     public:
@@ -306,13 +389,13 @@ TEST_CASE("Menu integration opens submenus and switches siblings on hover",
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 5);
+    REQUIRE(topLevelMenus.size() == 6);
     auto *fileMenu = topLevelMenus[0];
     auto *viewMenu = topLevelMenus[2];
 
     auto fileSubMenus = cupuacu::test::integration::menuChildren(fileMenu);
     auto viewSubMenus = cupuacu::test::integration::menuChildren(viewMenu);
-    REQUIRE(fileSubMenus.size() == 2);
+    REQUIRE(fileSubMenus.size() == 6);
     REQUIRE(viewSubMenus.size() == 5);
 
     fileMenu->mouseDown(cupuacu::test::integration::leftMouseDown());
@@ -351,7 +434,7 @@ TEST_CASE("Menu integration undo and redo actions reflect undo stack state",
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 5);
+    REQUIRE(topLevelMenus.size() == 6);
     auto *editMenu = topLevelMenus[1];
     auto editSubMenus = cupuacu::test::integration::menuChildren(editMenu);
     REQUIRE(editSubMenus.size() == 6);
@@ -394,8 +477,8 @@ TEST_CASE("Options menu integration opens device properties window once",
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 5);
-    auto *optionsMenu = topLevelMenus[4];
+    REQUIRE(topLevelMenus.size() == 6);
+    auto *optionsMenu = topLevelMenus[5];
 
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
     REQUIRE(optionEntries.size() == 1);
@@ -604,8 +687,8 @@ TEST_CASE("Device properties integration persists normalized selection when reop
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 5);
-    auto *optionsMenu = topLevelMenus[4];
+    REQUIRE(topLevelMenus.size() == 6);
+    auto *optionsMenu = topLevelMenus[5];
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
     REQUIRE(optionEntries.size() == 1);
 
@@ -659,8 +742,8 @@ TEST_CASE("Options menu integration replaces a closed device properties window i
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 5);
-    auto *optionsMenu = topLevelMenus[4];
+    REQUIRE(topLevelMenus.size() == 6);
+    auto *optionsMenu = topLevelMenus[5];
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
     REQUIRE(optionEntries.size() == 1);
 
@@ -708,8 +791,8 @@ TEST_CASE("Device properties integration refreshes layout when pixel scale chang
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 5);
-    auto *optionsMenu = topLevelMenus[4];
+    REQUIRE(topLevelMenus.size() == 6);
+    auto *optionsMenu = topLevelMenus[5];
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
     REQUIRE(optionEntries.size() == 1);
 
@@ -731,4 +814,88 @@ TEST_CASE("Device properties integration refreshes layout when pixel scale chang
 
     REQUIRE(dropdowns[0]->getHeight() != originalHeight);
     REQUIRE(dropdowns[1]->getYPos() != originalY);
+}
+
+TEST_CASE("File menu integration opens a recent file into the active session",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-recent-menu"));
+    const auto wavPath = cleanup.path() / "recent.wav";
+    writeTestWav(wavPath, 22050, 2, {0.25f, -0.25f, 0.5f, -0.5f});
+
+    cupuacu::State state{};
+    auto sessionUi =
+        cupuacu::test::integration::createSessionUi(&state, 16, false, 1);
+    state.recentFiles = {wavPath.string()};
+
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "file-recent-open", 480, 240, SDL_WINDOW_HIDDEN);
+
+    auto root =
+        std::make_unique<cupuacu::test::integration::RootComponent>(&state);
+    auto *menuBar = root->emplaceChild<cupuacu::gui::MenuBar>(&state);
+    root->setBounds(0, 0, 480, 240);
+    menuBar->setBounds(0, 0, 480, 40);
+    window->setRootComponent(std::move(root));
+    window->setMenuBar(menuBar);
+
+    auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
+    REQUIRE(topLevelMenus.size() == 6);
+    auto *fileMenu = topLevelMenus[0];
+    auto fileEntries = cupuacu::test::integration::menuChildren(fileMenu);
+    REQUIRE(fileEntries.size() == 6);
+    auto *recentMenu = fileEntries[2];
+
+    auto recentEntries = cupuacu::test::integration::menuChildren(recentMenu);
+    REQUIRE(recentEntries.size() ==
+            cupuacu::persistence::RecentFilesPersistence::kMaxEntries + 1);
+    auto *recentFileEntry = recentEntries[1];
+
+    REQUIRE(fileMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
+    REQUIRE(recentMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
+    REQUIRE(recentFileEntry->mouseDown(
+        cupuacu::test::integration::leftMouseDown()));
+
+    REQUIRE(state.activeDocumentSession.currentFile == wavPath.string());
+    REQUIRE(state.activeDocumentSession.document.getSampleRate() == 22050);
+    REQUIRE(state.activeDocumentSession.document.getChannelCount() == 2);
+    REQUIRE(state.activeDocumentSession.document.getFrameCount() == 2);
+    REQUIRE(state.recentFiles == std::vector<std::string>{wavPath.string()});
+}
+
+TEST_CASE("File menu integration exit entry pushes a quit event", "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::State state{};
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "file-exit", 480, 240, SDL_WINDOW_HIDDEN);
+
+    auto root =
+        std::make_unique<cupuacu::test::integration::RootComponent>(&state);
+    auto *menuBar = root->emplaceChild<cupuacu::gui::MenuBar>(&state);
+    root->setBounds(0, 0, 480, 240);
+    menuBar->setBounds(0, 0, 480, 40);
+    window->setRootComponent(std::move(root));
+    window->setMenuBar(menuBar);
+
+    SDL_FlushEvents(SDL_EVENT_QUIT, SDL_EVENT_QUIT);
+
+    auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
+    REQUIRE(topLevelMenus.size() == 6);
+    auto *fileMenu = topLevelMenus[0];
+    auto fileEntries = cupuacu::test::integration::menuChildren(fileMenu);
+    REQUIRE(fileEntries.size() == 6);
+    auto *exitEntry = fileEntries[5];
+
+    REQUIRE(fileMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
+    REQUIRE(exitEntry->mouseDown(cupuacu::test::integration::leftMouseDown()));
+
+    SDL_Event event{};
+    const int eventCount = SDL_PeepEvents(&event, 1, SDL_GETEVENT,
+                                          SDL_EVENT_QUIT, SDL_EVENT_QUIT);
+    REQUIRE(eventCount == 1);
+    REQUIRE(event.type == SDL_EVENT_QUIT);
 }

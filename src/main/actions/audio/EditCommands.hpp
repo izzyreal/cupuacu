@@ -114,4 +114,25 @@ namespace cupuacu::actions::audio
                 state, target.start, target.end);
         state->addAndDoUndoable(undoable);
     }
+
+    inline void performInsertSilence(cupuacu::State *state,
+                                     const int64_t frameCount)
+    {
+        if (!state || frameCount <= 0)
+        {
+            return;
+        }
+
+        auto &doc = state->activeDocumentSession.document;
+        if (doc.getChannelCount() <= 0 || doc.getSampleRate() <= 0)
+        {
+            return;
+        }
+
+        const auto previousClipboard = state->clipboard;
+        state->clipboard.initialize(doc.getSampleFormat(), doc.getSampleRate(),
+                                    doc.getChannelCount(), frameCount);
+        performPaste(state);
+        state->clipboard = previousClipboard;
+    }
 } // namespace cupuacu::actions::audio

@@ -103,7 +103,8 @@ bool SamplePoint::mouseMove(const MouseEvent &e)
     setYPos(dragYPos);
     state->activeDocumentSession.document.setSample(channelIndex, sampleIndex,
                                                     dragPlan.sampleValue);
-    updateSampleValueUnderMouseCursor(state, dragPlan.sampleValue);
+    updateSampleValueUnderMouseCursor(state, dragPlan.sampleValue, channelIndex,
+                                      sampleIndex);
 
     return true;
 }

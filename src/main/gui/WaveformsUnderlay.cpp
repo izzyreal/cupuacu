@@ -149,7 +149,8 @@ bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
     const float sampleValueUnderMouseCursor =
         doc.getSample(channel, sampleIndex);
 
-    updateSampleValueUnderMouseCursor(state, sampleValueUnderMouseCursor);
+    updateSampleValueUnderMouseCursor(state, sampleValueUnderMouseCursor,
+                                      channel, sampleIndex);
 
     handleChannelSelection(e.mouseYi, false);
 

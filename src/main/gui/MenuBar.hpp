@@ -15,6 +15,7 @@ namespace cupuacu::gui
         Menu *fileMenu;
         Menu *editMenu;
         Menu *viewMenu;
+        Menu *generateMenu;
         Menu *effectsMenu;
         Menu *optionsMenu;
         bool openSubMenuOnMouseOver = false;

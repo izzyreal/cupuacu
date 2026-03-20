@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../State.hpp"
+#include "SampleQuantization.hpp"
 
 #include <ios>
 #include <filesystem>
@@ -274,14 +275,16 @@ namespace cupuacu::file
                     if (!shouldCheckForDirtiness || buf->isDirty(c, f))
                     {
                         interleaved[f * channels + c] =
-                            static_cast<int16_t>(std::lrint(s * 32767.0f));
+                            static_cast<int16_t>(quantizeIntegerPcmSample(
+                                cupuacu::SampleFormat::PCM_S16, s, false));
                     }
                     else
                     {
                         // Preserve original 16 bit int value if it wasn't
                         // modified after loading
                         interleaved[f * channels + c] =
-                            static_cast<int16_t>(std::lrint(s * 32768.0f));
+                            static_cast<int16_t>(quantizeIntegerPcmSample(
+                                cupuacu::SampleFormat::PCM_S16, s, true));
                     }
                 }
             }

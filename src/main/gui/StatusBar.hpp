@@ -8,11 +8,16 @@
 #include "gui/UiScale.hpp"
 
 #include "State.hpp"
+#include "actions/DocumentLifecycle.hpp"
+#include "file/SampleQuantization.hpp"
 
 #include <SDL3/SDL.h>
 
+#include <iomanip>
 #include <limits>
+#include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 
 namespace cupuacu::gui
@@ -25,6 +30,8 @@ namespace cupuacu::gui
         LabeledField *endField;
         LabeledField *lengthField;
         LabeledField *valueField;
+        LabeledField *sampleRateField;
+        LabeledField *bitDepthField;
 
         int64_t lastDrawnPos = std::numeric_limits<int64_t>::max();
         int64_t lastSelectionStart = std::numeric_limits<int64_t>::max();
@@ -34,7 +41,9 @@ namespace cupuacu::gui
         // We have to be careful after implementing state restoration and the
         // state is restored to an active selection.
         bool lastSelectionActive = true;
-        std::optional<float> lastSampleValueUnderMouseCursor;
+        std::optional<HoveredSampleInfo> lastSampleValueUnderMouseCursor;
+        int lastSampleRate = std::numeric_limits<int>::min();
+        std::string lastBitDepthLabel;
 
         std::optional<int64_t> getPlaybackPositionIfPlaying() const
         {
@@ -45,6 +54,34 @@ namespace cupuacu::gui
             }
 
             return state->audioDevices->getPlaybackPosition();
+        }
+
+        std::string formatHoveredSampleValue() const
+        {
+            const auto &hovered =
+                state->mainDocumentSessionWindow->getViewState()
+                    .sampleValueUnderMouseCursor;
+            if (!hovered.has_value())
+            {
+                return "";
+            }
+
+            const auto format =
+                state->activeDocumentSession.document.getSampleFormat();
+            const auto buffer = state->activeDocumentSession.document.getAudioBuffer();
+            const bool preserveLoadedCode =
+                buffer && file::isIntegerPcmSampleFormat(format) &&
+                !buffer->isDirty(hovered->channel, hovered->frame);
+            const auto quantized = file::quantizedStatusSampleValue(
+                format, hovered->value, preserveLoadedCode);
+            if (quantized.has_value())
+            {
+                return std::to_string(*quantized);
+            }
+
+            std::ostringstream value;
+            value << std::setprecision(6) << hovered->value;
+            return value.str();
         }
 
     public:
@@ -60,11 +97,15 @@ namespace cupuacu::gui
                 emplaceChild<LabeledField>(state, "Len", Colors::background);
             valueField =
                 emplaceChild<LabeledField>(state, "Val", Colors::background);
+            sampleRateField =
+                emplaceChild<LabeledField>(state, "Rate", Colors::background);
+            bitDepthField =
+                emplaceChild<LabeledField>(state, "Depth", Colors::background);
         }
 
         void resized() override
         {
-            const int fieldWidth = scaleUi(state, 80.0f * 4.0f);
+            const int fieldWidth = getWidth() / 7;
             const int fieldHeight = int(getHeight());
 
             posField->setBounds(0, 0, fieldWidth, fieldHeight);
@@ -72,6 +113,9 @@ namespace cupuacu::gui
             endField->setBounds(2 * fieldWidth, 0, fieldWidth, fieldHeight);
             lengthField->setBounds(3 * fieldWidth, 0, fieldWidth, fieldHeight);
             valueField->setBounds(4 * fieldWidth, 0, fieldWidth, fieldHeight);
+            sampleRateField->setBounds(5 * fieldWidth, 0, fieldWidth, fieldHeight);
+            bitDepthField->setBounds(6 * fieldWidth, 0, getWidth() - 6 * fieldWidth,
+                                     fieldHeight);
         }
 
         void onDraw(SDL_Renderer *renderer) override
@@ -106,13 +150,29 @@ namespace cupuacu::gui
 
                 if (viewState.sampleValueUnderMouseCursor.has_value())
                 {
-                    valueField->setValue(
-                        std::to_string(*viewState.sampleValueUnderMouseCursor));
+                    valueField->setValue(formatHoveredSampleValue());
                 }
                 else
                 {
                     valueField->setValue("");
                 }
+            }
+
+            const int sampleRate = session.document.getSampleRate();
+            if (sampleRate != lastSampleRate)
+            {
+                lastSampleRate = sampleRate;
+                sampleRateField->setValue(
+                    sampleRate > 0 ? std::to_string(sampleRate) : "");
+            }
+
+            const std::string bitDepthLabel =
+                cupuacu::actions::sampleFormatLabel(
+                    session.document.getSampleFormat());
+            if (bitDepthLabel != lastBitDepthLabel)
+            {
+                lastBitDepthLabel = bitDepthLabel;
+                bitDepthField->setValue(bitDepthLabel);
             }
 
             const bool currentSelectionActive = session.selection.isActive();

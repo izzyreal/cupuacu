@@ -1,13 +1,9 @@
 #pragma once
 #include <SDL3/SDL.h>
 
+#include "DocumentLifecycle.hpp"
+
 #include "../State.hpp"
-#include "../file/file_loading.hpp"
-#include "../gui/MainViewAccess.hpp"
-#include "../gui/Gui.hpp"
-#include "../gui/Waveform.hpp"
-#include "../gui/Window.hpp"
-#include "Zoom.hpp"
 
 #include <string>
 
@@ -43,28 +39,7 @@ namespace cupuacu::actions
         }
 
         auto state = (cupuacu::State *)userdata;
-
-        if (state->audioDevices)
-        {
-            state->audioDevices->clearRecordedChunks();
-        }
-
-        state->activeDocumentSession.currentFile = absoluteFilePath;
-
-        file::loadSampleData(state);
-        gui::rebuildMainWaveforms(state);
-        resetWaveformState(state);
-        resetZoom(state);
-        gui::Waveform::updateAllSamplePoints(state);
-        gui::Waveform::setAllWaveformsDirty(state);
-
-        auto *mainWindow = state->mainDocumentSessionWindow->getWindow();
-        if (mainWindow)
-        {
-            SDL_SetWindowTitle(
-                mainWindow->getSdlWindow(),
-                state->activeDocumentSession.currentFile.c_str());
-        }
+        loadFileIntoSession(state, absoluteFilePath);
     }
 
     static void ShowDialogMainThreadCallback(void *userdata)

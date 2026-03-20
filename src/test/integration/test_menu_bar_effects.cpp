@@ -57,8 +57,8 @@ namespace
 
         auto topLevelMenus =
             cupuacu::test::integration::menuChildren(harness.menuBar);
-        REQUIRE(topLevelMenus.size() == 5);
-        auto *effectsMenu = topLevelMenus[3];
+        REQUIRE(topLevelMenus.size() == 6);
+        auto *effectsMenu = topLevelMenus[4];
         auto effectSubMenus =
             cupuacu::test::integration::menuChildren(effectsMenu);
         REQUIRE(effectSubMenus.size() == 2);

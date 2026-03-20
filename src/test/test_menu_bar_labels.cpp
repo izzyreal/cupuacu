@@ -267,7 +267,7 @@ TEST_CASE("MenuBar runtime tracks open menus and hover-open state", "[gui]")
     auto *menuBar = makeMenuBar(&state, root);
 
     auto topLevelMenus = menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 5);
+    REQUIRE(topLevelMenus.size() == 6);
     auto *fileMenu = topLevelMenus[0];
 
     REQUIRE(menuBar->getOpenMenu() == nullptr);
@@ -367,9 +367,9 @@ TEST_CASE("MenuBar file overwrite action rewrites the current file", "[gui][file
     auto *menuBar = makeMenuBar(&state, root);
     auto *fileMenu = menuChildren(menuBar)[0];
     auto fileEntries = menuChildren(fileMenu);
-    REQUIRE(fileEntries.size() == 2);
+    REQUIRE(fileEntries.size() == 6);
 
-    auto *overwriteEntry = fileEntries[1];
+    auto *overwriteEntry = fileEntries[4];
     overwriteEntry->mouseDown(leftMouseDown());
 
     const auto frames = readFramesAsFloat(wavPath);
