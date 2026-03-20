@@ -166,7 +166,8 @@ pipelines:
               command: ./build/macos-universal/cupuacu-tests --reporter JUnit --out build/macos-universal/result-junit.xml
               format: junit-xml
               report: build/macos-universal/result-junit.xml
-          - run: cp build/macos-universal/Cupuacu dist/cupuacu-macos-universal
+          - run: ditto build/macos-universal/Cupuacu.app dist/cupuacu-macos-universal.app
+          - run: ditto -c -k --sequesterRsrc --keepParent dist/cupuacu-macos-universal.app dist/cupuacu-macos-universal.zip
           - run: cp build/macos-universal/cupuacu-tests dist/cupuacu-tests-macos-universal
 
       - id: windows-amd64
@@ -248,13 +249,14 @@ pipelines:
           - run: test -f VERSION
           - run: test -f dist/cupuacu-linux-amd64
           - run: test -f dist/cupuacu-linux-arm64
-          - run: test -f dist/cupuacu-macos-universal
+          - run: test -d dist/cupuacu-macos-universal.app
+          - run: test -f dist/cupuacu-macos-universal.zip
           - run: test -f dist/cupuacu-windows-amd64.exe
           - run: |
               shasum -a 256 \
                 dist/cupuacu-linux-amd64 \
                 dist/cupuacu-linux-arm64 \
-                dist/cupuacu-macos-universal \
+                dist/cupuacu-macos-universal.zip \
                 dist/cupuacu-windows-amd64.exe \
                 > dist/cupuacu-checksums.txt
           - run: |
@@ -289,7 +291,7 @@ pipelines:
               gh release upload "$TAG" \
                 dist/cupuacu-linux-amd64 \
                 dist/cupuacu-linux-arm64 \
-                dist/cupuacu-macos-universal \
+                dist/cupuacu-macos-universal.zip \
                 dist/cupuacu-windows-amd64.exe \
                 dist/cupuacu-checksums.txt \
                 --repo izzyreal/cupuacu \

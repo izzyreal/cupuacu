@@ -264,9 +264,15 @@ if(CUPUACU_ENABLE_RTSAN_LIBS)
     endif()
 endif()
 
-add_executable(Cupuacu
-    src/main/main.cpp
-)
+if(APPLE)
+    add_executable(Cupuacu MACOSX_BUNDLE
+        src/main/main.cpp
+    )
+else()
+    add_executable(Cupuacu
+        src/main/main.cpp
+    )
+endif()
 target_link_libraries(Cupuacu PRIVATE "${_cupuacu_app_core_target}")
 if(CUPUACU_ENABLE_RTSAN_LIBS)
     rtsan_libs_enable(TARGET Cupuacu)
