@@ -73,6 +73,16 @@ podman run --rm \
     /bin/bash -lc "ccache --show-stats"
 
 echo
+echo "Coverage summary:"
+podman run --rm \
+    --userns keep-id \
+    -e HOME=/tmp \
+    -v "${ROOT_DIR}:${CONTAINER_WORKDIR}" \
+    -w "${CONTAINER_WORKDIR}" \
+    "${IMAGE_TAG}" \
+    /bin/bash -lc "lcov --summary \"${CONTAINER_DIST_DIR}/coverage.info\""
+
+echo
 echo "Joint coverage report generated:"
 echo "  LCOV: ${DIST_DIR}/coverage.info"
 echo "  HTML: ${DIST_DIR}/coverage-html/index.html"
