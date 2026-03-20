@@ -904,6 +904,129 @@ TEST_CASE("Recent submenu integration does not show blank placeholder rows",
     }
 }
 
+TEST_CASE("Recent submenu integration hover keeps File menu open",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-recent-hover-open"));
+    const auto wavPath = cleanup.path() / "recent.wav";
+    writeTestWav(wavPath, 22050, 1, {0.25f, 0.5f});
+
+    cupuacu::State state{};
+    state.recentFiles = {wavPath.string()};
+
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "recent-hover", 480, 240, SDL_WINDOW_HIDDEN);
+
+    auto root =
+        std::make_unique<cupuacu::test::integration::RootComponent>(&state);
+    auto *menuBar = root->emplaceChild<cupuacu::gui::MenuBar>(&state);
+    root->setBounds(0, 0, 480, 240);
+    menuBar->setBounds(0, 0, 480, 40);
+    window->setRootComponent(std::move(root));
+    window->setMenuBar(menuBar);
+
+    auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
+    auto *fileMenu = topLevelMenus[0];
+    auto *recentMenu = cupuacu::test::integration::menuChildren(fileMenu)[2];
+
+    REQUIRE(fileMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
+    REQUIRE(fileMenu->isOpen());
+    REQUIRE_FALSE(recentMenu->isOpen());
+
+    recentMenu->mouseEnter();
+
+    REQUIRE(fileMenu->isOpen());
+    REQUIRE(recentMenu->isOpen());
+}
+
+TEST_CASE("Recent submenu integration overlays file menu with slight horizontal overlap",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-recent-overlay"));
+    const auto wavPath = cleanup.path() / "recent.wav";
+    writeTestWav(wavPath, 22050, 1, {0.25f, 0.5f});
+
+    cupuacu::State state{};
+    state.recentFiles = {wavPath.string()};
+
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "recent-overlay", 480, 240, SDL_WINDOW_HIDDEN);
+
+    auto root =
+        std::make_unique<cupuacu::test::integration::RootComponent>(&state);
+    auto *menuBar = root->emplaceChild<cupuacu::gui::MenuBar>(&state);
+    root->setBounds(0, 0, 480, 240);
+    menuBar->setBounds(0, 0, 480, 40);
+    window->setRootComponent(std::move(root));
+    window->setMenuBar(menuBar);
+
+    auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
+    auto *fileMenu = topLevelMenus[0];
+    auto *recentMenu = cupuacu::test::integration::menuChildren(fileMenu)[2];
+    auto *recentEntry =
+        cupuacu::test::integration::menuChildren(recentMenu)[1];
+
+    REQUIRE(fileMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
+    recentMenu->mouseEnter();
+
+    REQUIRE(recentMenu->isOpen());
+    REQUIRE(recentEntry->isVisible());
+    REQUIRE(recentEntry->getYPos() == 0);
+    REQUIRE(recentEntry->getXPos() == recentMenu->getWidth() - 10);
+}
+
+TEST_CASE("Recent submenu integration closes when hovering another active top-level menu",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-recent-hover-other"));
+    const auto wavPath = cleanup.path() / "recent.wav";
+    writeTestWav(wavPath, 22050, 1, {0.25f, 0.5f});
+
+    cupuacu::State state{};
+    state.recentFiles = {wavPath.string()};
+
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "recent-hover-other", 480, 240, SDL_WINDOW_HIDDEN);
+
+    auto root =
+        std::make_unique<cupuacu::test::integration::RootComponent>(&state);
+    auto *menuBar = root->emplaceChild<cupuacu::gui::MenuBar>(&state);
+    root->setBounds(0, 0, 480, 240);
+    menuBar->setBounds(0, 0, 480, 40);
+    window->setRootComponent(std::move(root));
+    window->setMenuBar(menuBar);
+
+    auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
+    auto *fileMenu = topLevelMenus[0];
+    auto *editMenu = topLevelMenus[1];
+    auto *recentMenu = cupuacu::test::integration::menuChildren(fileMenu)[2];
+    auto *recentEntry =
+        cupuacu::test::integration::menuChildren(recentMenu)[1];
+
+    REQUIRE(fileMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
+    recentMenu->mouseEnter();
+    REQUIRE(fileMenu->isOpen());
+    REQUIRE(recentMenu->isOpen());
+    REQUIRE(recentEntry->isVisible());
+
+    menuBar->setOpenSubMenuOnMouseOver(true);
+    editMenu->mouseEnter();
+
+    REQUIRE_FALSE(fileMenu->isOpen());
+    REQUIRE_FALSE(recentMenu->isOpen());
+    REQUIRE_FALSE(recentEntry->isVisible());
+    REQUIRE(editMenu->isOpen());
+}
+
 TEST_CASE("File menu integration exit entry pushes a quit event", "[integration]")
 {
     cupuacu::test::ensureSdlTtfInitialized();

@@ -170,6 +170,26 @@ TEST_CASE("Menu runtime shows and hides stacked submenus with dynamic names",
     REQUIRE_FALSE(second->isVisible());
 }
 
+TEST_CASE("Menu runtime positions nested submenus to the side with slight overlap",
+          "[gui]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::State state{};
+    RootComponent root(&state);
+    auto *parent = root.emplaceChild<cupuacu::gui::Menu>(&state, "Parent");
+    parent->setBounds(0, 0, 80, 24);
+    auto *child = parent->addSubMenu(&state, "Child");
+    auto *grandChild = child->addSubMenu(&state, "Grandchild");
+
+    parent->showSubMenus();
+    child->showSubMenus();
+
+    REQUIRE(grandChild->isVisible());
+    REQUIRE(grandChild->getYPos() == 0);
+    REQUIRE(grandChild->getXPos() == child->getWidth() - 10);
+}
+
 TEST_CASE("Menu runtime hides dynamic submenu items with empty names", "[gui]")
 {
     cupuacu::test::ensureSdlTtfInitialized();
@@ -186,6 +206,76 @@ TEST_CASE("Menu runtime hides dynamic submenu items with empty names", "[gui]")
 
     REQUIRE(visible->isVisible());
     REQUIRE_FALSE(hidden->isVisible());
+}
+
+TEST_CASE("Menu runtime propagates parent unavailability to submenu actions",
+          "[gui]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::State state{};
+    RootComponent root(&state);
+    auto *parent = root.emplaceChild<cupuacu::gui::Menu>(&state, "Parent");
+    parent->setBounds(0, 0, 80, 24);
+
+    int childCalls = 0;
+    auto *child = parent->addSubMenu(&state, "Child", [&]() { ++childCalls; });
+    parent->setIsAvailable([]() { return false; });
+
+    parent->showSubMenus();
+    REQUIRE(child->isVisible());
+
+    REQUIRE(child->mouseDown(leftMouseDown()));
+    REQUIRE(childCalls == 0);
+}
+
+TEST_CASE("Menu runtime propagates ancestor unavailability recursively",
+          "[gui]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::State state{};
+    RootComponent root(&state);
+    auto *parent = root.emplaceChild<cupuacu::gui::Menu>(&state, "Parent");
+    parent->setBounds(0, 0, 80, 24);
+
+    int grandChildCalls = 0;
+    auto *child = parent->addSubMenu(&state, "Child");
+    auto *grandChild =
+        child->addSubMenu(&state, "Grandchild", [&]() { ++grandChildCalls; });
+    parent->setIsAvailable([]() { return false; });
+
+    parent->showSubMenus();
+    child->showSubMenus();
+    REQUIRE(grandChild->isVisible());
+
+    REQUIRE(grandChild->mouseDown(leftMouseDown()));
+    REQUIRE(grandChildCalls == 0);
+}
+
+TEST_CASE("Menu runtime hovering a sibling item closes the previous nested submenu",
+          "[gui]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::State state{};
+    RootComponent root(&state);
+    auto *parent = root.emplaceChild<cupuacu::gui::Menu>(&state, "Parent");
+    parent->setBounds(0, 0, 80, 24);
+
+    auto *first = parent->addSubMenu(&state, "First");
+    auto *second = parent->addSubMenu(&state, "Second");
+    auto *firstChild = first->addSubMenu(&state, "First child");
+
+    parent->showSubMenus();
+    first->showSubMenus();
+    REQUIRE(first->isOpen());
+    REQUIRE(firstChild->isVisible());
+
+    second->mouseEnter();
+
+    REQUIRE_FALSE(first->isOpen());
+    REQUIRE_FALSE(firstChild->isVisible());
 }
 
 TEST_CASE("Menu runtime top-level click toggles submenu visibility", "[gui]")

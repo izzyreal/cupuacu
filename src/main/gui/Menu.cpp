@@ -14,6 +14,28 @@
 
 using namespace cupuacu::gui;
 
+namespace
+{
+    void requestFullWindowRedraw(cupuacu::gui::Menu *menu)
+    {
+        if (!menu)
+        {
+            return;
+        }
+
+        if (auto *window = menu->getWindow())
+        {
+            if (auto *root = window->getRootComponent())
+            {
+                root->setDirty();
+                return;
+            }
+        }
+
+        menu->setDirty();
+    }
+}
+
 Menu::Menu(State *state, const std::string &menuNameToUse,
            const std::function<void()> &actionToUse)
     : Component(state, "Menu for " + menuNameToUse), menuName(menuNameToUse),
@@ -61,6 +83,22 @@ bool Menu::shouldShowAsSubMenuItem() const
     return !getMenuName().empty();
 }
 
+bool Menu::isEffectivelyAvailable() const
+{
+    if (!isAvailable())
+    {
+        return false;
+    }
+
+    const auto *parentMenu = dynamic_cast<const Menu *>(getParent());
+    if (!parentMenu)
+    {
+        return true;
+    }
+
+    return parentMenu->isEffectivelyAvailable();
+}
+
 void Menu::resized()
 {
     label->setBounds(0, 0, getWidth(), getHeight());
@@ -82,7 +120,10 @@ void Menu::showSubMenus()
         return;
     }
 
-    int subMenuYPos = getHeight();
+    const int nestedHorizontalOverlap = scaleUi(state, 10.0f);
+    const bool firstLevel = isFirstLevel();
+    const int subMenuXPos = firstLevel ? 0 : getWidth() - nestedHorizontalOverlap;
+    int subMenuYPos = firstLevel ? getHeight() : 0;
 
     const int menuItemHeight =
         scaleUi(state, static_cast<float>(state->menuFontSize) * 2.0f);
@@ -109,7 +150,7 @@ void Menu::showSubMenus()
             subMenu->setVisible(false);
             continue;
         }
-        subMenu->setBounds(0, subMenuYPos,
+        subMenu->setBounds(subMenuXPos, subMenuYPos,
                            subMenuWidth + subMenuHorizontalMargin,
                            menuItemHeight);
         subMenu->setVisible(true);
@@ -117,26 +158,28 @@ void Menu::showSubMenus()
     }
 
     currentlyOpen = true;
-    setDirty();
+    requestFullWindowRedraw(this);
 }
 
 void Menu::hideSubMenus()
 {
     for (const auto &subMenu : subMenus)
     {
+        subMenu->hideSubMenus();
         subMenu->setVisible(false);
     }
 
     currentlyOpen = false;
-    setDirty();
+    requestFullWindowRedraw(this);
 }
 
 void Menu::onDraw(SDL_Renderer *renderer)
 {
     const auto radius = scaleUiF(state, 14.0f);
     const auto rect = getLocalBoundsF();
+    const bool available = isEffectivelyAvailable();
 
-    label->setOpacity(isAvailable() ? 255 : 128);
+    label->setOpacity(available ? 255 : 128);
 
     label->setText(getMenuName());
 
@@ -157,11 +200,25 @@ void Menu::onDraw(SDL_Renderer *renderer)
     }
 
     constexpr SDL_Color col1 = {50, 50, 50, 255};
-    constexpr SDL_Color outline{180, 180, 180, 255};
+    constexpr SDL_Color outline = {180, 180, 180, 255};
 
     const auto parentMenu = dynamic_cast<Menu *>(getParent());
-    const bool isFirst = parentMenu->subMenus.front() == this;
-    const bool isLast = parentMenu->subMenus.back() == this;
+    Menu *firstVisibleSibling = nullptr;
+    Menu *lastVisibleSibling = nullptr;
+    for (auto *sibling : parentMenu->subMenus)
+    {
+        if (!sibling->shouldShowAsSubMenuItem() || !sibling->isVisible())
+        {
+            continue;
+        }
+        if (!firstVisibleSibling)
+        {
+            firstVisibleSibling = sibling;
+        }
+        lastVisibleSibling = sibling;
+    }
+    const bool isFirst = firstVisibleSibling == this;
+    const bool isLast = lastVisibleSibling == this;
 
     auto rectShrunk = rect;
 
@@ -193,7 +250,7 @@ void Menu::onDraw(SDL_Renderer *renderer)
         drawVerticalEdges(renderer, rect, outline);
     }
 
-    if (isMouseOver() && isAvailable())
+    if (isMouseOver() && available)
     {
         constexpr SDL_Color col2 = {60, 60, 200, 255};
         drawRoundedRect(renderer, rectShrunk, radius, col2);
@@ -203,7 +260,8 @@ void Menu::onDraw(SDL_Renderer *renderer)
 bool Menu::mouseDown(const MouseEvent &e)
 {
     const auto plan =
-        planMenuMouseDown(subMenus.empty() == false, currentlyOpen, isAvailable());
+        planMenuMouseDown(subMenus.empty() == false, currentlyOpen,
+                          isEffectivelyAvailable());
     if (const auto window = getWindow(); window && window->getMenuBar())
     {
         if (plan.hideMenuBarSubMenus)
@@ -240,21 +298,20 @@ void Menu::mouseLeave()
     setDirty();
 
     const auto window = getWindow();
-    if (!window)
+    if (!window || !window->getMenuBar())
     {
         return;
     }
 
-    if (dynamic_cast<Menu *>(window->getComponentUnderMouse()) == nullptr)
+    auto *componentUnderMouse = window->getComponentUnderMouse();
+    if (dynamic_cast<Menu *>(componentUnderMouse) == nullptr)
     {
-        const bool componentUnderMouseIsMenuBar =
-            window->getComponentUnderMouse() == window->getMenuBar();
-        const bool componentUnderMouseIsMenuBarChild =
-            window->getMenuBar() &&
-            window->getMenuBar()->hasChild(window->getComponentUnderMouse());
+        const bool componentUnderMouseIsInMenuBarTree =
+            componentUnderMouse &&
+            Component::isComponentOrChildOf(componentUnderMouse,
+                                            window->getMenuBar());
         const auto plan = planMenuMouseLeave(
-            componentUnderMouseIsMenuBar || componentUnderMouseIsMenuBarChild,
-            window->getMenuBar() && window->getMenuBar()->hasMenuOpen());
+            componentUnderMouseIsInMenuBarTree, window->getMenuBar()->hasMenuOpen());
         if (plan.hideMenuBarSubMenus)
         {
             window->getMenuBar()->hideSubMenus();
@@ -271,6 +328,27 @@ void Menu::mouseEnter()
     const auto window = getWindow();
     if (!window || !window->getMenuBar())
     {
+        return;
+    }
+
+    if (!isFirstLevel())
+    {
+        if (const auto *parentMenu = dynamic_cast<Menu *>(getParent()))
+        {
+            for (auto *siblingMenu : parentMenu->subMenus)
+            {
+                if (siblingMenu != this)
+                {
+                    siblingMenu->hideSubMenus();
+                }
+            }
+        }
+
+        if (!subMenus.empty() && isEffectivelyAvailable())
+        {
+            showSubMenus();
+        }
+        setDirty();
         return;
     }
 

@@ -32,8 +32,10 @@ namespace cupuacu::gui
         OpaqueRect *background = nullptr;
         Label *sampleRateLabel = nullptr;
         Label *bitDepthLabel = nullptr;
+        Label *channelCountLabel = nullptr;
         DropdownMenu *sampleRateDropdown = nullptr;
         DropdownMenu *bitDepthDropdown = nullptr;
+        DropdownMenu *channelCountDropdown = nullptr;
         TextButton *cancelButton = nullptr;
         TextButton *okButton = nullptr;
 
@@ -42,5 +44,6 @@ namespace cupuacu::gui
         void layoutComponents() const;
         int selectedSampleRate() const;
         cupuacu::SampleFormat selectedFormat() const;
+        int selectedChannelCount() const;
     };
 } // namespace cupuacu::gui

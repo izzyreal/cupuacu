@@ -676,9 +676,10 @@ TEST_CASE("New file dialog integration creates an empty document with the select
     auto *root = state.newFileDialogWindow->getWindow()->getRootComponent();
     std::vector<cupuacu::gui::DropdownMenu *> dropdowns;
     collectRecursive(root, dropdowns);
-    REQUIRE(dropdowns.size() >= 2);
+    REQUIRE(dropdowns.size() >= 3);
     dropdowns[0]->setSelectedIndex(4);
     dropdowns[1]->setSelectedIndex(0);
+    dropdowns[2]->setSelectedIndex(0);
 
     auto *okButton =
         cupuacu::test::integration::findByNameRecursive<cupuacu::gui::TextButton>(
@@ -689,7 +690,7 @@ TEST_CASE("New file dialog integration creates an empty document with the select
     REQUIRE(session.currentFile.empty());
     REQUIRE(session.document.getSampleRate() == 96000);
     REQUIRE(session.document.getSampleFormat() == cupuacu::SampleFormat::PCM_S8);
-    REQUIRE(session.document.getChannelCount() == 2);
+    REQUIRE(session.document.getChannelCount() == 1);
     REQUIRE(session.document.getFrameCount() == 0);
 }
 

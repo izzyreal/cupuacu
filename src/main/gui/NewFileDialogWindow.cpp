@@ -4,6 +4,7 @@
 #include "../actions/DocumentLifecycle.hpp"
 
 #include "Colors.hpp"
+#include "text.hpp"
 #include "UiScale.hpp"
 
 #include <SDL3/SDL.h>
@@ -13,7 +14,7 @@
 namespace
 {
     constexpr int kWindowWidth = 420;
-    constexpr int kWindowHeight = 220;
+    constexpr int kWindowHeight = 280;
 
     constexpr Uint32 getHighDensityWindowFlag()
     {
@@ -59,19 +60,25 @@ namespace cupuacu::gui
         background = root->emplaceChild<OpaqueRect>(state, Colors::background);
         sampleRateLabel = root->emplaceChild<Label>(state, "Sample rate");
         bitDepthLabel = root->emplaceChild<Label>(state, "Bit depth");
+        channelCountLabel = root->emplaceChild<Label>(state, "Channels");
         sampleRateDropdown = root->emplaceChild<DropdownMenu>(state);
         bitDepthDropdown = root->emplaceChild<DropdownMenu>(state);
+        channelCountDropdown = root->emplaceChild<DropdownMenu>(state);
         cancelButton = root->emplaceChild<TextButton>(state, "Cancel");
         okButton = root->emplaceChild<TextButton>(state, "OK");
 
         sampleRateLabel->setFontSize(state->menuFontSize);
         bitDepthLabel->setFontSize(state->menuFontSize);
+        channelCountLabel->setFontSize(state->menuFontSize);
         sampleRateDropdown->setFontSize(state->menuFontSize);
         bitDepthDropdown->setFontSize(state->menuFontSize);
+        channelCountDropdown->setFontSize(state->menuFontSize);
         sampleRateDropdown->setItems({"11025", "22050", "44100", "48000", "96000"});
         bitDepthDropdown->setItems({"8 bit", "16 bit"});
+        channelCountDropdown->setItems({"1", "2"});
         sampleRateDropdown->setSelectedIndex(2);
         bitDepthDropdown->setSelectedIndex(1);
+        channelCountDropdown->setSelectedIndex(1);
         cancelButton->setTriggerOnMouseUp(true);
         okButton->setTriggerOnMouseUp(true);
         cancelButton->setOnPress([this]() { requestClose(); });
@@ -79,7 +86,8 @@ namespace cupuacu::gui
             [this]()
             {
                 cupuacu::actions::createNewDocument(
-                    state, selectedSampleRate(), selectedFormat());
+                    state, selectedSampleRate(), selectedFormat(),
+                    selectedChannelCount());
                 requestClose();
             });
 
@@ -161,7 +169,15 @@ namespace cupuacu::gui
         const int width = static_cast<int>(canvasW);
         const int height = static_cast<int>(canvasH);
         const int padding = scaleUi(state, 20.0f);
-        const int labelWidth = scaleUi(state, 140.0f);
+        const auto [sampleRateTextWidth, _sampleRateTextHeight] =
+            measureText("Sample rate", state->menuFontSize);
+        const auto [bitDepthTextWidth, _bitDepthTextHeight] =
+            measureText("Bit depth", state->menuFontSize);
+        const auto [channelCountTextWidth, _channelCountTextHeight] =
+            measureText("Channels", state->menuFontSize);
+        const int labelWidth = std::max(
+            {sampleRateTextWidth, bitDepthTextWidth, channelCountTextWidth}) +
+                               scaleUi(state, 20.0f);
         const int rowHeight = scaleUi(state, 42.0f);
         const int buttonWidth = scaleUi(state, 100.0f);
         const int buttonHeight = scaleUi(state, 40.0f);
@@ -177,6 +193,10 @@ namespace cupuacu::gui
                                  labelWidth, rowHeight);
         bitDepthDropdown->setBounds(fieldX, padding + rowHeight + padding,
                                     fieldWidth, rowHeight);
+        channelCountLabel->setBounds(padding, padding + (rowHeight + padding) * 2,
+                                     labelWidth, rowHeight);
+        channelCountDropdown->setBounds(
+            fieldX, padding + (rowHeight + padding) * 2, fieldWidth, rowHeight);
 
         const int buttonY = height - padding - buttonHeight;
         cancelButton->setBounds(width - padding - buttonWidth * 2 - padding,
@@ -209,5 +229,13 @@ namespace cupuacu::gui
         return (bitDepthDropdown && bitDepthDropdown->getSelectedIndex() == 0)
                    ? cupuacu::SampleFormat::PCM_S8
                    : cupuacu::SampleFormat::PCM_S16;
+    }
+
+    int NewFileDialogWindow::selectedChannelCount() const
+    {
+        return (channelCountDropdown &&
+                channelCountDropdown->getSelectedIndex() == 0)
+                   ? 1
+                   : 2;
     }
 } // namespace cupuacu::gui

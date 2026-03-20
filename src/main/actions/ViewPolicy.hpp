@@ -22,11 +22,13 @@ namespace cupuacu::actions
         const auto frameCount = std::max<int64_t>(0, session.document.getFrameCount());
         const auto waveformWidth =
             static_cast<double>(gui::Waveform::getWaveformWidth(state));
+        const bool hasInvalidHorizontalZoom = viewState.samplesPerPixel <= 0.0;
 
         const bool shouldResetZoomToFillWidth =
-            frameCount > 0 && waveformWidth > 0.0 &&
+            hasInvalidHorizontalZoom ||
+            (frameCount > 0 && waveformWidth > 0.0 &&
             std::ceil(waveformWidth * viewState.samplesPerPixel) >
-                static_cast<double>(frameCount);
+                static_cast<double>(frameCount));
 
         if (shouldResetZoomToFillWidth)
         {

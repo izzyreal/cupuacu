@@ -79,6 +79,12 @@ namespace
                 cupuacu::gui::MouseButtonState{false, false, false}, 0});
         }
     }
+
+    void initializeActiveDocument(cupuacu::State *state)
+    {
+        state->activeDocumentSession.document.initialize(
+            cupuacu::SampleFormat::FLOAT32, 44100, 1, 3);
+    }
 } // namespace
 
 TEST_CASE("Effects menu integration opens AmplifyFade and Dynamics dialogs",
@@ -87,6 +93,7 @@ TEST_CASE("Effects menu integration opens AmplifyFade and Dynamics dialogs",
     cupuacu::test::ensureSdlTtfInitialized();
 
     cupuacu::State state{};
+    initializeActiveDocument(&state);
     auto harness = createEffectsMenuHarness(&state);
 
     REQUIRE(state.amplifyFadeDialog == nullptr);
@@ -109,6 +116,7 @@ TEST_CASE("AmplifyFade dialog integration exposes shared controls and presets",
     cupuacu::test::ensureSdlTtfInitialized();
 
     cupuacu::State state{};
+    initializeActiveDocument(&state);
     auto harness = createEffectsMenuHarness(&state);
     REQUIRE(harness.amplifyFadeMenu->mouseDown(
         cupuacu::test::integration::leftMouseDown()));

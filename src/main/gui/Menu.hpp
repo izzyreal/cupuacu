@@ -36,6 +36,7 @@ namespace cupuacu::gui
 
         std::string getMenuName() const;
         bool shouldShowAsSubMenuItem() const;
+        bool isEffectivelyAvailable() const;
 
     public:
         Menu(State *, const std::string &menuNameToUse,

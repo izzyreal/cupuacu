@@ -2,6 +2,7 @@
 
 #include "State.hpp"
 #include "actions/audio/EditCommands.hpp"
+#include "actions/ViewPolicy.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 
 TEST_CASE("Edit command selection target is inactive without selection", "[session]")
@@ -105,4 +106,26 @@ TEST_CASE("Edit command insert silence replaces the active selection",
     REQUIRE(session.document.getSample(0, 1) == 0.0f);
     REQUIRE(session.document.getSample(0, 2) == 0.0f);
     REQUIRE(session.document.getSample(0, 3) == 5.0f);
+}
+
+TEST_CASE("Duration change view policy resets invalid zero-length zoom after insert",
+          "[session]")
+{
+    cupuacu::State state{};
+    state.activeDocumentSession.document.initialize(
+        cupuacu::SampleFormat::PCM_S16, 44100, 2, 0);
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &state.activeDocumentSession, "test", 800, 400,
+            SDL_WINDOW_HIDDEN);
+
+    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+    viewState.samplesPerPixel = 0.0;
+    viewState.sampleOffset = 123;
+
+    cupuacu::actions::audio::performInsertSilence(&state, 16);
+
+    REQUIRE(state.activeDocumentSession.document.getFrameCount() == 16);
+    REQUIRE(viewState.samplesPerPixel > 0.0);
+    REQUIRE(viewState.sampleOffset == 0);
 }
