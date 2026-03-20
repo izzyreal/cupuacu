@@ -16,6 +16,11 @@ I'm not so keen on the workflow for this kind of task with Audacity, so I decide
 
 Many years ago I used to work with Cool Edit, and it has many of the aspects that I would like to see in an audio editor. Chances are if you like Cool Edit, you might like where Cupuacu is going.
 
+## Guides
+
+- User manual: [`USER_MANUAL.md`](./USER_MANUAL.md)
+- Developer guide: [`DEV.md`](./DEV.md)
+
 ## Name
 
 I love fruit, especially uncommon, wild, tropical ones. Cupuacu, typically spelled "cupuaçu", is such a fruit, and I can recommend everyone to try it. For this project I was looking a name that is reminiscent of Cool Edit, and Cupuacu is a close enough match.
