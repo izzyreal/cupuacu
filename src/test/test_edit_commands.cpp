@@ -4,6 +4,7 @@
 #include "actions/audio/EditCommands.hpp"
 #include "actions/ViewPolicy.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
+#include "gui/Waveform.hpp"
 
 TEST_CASE("Edit command selection target is inactive without selection", "[session]")
 {
@@ -122,6 +123,9 @@ TEST_CASE("Duration change view policy resets invalid zero-length zoom after ins
     auto &viewState = state.mainDocumentSessionWindow->getViewState();
     viewState.samplesPerPixel = 0.0;
     viewState.sampleOffset = 123;
+    cupuacu::gui::Waveform waveform(&state, 0);
+    waveform.setBounds(0, 0, 200, 80);
+    state.waveforms.push_back(&waveform);
 
     cupuacu::actions::audio::performInsertSilence(&state, 16);
 

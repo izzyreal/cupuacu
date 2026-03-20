@@ -7,6 +7,7 @@
 #include "gui/Menu.hpp"
 #include "gui/MenuBar.hpp"
 #include "gui/MenuPlanning.hpp"
+#include "gui/Window.hpp"
 
 #include <vector>
 
@@ -157,7 +158,7 @@ TEST_CASE("Menu runtime shows and hides stacked submenus with dynamic names",
     REQUIRE(parent->isOpen());
     REQUIRE(first->isVisible());
     REQUIRE(second->isVisible());
-    REQUIRE(first->getYPos() == parent->getHeight());
+    REQUIRE(first->getYPos() == 0);
     REQUIRE(second->getYPos() == first->getYPos() + first->getHeight());
     REQUIRE(first->getWidth() > 1);
     REQUIRE(second->getWidth() == first->getWidth());
@@ -259,13 +260,21 @@ TEST_CASE("Menu runtime hovering a sibling item closes the previous nested subme
     cupuacu::test::ensureSdlTtfInitialized();
 
     cupuacu::State state{};
-    RootComponent root(&state);
-    auto *parent = root.emplaceChild<cupuacu::gui::Menu>(&state, "Parent");
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "menu-hover", 320, 180, SDL_WINDOW_HIDDEN);
+    auto root = std::make_unique<RootComponent>(&state);
+    auto *parent = root->emplaceChild<cupuacu::gui::Menu>(&state, "Parent");
     parent->setBounds(0, 0, 80, 24);
 
     auto *first = parent->addSubMenu(&state, "First");
     auto *second = parent->addSubMenu(&state, "Second");
     auto *firstChild = first->addSubMenu(&state, "First child");
+
+    auto menuBar = std::make_unique<cupuacu::gui::MenuBar>(&state);
+    menuBar->setBounds(0, 0, 200, 40);
+    auto *menuBarPtr = root->addChild(menuBar);
+    window->setRootComponent(std::move(root));
+    window->setMenuBar(menuBarPtr);
 
     parent->showSubMenus();
     first->showSubMenus();
