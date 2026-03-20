@@ -4,6 +4,7 @@
 #include "actions/ViewPolicyPlanning.hpp"
 #include "actions/audio/EditCommands.hpp"
 #include "actions/ViewPolicy.hpp"
+#include "gui/DevicePropertiesWindow.hpp"
 
 TEST_CASE("Edit command selection target is inactive without selection", "[session]")
 {
