@@ -271,10 +271,8 @@ TEST_CASE("Menu runtime hovering a sibling item closes the previous nested subme
     auto *firstChild = first->addSubMenu(&state, "First child");
 
     auto menuBar = std::make_unique<cupuacu::gui::MenuBar>(&state);
-    menuBar->setBounds(0, 0, 200, 40);
-    auto *menuBarPtr = root->addChild(menuBar);
     window->setRootComponent(std::move(root));
-    window->setMenuBar(menuBarPtr);
+    window->setMenuBar(menuBar.get());
 
     parent->showSubMenus();
     first->showSubMenus();
