@@ -39,7 +39,6 @@ TEST_CASE("Empty session integration leaves underlay mouse move safe",
             &state, &session, "test-empty", 800, 400, SDL_WINDOW_HIDDEN);
 
     auto mainView = std::make_unique<cupuacu::gui::MainView>(&state);
-    state.mainView = mainView.get();
     mainView->setWindow(state.mainDocumentSessionWindow->getWindow());
     mainView->setBounds(0, 0, 800, 300);
 

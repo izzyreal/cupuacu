@@ -33,7 +33,7 @@ TEST_CASE("MainView integration contains expected coarse structure",
 {
     cupuacu::State state{};
     auto sessionUi = cupuacu::test::integration::createSessionUi(&state, 128);
-    auto *mainView = sessionUi.mainView.get();
+    auto *mainView = sessionUi.mainView;
 
     auto children = componentChildren(mainView);
     int borderCount = 0;
@@ -81,7 +81,7 @@ TEST_CASE("MainView integration double click selects the visible range",
 
     auto *underlay =
         cupuacu::test::integration::findByNameRecursive<cupuacu::gui::WaveformsUnderlay>(
-            sessionUi.mainView.get(), "WaveformsUnderlay");
+            sessionUi.mainView, "WaveformsUnderlay");
     REQUIRE(underlay != nullptr);
 
     REQUIRE(underlay->mouseDown(cupuacu::gui::MouseEvent{
@@ -110,7 +110,7 @@ TEST_CASE("MainView integration drag selection on the lower waveform selects the
 
     auto *underlay =
         cupuacu::test::integration::findByNameRecursive<cupuacu::gui::WaveformsUnderlay>(
-            sessionUi.mainView.get(), "WaveformsUnderlay");
+            sessionUi.mainView, "WaveformsUnderlay");
     REQUIRE(underlay != nullptr);
 
     const int dragY = underlay->getHeight() * 3 / 4;

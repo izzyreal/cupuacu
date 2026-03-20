@@ -13,13 +13,23 @@
 
 namespace cupuacu::gui
 {
+    struct CursorSet
+    {
+        SDL_Cursor *defaultCursor = nullptr;
+        SDL_Cursor *textCursor = nullptr;
+        SDL_Cursor *pointerCursor = nullptr;
+        SDL_Cursor *currentCursor = nullptr;
+        SDL_Cursor *selectLCursor = nullptr;
+        SDL_Cursor *selectRCursor = nullptr;
+    };
 
-    static SDL_Cursor *defaultCursor = nullptr;
-    static SDL_Cursor *textCursor = nullptr;
-    static SDL_Cursor *pointerCursor = nullptr;
-    static SDL_Cursor *currentCursor = nullptr;
-    static SDL_Cursor *selectLCursor = nullptr;
-    static SDL_Cursor *selectRCursor = nullptr;
+    static CursorSet &getCursorSet()
+    {
+        static CursorSet cursors;
+        return cursors;
+    }
+
+    static void cleanupCursors();
 
     static SDL_Cursor *loadCustomCursor(const std::string &filename,
                                         const int hot_x, const int hot_y)
@@ -51,31 +61,49 @@ namespace cupuacu::gui
 
     static void initCursors()
     {
-        defaultCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_DEFAULT);
-        textCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_TEXT);
-        pointerCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_POINTER);
-        currentCursor = defaultCursor;
+        auto &cursors = getCursorSet();
+        cleanupCursors();
 
-        selectLCursor = loadCustomCursor("select_l.bmp", 0, 0);
-        selectRCursor = loadCustomCursor("select_r.bmp", 0, 0);
+        cursors.defaultCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_DEFAULT);
+        cursors.textCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_TEXT);
+        cursors.pointerCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_POINTER);
+        cursors.currentCursor = cursors.defaultCursor;
 
-        SDL_SetCursor(currentCursor);
+        cursors.selectLCursor = loadCustomCursor("select_l.bmp", 0, 0);
+        cursors.selectRCursor = loadCustomCursor("select_r.bmp", 0, 0);
+
+        SDL_SetCursor(cursors.currentCursor);
     }
 
     static void cleanupCursors()
     {
-        if (defaultCursor)
+        auto &cursors = getCursorSet();
+        if (cursors.defaultCursor)
         {
-            SDL_DestroyCursor(defaultCursor);
+            SDL_DestroyCursor(cursors.defaultCursor);
+            cursors.defaultCursor = nullptr;
         }
-        if (textCursor)
+        if (cursors.textCursor)
         {
-            SDL_DestroyCursor(textCursor);
+            SDL_DestroyCursor(cursors.textCursor);
+            cursors.textCursor = nullptr;
         }
-        if (pointerCursor)
+        if (cursors.pointerCursor)
         {
-            SDL_DestroyCursor(pointerCursor);
+            SDL_DestroyCursor(cursors.pointerCursor);
+            cursors.pointerCursor = nullptr;
         }
+        if (cursors.selectLCursor)
+        {
+            SDL_DestroyCursor(cursors.selectLCursor);
+            cursors.selectLCursor = nullptr;
+        }
+        if (cursors.selectRCursor)
+        {
+            SDL_DestroyCursor(cursors.selectRCursor);
+            cursors.selectRCursor = nullptr;
+        }
+        cursors.currentCursor = nullptr;
     }
 
     static void updateMouseCursor(const State *state, const Window *window)
@@ -84,39 +112,40 @@ namespace cupuacu::gui
         {
             return;
         }
+        auto &cursors = getCursorSet();
         const auto &viewState =
             state->mainDocumentSessionWindow->getViewState();
 
-        SDL_Cursor *newCursor = defaultCursor;
+        SDL_Cursor *newCursor = cursors.defaultCursor;
         const SDL_Window *focus = SDL_GetKeyboardFocus();
         if (!focus || focus != window->getSdlWindow())
         {
-            if (newCursor != currentCursor)
+            if (newCursor != cursors.currentCursor)
             {
                 SDL_SetCursor(newCursor);
-                currentCursor = newCursor;
+                cursors.currentCursor = newCursor;
             }
             return;
         }
 
         if (window->getMenuBar() && window->getMenuBar()->hasMenuOpen())
         {
-            newCursor = defaultCursor;
+            newCursor = cursors.defaultCursor;
         }
         else if (dynamic_cast<const Waveform *>(
                      window->getComponentUnderMouse()))
         {
             if (viewState.hoveringOverChannels == LEFT)
             {
-                newCursor = selectLCursor;
+                newCursor = cursors.selectLCursor;
             }
             else if (viewState.hoveringOverChannels == RIGHT)
             {
-                newCursor = selectRCursor;
+                newCursor = cursors.selectRCursor;
             }
             else /* SelectedChannels::BOTH */
             {
-                newCursor = textCursor;
+                newCursor = cursors.textCursor;
             }
         }
         else if (dynamic_cast<const SamplePoint *>(
@@ -124,13 +153,13 @@ namespace cupuacu::gui
                  dynamic_cast<const TriangleMarker *>(
                      window->getComponentUnderMouse()))
         {
-            newCursor = pointerCursor;
+            newCursor = cursors.pointerCursor;
         }
 
-        if (newCursor != currentCursor)
+        if (newCursor != cursors.currentCursor)
         {
             SDL_SetCursor(newCursor);
-            currentCursor = newCursor;
+            cursors.currentCursor = newCursor;
         }
     }
 

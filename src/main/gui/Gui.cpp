@@ -11,6 +11,28 @@
 #include "VuMeterContainer.hpp"
 #include "Window.hpp"
 
+namespace
+{
+    template <typename T>
+    T *findDirectChildOfType(cupuacu::gui::Component *parent)
+    {
+        if (!parent)
+        {
+            return nullptr;
+        }
+
+        for (const auto &child : parent->getChildren())
+        {
+            if (auto *typed = dynamic_cast<T *>(child.get()))
+            {
+                return typed;
+            }
+        }
+
+        return nullptr;
+    }
+}
+
 SDL_Rect computeMainViewBounds(const uint16_t canvasWidth,
                                const uint16_t canvasHeight,
                                const uint8_t pixelScale,
@@ -93,18 +115,17 @@ void cupuacu::gui::buildComponents(State *state, Window *window)
     auto *overlayLayerPtr = rootComponent->addChild(overlayLayer);
 
     auto mainView = std::make_unique<MainView>(state);
-    state->mainView = contentLayerPtr->addChild(mainView);
+    contentLayerPtr->addChild(mainView);
 
     auto vuMeterContainer = std::make_unique<VuMeterContainer>(state);
-    state->vuMeterContainer = contentLayerPtr->addChild(vuMeterContainer);
+    contentLayerPtr->addChild(vuMeterContainer);
 
     auto transportButtonsContainer =
         std::make_unique<TransportButtonsContainer>(state);
-    state->transportButtonsContainer =
-        contentLayerPtr->addChild(transportButtonsContainer);
+    contentLayerPtr->addChild(transportButtonsContainer);
 
     auto statusBar = std::make_unique<StatusBar>(state);
-    state->statusBar = contentLayerPtr->addChild(statusBar);
+    contentLayerPtr->addChild(statusBar);
 
     auto menuBar = std::make_unique<MenuBar>(state);
     auto *menuBarPtr = overlayLayerPtr->addChild(menuBar);
@@ -162,22 +183,38 @@ void cupuacu::gui::resizeComponents(State *state, Window *window)
                                         menuBarRect.w, menuBarRect.h);
     }
 
+    auto *contentLayer = window->getContentLayer();
+    auto *mainView = findDirectChildOfType<cupuacu::gui::MainView>(contentLayer);
+    auto *vuMeterContainer =
+        findDirectChildOfType<cupuacu::gui::VuMeterContainer>(contentLayer);
+    auto *transportButtonsContainer =
+        findDirectChildOfType<cupuacu::gui::TransportButtonsContainer>(
+            contentLayer);
+    auto *statusBar =
+        findDirectChildOfType<cupuacu::gui::StatusBar>(contentLayer);
+
+    if (!mainView || !vuMeterContainer || !transportButtonsContainer ||
+        !statusBar)
+    {
+        return;
+    }
+
     const SDL_Rect mainViewBounds{0, menuBarRect.h, newCanvasW,
                                   newCanvasH - menuBarRect.h -
                                       vuMeterContainerRect.h - statusBarRect.h};
 
-    state->mainView->setBounds(mainViewBounds.x, mainViewBounds.y,
-                               mainViewBounds.w, mainViewBounds.h);
+    mainView->setBounds(mainViewBounds.x, mainViewBounds.y, mainViewBounds.w,
+                        mainViewBounds.h);
 
-    state->vuMeterContainer->setBounds(
-        vuMeterContainerRect.x, vuMeterContainerRect.y, vuMeterContainerRect.w,
-        vuMeterContainerRect.h);
-    state->transportButtonsContainer->setBounds(
+    vuMeterContainer->setBounds(
+        vuMeterContainerRect.x, vuMeterContainerRect.y,
+        vuMeterContainerRect.w, vuMeterContainerRect.h);
+    transportButtonsContainer->setBounds(
         transportButtonsContainerRect.x, transportButtonsContainerRect.y,
         transportButtonsContainerRect.w, transportButtonsContainerRect.h);
 
-    state->statusBar->setBounds(statusBarRect.x, statusBarRect.y,
-                                statusBarRect.w, statusBarRect.h);
+    statusBar->setBounds(statusBarRect.x, statusBarRect.y, statusBarRect.w,
+                         statusBarRect.h);
 
     window->getRootComponent()->setDirty();
 

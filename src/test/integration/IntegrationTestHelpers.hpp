@@ -79,7 +79,9 @@ namespace cupuacu::test::integration
 
     struct SessionUi
     {
-        std::unique_ptr<cupuacu::gui::MainView> mainView;
+        std::unique_ptr<cupuacu::gui::Component> root;
+        cupuacu::gui::Component *contentLayer = nullptr;
+        cupuacu::gui::MainView *mainView = nullptr;
     };
 
     inline SessionUi createSessionUi(cupuacu::State *state,
@@ -109,10 +111,19 @@ namespace cupuacu::test::integration
                 SDL_WINDOW_HIDDEN);
 
         SessionUi ui{};
-        ui.mainView = std::make_unique<cupuacu::gui::MainView>(state);
-        state->mainView = ui.mainView.get();
-        ui.mainView->setWindow(state->mainDocumentSessionWindow->getWindow());
-        ui.mainView->setBounds(0, 0, windowWidth, mainViewHeight);
+        ui.root = std::make_unique<RootComponent>(state);
+        ui.root->setBounds(0, 0, windowWidth, windowHeight);
+        auto contentLayer = std::make_unique<cupuacu::gui::Component>(
+            state, "ContentLayer");
+        contentLayer->setInterceptMouseEnabled(false);
+        ui.contentLayer = ui.root->addChild(contentLayer);
+        auto mainView = std::make_unique<cupuacu::gui::MainView>(state);
+        mainView->setBounds(0, 0, windowWidth, mainViewHeight);
+        ui.mainView = ui.contentLayer->addChild(mainView);
+        state->mainDocumentSessionWindow->getWindow()->setRootComponent(
+            std::move(ui.root));
+        state->mainDocumentSessionWindow->getWindow()->setContentLayer(
+            ui.contentLayer);
         return ui;
     }
 } // namespace cupuacu::test::integration

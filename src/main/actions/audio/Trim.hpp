@@ -2,6 +2,7 @@
 #include "DurationMutationUndoable.hpp"
 #include "../ViewPolicy.hpp"
 #include "../../Document.hpp"
+#include "../../gui/MainViewAccess.hpp"
 #include "../../gui/Waveform.hpp"
 #include <vector>
 #include <cstdint>
@@ -78,11 +79,7 @@ namespace cupuacu::actions::audio
         {
             gui::Waveform::updateAllSamplePoints(state);
             gui::Waveform::setAllWaveformsDirty(state);
-
-            if (state->mainView)
-            {
-                state->mainView->setDirty();
-            }
+            gui::requestMainViewRefresh(state);
         }
 
     public:

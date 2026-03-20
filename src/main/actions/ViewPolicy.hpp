@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../State.hpp"
+#include "../gui/MainViewAccess.hpp"
 #include "../gui/Waveform.hpp"
 #include "Zoom.hpp"
 
@@ -38,10 +39,6 @@ namespace cupuacu::actions
 
         gui::Waveform::updateAllSamplePoints(state);
         gui::Waveform::setAllWaveformsDirty(state);
-
-        if (state->mainView)
-        {
-            state->mainView->setDirty();
-        }
+        gui::requestMainViewRefresh(state);
     }
 } // namespace cupuacu::actions

@@ -1,7 +1,7 @@
 #include "SamplePoint.hpp"
 
 #include "../actions/audio/SetSampleValue.hpp"
-#include "MainView.hpp"
+#include "MainViewAccess.hpp"
 #include "SamplePointInteractionPlanning.hpp"
 #include "Waveform.hpp"
 
@@ -62,7 +62,7 @@ bool SamplePoint::mouseUp(const MouseEvent &e)
     undoable->setNewValue(getSampleValue());
     undoable->updateGui = [state = state, channelIndex = channelIndex]
     {
-        state->mainView->setDirty();
+        requestMainViewRefresh(state);
         state->waveforms[channelIndex]->updateSamplePoints();
     };
 

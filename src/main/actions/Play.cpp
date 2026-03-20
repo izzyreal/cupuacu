@@ -1,7 +1,7 @@
 #include "Play.hpp"
 
 #include "../State.hpp"
-#include "../gui/VuMeter.hpp"
+#include "../gui/VuMeterAccess.hpp"
 #include "playback/PlaybackRange.hpp"
 
 #include "audio/AudioMessage.hpp"
@@ -13,11 +13,7 @@ using namespace cupuacu::audio;
 void performStop(cupuacu::State *state)
 {
     state->audioDevices->enqueue(Stop{});
-
-    if (state->vuMeter)
-    {
-        state->vuMeter->startDecay();
-    }
+    gui::startVuMeterDecay(state);
 }
 
 void cupuacu::actions::play(cupuacu::State *state)
@@ -55,7 +51,7 @@ void cupuacu::actions::play(cupuacu::State *state)
         playMsg.loopEnabled = state->loopPlaybackEnabled;
         playMsg.selectedChannels = viewState.selectedChannels;
         playMsg.selectionIsActive = session.selection.isActive();
-        playMsg.vuMeter = state->vuMeter;
+        playMsg.vuMeter = gui::getVuMeterIfPresent(state);
         state->audioDevices->enqueue(std::move(playMsg));
     }
 

@@ -3,7 +3,7 @@
 #include "DurationMutationUndoable.hpp"
 
 #include "../../Document.hpp"
-#include "../../gui/MainView.hpp"
+#include "../../gui/MainViewAccess.hpp"
 #include "../../gui/Waveform.hpp"
 
 #include <algorithm>
@@ -180,7 +180,7 @@ namespace cupuacu::actions::audio
 
         void afterDurationMutationUi() override
         {
-            if (!state || !state->mainView)
+            if (!state)
             {
                 return;
             }
@@ -191,7 +191,7 @@ namespace cupuacu::actions::audio
                 static_cast<int64_t>(state->waveforms.size());
             if (currentWaveformCount != currentChannelCount)
             {
-                state->mainView->rebuildWaveforms();
+                gui::rebuildMainWaveforms(state);
             }
         }
 

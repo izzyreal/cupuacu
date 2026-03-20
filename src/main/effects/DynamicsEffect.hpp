@@ -6,7 +6,7 @@
 
 #include "audio/AudioProcessor.hpp"
 #include "actions/Undoable.hpp"
-#include "gui/MainView.hpp"
+#include "gui/MainViewAccess.hpp"
 #include "gui/Waveform.hpp"
 
 #include <algorithm>
@@ -31,10 +31,7 @@ namespace cupuacu::effects
             {
                 cupuacu::gui::Waveform::updateAllSamplePoints(state);
                 cupuacu::gui::Waveform::setAllWaveformsDirty(state);
-                if (state->mainView)
-                {
-                    state->mainView->setDirty();
-                }
+                cupuacu::gui::requestMainViewRefresh(state);
             };
         }
 

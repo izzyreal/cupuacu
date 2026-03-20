@@ -1,7 +1,7 @@
 #pragma once
 #include "../Undoable.hpp"
 #include "../../Document.hpp"
-#include "../../gui/MainView.hpp"
+#include "../../gui/MainViewAccess.hpp"
 
 namespace cupuacu::actions::audio
 {
@@ -32,10 +32,7 @@ namespace cupuacu::actions::audio
 
             updateGui = [state = state]
             {
-                if (state->mainView)
-                {
-                    state->mainView->setDirty();
-                }
+                gui::requestMainViewRefresh(state);
             };
         }
 

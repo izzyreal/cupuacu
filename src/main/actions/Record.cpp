@@ -1,6 +1,7 @@
 #include "Record.hpp"
 
 #include "../State.hpp"
+#include "../gui/VuMeterAccess.hpp"
 #include "Play.hpp"
 
 #include "audio/AudioDevices.hpp"
@@ -44,6 +45,6 @@ void cupuacu::actions::record(cupuacu::State *state)
         recordMessage.endPos = 0;
         recordMessage.boundedToEnd = false;
     }
-    recordMessage.vuMeter = state->vuMeter;
+    recordMessage.vuMeter = gui::getVuMeterIfPresent(state);
     state->audioDevices->enqueue(std::move(recordMessage));
 }

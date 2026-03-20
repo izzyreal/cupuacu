@@ -12,6 +12,7 @@
 #include "gui/TextButton.hpp"
 #include "gui/TextInput.hpp"
 #include "gui/UiScale.hpp"
+#include "gui/VuMeterAccess.hpp"
 #include "gui/Window.hpp"
 #include "gui/text.hpp"
 #include "audio/AudioMessage.hpp"
@@ -676,7 +677,7 @@ namespace cupuacu::effects
             playMsg.selectionIsActive =
                 state->activeDocumentSession.selection.isActive();
             playMsg.selectedChannels = getPreviewSelectedChannels(state);
-            playMsg.vuMeter = state->vuMeter;
+            playMsg.vuMeter = cupuacu::gui::getVuMeterIfPresent(state);
             playMsg.previewProcessor = std::move(processor);
             state->audioDevices->enqueue(std::move(playMsg));
             state->playbackRangeStart = start;

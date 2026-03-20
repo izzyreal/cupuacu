@@ -363,7 +363,8 @@ TEST_CASE("Status bar integration lays out labeled fields across the footer",
     auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
     mainWindow->renderFrame();
 
-    auto *statusBar = dynamic_cast<cupuacu::gui::StatusBar *>(state.statusBar);
+    auto *statusBar = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::StatusBar>(mainWindow->getContentLayer(), "StatusBar");
     REQUIRE(statusBar != nullptr);
 
     auto *posField = findStatusField(statusBar, "Pos");
@@ -398,7 +399,10 @@ TEST_CASE("Status bar integration tolerates missing audio devices",
     cupuacu::State state{};
     createBuiltSessionUi(&state, 1024, 44100, 2, 800, 400);
 
-    auto *statusBar = dynamic_cast<cupuacu::gui::StatusBar *>(state.statusBar);
+    auto *statusBar = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::StatusBar>(
+        state.mainDocumentSessionWindow->getWindow()->getContentLayer(),
+        "StatusBar");
     REQUIRE(statusBar != nullptr);
 
     auto *posField = findStatusField(statusBar, "Pos");

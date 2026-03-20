@@ -3,7 +3,7 @@
 
 #include "../State.hpp"
 #include "../file/file_loading.hpp"
-#include "../gui/MainView.hpp"
+#include "../gui/MainViewAccess.hpp"
 #include "../gui/Gui.hpp"
 #include "../gui/Waveform.hpp"
 #include "../gui/Window.hpp"
@@ -52,7 +52,7 @@ namespace cupuacu::actions
         state->activeDocumentSession.currentFile = absoluteFilePath;
 
         file::loadSampleData(state);
-        state->mainView->rebuildWaveforms();
+        gui::rebuildMainWaveforms(state);
         resetWaveformState(state);
         resetZoom(state);
         gui::Waveform::updateAllSamplePoints(state);

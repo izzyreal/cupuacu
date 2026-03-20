@@ -35,10 +35,6 @@ namespace cupuacu
         class DevicePropertiesWindow;
         class Component;
         class Waveform;
-        class MainView;
-        class VuMeter;
-        class VuMeterContainer;
-        class TransportButtonsContainer;
     } // namespace gui
 
     namespace effects
@@ -77,11 +73,6 @@ namespace cupuacu
                         void (*)(effects::DynamicsDialog *)>
             dynamicsDialog{nullptr, destroyDynamicsDialog};
         gui::Window *modalWindow = nullptr;
-        gui::MainView *mainView;
-        gui::Component *statusBar;
-        gui::VuMeterContainer *vuMeterContainer;
-        gui::TransportButtonsContainer *transportButtonsContainer = nullptr;
-        gui::VuMeter *vuMeter;
 
         ~State();
 

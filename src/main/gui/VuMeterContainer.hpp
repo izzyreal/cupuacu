@@ -16,7 +16,6 @@ namespace cupuacu::gui
             : Component(state, "VuMeterContainer")
         {
             vuMeter = emplaceChild<VuMeter>(state);
-            state->vuMeter = vuMeter;
 
             std::vector<std::string> dbLabels{"dB"};
 
