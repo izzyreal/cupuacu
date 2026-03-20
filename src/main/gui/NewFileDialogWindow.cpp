@@ -84,7 +84,6 @@ namespace cupuacu::gui
             });
 
         window->setOnResize([this]() { layoutComponents(); });
-        window->setOnClose([this]() { detachFromState(); });
         window->setRootComponent(std::move(root));
         layoutComponents();
         window->renderFrame();
@@ -114,6 +113,11 @@ namespace cupuacu::gui
         {
             detachFromState();
             return;
+        }
+
+        if (state && state->modalWindow == window.get())
+        {
+            state->modalWindow = nullptr;
         }
 
         SDL_Event event{};

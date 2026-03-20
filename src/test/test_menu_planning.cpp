@@ -170,6 +170,24 @@ TEST_CASE("Menu runtime shows and hides stacked submenus with dynamic names",
     REQUIRE_FALSE(second->isVisible());
 }
 
+TEST_CASE("Menu runtime hides dynamic submenu items with empty names", "[gui]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::State state{};
+    RootComponent root(&state);
+    auto *parent = root.emplaceChild<cupuacu::gui::Menu>(&state, "Parent");
+    parent->setBounds(0, 0, 80, 24);
+
+    auto *visible = parent->addSubMenu(&state, []() { return std::string{"One"}; });
+    auto *hidden = parent->addSubMenu(&state, []() { return std::string{}; });
+
+    parent->showSubMenus();
+
+    REQUIRE(visible->isVisible());
+    REQUIRE_FALSE(hidden->isVisible());
+}
+
 TEST_CASE("Menu runtime top-level click toggles submenu visibility", "[gui]")
 {
     cupuacu::test::ensureSdlTtfInitialized();

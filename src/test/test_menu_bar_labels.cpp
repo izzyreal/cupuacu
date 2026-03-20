@@ -287,6 +287,35 @@ TEST_CASE("MenuBar runtime tracks open menus and hover-open state", "[gui]")
     REQUIRE_FALSE(menuBar->hasMenuOpen());
 }
 
+TEST_CASE("MenuBar disables document-dependent menus when no file is open",
+          "[gui]")
+{
+    cupuacu::State state{};
+    RootComponent root(&state);
+    auto *menuBar = makeMenuBar(&state, root);
+
+    auto topLevelMenus = menuChildren(menuBar);
+    REQUIRE(topLevelMenus.size() == 6);
+    auto *fileMenu = topLevelMenus[0];
+    auto *generateMenu = topLevelMenus[3];
+    auto *effectsMenu = topLevelMenus[4];
+
+    REQUIRE(generateMenu->mouseDown(leftMouseDown()));
+    REQUIRE_FALSE(generateMenu->isOpen());
+    REQUIRE(effectsMenu->mouseDown(leftMouseDown()));
+    REQUIRE_FALSE(effectsMenu->isOpen());
+
+    auto fileEntries = menuChildren(fileMenu);
+    REQUIRE(fileEntries.size() == 6);
+    auto *closeEntry = fileEntries[3];
+    auto *overwriteEntry = fileEntries[4];
+
+    REQUIRE(closeEntry->mouseDown(leftMouseDown()));
+    REQUIRE(overwriteEntry->mouseDown(leftMouseDown()));
+    REQUIRE(state.activeDocumentSession.document.getChannelCount() == 0);
+    REQUIRE(state.activeDocumentSession.currentFile.empty());
+}
+
 TEST_CASE("MenuBar edit actions invoke trim copy cut and paste through submenu actions",
           "[gui]")
 {

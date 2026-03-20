@@ -865,6 +865,45 @@ TEST_CASE("File menu integration opens a recent file into the active session",
     REQUIRE(state.recentFiles == std::vector<std::string>{wavPath.string()});
 }
 
+TEST_CASE("Recent submenu integration does not show blank placeholder rows",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-recent-visible"));
+    const auto wavPath = cleanup.path() / "recent.wav";
+    writeTestWav(wavPath, 22050, 1, {0.25f, 0.5f});
+
+    cupuacu::State state{};
+    state.recentFiles = {wavPath.string()};
+
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "recent-visible", 480, 240, SDL_WINDOW_HIDDEN);
+
+    auto root =
+        std::make_unique<cupuacu::test::integration::RootComponent>(&state);
+    auto *menuBar = root->emplaceChild<cupuacu::gui::MenuBar>(&state);
+    root->setBounds(0, 0, 480, 240);
+    menuBar->setBounds(0, 0, 480, 40);
+    window->setRootComponent(std::move(root));
+    window->setMenuBar(menuBar);
+
+    auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
+    auto *fileMenu = topLevelMenus[0];
+    auto *recentMenu = cupuacu::test::integration::menuChildren(fileMenu)[2];
+    auto recentEntries = cupuacu::test::integration::menuChildren(recentMenu);
+
+    REQUIRE(fileMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
+    REQUIRE(recentMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
+
+    REQUIRE_FALSE(recentEntries[0]->isVisible());
+    REQUIRE(recentEntries[1]->isVisible());
+    for (std::size_t i = 2; i < recentEntries.size(); ++i)
+    {
+        REQUIRE_FALSE(recentEntries[i]->isVisible());
+    }
+}
+
 TEST_CASE("File menu integration exit entry pushes a quit event", "[integration]")
 {
     cupuacu::test::ensureSdlTtfInitialized();

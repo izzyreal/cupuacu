@@ -134,17 +134,28 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
             });
     }
 
-    fileMenu->addSubMenu(
+    auto *closeMenu = fileMenu->addSubMenu(
         state, closeText,
         [&]
         {
             actions::closeCurrentDocument(state);
         });
-    fileMenu->addSubMenu(
+    closeMenu->setIsAvailable(
+        [&]
+        {
+            return actions::hasActiveDocument(state);
+        });
+    auto *overwriteMenu = fileMenu->addSubMenu(
         state, overwriteText,
         [&]
         {
             actions::overwrite(state);
+        });
+    overwriteMenu->setIsAvailable(
+        [&]
+        {
+            return actions::hasActiveDocument(state) &&
+                   !state->activeDocumentSession.currentFile.empty();
         });
     fileMenu->addSubMenu(
         state, exitText,
@@ -198,6 +209,11 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
             {
                 state->generateSilenceDialogWindow->raise();
             }
+        });
+    generateMenu->setIsAvailable(
+        [&]
+        {
+            return actions::hasActiveDocument(state);
         });
 
     std::function<std::string()> undoMenuNameGetter = [&]
@@ -310,6 +326,11 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
             {
                 state->dynamicsDialog->raise();
             }
+        });
+    effectsMenu->setIsAvailable(
+        [&]
+        {
+            return actions::hasActiveDocument(state);
         });
 
     optionsMenu->addSubMenu(

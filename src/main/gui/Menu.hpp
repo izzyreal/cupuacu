@@ -35,6 +35,7 @@ namespace cupuacu::gui
         bool isFirstLevel() const;
 
         std::string getMenuName() const;
+        bool shouldShowAsSubMenuItem() const;
 
     public:
         Menu(State *, const std::string &menuNameToUse,

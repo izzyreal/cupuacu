@@ -56,6 +56,11 @@ bool Menu::isFirstLevel() const
     return dynamic_cast<MenuBar *>(getParent()) != nullptr;
 }
 
+bool Menu::shouldShowAsSubMenuItem() const
+{
+    return !getMenuName().empty();
+}
+
 void Menu::resized()
 {
     label->setBounds(0, 0, getWidth(), getHeight());
@@ -86,6 +91,10 @@ void Menu::showSubMenus()
 
     for (const auto &subMenu : subMenus)
     {
+        if (!subMenu->shouldShowAsSubMenuItem())
+        {
+            continue;
+        }
         const auto subMenuName = subMenu->getMenuName();
         auto [tw, th] = measureText(subMenuName, state->menuFontSize);
         subMenuWidth = std::max(subMenuWidth, tw);
@@ -95,6 +104,11 @@ void Menu::showSubMenus()
 
     for (const auto &subMenu : subMenus)
     {
+        if (!subMenu->shouldShowAsSubMenuItem())
+        {
+            subMenu->setVisible(false);
+            continue;
+        }
         subMenu->setBounds(0, subMenuYPos,
                            subMenuWidth + subMenuHorizontalMargin,
                            menuItemHeight);
