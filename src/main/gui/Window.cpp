@@ -112,6 +112,13 @@ Window::Window(State *stateToUse, const std::string &title, const int width,
 
 Window::~Window()
 {
+    rootComponent.reset();
+    contentLayer = nullptr;
+    overlayLayer = nullptr;
+    menuBar = nullptr;
+    capturingComponent = nullptr;
+    componentUnderMouse = nullptr;
+    focusedComponent = nullptr;
     close();
 }
 

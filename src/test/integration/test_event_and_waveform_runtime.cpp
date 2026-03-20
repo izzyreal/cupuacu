@@ -19,6 +19,7 @@
 #include "gui/TextInput.hpp"
 #include "gui/TriangleMarker.hpp"
 #include "gui/Waveform.hpp"
+#include "gui/WaveformsUnderlay.hpp"
 #include "gui/Window.hpp"
 
 #include <SDL3/SDL.h>
@@ -692,6 +693,104 @@ TEST_CASE("New file dialog integration creates an empty document with the select
     REQUIRE(session.document.getSampleFormat() == cupuacu::SampleFormat::PCM_S8);
     REQUIRE(session.document.getChannelCount() == 1);
     REQUIRE(session.document.getFrameCount() == 0);
+}
+
+TEST_CASE("New file dialog integration can be opened and closed repeatedly",
+          "[integration]")
+{
+    cupuacu::State state{};
+    createBuiltSessionUi(&state, 16, 44100, 2, 800, 400);
+
+    for (int i = 0; i < 3; ++i)
+    {
+        state.newFileDialogWindow.reset(new cupuacu::gui::NewFileDialogWindow(&state));
+        REQUIRE(state.newFileDialogWindow != nullptr);
+        REQUIRE(state.newFileDialogWindow->isOpen());
+
+        auto *dialogRoot =
+            state.newFileDialogWindow->getWindow()->getRootComponent();
+        auto *okButton = cupuacu::test::integration::findFirstRecursive<
+            cupuacu::gui::TextButton>(dialogRoot);
+        REQUIRE(okButton != nullptr);
+
+        clickButton(okButton);
+        REQUIRE_FALSE(state.newFileDialogWindow->isOpen());
+        state.newFileDialogWindow.reset();
+    }
+}
+
+TEST_CASE("Repeated new document creation rebuilds waveform channels cleanly",
+          "[integration]")
+{
+    cupuacu::State state{};
+    createBuiltSessionUi(&state, 16, 44100, 2, 800, 400);
+
+    REQUIRE(state.waveforms.size() == 2);
+
+    cupuacu::actions::createNewDocument(
+        &state, 44100, cupuacu::SampleFormat::PCM_S16, 2);
+    REQUIRE(state.activeDocumentSession.document.getChannelCount() == 2);
+    REQUIRE(state.waveforms.size() == 2);
+
+    cupuacu::actions::createNewDocument(
+        &state, 48000, cupuacu::SampleFormat::PCM_S8, 1);
+    REQUIRE(state.activeDocumentSession.document.getChannelCount() == 1);
+    REQUIRE(state.waveforms.size() == 1);
+
+    cupuacu::actions::createNewDocument(
+        &state, 44100, cupuacu::SampleFormat::PCM_S16, 2);
+    REQUIRE(state.activeDocumentSession.document.getChannelCount() == 2);
+    REQUIRE(state.waveforms.size() == 2);
+}
+
+TEST_CASE("Empty stereo document click keeps triangle markers hidden",
+          "[integration]")
+{
+    cupuacu::State state{};
+    createBuiltSessionUi(&state, 16, 44100, 2, 800, 400);
+
+    cupuacu::actions::createNewDocument(
+        &state, 44100, cupuacu::SampleFormat::PCM_S16, 2);
+
+    auto *root = state.mainDocumentSessionWindow->getWindow()->getRootComponent();
+    auto *mainView =
+        cupuacu::test::integration::findByNameRecursive<cupuacu::gui::MainView>(
+            root, "MainView");
+    auto *underlay = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::WaveformsUnderlay>(root, "WaveformsUnderlay");
+    auto *cursorTop = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::TriangleMarker>(root, "TriangleMarker:CursorTop");
+    auto *cursorBottom = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::TriangleMarker>(root, "TriangleMarker:CursorBottom");
+
+    REQUIRE(mainView != nullptr);
+    REQUIRE(underlay != nullptr);
+    REQUIRE(cursorTop != nullptr);
+    REQUIRE(cursorBottom != nullptr);
+    REQUIRE(state.activeDocumentSession.document.getFrameCount() == 0);
+    REQUIRE(state.mainDocumentSessionWindow->getViewState().samplesPerPixel ==
+            Catch::Approx(0.0));
+
+    mainView->timerCallback();
+    REQUIRE_FALSE(cursorTop->isVisible());
+    REQUIRE_FALSE(cursorBottom->isVisible());
+
+    REQUIRE_FALSE(underlay->mouseDown(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN,
+        20,
+        underlay->getHeight() / 8,
+        20.0f,
+        static_cast<float>(underlay->getHeight() / 8),
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+
+    mainView->timerCallback();
+    REQUIRE_FALSE(cursorTop->isVisible());
+    REQUIRE_FALSE(cursorBottom->isVisible());
+    REQUIRE_FALSE(state.activeDocumentSession.selection.isActive());
+    REQUIRE(state.activeDocumentSession.cursor == 0);
 }
 
 TEST_CASE("Generate silence dialog integration inserts silence at the cursor",

@@ -40,6 +40,14 @@ bool WaveformsUnderlay::mouseDown(const MouseEvent &e)
     handleChannelSelection(e.mouseYi, true);
 
     const auto samplesPerPixel = viewState.samplesPerPixel;
+    if (doc.getFrameCount() <= 0 || samplesPerPixel <= 0.0)
+    {
+        session.selection.reset();
+        session.cursor = 0;
+        Waveform::setAllWaveformsDirty(state);
+        return false;
+    }
+
     if (e.numClicks >= 2)
     {
         double startSample = 0.0;

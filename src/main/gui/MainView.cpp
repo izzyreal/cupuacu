@@ -638,6 +638,17 @@ void MainView::updateTriangleMarkerBounds() const
     const auto sampleOffset = viewState.sampleOffset;
     const auto samplesPerPixel = viewState.samplesPerPixel;
 
+    if (samplesPerPixel <= 0.0 || waveforms->getWidth() <= 0)
+    {
+        cursorTop->setVisible(false);
+        cursorBottom->setVisible(false);
+        selStartTop->setVisible(false);
+        selStartBot->setVisible(false);
+        selEndTop->setVisible(false);
+        selEndBot->setVisible(false);
+        return;
+    }
+
     if (session.selection.isActive())
     {
         cursorTop->setVisible(false);

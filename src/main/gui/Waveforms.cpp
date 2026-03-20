@@ -23,12 +23,13 @@ void Waveforms::onDraw(SDL_Renderer *renderer)
 
 void Waveforms::rebuildWaveforms()
 {
-    for (const auto &w : state->waveforms)
+    const auto oldWaveforms = state->waveforms;
+    state->waveforms.clear();
+
+    for (auto *w : oldWaveforms)
     {
         removeChild(w);
     }
-
-    state->waveforms.clear();
 
     const int numChannels =
         state->activeDocumentSession.document.getChannelCount();
