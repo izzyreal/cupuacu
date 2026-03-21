@@ -1,20 +1,5 @@
 # Cupuacu User Manual
 
-## What Cupuacu Is
-
-Cupuacu is a minimalist desktop audio editor for quick waveform-based editing.
-
-The core workflow is:
-
-1. Open an existing audio file, or create a new empty file
-2. Inspect the waveform
-3. Select audio
-4. Edit it
-5. Apply simple effects
-6. Overwrite the current file
-
-This manual describes the user-visible behavior of the app.
-
 ## Main Window
 
 The main window contains:
