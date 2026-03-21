@@ -274,3 +274,24 @@ TEST_CASE("Persisted recent files and session state save to separate files",
             std::vector<std::string>{"/tmp/open-a.wav", "/tmp/open-b.wav"});
     REQUIRE(loadedSession.activeOpenFileIndex == 1);
 }
+
+TEST_CASE("Document lifecycle helpers can skip persistence when requested",
+          "[persistence]")
+{
+    const auto root = std::filesystem::temp_directory_path() /
+                      "cupuacu-session-persist-skip";
+    ScopedCleanup cleanup(root / "placeholder");
+
+    cupuacu::State state{};
+    state.paths = std::make_unique<TestPaths>(root);
+    state.recentFiles = {"/tmp/recent-a.wav"};
+    state.tabs.resize(1);
+    state.tabs[0].session.currentFile = "/tmp/open-a.wav";
+    state.activeTabIndex = 0;
+
+    cupuacu::actions::closeCurrentDocument(&state, false);
+
+    REQUIRE_FALSE(
+        std::filesystem::exists(state.paths->recentlyOpenedFilesPath()));
+    REQUIRE_FALSE(std::filesystem::exists(state.paths->sessionStatePath()));
+}

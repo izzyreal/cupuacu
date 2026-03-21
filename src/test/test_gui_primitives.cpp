@@ -401,3 +401,55 @@ TEST_CASE("Slider updates value across drag range", "[gui]")
         cupuacu::gui::MouseButtonState{true, false, false},
         1}));
 }
+
+TEST_CASE("TextInput inserts at the caret after left-right navigation", "[gui]")
+{
+    cupuacu::State state{};
+    cupuacu::gui::TextInput input(&state);
+    input.setText("abcd");
+    input.focusGained();
+
+    SDL_KeyboardEvent left{};
+    left.scancode = SDL_SCANCODE_LEFT;
+
+    REQUIRE(input.keyDown(left));
+    REQUIRE(input.keyDown(left));
+    REQUIRE(input.textInput("X"));
+    REQUIRE(input.getText() == "abXcd");
+}
+
+TEST_CASE("TextInput replaces a shift-arrow selection on input", "[gui]")
+{
+    cupuacu::State state{};
+    cupuacu::gui::TextInput input(&state);
+    input.setText("abcd");
+    input.focusGained();
+
+    SDL_KeyboardEvent shiftLeft{};
+    shiftLeft.scancode = SDL_SCANCODE_LEFT;
+    shiftLeft.mod = SDL_KMOD_SHIFT;
+
+    REQUIRE(input.keyDown(shiftLeft));
+    REQUIRE(input.keyDown(shiftLeft));
+    REQUIRE(input.textInput("Z"));
+    REQUIRE(input.getText() == "abZ");
+}
+
+TEST_CASE("TextInput backspace deletes the selected range", "[gui]")
+{
+    cupuacu::State state{};
+    cupuacu::gui::TextInput input(&state);
+    input.setText("abcd");
+    input.focusGained();
+
+    SDL_KeyboardEvent shiftLeft{};
+    shiftLeft.scancode = SDL_SCANCODE_LEFT;
+    shiftLeft.mod = SDL_KMOD_SHIFT;
+    REQUIRE(input.keyDown(shiftLeft));
+    REQUIRE(input.keyDown(shiftLeft));
+
+    SDL_KeyboardEvent backspace{};
+    backspace.scancode = SDL_SCANCODE_BACKSPACE;
+    REQUIRE(input.keyDown(backspace));
+    REQUIRE(input.getText() == "ab");
+}

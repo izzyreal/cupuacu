@@ -2,6 +2,7 @@
 
 #include "Component.hpp"
 
+#include <cstddef>
 #include <functional>
 #include <string>
 #include <string_view>
@@ -32,8 +33,11 @@ namespace cupuacu::gui
         void focusGained() override;
         void focusLost() override;
         bool mouseDown(const MouseEvent &event) override;
+        bool mouseMove(const MouseEvent &event) override;
+        bool mouseUp(const MouseEvent &event) override;
         bool keyDown(const SDL_KeyboardEvent &event) override;
         bool textInput(const std::string_view textToInsert) override;
+        void timerCallback() override;
         void onDraw(SDL_Renderer *renderer) override;
 
     private:
@@ -41,10 +45,26 @@ namespace cupuacu::gui
         std::string allowedCharacters;
         int fontSize = 0;
         bool focused = false;
+        bool cursorVisible = false;
+        bool mouseSelecting = false;
+        std::size_t cursorIndex = 0;
+        std::size_t selectionAnchorIndex = 0;
+        Uint64 lastCursorBlinkTicks = 0;
         std::function<void(const std::string &)> onTextChanged;
         std::function<void(const std::string &)> onEditingFinished;
 
         bool isCharacterAllowed(char c) const;
         void notifyTextChanged();
+        bool hasSelection() const;
+        std::size_t getSelectionStart() const;
+        std::size_t getSelectionEnd() const;
+        void collapseSelectionTo(std::size_t index);
+        void moveCaretTo(std::size_t index, bool extendSelection);
+        void resetCursorBlink();
+        void deleteSelectionIfActive();
+        int getTextPadding() const;
+        int getTextY(const SDL_Rect &bounds, int borderThickness) const;
+        int measureTextWidth(std::string_view value) const;
+        std::size_t findCursorIndexForX(int localX) const;
     };
 } // namespace cupuacu::gui

@@ -270,7 +270,8 @@ namespace cupuacu::actions
         gui::requestMainViewRefresh(state);
     }
 
-    inline void closeCurrentDocument(cupuacu::State *state)
+    inline void closeCurrentDocument(cupuacu::State *state,
+                                     const bool shouldPersistState = true)
     {
         if (!state)
         {
@@ -288,12 +289,16 @@ namespace cupuacu::actions
 
         refreshDocumentUi(state);
         setMainWindowTitle(state, kUntitledDocumentTitle);
-        persistSessionState(state);
+        if (shouldPersistState)
+        {
+            persistSessionState(state);
+        }
     }
 
     inline void createNewDocument(cupuacu::State *state, const int sampleRate,
                                   const cupuacu::SampleFormat format,
-                                  const int channels = 2)
+                                  const int channels = 2,
+                                  const bool shouldPersistState = true)
     {
         if (!state)
         {
@@ -311,26 +316,32 @@ namespace cupuacu::actions
 
         refreshDocumentUi(state);
         setMainWindowTitle(state, kUntitledDocumentTitle);
-        persistSessionState(state);
+        if (shouldPersistState)
+        {
+            persistSessionState(state);
+        }
     }
 
     inline bool createNewDocumentInNewTab(cupuacu::State *state,
                                           const int sampleRate,
                                           const cupuacu::SampleFormat format,
-                                          const int channels = 2)
+                                          const int channels = 2,
+                                          const bool shouldPersistState = true)
     {
         if (!prepareTabForOpenedDocument(state))
         {
             return false;
         }
 
-        createNewDocument(state, sampleRate, format, channels);
+        createNewDocument(state, sampleRate, format, channels,
+                          shouldPersistState);
         return true;
     }
 
     inline bool loadFileIntoSession(cupuacu::State *state,
                                     const std::string &absoluteFilePath,
-                                    const bool updateRecentFiles = true)
+                                    const bool updateRecentFiles = true,
+                                    const bool shouldPersistState = true)
     {
         if (!state || absoluteFilePath.empty())
         {
@@ -347,7 +358,7 @@ namespace cupuacu::actions
         {
             rememberRecentFile(state, absoluteFilePath);
         }
-        else
+        else if (shouldPersistState)
         {
             persistSessionState(state);
         }
@@ -357,14 +368,16 @@ namespace cupuacu::actions
 
     inline bool loadFileIntoNewTab(cupuacu::State *state,
                                    const std::string &absoluteFilePath,
-                                   const bool updateRecentFiles = true)
+                                   const bool updateRecentFiles = true,
+                                   const bool shouldPersistState = true)
     {
         if (!prepareTabForOpenedDocument(state))
         {
             return false;
         }
 
-        return loadFileIntoSession(state, absoluteFilePath, updateRecentFiles);
+        return loadFileIntoSession(state, absoluteFilePath, updateRecentFiles,
+                                   shouldPersistState);
     }
 
     inline StartupDocumentRestorePlan planStartupDocumentRestore(
@@ -433,11 +446,11 @@ namespace cupuacu::actions
 
         if (!plan.openFiles.empty())
         {
-            loadFileIntoSession(state, plan.openFiles.front(), false);
+            loadFileIntoSession(state, plan.openFiles.front(), false, false);
 
             for (size_t index = 1; index < plan.openFiles.size(); ++index)
             {
-                loadFileIntoNewTab(state, plan.openFiles[index], false);
+                loadFileIntoNewTab(state, plan.openFiles[index], false, false);
             }
 
             if (plan.activeOpenFileIndex >= 0 &&

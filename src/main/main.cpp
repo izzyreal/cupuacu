@@ -130,13 +130,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
     cupuacu::State *state = (cupuacu::State *)appstate;
-    auto *mainWindow = state->mainDocumentSessionWindow
-                           ? state->mainDocumentSessionWindow->getWindow()
-                           : nullptr;
-
-    if (mainWindow && mainWindow->getRootComponent())
+    for (auto *window : state->windows)
     {
-        mainWindow->getRootComponent()->timerCallbackRecursive();
+        if (window && window->isOpen() && window->getRootComponent())
+        {
+            window->getRootComponent()->timerCallbackRecursive();
+        }
     }
 
     bool renderedAnyWindow = false;
