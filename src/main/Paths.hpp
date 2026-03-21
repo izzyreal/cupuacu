@@ -37,6 +37,8 @@ namespace cupuacu
 
         std::filesystem::path recentlyOpenedFilesPath() const;
 
+        std::filesystem::path sessionStatePath() const;
+
         Documents *getDocuments() const;
 
     private:

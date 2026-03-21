@@ -1,11 +1,11 @@
-#include "persistence/RecentFilesPersistence.hpp"
+#include "persistence/SessionStatePersistence.hpp"
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <optional>
-#include <algorithm>
 
 namespace cupuacu::persistence
 {
@@ -13,38 +13,22 @@ namespace cupuacu::persistence
     {
         constexpr int kFormatVersion = 1;
 
-        std::vector<std::string> filterFiles(const std::vector<std::string> &files,
-                                             const std::size_t maxEntries)
+        std::vector<std::string> filterFiles(const std::vector<std::string> &files)
         {
             std::vector<std::string> result;
-            if (maxEntries > 0)
-            {
-                result.reserve(std::min(files.size(), maxEntries));
-            }
-            else
-            {
-                result.reserve(files.size());
-            }
-
+            result.reserve(files.size());
             for (const auto &file : files)
             {
-                if (file.empty())
+                if (!file.empty())
                 {
-                    continue;
-                }
-                result.push_back(file);
-                if (maxEntries > 0 && result.size() >= maxEntries)
-                {
-                    break;
+                    result.push_back(file);
                 }
             }
-
             return result;
         }
 
         std::optional<std::vector<std::string>> loadStringArray(
-            const nlohmann::json &json, const char *key,
-            const std::size_t maxEntries)
+            const nlohmann::json &json, const char *key)
         {
             if (!json.contains(key) || !json.at(key).is_array())
             {
@@ -61,22 +45,23 @@ namespace cupuacu::persistence
                 files.push_back(entry.get<std::string>());
             }
 
-            return filterFiles(files, maxEntries);
+            return filterFiles(files);
         }
     } // namespace
 
-    std::vector<std::string> RecentFilesPersistence::load(
+    PersistedSessionState SessionStatePersistence::load(
         const std::filesystem::path &path)
     {
+        PersistedSessionState state{};
         if (path.empty() || !std::filesystem::exists(path))
         {
-            return {};
+            return state;
         }
 
         std::ifstream input(path);
         if (!input.is_open())
         {
-            return {};
+            return state;
         }
 
         nlohmann::json json;
@@ -89,37 +74,41 @@ namespace cupuacu::persistence
             return {};
         }
 
-        if (!json.is_object())
+        if (!json.is_object() || json.value("version", 0) != kFormatVersion)
         {
             return {};
         }
 
-        const int version = json.value("version", 0);
-        if (version != kFormatVersion)
+        const auto openFiles = loadStringArray(json, "openFiles");
+        if (!openFiles.has_value())
         {
             return {};
         }
 
-        const auto recentFiles = loadStringArray(
-            json, "recentFiles", RecentFilesPersistence::kMaxEntries);
-        if (!recentFiles.has_value())
+        state.openFiles = *openFiles;
+        if (json.contains("activeOpenFileIndex") &&
+            json.at("activeOpenFileIndex").is_number_integer())
         {
-            return {};
+            state.activeOpenFileIndex =
+                json.at("activeOpenFileIndex").get<int>();
         }
-
-        return *recentFiles;
+        return state;
     }
 
-    bool RecentFilesPersistence::save(const std::filesystem::path &path,
-                                      const std::vector<std::string> &recentFiles)
+    bool SessionStatePersistence::save(const std::filesystem::path &path,
+                                       const PersistedSessionState &state)
     {
         if (path.empty())
         {
             return false;
         }
 
-        const auto trimmedRecentFiles = filterFiles(
-            recentFiles, RecentFilesPersistence::kMaxEntries);
+        const auto openFiles = filterFiles(state.openFiles);
+        const int activeOpenFileIndex =
+            openFiles.empty()
+                ? -1
+                : std::clamp(state.activeOpenFileIndex, 0,
+                             static_cast<int>(openFiles.size()) - 1);
 
         std::error_code ec;
         std::filesystem::create_directories(path.parent_path(), ec);
@@ -136,7 +125,8 @@ namespace cupuacu::persistence
 
         const nlohmann::json json{
             {"version", kFormatVersion},
-            {"recentFiles", trimmedRecentFiles},
+            {"openFiles", openFiles},
+            {"activeOpenFileIndex", activeOpenFileIndex},
         };
 
         output << json.dump(2) << '\n';

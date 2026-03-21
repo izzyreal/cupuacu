@@ -3,6 +3,7 @@
 #include "actions/DocumentLifecycle.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "persistence/RecentFilesPersistence.hpp"
+#include "persistence/SessionStatePersistence.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -65,20 +66,12 @@ TEST_CASE("Recent files persistence round-trips and trims to ten entries",
         files.push_back("/tmp/file-" + std::to_string(i) + ".wav");
     }
 
-    cupuacu::persistence::PersistedSessionState state{};
-    state.recentFiles = files;
-    state.openFiles = {"/tmp/open-a.wav", "/tmp/open-b.wav"};
-    state.activeOpenFileIndex = 1;
-
-    REQUIRE(cupuacu::persistence::RecentFilesPersistence::save(path, state));
+    REQUIRE(cupuacu::persistence::RecentFilesPersistence::save(path, files));
 
     const auto loaded = cupuacu::persistence::RecentFilesPersistence::load(path);
-    REQUIRE(loaded.recentFiles.size() == 10);
-    REQUIRE(loaded.recentFiles.front() == "/tmp/file-0.wav");
-    REQUIRE(loaded.recentFiles.back() == "/tmp/file-9.wav");
-    REQUIRE(loaded.openFiles ==
-            std::vector<std::string>{"/tmp/open-a.wav", "/tmp/open-b.wav"});
-    REQUIRE(loaded.activeOpenFileIndex == 1);
+    REQUIRE(loaded.size() == 10);
+    REQUIRE(loaded.front() == "/tmp/file-0.wav");
+    REQUIRE(loaded.back() == "/tmp/file-9.wav");
 }
 
 TEST_CASE("Recent files persistence rejects malformed payloads", "[persistence]")
@@ -92,27 +85,25 @@ TEST_CASE("Recent files persistence rejects malformed payloads", "[persistence]"
     {
         std::ofstream out(path);
         REQUIRE(out.good());
-        out << R"({"version":2,"files":["a.wav"]})";
+        out << R"({"version":1,"files":["a.wav"]})";
     }
 
-    REQUIRE(cupuacu::persistence::RecentFilesPersistence::load(path)
-                .recentFiles.empty());
+    REQUIRE(cupuacu::persistence::RecentFilesPersistence::load(path).empty());
 
     {
         std::ofstream out(path);
         REQUIRE(out.good());
-        out << R"({"version":2,"recentFiles":[1,2,3],"openFiles":["a.wav"],"activeOpenFileIndex":0})";
+        out << R"({"version":1,"recentFiles":[1,2,3]})";
     }
 
-    REQUIRE(cupuacu::persistence::RecentFilesPersistence::load(path)
-                .recentFiles.empty());
+    REQUIRE(cupuacu::persistence::RecentFilesPersistence::load(path).empty());
 }
 
-TEST_CASE("Recent files persistence still loads the legacy version-1 format",
+TEST_CASE("Recent files persistence loads the current format",
           "[persistence]")
 {
     const auto path = std::filesystem::temp_directory_path() /
-                      "cupuacu-recent-files-legacy" /
+                      "cupuacu-recent-files-current" /
                       "recently_opened_files.json";
     ScopedCleanup cleanup(path);
 
@@ -120,44 +111,48 @@ TEST_CASE("Recent files persistence still loads the legacy version-1 format",
     {
         std::ofstream out(path);
         REQUIRE(out.good());
-        out << R"({"version":1,"files":["/tmp/first.wav","/tmp/second.wav"]})";
+        out << R"({"version":1,"recentFiles":["/tmp/first.wav","/tmp/second.wav"]})";
     }
 
     const auto loaded = cupuacu::persistence::RecentFilesPersistence::load(path);
-    REQUIRE(loaded.recentFiles ==
+    REQUIRE(loaded ==
             std::vector<std::string>{"/tmp/first.wav", "/tmp/second.wav"});
-    REQUIRE(loaded.openFiles.empty());
-    REQUIRE(loaded.activeOpenFileIndex == -1);
 }
 
-TEST_CASE("Startup document restore plan falls back to the most recent file for legacy state",
+TEST_CASE("Session state persistence round-trips open files and active index",
           "[persistence]")
 {
-    const auto root = std::filesystem::temp_directory_path() /
-                      "cupuacu-startup-restore-open";
-    const auto first = root / "first.wav";
-    const auto second = root / "second.wav";
-    ScopedCleanup cleanup(root / "placeholder");
-
-    std::filesystem::create_directories(root);
-    {
-        std::ofstream firstOut(first);
-        REQUIRE(firstOut.good());
-    }
-    {
-        std::ofstream secondOut(second);
-        REQUIRE(secondOut.good());
-    }
+    const auto path = std::filesystem::temp_directory_path() /
+                      "cupuacu-session-state-test" / "session_state.json";
+    ScopedCleanup cleanup(path);
 
     cupuacu::persistence::PersistedSessionState state{};
-    state.recentFiles = {first.string(), second.string()};
+    state.openFiles = {"/tmp/open-a.wav", "/tmp/open-b.wav"};
+    state.activeOpenFileIndex = 1;
 
-    const auto plan = cupuacu::actions::planStartupDocumentRestore(state);
+    REQUIRE(cupuacu::persistence::SessionStatePersistence::save(path, state));
 
-    REQUIRE(plan.recentFiles ==
-            std::vector<std::string>{first.string(), second.string()});
-    REQUIRE(plan.openFiles == std::vector<std::string>{first.string()});
-    REQUIRE(plan.activeOpenFileIndex == 0);
+    const auto loaded = cupuacu::persistence::SessionStatePersistence::load(path);
+    REQUIRE(loaded.openFiles ==
+            std::vector<std::string>{"/tmp/open-a.wav", "/tmp/open-b.wav"});
+    REQUIRE(loaded.activeOpenFileIndex == 1);
+}
+
+TEST_CASE("Session state persistence rejects malformed payloads", "[persistence]")
+{
+    const auto path = std::filesystem::temp_directory_path() /
+                      "cupuacu-session-state-invalid" / "session_state.json";
+    ScopedCleanup cleanup(path);
+
+    std::filesystem::create_directories(path.parent_path());
+    {
+        std::ofstream out(path);
+        REQUIRE(out.good());
+        out << R"({"version":1,"openFiles":[1,2,3],"activeOpenFileIndex":0})";
+    }
+
+    REQUIRE(cupuacu::persistence::SessionStatePersistence::load(path)
+                .openFiles.empty());
 }
 
 TEST_CASE("Startup document restore plan restores multiple open files and active tab",
@@ -185,11 +180,11 @@ TEST_CASE("Startup document restore plan restores multiple open files and active
     }
 
     cupuacu::persistence::PersistedSessionState state{};
-    state.recentFiles = {third.string(), second.string(), first.string()};
     state.openFiles = {first.string(), second.string(), third.string()};
     state.activeOpenFileIndex = 2;
 
-    const auto plan = cupuacu::actions::planStartupDocumentRestore(state);
+    const auto plan = cupuacu::actions::planStartupDocumentRestore(
+        {third.string(), second.string(), first.string()}, state);
 
     REQUIRE(plan.recentFiles ==
             std::vector<std::string>{third.string(), second.string(),
@@ -222,11 +217,11 @@ TEST_CASE("Startup document restore plan prunes missing recent and open files",
     }
 
     cupuacu::persistence::PersistedSessionState state{};
-    state.recentFiles = {"", missing.string(), existing.string()};
     state.openFiles = {missing.string(), existingOpen.string()};
     state.activeOpenFileIndex = 9;
 
-    const auto plan = cupuacu::actions::planStartupDocumentRestore(state);
+    const auto plan = cupuacu::actions::planStartupDocumentRestore(
+        {"", missing.string(), existing.string()}, state);
 
     REQUIRE(plan.recentFiles == std::vector<std::string>{existing.string()});
     REQUIRE(plan.openFiles == std::vector<std::string>{existingOpen.string()});
@@ -234,7 +229,7 @@ TEST_CASE("Startup document restore plan prunes missing recent and open files",
     REQUIRE(plan.shouldPersistState);
 }
 
-TEST_CASE("Persisted session state captures open file tabs and the active file-backed tab",
+TEST_CASE("Persisted open session state captures open file tabs and the active file-backed tab",
           "[persistence]")
 {
     cupuacu::State state{};
@@ -245,16 +240,13 @@ TEST_CASE("Persisted session state captures open file tabs and the active file-b
     state.tabs[2].session.currentFile = "/tmp/open-b.wav";
     state.activeTabIndex = 2;
 
-    const auto persisted = cupuacu::actions::buildPersistedSessionState(&state);
-
-    REQUIRE(persisted.recentFiles ==
-            std::vector<std::string>{"/tmp/recent-a.wav", "/tmp/recent-b.wav"});
+    const auto persisted = cupuacu::actions::buildPersistedOpenSessionState(&state);
     REQUIRE(persisted.openFiles ==
             std::vector<std::string>{"/tmp/open-a.wav", "/tmp/open-b.wav"});
     REQUIRE(persisted.activeOpenFileIndex == 1);
 }
 
-TEST_CASE("Persisted session state round-trips the active open tab index on save",
+TEST_CASE("Persisted recent files and session state save to separate files",
           "[persistence]")
 {
     const auto root = std::filesystem::temp_directory_path() /
@@ -271,11 +263,14 @@ TEST_CASE("Persisted session state round-trips the active open tab index on save
 
     cupuacu::actions::persistSessionState(&state);
 
-    const auto loaded = cupuacu::persistence::RecentFilesPersistence::load(
+    const auto loadedRecentFiles = cupuacu::persistence::RecentFilesPersistence::load(
         state.paths->recentlyOpenedFilesPath());
-    REQUIRE(loaded.recentFiles ==
+    const auto loadedSession = cupuacu::persistence::SessionStatePersistence::load(
+        state.paths->sessionStatePath());
+
+    REQUIRE(loadedRecentFiles ==
             std::vector<std::string>{"/tmp/recent-a.wav", "/tmp/recent-b.wav"});
-    REQUIRE(loaded.openFiles ==
+    REQUIRE(loadedSession.openFiles ==
             std::vector<std::string>{"/tmp/open-a.wav", "/tmp/open-b.wav"});
-    REQUIRE(loaded.activeOpenFileIndex == 1);
+    REQUIRE(loadedSession.activeOpenFileIndex == 1);
 }

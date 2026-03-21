@@ -61,6 +61,12 @@ std::filesystem::path Paths::recentlyOpenedFilesPath() const
     return path;
 }
 
+std::filesystem::path Paths::sessionStatePath() const
+{
+    auto path = configPath() / "session_state.json";
+    return path;
+}
+
 Paths::Documents *Paths::getDocuments() const
 {
     return documents.get();

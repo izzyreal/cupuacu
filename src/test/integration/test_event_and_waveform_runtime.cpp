@@ -507,14 +507,16 @@ TEST_CASE("Startup document restore integration reopens the most recent file",
     cupuacu::State state{};
     createBuiltSessionUi(&state, 8);
     cupuacu::persistence::PersistedSessionState persistedState{};
-    persistedState.recentFiles = {wavPath.string()};
+    persistedState.openFiles = {wavPath.string()};
+    persistedState.activeOpenFileIndex = 0;
 
     state.getActiveDocumentSession().currentFile = "before.wav";
     state.getActiveDocumentSession().selection.setValue1(1.0);
     state.getActiveDocumentSession().selection.setValue2(3.0);
     state.getActiveDocumentSession().cursor = 2;
 
-    cupuacu::actions::restoreStartupDocument(&state, persistedState);
+    cupuacu::actions::restoreStartupDocument(
+        &state, {wavPath.string()}, persistedState);
 
     REQUIRE(state.getActiveDocumentSession().currentFile == wavPath.string());
     REQUIRE(state.getActiveDocumentSession().document.getSampleRate() == 48000);
@@ -539,11 +541,11 @@ TEST_CASE("Startup document restore integration reopens multiple file-backed tab
     createBuiltSessionUi(&state, 8);
 
     cupuacu::persistence::PersistedSessionState persistedState{};
-    persistedState.recentFiles = {secondPath.string(), firstPath.string()};
     persistedState.openFiles = {firstPath.string(), secondPath.string()};
     persistedState.activeOpenFileIndex = 1;
 
-    cupuacu::actions::restoreStartupDocument(&state, persistedState);
+    cupuacu::actions::restoreStartupDocument(
+        &state, {secondPath.string(), firstPath.string()}, persistedState);
 
     REQUIRE(state.tabs.size() == 2);
     REQUIRE(state.activeTabIndex == 1);

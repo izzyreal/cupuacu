@@ -84,6 +84,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/Paths.cpp
     src/main/persistence/AudioDevicePropertiesPersistence.cpp
     src/main/persistence/RecentFilesPersistence.cpp
+    src/main/persistence/SessionStatePersistence.cpp
     src/main/audio/AudioDevices.cpp
     src/main/audio/AudioCallbackCore.cpp
     src/main/audio/AudioDeviceView.cpp

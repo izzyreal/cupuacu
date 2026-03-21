@@ -6,20 +6,13 @@
 
 namespace cupuacu::persistence
 {
-    struct PersistedSessionState
-    {
-        std::vector<std::string> recentFiles;
-        std::vector<std::string> openFiles;
-        int activeOpenFileIndex = -1;
-    };
-
     class RecentFilesPersistence
     {
     public:
         static constexpr std::size_t kMaxEntries = 10;
 
-        static PersistedSessionState load(const std::filesystem::path &path);
+        static std::vector<std::string> load(const std::filesystem::path &path);
         static bool save(const std::filesystem::path &path,
-                         const PersistedSessionState &state);
+                         const std::vector<std::string> &recentFiles);
     };
 } // namespace cupuacu::persistence

@@ -9,6 +9,7 @@
 #include "../gui/NewFileDialogWindow.hpp"
 #include "../gui/Waveform.hpp"
 #include "../persistence/RecentFilesPersistence.hpp"
+#include "../persistence/SessionStatePersistence.hpp"
 #include "Play.hpp"
 #include "Zoom.hpp"
 
@@ -81,15 +82,13 @@ namespace cupuacu::actions
     }
 
     inline cupuacu::persistence::PersistedSessionState
-    buildPersistedSessionState(const cupuacu::State *state)
+    buildPersistedOpenSessionState(const cupuacu::State *state)
     {
         cupuacu::persistence::PersistedSessionState persisted{};
         if (!state)
         {
             return persisted;
         }
-
-        persisted.recentFiles = state->recentFiles;
 
         int openFileIndex = 0;
         for (int i = 0; i < static_cast<int>(state->tabs.size()); ++i)
@@ -119,8 +118,10 @@ namespace cupuacu::actions
         }
 
         cupuacu::persistence::RecentFilesPersistence::save(
-            state->paths->recentlyOpenedFilesPath(),
-            buildPersistedSessionState(state));
+            state->paths->recentlyOpenedFilesPath(), state->recentFiles);
+        cupuacu::persistence::SessionStatePersistence::save(
+            state->paths->sessionStatePath(),
+            buildPersistedOpenSessionState(state));
     }
 
     inline void removeRecentFile(cupuacu::State *state,
@@ -367,13 +368,14 @@ namespace cupuacu::actions
     }
 
     inline StartupDocumentRestorePlan planStartupDocumentRestore(
-        const cupuacu::persistence::PersistedSessionState &persistedState)
+        const std::vector<std::string> &persistedRecentFiles,
+        const cupuacu::persistence::PersistedSessionState &persistedSessionState)
     {
         StartupDocumentRestorePlan plan{};
-        plan.activeOpenFileIndex = persistedState.activeOpenFileIndex;
+        plan.activeOpenFileIndex = persistedSessionState.activeOpenFileIndex;
 
-        plan.recentFiles.reserve(persistedState.recentFiles.size());
-        for (const auto &path : persistedState.recentFiles)
+        plan.recentFiles.reserve(persistedRecentFiles.size());
+        for (const auto &path : persistedRecentFiles)
         {
             if (!path.empty() && std::filesystem::exists(path))
             {
@@ -381,8 +383,8 @@ namespace cupuacu::actions
             }
         }
 
-        plan.openFiles.reserve(persistedState.openFiles.size());
-        for (const auto &path : persistedState.openFiles)
+        plan.openFiles.reserve(persistedSessionState.openFiles.size());
+        for (const auto &path : persistedSessionState.openFiles)
         {
             if (!path.empty() && std::filesystem::exists(path))
             {
@@ -390,12 +392,7 @@ namespace cupuacu::actions
             }
         }
 
-        if (plan.openFiles.empty() && !plan.recentFiles.empty())
-        {
-            plan.openFiles.push_back(plan.recentFiles.front());
-            plan.activeOpenFileIndex = 0;
-        }
-        else if (plan.openFiles.empty())
+        if (plan.openFiles.empty())
         {
             plan.activeOpenFileIndex = -1;
         }
@@ -411,8 +408,8 @@ namespace cupuacu::actions
             plan.activeOpenFileIndex = normalizedIndex;
         }
 
-        if (plan.recentFiles != persistedState.recentFiles ||
-            plan.openFiles != persistedState.openFiles)
+        if (plan.recentFiles != persistedRecentFiles ||
+            plan.openFiles != persistedSessionState.openFiles)
         {
             plan.shouldPersistState = true;
         }
@@ -422,14 +419,16 @@ namespace cupuacu::actions
 
     inline void restoreStartupDocument(
         cupuacu::State *state,
-        const cupuacu::persistence::PersistedSessionState &persistedState)
+        const std::vector<std::string> &persistedRecentFiles,
+        const cupuacu::persistence::PersistedSessionState &persistedSessionState)
     {
         if (!state)
         {
             return;
         }
 
-        const auto plan = planStartupDocumentRestore(persistedState);
+        const auto plan = planStartupDocumentRestore(
+            persistedRecentFiles, persistedSessionState);
         state->recentFiles = plan.recentFiles;
 
         if (!plan.openFiles.empty())

@@ -24,6 +24,7 @@ const uint16_t initialDimensions[] = {1280, 720};
 #include "audio/AudioDevices.hpp"
 #include "persistence/AudioDevicePropertiesPersistence.hpp"
 #include "persistence/RecentFilesPersistence.hpp"
+#include "persistence/SessionStatePersistence.hpp"
 
 #if defined(__APPLE__)
 #include "platform/macos/MenuAdjustments.hpp"
@@ -64,10 +65,13 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
         state->audioDevices->setDeviceSelection(*persistedSelection);
     }
 
-    const auto persistedSessionState =
+    const auto persistedRecentFiles =
         cupuacu::persistence::RecentFilesPersistence::load(
             state->paths->recentlyOpenedFilesPath());
-    state->recentFiles = persistedSessionState.recentFiles;
+    state->recentFiles = persistedRecentFiles;
+    const auto persistedSessionState =
+        cupuacu::persistence::SessionStatePersistence::load(
+            state->paths->sessionStatePath());
 
     *appstate = state;
 
@@ -112,7 +116,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     cupuacu::gui::initCursors();
 
-    cupuacu::actions::restoreStartupDocument(state, persistedSessionState);
+    cupuacu::actions::restoreStartupDocument(
+        state, persistedRecentFiles, persistedSessionState);
 
     cupuacu::gui::buildComponents(state, mainWindow);
 
