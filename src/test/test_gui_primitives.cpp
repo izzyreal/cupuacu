@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "State.hpp"
+#include "TestPaths.hpp"
 #include "TestSdlTtfGuard.hpp"
 #include "gui/Button.hpp"
 #include "gui/Component.hpp"
@@ -60,7 +61,7 @@ namespace
 
 TEST_CASE("ScrollBar click and drag update value with clamping", "[gui]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     double value = 20.0;
 
     cupuacu::gui::ScrollBar bar(
@@ -113,7 +114,7 @@ TEST_CASE("ScrollBar click and drag update value with clamping", "[gui]")
 TEST_CASE("DropdownMenu expands collapses and notifies on selection change",
           "[gui]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.menuFontSize = 32;
 
     cupuacu::gui::DropdownMenu dropdown(&state);
@@ -175,7 +176,7 @@ TEST_CASE("DropdownMenu expands collapses and notifies on selection change",
 TEST_CASE("DropdownMenu collapsed height tracks row height after margin changes",
           "[gui]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.menuFontSize = 32;
 
     cupuacu::gui::DropdownMenu dropdown(&state);
@@ -192,7 +193,7 @@ TEST_CASE("DropdownMenu collapsed height tracks row height after margin changes"
 TEST_CASE("Button momentary and toggle semantics fire callbacks only when enabled",
           "[gui]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
 
     cupuacu::gui::Button momentary(&state, "Momentary",
                                    cupuacu::gui::ButtonType::Momentary);
@@ -271,7 +272,7 @@ TEST_CASE("Button momentary and toggle semantics fire callbacks only when enable
 
 TEST_CASE("Button can defer momentary press callbacks until mouse up", "[gui]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
 
     cupuacu::gui::Button button(&state, "DeferredMomentary",
                                 cupuacu::gui::ButtonType::Momentary);
@@ -309,7 +310,7 @@ TEST_CASE("Button can defer momentary press callbacks until mouse up", "[gui]")
 
 TEST_CASE("TextButton updates its label text and keeps it sized to bounds", "[gui]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     cupuacu::gui::TextButton button(&state, "Play");
     button.setVisible(true);
     button.setBounds(0, 0, 120, 32);
@@ -338,7 +339,7 @@ TEST_CASE("TextButton updates its label text and keeps it sized to bounds", "[gu
 TEST_CASE("TextInput handles focus, text input, and backspace directly",
           "[gui]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     cupuacu::gui::TextInput input(&state);
     input.setBounds(10, 10, 120, 28);
     input.setAllowedCharacters("0123456789.%");
@@ -357,7 +358,7 @@ TEST_CASE("TextInput handles focus, text input, and backspace directly",
 
 TEST_CASE("Slider updates value across drag range", "[gui]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     double value = 100.0;
 
     cupuacu::gui::Slider slider(
@@ -404,7 +405,7 @@ TEST_CASE("Slider updates value across drag range", "[gui]")
 
 TEST_CASE("TextInput inserts at the caret after left-right navigation", "[gui]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     cupuacu::gui::TextInput input(&state);
     input.setText("abcd");
     input.focusGained();
@@ -420,7 +421,7 @@ TEST_CASE("TextInput inserts at the caret after left-right navigation", "[gui]")
 
 TEST_CASE("TextInput replaces a shift-arrow selection on input", "[gui]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     cupuacu::gui::TextInput input(&state);
     input.setText("abcd");
     input.focusGained();
@@ -437,7 +438,7 @@ TEST_CASE("TextInput replaces a shift-arrow selection on input", "[gui]")
 
 TEST_CASE("TextInput backspace deletes the selected range", "[gui]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     cupuacu::gui::TextInput input(&state);
     input.setText("abcd");
     input.focusGained();

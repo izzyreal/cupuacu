@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "IntegrationTestHelpers.hpp"
+#include "../TestPaths.hpp"
 
 #include "effects/AmplifyFadeEffect.hpp"
 #include "effects/DynamicsEffect.hpp"
@@ -12,6 +13,7 @@
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/DocumentSessionWindow.hpp"
 #include "gui/DropdownMenu.hpp"
+#include "gui/EventHandling.hpp"
 #include "gui/Label.hpp"
 #include "gui/Menu.hpp"
 #include "gui/MenuBar.hpp"
@@ -37,6 +39,7 @@ namespace
     EffectsMenuHarness createEffectsMenuHarness(cupuacu::State *state)
     {
         EffectsMenuHarness harness{};
+        cupuacu::test::ensureTestPaths(*state, "menu-bar-effects");
         if (!state->mainDocumentSessionWindow)
         {
             state->mainDocumentSessionWindow =
@@ -83,6 +86,26 @@ namespace
         }
     }
 
+    void sendKeyDown(cupuacu::gui::Window *window, const SDL_Scancode scancode)
+    {
+        REQUIRE(window != nullptr);
+
+        SDL_Event event{};
+        event.type = SDL_EVENT_KEY_DOWN;
+        event.key.windowID = window->getId();
+        event.key.scancode = scancode;
+        window->handleEvent(event);
+    }
+
+    void processPendingSdlWindowEvents(cupuacu::State *state)
+    {
+        SDL_Event event{};
+        while (SDL_PollEvent(&event))
+        {
+            cupuacu::gui::handleAppEvent(state, &event);
+        }
+    }
+
     void initializeActiveDocument(cupuacu::State *state)
     {
         state->getActiveDocumentSession().document.initialize(
@@ -95,7 +118,7 @@ TEST_CASE("Effects menu integration opens AmplifyFade and Dynamics dialogs",
 {
     cupuacu::test::ensureSdlTtfInitialized();
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     initializeActiveDocument(&state);
     auto harness = createEffectsMenuHarness(&state);
 
@@ -118,7 +141,7 @@ TEST_CASE("Reverse menu integration applies immediately without opening a dialog
 {
     cupuacu::test::ensureSdlTtfInitialized();
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto ui = cupuacu::test::integration::createSessionUi(&state, 5, false, 2);
     auto &session = state.getActiveDocumentSession();
     auto &doc = session.document;
@@ -157,7 +180,7 @@ TEST_CASE("AmplifyFade dialog integration exposes shared controls and presets",
 {
     cupuacu::test::ensureSdlTtfInitialized();
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     initializeActiveDocument(&state);
     auto harness = createEffectsMenuHarness(&state);
     REQUIRE(harness.amplifyFadeMenu->mouseDown(
@@ -245,7 +268,7 @@ TEST_CASE("AmplifyFade dialog integration exposes shared controls and presets",
 TEST_CASE("AmplifyFade dialog preview toggles playback and restarts from the selection start",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto ui = cupuacu::test::integration::createSessionUi(&state, 64, true);
     auto &session = state.getActiveDocumentSession();
     session.selection.setValue1(10.0);
@@ -289,7 +312,7 @@ TEST_CASE("AmplifyFade dialog preview toggles playback and restarts from the sel
 TEST_CASE("AmplifyFade dialog apply closes and respects the selected channel target",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto ui = cupuacu::test::integration::createSessionUi(&state, 8, false, 2);
     auto &session = state.getActiveDocumentSession();
     auto &doc = session.document;
@@ -334,7 +357,7 @@ TEST_CASE("AmplifyFade dialog apply closes and respects the selected channel tar
 TEST_CASE("AmplifyFade dialog cancel closes without applying and reopens with remembered settings",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto ui = cupuacu::test::integration::createSessionUi(&state, 16);
 
     auto harness = createEffectsMenuHarness(&state);
@@ -365,10 +388,52 @@ TEST_CASE("AmplifyFade dialog cancel closes without applying and reopens with re
     REQUIRE(state.amplifyFadeDialog->getEndPercent() == 100.0);
 }
 
+TEST_CASE("AmplifyFade dialog treats Enter as Apply", "[integration]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    auto ui = cupuacu::test::integration::createSessionUi(&state, 8, false, 2);
+    auto &session = state.getActiveDocumentSession();
+    auto &doc = session.document;
+
+    for (int64_t frame = 0; frame < doc.getFrameCount(); ++frame)
+    {
+        doc.setSample(0, frame, 1.0f, false);
+        doc.setSample(1, frame, 1.0f, false);
+    }
+
+    session.selection.setValue1(2.0);
+    session.selection.setValue2(6.0);
+    state.getActiveViewState().selectedChannels =
+        cupuacu::SelectedChannels::LEFT;
+
+    auto harness = createEffectsMenuHarness(&state);
+    REQUIRE(harness.amplifyFadeMenu->mouseDown(
+        cupuacu::test::integration::leftMouseDown()));
+
+    auto *root = state.amplifyFadeDialog->getWindow()->getRootComponent();
+    auto *fadeOutButton =
+        cupuacu::test::integration::findByNameRecursive<cupuacu::gui::TextButton>(
+            root, "TextButton:Fade out");
+    clickButton(fadeOutButton);
+
+    sendKeyDown(state.amplifyFadeDialog->getWindow(), SDL_SCANCODE_RETURN);
+    processPendingSdlWindowEvents(&state);
+
+    REQUIRE(state.getActiveUndoables().size() == 1);
+    REQUIRE(state.modalWindow == nullptr);
+    const bool dialogClosed =
+        state.amplifyFadeDialog == nullptr || !state.amplifyFadeDialog->isOpen();
+    REQUIRE(dialogClosed);
+    REQUIRE(doc.getSample(0, 2) == Approx(1.0f));
+    REQUIRE(doc.getSample(0, 5) == Approx(0.0f));
+    REQUIRE(doc.getSample(1, 2) == Approx(1.0f));
+    REQUIRE(doc.getSample(1, 5) == Approx(1.0f));
+}
+
 TEST_CASE("Dynamics dialog preview uses the whole document and restarts from frame zero",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto ui = cupuacu::test::integration::createSessionUi(&state, 32, true);
     state.getActiveDocumentSession().selection.reset();
 

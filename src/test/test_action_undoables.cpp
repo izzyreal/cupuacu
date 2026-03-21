@@ -4,6 +4,7 @@
 #include "effects/AmplifyFadeEffect.hpp"
 #include "effects/DynamicsEffect.hpp"
 #include "effects/ReverseEffect.hpp"
+#include "TestPaths.hpp"
 #include "gui/MainView.hpp"
 #include "State.hpp"
 #include "actions/audio/Cut.hpp"
@@ -76,7 +77,7 @@ namespace
 
 TEST_CASE("Cut undoable updates clipboard, cursor, and undo state", "[actions]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     initializeMonoDocument(state, {0, 1, 2, 3, 4, 5});
 
     auto &session = state.getActiveDocumentSession();
@@ -114,7 +115,7 @@ TEST_CASE("Cut undoable updates clipboard, cursor, and undo state", "[actions]")
 TEST_CASE("Paste insert undoable inserts clipboard content and restores on undo",
           "[actions]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     initializeMonoDocument(state, {0, 1, 2, 3, 4});
     state.clipboard.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 2);
     state.clipboard.setSample(0, 0, 9.0f, false);
@@ -144,7 +145,7 @@ TEST_CASE("Paste insert undoable inserts clipboard content and restores on undo"
 TEST_CASE("Paste overwrite undoable replaces selected range and restores it",
           "[actions]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     initializeMonoDocument(state, {0, 1, 2, 3, 4, 5});
     state.clipboard.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 2);
     state.clipboard.setSample(0, 0, 30.0f, false);
@@ -178,7 +179,7 @@ TEST_CASE("Paste overwrite undoable replaces selected range and restores it",
 TEST_CASE("Trim undoable keeps requested middle range and restores document",
           "[actions]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     initializeMonoDocument(state, {0, 1, 2, 3, 4, 5});
 
     state.addAndDoUndoable(
@@ -204,7 +205,7 @@ TEST_CASE("Trim undoable keeps requested middle range and restores document",
 TEST_CASE("Reverse applies across the whole mono document and respects undo",
           "[actions]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     initializeMonoDocument(state, {0, 1, 2, 3, 4});
 
     cupuacu::effects::performReverse(&state);
@@ -221,7 +222,7 @@ TEST_CASE("Reverse applies across the whole mono document and respects undo",
 TEST_CASE("Reverse respects the selected range and selected channel",
           "[actions]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     initializeStereoDocument(
         state, {0, 1, 2, 3, 4}, {10, 11, 12, 13, 14});
 
@@ -247,7 +248,7 @@ TEST_CASE("Reverse respects the selected range and selected channel",
 TEST_CASE("Cut at document tail removes trailing frames and restores on undo",
           "[actions]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     initializeMonoDocument(state, {0, 1, 2, 3, 4, 5});
 
     auto &session = state.getActiveDocumentSession();
@@ -275,7 +276,7 @@ TEST_CASE("Cut at document tail removes trailing frames and restores on undo",
 
 TEST_CASE("Paste insert at document end appends clipboard content", "[actions]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     initializeMonoDocument(state, {0, 1, 2});
     state.clipboard.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 2);
     state.clipboard.setSample(0, 0, 7.0f, false);
@@ -301,7 +302,7 @@ TEST_CASE("Paste insert at document end appends clipboard content", "[actions]")
 
 TEST_CASE("Paste with empty clipboard is a no-op", "[actions]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     initializeMonoDocument(state, {0, 1, 2});
 
     auto &session = state.getActiveDocumentSession();
@@ -322,7 +323,7 @@ TEST_CASE("Paste with empty clipboard is a no-op", "[actions]")
 TEST_CASE("Trim full document keeps content and restores selection on undo",
           "[actions]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     initializeMonoDocument(state, {0, 1, 2, 3});
 
     auto &session = state.getActiveDocumentSession();
@@ -348,7 +349,7 @@ TEST_CASE("Trim full document keeps content and restores selection on undo",
 
 TEST_CASE("Cut and trim without active selection are no-ops", "[actions]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     initializeMonoDocument(state, {0, 1, 2, 3});
 
     auto &session = state.getActiveDocumentSession();
@@ -367,7 +368,7 @@ TEST_CASE("Cut and trim without active selection are no-ops", "[actions]")
 TEST_CASE("Copy undoable preserves zero-based selection and restores it on undo",
           "[actions]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     initializeMonoDocument(state, {0, 1, 2, 3});
 
     auto &session = state.getActiveDocumentSession();
@@ -398,7 +399,7 @@ TEST_CASE("Copy undoable preserves zero-based selection and restores it on undo"
 TEST_CASE("Paste overwrite undo restores zero-based previous selection",
           "[actions]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     initializeMonoDocument(state, {0, 1, 2, 3});
     state.clipboard.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 1);
     state.clipboard.setSample(0, 0, 9.0f, false);
@@ -421,7 +422,7 @@ TEST_CASE("Paste overwrite undo restores zero-based previous selection",
 
 TEST_CASE("SetSampleValue undoable changes one sample and restores it", "[actions]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     initializeMonoDocument(state, {0, 1, 2});
 
     auto undoable = std::make_shared<cupuacu::actions::audio::SetSampleValue>(
@@ -444,7 +445,7 @@ TEST_CASE("SetSampleValue undoable changes one sample and restores it", "[action
 TEST_CASE("Amplify/Fade applies across the whole document on all channels",
           "[actions]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     initializeStereoDocument(state, {1, 2, 3}, {4, 5, 6});
 
     cupuacu::effects::performAmplifyFade(
@@ -466,7 +467,7 @@ TEST_CASE("Amplify/Fade applies across the whole document on all channels",
 TEST_CASE("Amplify/Fade processes the full selected range and stops at selection end",
           "[actions]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     initializeMonoDocument(state, {10, 10, 10, 10, 10, 10});
     state.getActiveDocumentSession().selection.setHighest(6.0);
     state.getActiveDocumentSession().selection.setValue1(1.0);
@@ -491,7 +492,7 @@ TEST_CASE("Amplify/Fade processes the full selected range and stops at selection
 
 TEST_CASE("Dynamics compresses selected samples and respects undo", "[actions]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     initializeMonoDocument(state, {0.2f, 0.5f, 0.9f, -1.0f});
 
     state.getActiveDocumentSession().selection.setHighest(4.0);
@@ -577,7 +578,7 @@ TEST_CASE("Recorded chunk applier expands channel layout and appends frames",
 TEST_CASE("RecordEdit restores overwritten samples and session state on undo",
           "[actions]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     initializeStereoDocument(state, {0.0f, 1.0f, 2.0f, 3.0f},
                              {0.0f, -1.0f, -2.0f, -3.0f});
 
@@ -621,7 +622,7 @@ TEST_CASE("RecordEdit restores overwritten samples and session state on undo",
 TEST_CASE("RecordEdit appends recorded frames and removes them on undo",
           "[actions]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     initializeStereoDocument(state, {0.0f, 1.0f, 2.0f, 3.0f},
                              {0.0f, -1.0f, -2.0f, -3.0f});
 

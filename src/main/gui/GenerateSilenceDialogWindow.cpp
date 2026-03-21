@@ -77,19 +77,25 @@ namespace cupuacu::gui
         unitDropdown->setSelectedIndex(1);
         cancelButton->setTriggerOnMouseUp(true);
         okButton->setTriggerOnMouseUp(true);
-        cancelButton->setOnPress([this]() { requestClose(); });
-        okButton->setOnPress(
-            [this]()
+        const auto applySilence = [this]()
+        {
+            if (const auto frames = durationInFrames(); frames.has_value())
             {
-                if (const auto frames = durationInFrames(); frames.has_value())
-                {
-                    cupuacu::actions::audio::performInsertSilence(
-                        state, *frames);
-                    requestClose();
-                }
+                cupuacu::actions::audio::performInsertSilence(state, *frames);
+                requestClose();
+            }
+        };
+        cancelButton->setOnPress([this]() { requestClose(); });
+        okButton->setOnPress(applySilence);
+        durationInput->setOnEditingFinished(
+            [applySilence](const std::string &)
+            {
+                applySilence();
             });
 
         window->setOnResize([this]() { layoutComponents(); });
+        window->setDefaultAction(applySilence);
+        window->setCancelAction([this]() { requestClose(); });
         window->setRootComponent(std::move(root));
         layoutComponents();
         window->renderFrame();

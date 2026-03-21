@@ -2,8 +2,10 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "State.hpp"
+#include "TestPaths.hpp"
 #include "actions/Save.hpp"
 #include "file/file_loading.hpp"
+#include "Paths.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/Window.hpp"
 
@@ -22,6 +24,29 @@
 
 namespace
 {
+    class TestPaths : public cupuacu::Paths
+    {
+    public:
+        explicit TestPaths(std::filesystem::path rootToUse)
+            : root(std::move(rootToUse))
+        {
+        }
+
+    protected:
+        std::filesystem::path appConfigHome() const override
+        {
+            return root / "config";
+        }
+
+        std::filesystem::path appDocumentsPath() const override
+        {
+            return root / "documents";
+        }
+
+    private:
+        std::filesystem::path root;
+    };
+
     class ScopedDirCleanup
     {
     public:
@@ -205,7 +230,7 @@ TEST_CASE("Overwrite keeps untouched 16-bit PCM WAV byte-identical", "[file]")
                       {0, 1200, -1200, 32000, -32000, 42, -42, 8192});
     const auto originalBytes = readBytes(wavPath);
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = wavPath.string();
     cupuacu::file::loadSampleData(&state);
     cupuacu::actions::overwrite(&state);
@@ -224,7 +249,7 @@ TEST_CASE("Overwrite preserves non-audio WAV chunks around data", "[file]")
                       {'p', 'o', 's', 't', 9, 8, 7, 6});
     const auto originalBytes = readBytes(wavPath);
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = wavPath.string();
     cupuacu::file::loadSampleData(&state);
     cupuacu::actions::overwrite(&state);
@@ -239,7 +264,7 @@ TEST_CASE("Overwrite clips edited samples into valid PCM16 range", "[file]")
 
     writePcm16WavFile(wavPath, 22050, 1, {0, 0, 0});
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = wavPath.string();
     cupuacu::file::loadSampleData(&state);
 
@@ -259,4 +284,42 @@ TEST_CASE("Overwrite clips edited samples into valid PCM16 range", "[file]")
     REQUIRE(frames[0] == Catch::Approx(1.0f).margin(1.0f / 32767.0f));
     REQUIRE(frames[1] == Catch::Approx(-1.0f).margin(1.0f / 32767.0f));
     REQUIRE(frames[2] == Catch::Approx(0.5f).margin(1.0f / 32767.0f));
+}
+
+TEST_CASE("Save as writes a new WAV file and updates active file state", "[file]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-save-as"));
+    const auto outputPath = cleanup.path() / "exports" / "saved.wav";
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.paths = std::make_unique<TestPaths>(cleanup.path());
+
+    auto &session = state.getActiveDocumentSession();
+    session.document.initialize(cupuacu::SampleFormat::PCM_S16, 22050, 2, 3);
+    session.document.setSample(0, 0, -1.0f, false);
+    session.document.setSample(1, 0, 1.0f, false);
+    session.document.setSample(0, 1, 0.5f, false);
+    session.document.setSample(1, 1, -0.5f, false);
+    session.document.setSample(0, 2, 0.0f, false);
+    session.document.setSample(1, 2, 0.25f, false);
+
+    cupuacu::actions::saveAs(&state, outputPath.string());
+
+    REQUIRE(std::filesystem::exists(outputPath));
+    REQUIRE(session.currentFile == outputPath.string());
+    REQUIRE(state.recentFiles.size() == 1);
+    REQUIRE(state.recentFiles.front() == outputPath.string());
+
+    int sampleRate = 0;
+    int channels = 0;
+    const auto frames = readFramesAsFloat(outputPath, sampleRate, channels);
+    REQUIRE(sampleRate == 22050);
+    REQUIRE(channels == 2);
+    REQUIRE(frames.size() == 6);
+    REQUIRE(frames[0] == Catch::Approx(-1.0f).margin(1.0f / 32767.0f));
+    REQUIRE(frames[1] == Catch::Approx(1.0f).margin(1.0f / 32767.0f));
+    REQUIRE(frames[2] == Catch::Approx(0.5f).margin(1.0f / 32767.0f));
+    REQUIRE(frames[3] == Catch::Approx(-0.5f).margin(1.0f / 32767.0f));
+    REQUIRE(frames[4] == Catch::Approx(0.0f).margin(1.0f / 32767.0f));
+    REQUIRE(frames[5] == Catch::Approx(0.25f).margin(1.0f / 32767.0f));
 }

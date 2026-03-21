@@ -34,7 +34,7 @@ namespace
 TEST_CASE("MainView integration contains expected coarse structure",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto sessionUi = cupuacu::test::integration::createSessionUi(&state, 128);
     auto *mainView = sessionUi.mainView;
 
@@ -79,7 +79,7 @@ TEST_CASE("MainView integration contains expected coarse structure",
 TEST_CASE("Main window integration keeps the tab strip below overlay menus",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     cupuacu::test::ensureSdlTtfInitialized();
 
     state.mainDocumentSessionWindow =
@@ -126,7 +126,7 @@ TEST_CASE("Main window integration keeps the tab strip below overlay menus",
 TEST_CASE("MainView integration double click selects the visible range",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto sessionUi = cupuacu::test::integration::createSessionUi(&state, 128);
 
     auto *underlay =
@@ -155,7 +155,7 @@ TEST_CASE("MainView integration double click selects the visible range",
 TEST_CASE("MainView integration drag selection on the lower waveform selects the right channel",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto sessionUi = cupuacu::test::integration::createSessionUi(&state, 256);
 
     auto *underlay =

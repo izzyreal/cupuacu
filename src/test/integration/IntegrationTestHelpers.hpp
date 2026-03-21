@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../TestSdlTtfGuard.hpp"
+#include "../TestPaths.hpp"
 
 #include "State.hpp"
 #include "audio/AudioDevices.hpp"
@@ -94,6 +95,7 @@ namespace cupuacu::test::integration
                                      const int mainViewHeight = 300)
     {
         ensureSdlTtfInitialized();
+        cupuacu::test::ensureTestPaths(*state, "integration-session-ui");
 
         auto &session = state->getActiveDocumentSession();
         session.document.initialize(cupuacu::SampleFormat::FLOAT32, sampleRate,

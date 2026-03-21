@@ -459,8 +459,31 @@ bool Window::handleEvent(const SDL_Event &event)
         const bool isMainDocumentWindow =
             state != nullptr && state->mainDocumentSessionWindow != nullptr &&
             state->mainDocumentSessionWindow->getWindow() == this;
+
+        const bool handledByFocusedComponent =
+            focusedComponent != nullptr && focusedComponent->keyDown(event.key);
+        if (handledByFocusedComponent)
+        {
+            return true;
+        }
+
+        if ((event.key.scancode == SDL_SCANCODE_RETURN ||
+             event.key.scancode == SDL_SCANCODE_RETURN2 ||
+             event.key.scancode == SDL_SCANCODE_KP_ENTER) &&
+            defaultAction)
+        {
+            defaultAction();
+            return true;
+        }
+
         if (event.key.scancode == SDL_SCANCODE_ESCAPE && !isMainDocumentWindow)
         {
+            if (cancelAction)
+            {
+                cancelAction();
+                return true;
+            }
+
             requestClose();
             if (closeRequested)
             {
@@ -474,7 +497,7 @@ bool Window::handleEvent(const SDL_Event &event)
             return true;
         }
 
-        return focusedComponent != nullptr && focusedComponent->keyDown(event.key);
+        return onUnhandledKeyDown ? onUnhandledKeyDown(event.key) : false;
     }
 
     if (event.type == SDL_EVENT_TEXT_INPUT)

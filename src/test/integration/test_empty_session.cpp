@@ -30,7 +30,7 @@ TEST_CASE("Empty session integration leaves underlay mouse move safe",
 {
     cupuacu::test::ensureSdlTtfInitialized();
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto &session = state.getActiveDocumentSession();
     session.currentFile.clear();
 

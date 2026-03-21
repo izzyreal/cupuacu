@@ -223,7 +223,7 @@ bool TextInput::keyDown(const SDL_KeyboardEvent &event)
         {
             onEditingFinished(text);
         }
-        return true;
+        return false;
     }
 
     if (event.scancode == SDL_SCANCODE_ESCAPE)

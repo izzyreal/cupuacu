@@ -2,6 +2,7 @@
 #include <catch2/catch_approx.hpp>
 
 #include "State.hpp"
+#include "TestPaths.hpp"
 #include "TestSdlTtfGuard.hpp"
 #include "actions/Undoable.hpp"
 #include "file/file_loading.hpp"
@@ -213,7 +214,7 @@ namespace
 TEST_CASE("MenuBar planning builds dynamic undo redo labels and availability",
           "[gui]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
 
 #ifdef __APPLE__
     REQUIRE(cupuacu::gui::buildUndoMenuLabel(&state) == "Undo (Cmd + Z)");
@@ -262,7 +263,7 @@ TEST_CASE("MenuBar planning builds dynamic undo redo labels and availability",
 
 TEST_CASE("MenuBar runtime tracks open menus and hover-open state", "[gui]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     RootComponent root(&state);
     auto *menuBar = makeMenuBar(&state, root);
 
@@ -285,7 +286,7 @@ TEST_CASE("MenuBar runtime tracks open menus and hover-open state", "[gui]")
 TEST_CASE("MenuBar disables document-dependent menus when no file is open",
           "[gui]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     RootComponent root(&state);
     auto *menuBar = makeMenuBar(&state, root);
 
@@ -309,10 +310,12 @@ TEST_CASE("MenuBar disables document-dependent menus when no file is open",
     REQUIRE(state.dynamicsDialog == nullptr);
 
     auto fileEntries = menuChildren(fileMenu);
-    REQUIRE(fileEntries.size() == 6);
-    auto *closeEntry = fileEntries[3];
-    auto *overwriteEntry = fileEntries[4];
+    REQUIRE(fileEntries.size() == 7);
+    auto *saveAsEntry = fileEntries[2];
+    auto *closeEntry = fileEntries[4];
+    auto *overwriteEntry = fileEntries[5];
 
+    REQUIRE(saveAsEntry->mouseDown(leftMouseDown()));
     REQUIRE(closeEntry->mouseDown(leftMouseDown()));
     REQUIRE(overwriteEntry->mouseDown(leftMouseDown()));
     REQUIRE(state.getActiveDocumentSession().document.getChannelCount() == 0);
@@ -322,7 +325,7 @@ TEST_CASE("MenuBar disables document-dependent menus when no file is open",
 TEST_CASE("MenuBar file menu shows platform-aware new open close and overwrite shortcuts",
           "[gui]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     RootComponent root(&state);
     auto *menuBar = makeMenuBar(&state, root);
 
@@ -330,19 +333,21 @@ TEST_CASE("MenuBar file menu shows platform-aware new open close and overwrite s
     REQUIRE(topLevelMenus.size() == 6);
     auto *fileMenu = topLevelMenus[0];
     auto fileEntries = menuChildren(fileMenu);
-    REQUIRE(fileEntries.size() == 6);
+    REQUIRE(fileEntries.size() == 7);
 
 #ifdef __APPLE__
     REQUIRE(fileEntries[0]->getMenuName() == "New file (Cmd + N)");
     REQUIRE(fileEntries[1]->getMenuName() == "Open (Cmd + O)");
-    REQUIRE(fileEntries[3]->getMenuName() == "Close file (Cmd + W)");
-    REQUIRE(fileEntries[4]->getMenuName() == "Overwrite (Cmd + S)");
+    REQUIRE(fileEntries[2]->getMenuName() == "Save as");
+    REQUIRE(fileEntries[4]->getMenuName() == "Close file (Cmd + W)");
+    REQUIRE(fileEntries[5]->getMenuName() == "Overwrite (Cmd + S)");
 #else
     REQUIRE(fileEntries[0]->getMenuName() == "New file (Ctrl + N)");
     REQUIRE(fileEntries[1]->getMenuName() == "Open (Ctrl + O)");
-    REQUIRE(fileEntries[3]->getMenuName() ==
-            "Close file (Ctrl + W)");
+    REQUIRE(fileEntries[2]->getMenuName() == "Save as");
     REQUIRE(fileEntries[4]->getMenuName() ==
+            "Close file (Ctrl + W)");
+    REQUIRE(fileEntries[5]->getMenuName() ==
             "Overwrite (Ctrl + S)");
 #endif
 }
@@ -350,7 +355,7 @@ TEST_CASE("MenuBar file menu shows platform-aware new open close and overwrite s
 TEST_CASE("MenuBar edit actions invoke trim copy cut and paste through submenu actions",
           "[gui]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     RootComponent root(&state);
     auto *menuBar = makeMenuBar(&state, root);
     auto *editMenu = menuChildren(menuBar)[1];
@@ -416,7 +421,7 @@ TEST_CASE("MenuBar file overwrite action rewrites the current file", "[gui][file
     const auto wavPath = cleanup.path() / "menu_overwrite.wav";
     writePcm16TestWav(wavPath, 32000, 1, {0, 0, 0});
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = wavPath.string();
     cupuacu::file::loadSampleData(&state);
     state.getActiveDocumentSession().document.setSample(0, 0, 0.25f, false);
@@ -427,9 +432,9 @@ TEST_CASE("MenuBar file overwrite action rewrites the current file", "[gui][file
     auto *menuBar = makeMenuBar(&state, root);
     auto *fileMenu = menuChildren(menuBar)[0];
     auto fileEntries = menuChildren(fileMenu);
-    REQUIRE(fileEntries.size() == 6);
+    REQUIRE(fileEntries.size() == 7);
 
-    auto *overwriteEntry = fileEntries[4];
+    auto *overwriteEntry = fileEntries[5];
     overwriteEntry->mouseDown(leftMouseDown());
 
     const auto frames = readFramesAsFloat(wavPath);

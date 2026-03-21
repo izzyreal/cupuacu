@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "State.hpp"
+#include "TestPaths.hpp"
 #include "gui/Component.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/MenuLayoutPlanning.hpp"
@@ -118,7 +119,7 @@ TEST_CASE("Menu enter planning switches to sibling menus when appropriate", "[gu
 
 TEST_CASE("Menu runtime leaf actions respect availability", "[gui]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
 
     int availableCalls = 0;
     cupuacu::gui::Menu available(&state, "Available",
@@ -177,7 +178,7 @@ TEST_CASE("Menu submenu layout planning hides dynamic submenu items with empty n
 TEST_CASE("Menu runtime propagates parent unavailability to submenu actions",
           "[gui]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     RootComponent root(&state);
     auto *parent = root.emplaceChild<cupuacu::gui::Menu>(&state, "Parent");
     parent->setBounds(0, 0, 80, 24);
@@ -193,7 +194,7 @@ TEST_CASE("Menu runtime propagates parent unavailability to submenu actions",
 TEST_CASE("Menu runtime propagates ancestor unavailability recursively",
           "[gui]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     RootComponent root(&state);
     auto *parent = root.emplaceChild<cupuacu::gui::Menu>(&state, "Parent");
     parent->setBounds(0, 0, 80, 24);
@@ -211,7 +212,7 @@ TEST_CASE("Menu runtime propagates ancestor unavailability recursively",
 TEST_CASE("Menu runtime brings an opened nested submenu row in front of later siblings",
           "[gui]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     RootComponent root(&state);
 
     auto *fileMenu = root.emplaceChild<cupuacu::gui::Menu>(&state, "File");

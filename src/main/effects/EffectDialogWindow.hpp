@@ -205,6 +205,8 @@ namespace cupuacu::effects
                     layoutComponents();
                     renderIfDirty();
                 });
+            window->setDefaultAction([this]() { applyAndClose(); });
+            window->setCancelAction([this]() { closeNow(); });
             window->setOnClose(
                 [this]
                 {

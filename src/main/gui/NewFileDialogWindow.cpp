@@ -81,17 +81,19 @@ namespace cupuacu::gui
         channelCountDropdown->setSelectedIndex(1);
         cancelButton->setTriggerOnMouseUp(true);
         okButton->setTriggerOnMouseUp(true);
+        const auto applyNewFile = [this]()
+        {
+            cupuacu::actions::createNewDocumentInNewTab(
+                state, selectedSampleRate(), selectedFormat(),
+                selectedChannelCount());
+            requestClose();
+        };
         cancelButton->setOnPress([this]() { requestClose(); });
-        okButton->setOnPress(
-            [this]()
-            {
-                cupuacu::actions::createNewDocumentInNewTab(
-                    state, selectedSampleRate(), selectedFormat(),
-                    selectedChannelCount());
-                requestClose();
-            });
+        okButton->setOnPress(applyNewFile);
 
         window->setOnResize([this]() { layoutComponents(); });
+        window->setDefaultAction(applyNewFile);
+        window->setCancelAction([this]() { requestClose(); });
         window->setRootComponent(std::move(root));
         layoutComponents();
         window->renderFrame();

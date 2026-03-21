@@ -68,7 +68,7 @@ TEST_CASE("Window rendering integration recreates canvas when pixel scale change
 {
     cupuacu::test::ensureSdlTtfInitialized();
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.pixelScale = 1;
 
     auto window = std::make_unique<cupuacu::gui::Window>(
@@ -103,7 +103,7 @@ TEST_CASE("Window rendering integration redraws only dirty frames",
 {
     cupuacu::test::ensureSdlTtfInitialized();
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto window = std::make_unique<cupuacu::gui::Window>(
         &state, "window-render-dirty", 320, 180, SDL_WINDOW_HIDDEN);
 
@@ -154,7 +154,7 @@ TEST_CASE("Window rendering integration propagates window pointers to nested chi
 {
     cupuacu::test::ensureSdlTtfInitialized();
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto window = std::make_unique<cupuacu::gui::Window>(
         &state, "window-nested-subtree", 320, 180, SDL_WINDOW_HIDDEN);
 

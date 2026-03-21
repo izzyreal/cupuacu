@@ -15,7 +15,7 @@ using Catch::Approx;
 TEST_CASE("MainView integration consumes recorded chunks into the document",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto ui = cupuacu::test::integration::createSessionUi(&state, 4, true, 2);
     auto &session = state.getActiveDocumentSession();
     auto &doc = session.document;
@@ -48,7 +48,7 @@ TEST_CASE("MainView integration consumes recorded chunks into the document",
 TEST_CASE("MainView integration finalizes recording into an undoable when stopped",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto ui = cupuacu::test::integration::createSessionUi(&state, 4, true, 2);
     auto &session = state.getActiveDocumentSession();
     auto &doc = session.document;

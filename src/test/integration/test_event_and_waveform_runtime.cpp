@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "IntegrationTestHelpers.hpp"
+#include "../TestPaths.hpp"
 
 #include "State.hpp"
 #include "actions/DocumentLifecycle.hpp"
@@ -77,6 +78,7 @@ namespace
                                         const int height = 400)
     {
         cupuacu::test::ensureSdlTtfInitialized();
+        cupuacu::test::ensureTestPaths(*state, "event-and-waveform-runtime");
 
         auto &session = state->getActiveDocumentSession();
         session.document.initialize(cupuacu::SampleFormat::FLOAT32, sampleRate,
@@ -190,6 +192,17 @@ namespace
         }
     }
 
+    void sendKeyDown(cupuacu::gui::Window *window, const SDL_Scancode scancode)
+    {
+        REQUIRE(window != nullptr);
+
+        SDL_Event event{};
+        event.type = SDL_EVENT_KEY_DOWN;
+        event.key.windowID = window->getId();
+        event.key.scancode = scancode;
+        window->handleEvent(event);
+    }
+
     class ScopedDirCleanup
     {
     public:
@@ -272,7 +285,7 @@ namespace
 TEST_CASE("Keyboard integration zooms to selection and scrolls horizontally",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 4096);
 
     auto &viewState = state.getActiveViewState();
@@ -306,7 +319,7 @@ TEST_CASE("Keyboard integration zooms to selection and scrolls horizontally",
 TEST_CASE("Keyboard integration applies zoom and pixel scale shortcuts",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 4096);
 
     auto &viewState = state.getActiveViewState();
@@ -343,7 +356,7 @@ TEST_CASE("Keyboard integration applies zoom and pixel scale shortcuts",
 TEST_CASE("Keyboard integration opens new file dialog and closes the active tab",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 256, 44100, 2, 800, 400);
     state.getActiveDocumentSession().currentFile = "/tmp/current.wav";
     state.getActiveDocumentSession().selection.setValue1(10.0);
@@ -370,7 +383,7 @@ TEST_CASE("Keyboard integration opens new file dialog and closes the active tab"
 TEST_CASE("Keyboard integration closes the active tab instead of blanking it",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 256, 44100, 2, 800, 400);
 
     state.tabs.resize(2);
@@ -398,7 +411,7 @@ TEST_CASE("Keyboard integration closes the active tab instead of blanking it",
 TEST_CASE("Event handling integration blocks interactive events behind modal",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
 
     auto mainWindow = std::make_unique<cupuacu::gui::Window>(
         &state, "main-window", 320, 240, 0);
@@ -435,7 +448,7 @@ TEST_CASE("Event handling integration blocks interactive events behind modal",
 TEST_CASE("Event handling integration still forwards non-interactive window events behind modal",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 512);
 
     auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
@@ -462,7 +475,7 @@ TEST_CASE("Event handling integration returns success for quit and keeps app ope
 {
     SECTION("quit event exits immediately")
     {
-        cupuacu::State state{};
+        cupuacu::test::StateWithTestPaths state{};
         createBuiltSessionUi(&state, 256);
 
         SDL_Event event{};
@@ -474,7 +487,7 @@ TEST_CASE("Event handling integration returns success for quit and keeps app ope
 
     SECTION("main document close request closes the active file instead of exiting")
     {
-        cupuacu::State state{};
+        cupuacu::test::StateWithTestPaths state{};
         createBuiltSessionUi(&state, 256);
         state.getActiveDocumentSession().currentFile = "/tmp/current.wav";
         state.getActiveDocumentSession().selection.setValue1(10.0);
@@ -504,7 +517,7 @@ TEST_CASE("Startup document restore integration reopens the most recent file",
     const auto wavPath = cleanup.path() / "startup.wav";
     writeTestWav(wavPath, 48000, 2, {0.1f, -0.1f, 0.2f, -0.2f, 0.3f, -0.3f});
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 8);
     cupuacu::persistence::PersistedSessionState persistedState{};
     persistedState.openFiles = {wavPath.string()};
@@ -537,7 +550,7 @@ TEST_CASE("Startup document restore integration reopens multiple file-backed tab
     writeTestWav(firstPath, 44100, 1, {0.1f, 0.2f, 0.3f});
     writeTestWav(secondPath, 22050, 2, {0.4f, -0.4f, 0.5f, -0.5f});
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 8);
 
     cupuacu::persistence::PersistedSessionState persistedState{};
@@ -561,7 +574,7 @@ TEST_CASE("Event handling integration ignores unfocused key and text input",
 {
     cupuacu::test::ensureSdlTtfInitialized();
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.mainDocumentSessionWindow =
         std::make_unique<cupuacu::gui::DocumentSessionWindow>(
             &state, &state.getActiveDocumentSession(), &state.getActiveViewState(), "main-doc", 320, 240,
@@ -600,7 +613,7 @@ TEST_CASE("Event handling integration ignores unfocused key and text input",
 TEST_CASE("Event handling integration clears waveform highlight on main window mouse leave",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 1024);
 
     auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
@@ -621,7 +634,7 @@ TEST_CASE("Window integration routes focused key input to focused component",
 {
     cupuacu::test::ensureSdlTtfInitialized();
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto window = std::make_unique<cupuacu::gui::Window>(
         &state, "focused-input-window", 320, 240, SDL_WINDOW_HIDDEN);
 
@@ -646,7 +659,7 @@ TEST_CASE("Window integration routes focused key input to focused component",
 TEST_CASE("Status bar integration lays out labeled fields across the footer",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 1024, 44100, 2, 800, 400);
 
     auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
@@ -691,7 +704,7 @@ TEST_CASE("Status bar integration lays out labeled fields across the footer",
 TEST_CASE("Status bar integration tolerates missing audio devices",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 1024, 44100, 2, 800, 400);
 
     auto *statusBar = cupuacu::test::integration::findByNameRecursive<
@@ -717,7 +730,7 @@ TEST_CASE("Status bar integration tolerates missing audio devices",
 TEST_CASE("Status bar integration shows sample rate and bit depth",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 32, 48000, 2, 800, 400);
 
     auto *statusBar = cupuacu::test::integration::findByNameRecursive<
@@ -739,7 +752,7 @@ TEST_CASE("Status bar integration shows sample rate and bit depth",
 TEST_CASE("Status bar integration shows persisted integer sample values for PCM",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 32, 44100, 1, 800, 400);
 
     auto *statusBar = cupuacu::test::integration::findByNameRecursive<
@@ -808,7 +821,7 @@ TEST_CASE("Status bar integration shows persisted integer sample values for PCM"
 TEST_CASE("New file dialog integration creates an empty document with the selected format",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 16, 44100, 2, 800, 400);
 
     state.newFileDialogWindow.reset(new cupuacu::gui::NewFileDialogWindow(&state));
@@ -836,10 +849,36 @@ TEST_CASE("New file dialog integration creates an empty document with the select
     REQUIRE(session.document.getFrameCount() == 0);
 }
 
+TEST_CASE("New file dialog integration treats Enter as OK", "[integration]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    createBuiltSessionUi(&state, 16, 44100, 2, 800, 400);
+
+    state.newFileDialogWindow.reset(new cupuacu::gui::NewFileDialogWindow(&state));
+    REQUIRE(state.newFileDialogWindow != nullptr);
+    REQUIRE(state.newFileDialogWindow->isOpen());
+
+    auto *root = state.newFileDialogWindow->getWindow()->getRootComponent();
+    std::vector<cupuacu::gui::DropdownMenu *> dropdowns;
+    collectRecursive(root, dropdowns);
+    REQUIRE(dropdowns.size() >= 3);
+    dropdowns[0]->setSelectedIndex(3);
+    dropdowns[1]->setSelectedIndex(1);
+    dropdowns[2]->setSelectedIndex(1);
+
+    sendKeyDown(state.newFileDialogWindow->getWindow(), SDL_SCANCODE_RETURN);
+
+    auto &session = state.getActiveDocumentSession();
+    REQUIRE(session.document.getSampleRate() == 48000);
+    REQUIRE(session.document.getSampleFormat() == cupuacu::SampleFormat::PCM_S16);
+    REQUIRE(session.document.getChannelCount() == 2);
+    REQUIRE(session.document.getFrameCount() == 0);
+}
+
 TEST_CASE("New file dialog integration can be opened and closed repeatedly",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 16, 44100, 2, 800, 400);
 
     for (int i = 0; i < 3; ++i)
@@ -862,7 +901,7 @@ TEST_CASE("New file dialog integration can be opened and closed repeatedly",
 
 TEST_CASE("Tab strip integration switches the active document", "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.tabs.resize(2);
     state.activeTabIndex = 0;
 
@@ -910,7 +949,7 @@ TEST_CASE("Tab strip integration switches the active document", "[integration]")
 TEST_CASE("Tab strip integration can close tabs with the embedded close icon",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 64, 44100, 2, 800, 400);
     REQUIRE(cupuacu::actions::createNewDocumentInNewTab(
         &state, 48000, cupuacu::SampleFormat::PCM_S16, 1));
@@ -940,7 +979,7 @@ TEST_CASE("Tab strip integration can close tabs with the embedded close icon",
 TEST_CASE("Repeated new document creation rebuilds waveform channels cleanly",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 16, 44100, 2, 800, 400);
 
     REQUIRE(state.waveforms.size() == 2);
@@ -964,7 +1003,7 @@ TEST_CASE("Repeated new document creation rebuilds waveform channels cleanly",
 TEST_CASE("Empty stereo document click keeps triangle markers hidden",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 16, 44100, 2, 800, 400);
 
     cupuacu::actions::createNewDocument(
@@ -1014,7 +1053,7 @@ TEST_CASE("Empty stereo document click keeps triangle markers hidden",
 TEST_CASE("Mono waveform integration keeps channel selection unified across the full height",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 64, 44100, 1, 800, 400);
 
     auto *root = state.mainDocumentSessionWindow->getWindow()->getRootComponent();
@@ -1062,7 +1101,7 @@ TEST_CASE("Mono waveform integration keeps channel selection unified across the 
 TEST_CASE("Generate silence dialog integration inserts silence at the cursor",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 4, 44100, 1, 800, 400);
 
     auto &doc = state.getActiveDocumentSession().document;
@@ -1099,10 +1138,48 @@ TEST_CASE("Generate silence dialog integration inserts silence at the cursor",
     REQUIRE(doc.getSample(0, 5) == 4.0f);
 }
 
+TEST_CASE("Generate silence dialog integration treats Enter as OK",
+          "[integration]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    createBuiltSessionUi(&state, 4, 44100, 1, 800, 400);
+
+    auto &doc = state.getActiveDocumentSession().document;
+    for (int i = 0; i < 4; ++i)
+    {
+        doc.setSample(0, i, static_cast<float>(i + 1), false);
+    }
+    state.getActiveDocumentSession().cursor = 1;
+
+    state.generateSilenceDialogWindow.reset(
+        new cupuacu::gui::GenerateSilenceDialogWindow(&state));
+    REQUIRE(state.generateSilenceDialogWindow != nullptr);
+    REQUIRE(state.generateSilenceDialogWindow->isOpen());
+
+    auto *root = state.generateSilenceDialogWindow->getWindow()->getRootComponent();
+    auto *durationInput = findFirstRecursive<cupuacu::gui::TextInput>(root);
+    auto *unitDropdown = findFirstRecursive<cupuacu::gui::DropdownMenu>(root);
+    REQUIRE(durationInput != nullptr);
+    REQUIRE(unitDropdown != nullptr);
+    durationInput->setText("2");
+    unitDropdown->setSelectedIndex(0);
+
+    sendKeyDown(state.generateSilenceDialogWindow->getWindow(),
+                SDL_SCANCODE_RETURN);
+
+    REQUIRE(doc.getFrameCount() == 6);
+    REQUIRE(doc.getSample(0, 0) == 1.0f);
+    REQUIRE(doc.getSample(0, 1) == 0.0f);
+    REQUIRE(doc.getSample(0, 2) == 0.0f);
+    REQUIRE(doc.getSample(0, 3) == 2.0f);
+    REQUIRE(doc.getSample(0, 4) == 3.0f);
+    REQUIRE(doc.getSample(0, 5) == 4.0f);
+}
+
 TEST_CASE("Waveform integration toggles sample points with playback state",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 64);
 
     REQUIRE_FALSE(state.waveforms.empty());
@@ -1129,7 +1206,7 @@ TEST_CASE("Waveform integration toggles sample points with playback state",
 TEST_CASE("Waveform integration preserves highlight when entering a sample point child",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 64);
 
     REQUIRE_FALSE(state.waveforms.empty());
@@ -1160,7 +1237,7 @@ TEST_CASE("Waveform integration preserves highlight when entering a sample point
 TEST_CASE("Sample point integration drags a sample and records an undoable",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 64);
 
     REQUIRE_FALSE(state.waveforms.empty());
@@ -1206,7 +1283,7 @@ TEST_CASE("Sample point integration drags a sample and records an undoable",
 TEST_CASE("Triangle marker integration updates cursor and selection while dragging",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 1024);
 
     auto window = std::make_unique<cupuacu::gui::Window>(

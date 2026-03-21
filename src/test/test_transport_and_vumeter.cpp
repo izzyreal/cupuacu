@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "State.hpp"
+#include "TestPaths.hpp"
 #include "SelectedChannels.hpp"
 #include "audio/AudioDevices.hpp"
 #include "audio/AudioMessage.hpp"
@@ -50,7 +51,7 @@ namespace
 TEST_CASE("Transport buttons container drives record stop play-stop and loop state",
           "[gui][audio]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.audioDevices = std::make_shared<cupuacu::audio::AudioDevices>(false);
     auto &doc = state.getActiveDocumentSession().document;
     doc.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 16);
@@ -106,7 +107,7 @@ TEST_CASE("Transport buttons container drives record stop play-stop and loop sta
 TEST_CASE("Vu meter timer reacts to pushed peaks and decay without SDL rendering",
           "[gui][audio]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     cupuacu::gui::VuMeter meter(&state);
     meter.setVisible(true);
 
@@ -125,7 +126,7 @@ TEST_CASE("Vu meter timer reacts to pushed peaks and decay without SDL rendering
 TEST_CASE("Vu meter timer leaves an empty decay pass clean",
           "[gui][audio]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     cupuacu::gui::VuMeter meter(&state);
     meter.setVisible(true);
 

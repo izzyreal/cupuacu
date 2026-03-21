@@ -3,6 +3,7 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #include "State.hpp"
+#include "TestPaths.hpp"
 #include "file/file_loading.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/Window.hpp"
@@ -133,7 +134,7 @@ TEST_CASE("Loading a file resets session selection and cursor", "[session]")
         0.1f, -0.1f, 0.2f, -0.2f, 0.3f, -0.3f, 0.4f, -0.4f};
     writeTestWav(wavPath, 48000, 2, samples);
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto &session = state.getActiveDocumentSession();
     session.currentFile = wavPath.string();
 
@@ -176,7 +177,7 @@ TEST_CASE("Loading a second file fully reinitializes document cache and shape",
     }
     writeTestWav(secondPath, 22050, 1, secondSamples);
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto &session = state.getActiveDocumentSession();
 
     session.currentFile = firstPath.string();
@@ -218,7 +219,7 @@ TEST_CASE("Loading PCM16 and FLOAT64 files maps sample formats correctly",
     writeTestWavWithFormat(float64Path, 96000, 2, SF_FORMAT_WAV | SF_FORMAT_DOUBLE,
                            {0.1, -0.1, 0.2, -0.2, 0.3, -0.3});
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto &session = state.getActiveDocumentSession();
 
     session.currentFile = pcm16Path.string();
@@ -240,7 +241,7 @@ TEST_CASE("Loading PCM16 and FLOAT64 files maps sample formats correctly",
 
 TEST_CASE("Loading a missing file throws a descriptive error", "[session]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile =
         (makeUniqueTempDir("cupuacu-test-session-missing") / "missing.wav")
             .string();

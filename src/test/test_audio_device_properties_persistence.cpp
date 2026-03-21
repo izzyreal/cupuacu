@@ -2,6 +2,7 @@
 
 #include "Paths.hpp"
 #include "State.hpp"
+#include "TestPaths.hpp"
 #include "audio/AudioDevices.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/Window.hpp"
@@ -73,7 +74,7 @@ TEST_CASE("Audio device properties persistence round-trip", "[persistence]")
         std::filesystem::temp_directory_path() / "cupuacu-test-config";
     ScopedConfigCleanup cleanup(testConfigRoot);
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.paths = std::make_unique<TestPaths>();
     const auto propertiesPath = state.paths->audioDevicePropertiesPath();
 

@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "State.hpp"
+#include "TestPaths.hpp"
 #include "actions/ViewPolicyPlanning.hpp"
 #include "actions/audio/EditCommands.hpp"
 #include "actions/ViewPolicy.hpp"
@@ -8,7 +9,7 @@
 
 TEST_CASE("Edit command selection target is inactive without selection", "[session]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto &session = state.getActiveDocumentSession();
     session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 128);
 
@@ -20,7 +21,7 @@ TEST_CASE("Edit command selection target is inactive without selection", "[sessi
 
 TEST_CASE("Edit command selection target uses active selection bounds", "[session]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto &session = state.getActiveDocumentSession();
     session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 128);
 
@@ -33,7 +34,7 @@ TEST_CASE("Edit command selection target uses active selection bounds", "[sessio
 
 TEST_CASE("Edit command paste target without selection uses cursor", "[session]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto &session = state.getActiveDocumentSession();
     session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 128);
 
@@ -46,7 +47,7 @@ TEST_CASE("Edit command paste target without selection uses cursor", "[session]"
 
 TEST_CASE("Edit command paste target with selection uses selection bounds", "[session]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto &session = state.getActiveDocumentSession();
     session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 128);
 
@@ -60,7 +61,7 @@ TEST_CASE("Edit command paste target with selection uses selection bounds", "[se
 TEST_CASE("Edit command insert silence inserts at cursor without replacing clipboard",
           "[session]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto &session = state.getActiveDocumentSession();
     session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 4);
     for (int i = 0; i < 4; ++i)
@@ -89,7 +90,7 @@ TEST_CASE("Edit command insert silence inserts at cursor without replacing clipb
 TEST_CASE("Edit command insert silence replaces the active selection",
           "[session]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto &session = state.getActiveDocumentSession();
     session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 5);
     for (int i = 0; i < 5; ++i)

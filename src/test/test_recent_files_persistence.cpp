@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "TestPaths.hpp"
 #include "actions/DocumentLifecycle.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "persistence/RecentFilesPersistence.hpp"
@@ -232,7 +233,7 @@ TEST_CASE("Startup document restore plan prunes missing recent and open files",
 TEST_CASE("Persisted open session state captures open file tabs and the active file-backed tab",
           "[persistence]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.recentFiles = {"/tmp/recent-a.wav", "/tmp/recent-b.wav"};
     state.tabs.resize(3);
     state.tabs[0].session.currentFile = "/tmp/open-a.wav";
@@ -253,7 +254,7 @@ TEST_CASE("Persisted recent files and session state save to separate files",
                       "cupuacu-session-persist-save";
     ScopedCleanup cleanup(root / "placeholder");
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.paths = std::make_unique<TestPaths>(root);
     state.recentFiles = {"/tmp/recent-a.wav", "/tmp/recent-b.wav"};
     state.tabs.resize(2);
@@ -282,7 +283,7 @@ TEST_CASE("Document lifecycle helpers can skip persistence when requested",
                       "cupuacu-session-persist-skip";
     ScopedCleanup cleanup(root / "placeholder");
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.paths = std::make_unique<TestPaths>(root);
     state.recentFiles = {"/tmp/recent-a.wav"};
     state.tabs.resize(1);

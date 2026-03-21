@@ -326,7 +326,7 @@ TEST_CASE("Window integration clears capture on mouse up and updates hover",
 {
     cupuacu::test::ensureSdlTtfInitialized();
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto window = std::make_unique<cupuacu::gui::Window>(
         &state, "window-test", 320, 240, SDL_WINDOW_HIDDEN);
 
@@ -350,7 +350,7 @@ TEST_CASE("Window integration routes wheel events to hovered component",
 {
     cupuacu::test::ensureSdlTtfInitialized();
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto window = std::make_unique<cupuacu::gui::Window>(
         &state, "window-wheel", 320, 240, SDL_WINDOW_HIDDEN);
 
@@ -377,7 +377,7 @@ TEST_CASE("Menu integration opens submenus and switches siblings on hover",
 {
     cupuacu::test::ensureSdlTtfInitialized();
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto window = std::make_unique<cupuacu::gui::Window>(
         &state, "menu-hover-switch", 480, 240, SDL_WINDOW_HIDDEN);
 
@@ -395,7 +395,7 @@ TEST_CASE("Menu integration opens submenus and switches siblings on hover",
 
     auto fileSubMenus = cupuacu::test::integration::menuChildren(fileMenu);
     auto viewSubMenus = cupuacu::test::integration::menuChildren(viewMenu);
-    REQUIRE(fileSubMenus.size() == 6);
+    REQUIRE(fileSubMenus.size() == 7);
     REQUIRE(viewSubMenus.size() == 5);
 
     fileMenu->mouseDown(cupuacu::test::integration::leftMouseDown());
@@ -422,7 +422,7 @@ TEST_CASE("Menu integration undo and redo actions reflect undo stack state",
 {
     cupuacu::test::ensureSdlTtfInitialized();
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto window = std::make_unique<cupuacu::gui::Window>(
         &state, "menu-undo-redo", 480, 240, SDL_WINDOW_HIDDEN);
 
@@ -460,7 +460,7 @@ TEST_CASE("Options menu integration opens device properties window once",
 {
     cupuacu::test::ensureSdlTtfInitialized();
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto sessionUi =
         cupuacu::test::integration::createSessionUi(&state, 512, false);
     REQUIRE(state.mainDocumentSessionWindow != nullptr);
@@ -525,7 +525,7 @@ TEST_CASE("Secondary window integration handles escape-close callback",
 {
     cupuacu::test::ensureSdlTtfInitialized();
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto window = std::make_unique<cupuacu::gui::Window>(
         &state, "secondary-window-escape", 320, 240, SDL_WINDOW_HIDDEN);
 
@@ -547,7 +547,7 @@ TEST_CASE("Window integration forwards key and text input to focused component",
 {
     cupuacu::test::ensureSdlTtfInitialized();
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto window = std::make_unique<cupuacu::gui::Window>(
         &state, "window-focused-input", 320, 240, SDL_WINDOW_HIDDEN);
 
@@ -582,7 +582,7 @@ TEST_CASE("Window integration forwards key and text input to focused component",
 TEST_CASE("Window integration keeps the main document window open on escape",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto sessionUi =
         cupuacu::test::integration::createSessionUi(&state, 512, false);
 
@@ -601,7 +601,7 @@ TEST_CASE("Window integration honors requestClose queued during mouse dispatch",
 {
     cupuacu::test::ensureSdlTtfInitialized();
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto window = std::make_unique<cupuacu::gui::Window>(
         &state, "window-request-close", 320, 240, SDL_WINDOW_HIDDEN);
 
@@ -634,7 +634,7 @@ TEST_CASE("Device properties integration persists normalized selection when reop
         "cupuacu-device-properties-integration";
     ScopedConfigCleanup cleanup(configRoot);
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.paths = std::make_unique<TestPaths>(configRoot);
     auto sessionUi =
         cupuacu::test::integration::createSessionUi(&state, 512, false);
@@ -725,7 +725,7 @@ TEST_CASE("Options menu integration replaces a closed device properties window i
 {
     cupuacu::test::ensureSdlTtfInitialized();
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto sessionUi =
         cupuacu::test::integration::createSessionUi(&state, 512, false);
 
@@ -774,7 +774,7 @@ TEST_CASE("Device properties integration refreshes layout when pixel scale chang
 {
     cupuacu::test::ensureSdlTtfInitialized();
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto sessionUi =
         cupuacu::test::integration::createSessionUi(&state, 512, false);
 
@@ -825,7 +825,7 @@ TEST_CASE("File menu integration opens a recent file into the active session",
     const auto wavPath = cleanup.path() / "recent.wav";
     writeTestWav(wavPath, 22050, 2, {0.25f, -0.25f, 0.5f, -0.5f});
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto sessionUi =
         cupuacu::test::integration::createSessionUi(&state, 16, false, 1);
     state.recentFiles = {wavPath.string()};
@@ -845,8 +845,8 @@ TEST_CASE("File menu integration opens a recent file into the active session",
     REQUIRE(topLevelMenus.size() == 6);
     auto *fileMenu = topLevelMenus[0];
     auto fileEntries = cupuacu::test::integration::menuChildren(fileMenu);
-    REQUIRE(fileEntries.size() == 6);
-    auto *recentMenu = fileEntries[2];
+    REQUIRE(fileEntries.size() == 7);
+    auto *recentMenu = fileEntries[3];
 
     auto recentEntries = cupuacu::test::integration::menuChildren(recentMenu);
     REQUIRE(recentEntries.size() ==
@@ -874,7 +874,7 @@ TEST_CASE("Recent submenu integration does not show blank placeholder rows",
     const auto wavPath = cleanup.path() / "recent.wav";
     writeTestWav(wavPath, 22050, 1, {0.25f, 0.5f});
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.recentFiles = {wavPath.string()};
 
     auto window = std::make_unique<cupuacu::gui::Window>(
@@ -890,7 +890,7 @@ TEST_CASE("Recent submenu integration does not show blank placeholder rows",
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
     auto *fileMenu = topLevelMenus[0];
-    auto *recentMenu = cupuacu::test::integration::menuChildren(fileMenu)[2];
+    auto *recentMenu = cupuacu::test::integration::menuChildren(fileMenu)[3];
     auto recentEntries = cupuacu::test::integration::menuChildren(recentMenu);
 
     REQUIRE(fileMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
@@ -914,7 +914,7 @@ TEST_CASE("Recent submenu integration hover keeps File menu open",
     const auto wavPath = cleanup.path() / "recent.wav";
     writeTestWav(wavPath, 22050, 1, {0.25f, 0.5f});
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.recentFiles = {wavPath.string()};
 
     auto window = std::make_unique<cupuacu::gui::Window>(
@@ -930,7 +930,7 @@ TEST_CASE("Recent submenu integration hover keeps File menu open",
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
     auto *fileMenu = topLevelMenus[0];
-    auto *recentMenu = cupuacu::test::integration::menuChildren(fileMenu)[2];
+    auto *recentMenu = cupuacu::test::integration::menuChildren(fileMenu)[3];
 
     REQUIRE(fileMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
     REQUIRE(fileMenu->isOpen());
@@ -952,7 +952,7 @@ TEST_CASE("Recent submenu integration overlays file menu with slight horizontal 
     const auto wavPath = cleanup.path() / "recent.wav";
     writeTestWav(wavPath, 22050, 1, {0.25f, 0.5f});
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.recentFiles = {wavPath.string()};
 
     auto window = std::make_unique<cupuacu::gui::Window>(
@@ -968,7 +968,7 @@ TEST_CASE("Recent submenu integration overlays file menu with slight horizontal 
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
     auto *fileMenu = topLevelMenus[0];
-    auto *recentMenu = cupuacu::test::integration::menuChildren(fileMenu)[2];
+    auto *recentMenu = cupuacu::test::integration::menuChildren(fileMenu)[3];
     auto *recentEntry =
         cupuacu::test::integration::menuChildren(recentMenu)[1];
 
@@ -991,7 +991,7 @@ TEST_CASE("Recent submenu integration closes when hovering another active top-le
     const auto wavPath = cleanup.path() / "recent.wav";
     writeTestWav(wavPath, 22050, 1, {0.25f, 0.5f});
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.recentFiles = {wavPath.string()};
 
     auto window = std::make_unique<cupuacu::gui::Window>(
@@ -1008,7 +1008,7 @@ TEST_CASE("Recent submenu integration closes when hovering another active top-le
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
     auto *fileMenu = topLevelMenus[0];
     auto *editMenu = topLevelMenus[1];
-    auto *recentMenu = cupuacu::test::integration::menuChildren(fileMenu)[2];
+    auto *recentMenu = cupuacu::test::integration::menuChildren(fileMenu)[3];
     auto *recentEntry =
         cupuacu::test::integration::menuChildren(recentMenu)[1];
 
@@ -1031,7 +1031,7 @@ TEST_CASE("File menu integration exit entry pushes a quit event", "[integration]
 {
     cupuacu::test::ensureSdlTtfInitialized();
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto window = std::make_unique<cupuacu::gui::Window>(
         &state, "file-exit", 480, 240, SDL_WINDOW_HIDDEN);
 
@@ -1049,8 +1049,8 @@ TEST_CASE("File menu integration exit entry pushes a quit event", "[integration]
     REQUIRE(topLevelMenus.size() == 6);
     auto *fileMenu = topLevelMenus[0];
     auto fileEntries = cupuacu::test::integration::menuChildren(fileMenu);
-    REQUIRE(fileEntries.size() == 6);
-    auto *exitEntry = fileEntries[5];
+    REQUIRE(fileEntries.size() == 7);
+    auto *exitEntry = fileEntries[6];
 
     REQUIRE(fileMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
     REQUIRE(exitEntry->mouseDown(cupuacu::test::integration::leftMouseDown()));

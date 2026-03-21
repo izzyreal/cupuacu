@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "State.hpp"
+#include "TestPaths.hpp"
 #include "actions/DocumentLifecycle.hpp"
 #include "actions/DocumentTabs.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
@@ -8,7 +9,7 @@
 
 TEST_CASE("Document tabs can switch without an audio backend", "[tabs]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
 
     REQUIRE(cupuacu::actions::canSwitchTabs(&state));
 }
@@ -27,7 +28,7 @@ TEST_CASE("Document tab title uses the file name when present", "[tabs]")
 
 TEST_CASE("Creating an empty tab appends and activates it", "[tabs]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.tabs.resize(1);
     state.activeTabIndex = 0;
     state.tabs[0].session.currentFile = "/tmp/original.wav";
@@ -49,7 +50,7 @@ TEST_CASE("Creating an empty tab appends and activates it", "[tabs]")
 
 TEST_CASE("Creating a new document reuses the lone blank startup tab", "[tabs]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
 
     REQUIRE(cupuacu::actions::createNewDocumentInNewTab(
         &state, 44100, cupuacu::SampleFormat::PCM_S16, 2));
@@ -62,7 +63,7 @@ TEST_CASE("Creating a new document reuses the lone blank startup tab", "[tabs]")
 TEST_CASE("Creating a new document appends a tab when a document is already open",
           "[tabs]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = "/tmp/original.wav";
     state.getActiveDocumentSession().document.initialize(
         cupuacu::SampleFormat::PCM_S16, 44100, 2, 64);
@@ -79,7 +80,7 @@ TEST_CASE("Creating a new document appends a tab when a document is already open
 
 TEST_CASE("Switching tabs changes the active document context", "[tabs]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.tabs.resize(2);
     state.tabs[0].session.currentFile = "/tmp/first.wav";
     state.tabs[1].session.currentFile = "/tmp/second.wav";
@@ -93,7 +94,7 @@ TEST_CASE("Switching tabs changes the active document context", "[tabs]")
 
 TEST_CASE("Tab strip exposes absolute file paths as tooltip text", "[tabs]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.tabs[0].session.currentFile = "/tmp/projects/first.wav";
 
     cupuacu::gui::TabStrip tabStrip(&state);
@@ -113,7 +114,7 @@ TEST_CASE("Tab strip exposes absolute file paths as tooltip text", "[tabs]")
 TEST_CASE("Closing the active tab removes it and keeps a valid selection",
           "[tabs]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.tabs.resize(3);
     state.tabs[0].session.currentFile = "/tmp/first.wav";
     state.tabs[1].session.currentFile = "/tmp/second.wav";
@@ -129,7 +130,7 @@ TEST_CASE("Closing the active tab removes it and keeps a valid selection",
 TEST_CASE("Closing an inactive tab preserves the active document context",
           "[tabs]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.tabs.resize(3);
     state.tabs[0].session.currentFile = "/tmp/first.wav";
     state.tabs[1].session.currentFile = "/tmp/second.wav";
@@ -144,7 +145,7 @@ TEST_CASE("Closing an inactive tab preserves the active document context",
 
 TEST_CASE("Closing the only tab clears its document but keeps the tab", "[tabs]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.tabs.resize(1);
     state.activeTabIndex = 0;
     state.getActiveDocumentSession().currentFile = "/tmp/only.wav";
@@ -163,7 +164,7 @@ TEST_CASE("Closing the only tab clears its document but keeps the tab", "[tabs]"
 TEST_CASE("Active tab body clicks are consumed without reselecting the tab",
           "[tabs]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     cupuacu::gui::TabStripTab tab(&state, "Active", 0);
     tab.setBounds(0, 0, 120, 32);
     tab.setActive(true);
@@ -199,7 +200,7 @@ TEST_CASE("Active tab body clicks are consumed without reselecting the tab",
 
 TEST_CASE("Active tab close clicks still trigger close", "[tabs]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     cupuacu::gui::TabStripTab tab(&state, "Active", 0);
     tab.setBounds(0, 0, 120, 32);
     tab.setActive(true);

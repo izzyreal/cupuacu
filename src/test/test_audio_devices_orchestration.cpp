@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "State.hpp"
+#include "TestPaths.hpp"
 #include "actions/Play.hpp"
 #include "actions/Record.hpp"
 #include "audio/AudioDevices.hpp"
@@ -13,7 +14,7 @@
 TEST_CASE("Record action stops playback and records bounded selection",
           "[audio]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.audioDevices = std::make_shared<cupuacu::audio::AudioDevices>(false);
     auto &document = state.getActiveDocumentSession().document;
     document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 128);

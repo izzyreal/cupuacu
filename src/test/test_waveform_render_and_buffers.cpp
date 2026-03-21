@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "State.hpp"
+#include "TestPaths.hpp"
 #include "audio/DirtyTrackingAudioBuffer.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/LabeledField.hpp"
@@ -129,7 +130,7 @@ TEST_CASE("DirtyTrackingAudioBuffer preserves dirty bits across inserts and remo
 TEST_CASE("LabeledField marks itself dirty only when the displayed value changes",
           "[gui]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     cupuacu::gui::LabeledField field(&state, "Pos", SDL_Color{0, 0, 0, 255});
     field.setVisible(true);
 
@@ -144,7 +145,7 @@ TEST_CASE("LabeledField marks itself dirty only when the displayed value changes
 TEST_CASE("ScrollBar vertical drag updates value and non-left clicks are ignored",
           "[gui]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     double value = 25.0;
 
     cupuacu::gui::ScrollBar bar(

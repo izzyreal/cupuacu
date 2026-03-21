@@ -117,6 +117,19 @@ namespace cupuacu::gui
         {
             onResize = std::move(callback);
         }
+        void setOnUnhandledKeyDown(
+            std::function<bool(const SDL_KeyboardEvent &)> callback)
+        {
+            onUnhandledKeyDown = std::move(callback);
+        }
+        void setDefaultAction(std::function<void()> callback)
+        {
+            defaultAction = std::move(callback);
+        }
+        void setCancelAction(std::function<void()> callback)
+        {
+            cancelAction = std::move(callback);
+        }
         void setOnClose(std::function<void()> callback)
         {
             onClose = std::move(callback);
@@ -160,6 +173,9 @@ namespace cupuacu::gui
         std::unique_ptr<TooltipController> tooltipController;
 
         std::function<void()> onResize;
+        std::function<bool(const SDL_KeyboardEvent &)> onUnhandledKeyDown;
+        std::function<void()> defaultAction;
+        std::function<void()> cancelAction;
         std::function<void()> onClose;
         bool closeRequested = false;
 

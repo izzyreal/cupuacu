@@ -3,6 +3,8 @@
 #include "../State.hpp"
 #include "SampleQuantization.hpp"
 
+#include <sndfile.h>
+
 #include <ios>
 #include <filesystem>
 #include <istream>
@@ -19,6 +21,28 @@ namespace cupuacu::file
     class WavWriter
     {
     private:
+        static int toLibsndfileSubformat(const cupuacu::SampleFormat format)
+        {
+            switch (format)
+            {
+                case cupuacu::SampleFormat::PCM_S8:
+                    return SF_FORMAT_PCM_S8;
+                case cupuacu::SampleFormat::PCM_S16:
+                    return SF_FORMAT_PCM_16;
+                case cupuacu::SampleFormat::PCM_S24:
+                    return SF_FORMAT_PCM_24;
+                case cupuacu::SampleFormat::PCM_S32:
+                    return SF_FORMAT_PCM_32;
+                case cupuacu::SampleFormat::FLOAT32:
+                    return SF_FORMAT_FLOAT;
+                case cupuacu::SampleFormat::FLOAT64:
+                    return SF_FORMAT_DOUBLE;
+                case cupuacu::SampleFormat::Unknown:
+                default:
+                    return 0;
+            }
+        }
+
         static std::ifstream openInputFileStream(const std::filesystem::path &p)
         {
             std::ifstream result(p, std::ios::binary);
@@ -391,6 +415,70 @@ namespace cupuacu::file
         }
 
     public:
+        static void writeWavFile(cupuacu::State *state,
+                                 const std::filesystem::path &outputPath)
+        {
+            if (!state || outputPath.empty())
+            {
+                throw std::invalid_argument("Output path is empty");
+            }
+
+            const auto &session = state->getActiveDocumentSession();
+            const auto &document = session.document;
+            const int channels = document.getChannelCount();
+            const int sampleRate = document.getSampleRate();
+            const auto format = document.getSampleFormat();
+            const int subtype = toLibsndfileSubformat(format);
+
+            if (channels <= 0 || sampleRate <= 0 || subtype == 0)
+            {
+                throw std::invalid_argument("Document format cannot be saved as WAV");
+            }
+
+            std::error_code ec;
+            std::filesystem::create_directories(outputPath.parent_path(), ec);
+            if (ec)
+            {
+                throw std::ios_base::failure(
+                    "Failed to create output directory");
+            }
+
+            SF_INFO sfinfo{};
+            sfinfo.channels = channels;
+            sfinfo.samplerate = sampleRate;
+            sfinfo.format = SF_FORMAT_WAV | subtype;
+
+            SNDFILE *snd = sf_open(outputPath.string().c_str(), SFM_WRITE, &sfinfo);
+            if (!snd)
+            {
+                throw std::ios_base::failure("Failed to open output WAV file");
+            }
+
+            const sf_count_t frames = document.getFrameCount();
+            std::vector<float> interleaved(static_cast<size_t>(frames) *
+                                           static_cast<size_t>(channels));
+            for (sf_count_t frame = 0; frame < frames; ++frame)
+            {
+                for (int channel = 0; channel < channels; ++channel)
+                {
+                    interleaved[static_cast<size_t>(frame) *
+                                    static_cast<size_t>(channels) +
+                                static_cast<size_t>(channel)] =
+                        document.getSample(channel, frame);
+                }
+            }
+
+            const sf_count_t written =
+                sf_writef_float(snd, interleaved.data(), frames);
+            sf_write_sync(snd);
+            sf_close(snd);
+
+            if (written != frames)
+            {
+                throw std::ios_base::failure("Failed to write all WAV frames");
+            }
+        }
+
         static void rewriteWavFile(cupuacu::State *state)
         {
             std::filesystem::path input(

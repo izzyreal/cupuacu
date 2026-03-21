@@ -108,7 +108,7 @@ TEST_CASE("Open file dialog callback loads the selected file into the session",
     writeTestWav(wavPath, 22050, 2,
                  {0.25f, -0.25f, 0.5f, -0.5f, 0.75f, -0.75f});
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto sessionUi =
         cupuacu::test::integration::createSessionUi(&state, 32, false, 1);
 
@@ -166,7 +166,7 @@ TEST_CASE("Open file dialog callback loads multiple selected files into tabs",
     writeTestWav(firstWavPath, 44100, 1, {0.1f, 0.2f});
     writeTestWav(secondWavPath, 22050, 2, {0.25f, -0.25f, 0.5f, -0.5f});
 
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto sessionUi =
         cupuacu::test::integration::createSessionUi(&state, 32, false, 1);
 
@@ -200,7 +200,7 @@ TEST_CASE("Open file dialog callback loads multiple selected files into tabs",
 TEST_CASE("Open file dialog callback leaves state unchanged when canceled",
           "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     auto sessionUi =
         cupuacu::test::integration::createSessionUi(&state, 12, false);
 
@@ -227,7 +227,7 @@ TEST_CASE("Open file dialog callback leaves state unchanged when canceled",
 
 TEST_CASE("Open file dialog callback tolerates dialog errors", "[integration]")
 {
-    cupuacu::State state{};
+    cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = "still-unchanged.wav";
 
     REQUIRE_NOTHROW(cupuacu::actions::fileDialogCallback(&state, nullptr, 0));

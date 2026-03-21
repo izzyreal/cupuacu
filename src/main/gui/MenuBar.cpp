@@ -20,6 +20,7 @@
 #include "gui/Helpers.hpp"
 
 #include "actions/ShowOpenFileDialog.hpp"
+#include "actions/ShowSaveFileDialog.hpp"
 #include "actions/Save.hpp"
 #include "actions/audio/Copy.hpp"
 #include "actions/audio/Trim.hpp"
@@ -47,6 +48,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
 #ifdef __APPLE__
     constexpr std::string newText{"New file (Cmd + N)"};
     constexpr std::string openText{"Open (Cmd + O)"};
+    constexpr std::string saveAsText{"Save as"};
     constexpr std::string closeText{"Close file (Cmd + W)"};
     constexpr std::string overwriteText{"Overwrite (Cmd + S)"};
     constexpr std::string exitText{"Exit"};
@@ -57,6 +59,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
 #else
     const std::string newText{"New file (Ctrl + N)"};
     const std::string openText{"Open (Ctrl + O)"};
+    const std::string saveAsText{"Save as"};
     const std::string closeText{"Close file (Ctrl + W)"};
     const std::string overwriteText{"Overwrite (Ctrl + S)"};
     const std::string exitText{"Exit"};
@@ -77,6 +80,17 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
         [&]
         {
             actions::showOpenFileDialog(state);
+        });
+    auto *saveAsMenu = fileMenu->addSubMenu(
+        state, saveAsText,
+        [&]
+        {
+            actions::showSaveFileDialog(state);
+        });
+    saveAsMenu->setIsAvailable(
+        [&]
+        {
+            return actions::hasActiveDocument(state);
         });
 
     auto *recentMenu = fileMenu->addSubMenu(state, "Recent");
