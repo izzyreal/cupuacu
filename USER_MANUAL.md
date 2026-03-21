@@ -4,7 +4,7 @@
 
 Cupuacu is a minimalist desktop audio editor for quick waveform-based editing.
 
-At the moment, the core workflow is:
+The core workflow is:
 
 1. Open an existing audio file, or create a new empty file
 2. Inspect the waveform
@@ -13,7 +13,7 @@ At the moment, the core workflow is:
 5. Apply simple effects
 6. Overwrite the current file
 
-This manual describes the current user-visible behavior of the app.
+This manual describes the user-visible behavior of the app.
 
 ## Main Window
 
@@ -65,7 +65,7 @@ Shortcut:
 
 - `Cmd/Ctrl + N`
 
-The dialog currently lets you choose:
+The dialog lets you choose:
 
 - sample rate: `11025`, `22050`, `44100`, `48000`, or `96000` Hz
 - bit depth: `8 bit` or `16 bit`
@@ -86,7 +86,7 @@ Behavior:
 - clicking a tab activates it
 - clicking the `x` inside a tab closes that tab
 - if only one tab exists, closing the file clears it back to an empty untitled document
-- Cupuacu currently allows only one actively playing or recording tab at a time
+- Cupuacu allows only one actively playing or recording tab at a time
 
 ## Closing and Exiting
 
@@ -102,13 +102,13 @@ Use `File -> Exit` to quit Cupuacu.
 
 Use `File -> Overwrite` to write the current document back to the current file path.
 
-Current limitations:
+Notes:
 
 - there is no `Save As` yet
 - `Overwrite` is only available when the current document came from a file path
 - the current overwrite path is a WAV overwrite workflow, not a general-purpose exporter
-- in practice, it is currently intended for overwriting an existing 16-bit PCM WAV file
-- a brand new untitled document cannot currently be written through a separate save dialog
+- in practice, it is intended for overwriting an existing 16-bit PCM WAV file
+- a brand new untitled document cannot be written through a separate save dialog
 
 ## Selecting Audio
 
@@ -145,7 +145,7 @@ For formats that are not integer PCM, Cupuacu falls back to a floating-point dis
 
 ## Edit Menu
 
-The `Edit` menu currently contains:
+The `Edit` menu contains:
 
 - `Undo`
 - `Redo`
@@ -170,7 +170,7 @@ Current shortcut labels in the menu include:
 
 ## Keyboard Shortcuts
 
-The current app-wide shortcuts are:
+App-wide shortcuts:
 
 - `Cmd/Ctrl + O`: open a file
 - `Cmd/Ctrl + N`: open the New File dialog
@@ -198,7 +198,7 @@ For the arrow keys and vertical zoom keys, holding modifier keys increases the s
 
 ## View Menu
 
-The `View` menu currently contains:
+The `View` menu contains:
 
 - `Reset zoom`
 - `Zoom out horiz.`
@@ -216,7 +216,7 @@ The menu labels also show the current keyboard shortcuts:
 
 ## Generate Menu
 
-The `Generate` menu currently contains one item:
+The `Generate` menu contains one item:
 
 - `Silence`
 
@@ -246,7 +246,7 @@ Behavior:
 
 ## Effects Menu
 
-The `Effects` menu currently contains:
+The `Effects` menu contains:
 
 - `Reverse`
 - `Amplify/Fade`
@@ -256,7 +256,7 @@ This menu is disabled when no document is open.
 
 ## Options Menu
 
-The `Options` menu currently contains:
+The `Options` menu contains:
 
 - `Device Properties`
 
@@ -272,37 +272,44 @@ Changes are persisted automatically when you select a different device configura
 
 ## Persisted Settings
 
-Cupuacu currently persists two JSON settings files:
+Cupuacu persists three JSON settings files:
 
 - `recently_opened_files.json`
+- `session_state.json`
 - `audio_device_properties.json`
 
 These files are stored in Cupuacu's config directory. The current paths are:
 
 - macOS:
   - `~/Library/Application Support/Cupuacu/config/recently_opened_files.json`
+  - `~/Library/Application Support/Cupuacu/config/session_state.json`
   - `~/Library/Application Support/Cupuacu/config/audio_device_properties.json`
 - Linux:
   - `~/.config/Cupuacu/config/recently_opened_files.json`
+  - `~/.config/Cupuacu/config/session_state.json`
   - `~/.config/Cupuacu/config/audio_device_properties.json`
 - Windows:
   - `%AppData%\Cupuacu\config\recently_opened_files.json`
+  - `%AppData%\Cupuacu\config\session_state.json`
   - `%AppData%\Cupuacu\config\audio_device_properties.json`
 
 ### recently_opened_files.json
 
-This file stores both:
-
-- the recent-files list used by `File -> Recent`
-- the currently restorable file-backed tab session
+This file stores the recent-files list used by `File -> Recent`.
 
 User-visible behavior:
 
 - at most 10 entries are kept
 - the newest file is first
+
+### session_state.json
+
+This file stores the restorable file-backed tab session.
+
+User-visible behavior:
+
 - file-backed tabs from the last session are reopened on startup when those paths still exist
 - the active restored tab is remembered when it refers to a file-backed tab
-- when only the old recent-files format is available, startup falls back to reopening the newest valid recent file
 
 ### audio_device_properties.json
 
@@ -313,18 +320,3 @@ In practical terms, it remembers:
 - the selected host API / device type
 - the selected output device
 - the selected input device
-
-## Current Behavior and Limitations
-
-This section summarizes the current state of the app as it exists today.
-
-- Opening files is supported through the system file picker
-- Recent files are persistent and restored across launches
-- File-backed tabs from the previous session are reopened on startup when they still exist
-- New empty files can be created with sample rate, bit depth, and channel count
-- Documents are tabbed within a single main window
-- Saving is currently an overwrite-style workflow, not a full save/save-as workflow
-- Generate currently provides silence generation only
-- Effects currently provide `Reverse`, `Amplify/Fade`, and `Dynamics`
-
-As Cupuacu evolves, this manual should be updated alongside user-visible changes.
