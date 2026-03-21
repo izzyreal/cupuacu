@@ -59,7 +59,7 @@ namespace cupuacu::gui
         std::string formatHoveredSampleValue() const
         {
             const auto &hovered =
-                state->mainDocumentSessionWindow->getViewState()
+                state->getActiveViewState()
                     .sampleValueUnderMouseCursor;
             if (!hovered.has_value())
             {
@@ -67,8 +67,8 @@ namespace cupuacu::gui
             }
 
             const auto format =
-                state->activeDocumentSession.document.getSampleFormat();
-            const auto buffer = state->activeDocumentSession.document.getAudioBuffer();
+                state->getActiveDocumentSession().document.getSampleFormat();
+            const auto buffer = state->getActiveDocumentSession().document.getAudioBuffer();
             const bool preserveLoadedCode =
                 buffer && file::isIntegerPcmSampleFormat(format) &&
                 !buffer->isDirty(hovered->channel, hovered->frame);
@@ -125,9 +125,9 @@ namespace cupuacu::gui
 
         void timerCallback() override
         {
-            const auto &session = state->activeDocumentSession;
+            const auto &session = state->getActiveDocumentSession();
             const auto &viewState =
-                state->mainDocumentSessionWindow->getViewState();
+                state->getActiveViewState();
             const int64_t currentPos =
                 getPlaybackPositionIfPlaying().value_or(session.cursor);
 

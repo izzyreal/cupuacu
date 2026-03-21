@@ -198,7 +198,7 @@ namespace cupuacu::gui
             return std::nullopt;
         }
 
-        const auto &doc = state->activeDocumentSession.document;
+        const auto &doc = state->getActiveDocumentSession().document;
         if (doc.getChannelCount() <= 0 || doc.getSampleRate() <= 0)
         {
             return std::nullopt;

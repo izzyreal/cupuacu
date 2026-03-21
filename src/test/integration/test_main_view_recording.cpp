@@ -17,7 +17,7 @@ TEST_CASE("MainView integration consumes recorded chunks into the document",
 {
     cupuacu::State state{};
     auto ui = cupuacu::test::integration::createSessionUi(&state, 4, true, 2);
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     auto &doc = session.document;
 
     for (int64_t i = 0; i < 4; ++i)
@@ -42,7 +42,7 @@ TEST_CASE("MainView integration consumes recorded chunks into the document",
     REQUIRE(doc.getSample(0, 6) == Approx(12.f));
     REQUIRE(doc.getSample(1, 6) == Approx(-12.f));
     REQUIRE(session.cursor == 7);
-    REQUIRE(state.undoables.empty());
+    REQUIRE(state.getActiveUndoables().empty());
 }
 
 TEST_CASE("MainView integration finalizes recording into an undoable when stopped",
@@ -50,7 +50,7 @@ TEST_CASE("MainView integration finalizes recording into an undoable when stoppe
 {
     cupuacu::State state{};
     auto ui = cupuacu::test::integration::createSessionUi(&state, 4, true, 2);
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     auto &doc = session.document;
 
     for (int64_t i = 0; i < 4; ++i)
@@ -67,7 +67,7 @@ TEST_CASE("MainView integration finalizes recording into an undoable when stoppe
     const std::vector<float> input = {100.f, -100.f, 101.f, -101.f};
     state.audioDevices->processCallbackCycle(input.data(), nullptr, 2);
     ui.mainView->timerCallback();
-    REQUIRE(state.undoables.empty());
+    REQUIRE(state.getActiveUndoables().empty());
 
     cupuacu::actions::requestStop(&state);
     state.audioDevices->drainQueue();
@@ -75,7 +75,7 @@ TEST_CASE("MainView integration finalizes recording into an undoable when stoppe
 
     ui.mainView->timerCallback();
 
-    REQUIRE(state.undoables.size() == 1);
+    REQUIRE(state.getActiveUndoables().size() == 1);
     REQUIRE(state.getUndoDescription() == "Record");
 
     state.undo();

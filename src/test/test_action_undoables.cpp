@@ -24,7 +24,7 @@ namespace
     void initializeMonoDocument(cupuacu::State &state,
                                 const std::vector<float> &samples)
     {
-        auto &document = state.activeDocumentSession.document;
+        auto &document = state.getActiveDocumentSession().document;
         document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1,
                             static_cast<int64_t>(samples.size()));
         for (size_t i = 0; i < samples.size(); ++i)
@@ -50,7 +50,7 @@ namespace
     {
         REQUIRE(leftSamples.size() == rightSamples.size());
 
-        auto &document = state.activeDocumentSession.document;
+        auto &document = state.getActiveDocumentSession().document;
         document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2,
                             static_cast<int64_t>(leftSamples.size()));
         for (size_t i = 0; i < leftSamples.size(); ++i)
@@ -78,14 +78,14 @@ TEST_CASE("Cut undoable updates clipboard, cursor, and undo state", "[actions]")
     cupuacu::State state{};
     initializeMonoDocument(state, {0, 1, 2, 3, 4, 5});
 
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     session.selection.setValue1(2.0);
     session.selection.setValue2(5.0);
     session.cursor = 5;
 
     cupuacu::actions::audio::performCut(&state);
 
-    REQUIRE(state.undoables.size() == 1);
+    REQUIRE(state.getActiveUndoables().size() == 1);
     REQUIRE(session.document.getFrameCount() == 3);
     REQUIRE(readMonoSamples(session.document) ==
             std::vector<float>({0, 1, 5}));
@@ -119,7 +119,7 @@ TEST_CASE("Paste insert undoable inserts clipboard content and restores on undo"
     state.clipboard.setSample(0, 0, 9.0f, false);
     state.clipboard.setSample(0, 1, 8.0f, false);
 
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     session.cursor = 4;
 
     state.addAndDoUndoable(
@@ -149,7 +149,7 @@ TEST_CASE("Paste overwrite undoable replaces selected range and restores it",
     state.clipboard.setSample(0, 0, 30.0f, false);
     state.clipboard.setSample(0, 1, 40.0f, false);
 
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     session.selection.setValue1(2.0);
     session.selection.setValue2(5.0);
     session.cursor = 1;
@@ -183,7 +183,7 @@ TEST_CASE("Trim undoable keeps requested middle range and restores document",
     state.addAndDoUndoable(
         std::make_shared<cupuacu::actions::audio::Trim>(&state, 1, 3));
 
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     REQUIRE(readMonoSamples(session.document) == std::vector<float>({1, 2, 3}));
     REQUIRE(session.selection.isActive());
     REQUIRE(session.selection.getStartInt() == 0);
@@ -206,7 +206,7 @@ TEST_CASE("Cut at document tail removes trailing frames and restores on undo",
     cupuacu::State state{};
     initializeMonoDocument(state, {0, 1, 2, 3, 4, 5});
 
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     session.selection.setValue1(4.0);
     session.selection.setValue2(6.0);
     session.cursor = 5;
@@ -237,7 +237,7 @@ TEST_CASE("Paste insert at document end appends clipboard content", "[actions]")
     state.clipboard.setSample(0, 0, 7.0f, false);
     state.clipboard.setSample(0, 1, 8.0f, false);
 
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     session.cursor = 3;
 
     cupuacu::actions::audio::performPaste(&state);
@@ -260,12 +260,12 @@ TEST_CASE("Paste with empty clipboard is a no-op", "[actions]")
     cupuacu::State state{};
     initializeMonoDocument(state, {0, 1, 2});
 
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     session.cursor = 1;
     cupuacu::actions::audio::performPaste(&state);
 
     REQUIRE(readMonoSamples(session.document) == std::vector<float>({0, 1, 2}));
-    REQUIRE(state.undoables.size() == 1);
+    REQUIRE(state.getActiveUndoables().size() == 1);
     REQUIRE_FALSE(session.selection.isActive());
     REQUIRE(session.cursor == 1);
 
@@ -281,7 +281,7 @@ TEST_CASE("Trim full document keeps content and restores selection on undo",
     cupuacu::State state{};
     initializeMonoDocument(state, {0, 1, 2, 3});
 
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     session.selection.setValue1(0.0);
     session.selection.setValue2(4.0);
     session.cursor = 3;
@@ -307,7 +307,7 @@ TEST_CASE("Cut and trim without active selection are no-ops", "[actions]")
     cupuacu::State state{};
     initializeMonoDocument(state, {0, 1, 2, 3});
 
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     session.selection.reset();
     session.cursor = 2;
 
@@ -315,7 +315,7 @@ TEST_CASE("Cut and trim without active selection are no-ops", "[actions]")
     cupuacu::actions::audio::performTrim(&state);
 
     REQUIRE(readMonoSamples(session.document) == std::vector<float>({0, 1, 2, 3}));
-    REQUIRE(state.undoables.empty());
+    REQUIRE(state.getActiveUndoables().empty());
     REQUIRE_FALSE(session.selection.isActive());
     REQUIRE(session.cursor == 2);
 }
@@ -326,14 +326,14 @@ TEST_CASE("Copy undoable preserves zero-based selection and restores it on undo"
     cupuacu::State state{};
     initializeMonoDocument(state, {0, 1, 2, 3});
 
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     session.selection.setValue1(0.0);
     session.selection.setValue2(2.0);
     session.cursor = 3;
 
     cupuacu::actions::audio::performCopy(&state);
 
-    REQUIRE(state.undoables.size() == 1);
+    REQUIRE(state.getActiveUndoables().size() == 1);
     REQUIRE(readMonoSamples(session.document) == std::vector<float>({0, 1, 2, 3}));
     REQUIRE(readMonoSamples(state.clipboard) == std::vector<float>({0, 1}));
     REQUIRE(session.selection.isActive());
@@ -359,7 +359,7 @@ TEST_CASE("Paste overwrite undo restores zero-based previous selection",
     state.clipboard.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 1);
     state.clipboard.setSample(0, 0, 9.0f, false);
 
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     session.selection.setValue1(0.0);
     session.selection.setValue2(2.0);
     session.cursor = 2;
@@ -385,15 +385,15 @@ TEST_CASE("SetSampleValue undoable changes one sample and restores it", "[action
     undoable->setNewValue(42.0f);
     state.addAndDoUndoable(undoable);
 
-    REQUIRE(readMonoSamples(state.activeDocumentSession.document) ==
+    REQUIRE(readMonoSamples(state.getActiveDocumentSession().document) ==
             std::vector<float>({0, 42, 2}));
 
     state.undo();
-    REQUIRE(readMonoSamples(state.activeDocumentSession.document) ==
+    REQUIRE(readMonoSamples(state.getActiveDocumentSession().document) ==
             std::vector<float>({0, 1, 2}));
 
     state.redo();
-    REQUIRE(readMonoSamples(state.activeDocumentSession.document) ==
+    REQUIRE(readMonoSamples(state.getActiveDocumentSession().document) ==
             std::vector<float>({0, 42, 2}));
 }
 
@@ -406,16 +406,16 @@ TEST_CASE("Amplify/Fade applies across the whole document on all channels",
     cupuacu::effects::performAmplifyFade(
         &state, cupuacu::effects::AmplifyFadeSettings{200.0, 200.0, 0, false});
 
-    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 0) ==
+    REQUIRE(readChannelSamples(state.getActiveDocumentSession().document, 0) ==
             std::vector<float>({2, 4, 6}));
-    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 1) ==
+    REQUIRE(readChannelSamples(state.getActiveDocumentSession().document, 1) ==
             std::vector<float>({8, 10, 12}));
 
     state.undo();
 
-    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 0) ==
+    REQUIRE(readChannelSamples(state.getActiveDocumentSession().document, 0) ==
             std::vector<float>({1, 2, 3}));
-    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 1) ==
+    REQUIRE(readChannelSamples(state.getActiveDocumentSession().document, 1) ==
             std::vector<float>({4, 5, 6}));
 }
 
@@ -424,24 +424,24 @@ TEST_CASE("Amplify/Fade processes the full selected range and stops at selection
 {
     cupuacu::State state{};
     initializeMonoDocument(state, {10, 10, 10, 10, 10, 10});
-    state.activeDocumentSession.selection.setHighest(6.0);
-    state.activeDocumentSession.selection.setValue1(1.0);
-    state.activeDocumentSession.selection.setValue2(5.0);
+    state.getActiveDocumentSession().selection.setHighest(6.0);
+    state.getActiveDocumentSession().selection.setValue1(1.0);
+    state.getActiveDocumentSession().selection.setValue2(5.0);
 
     cupuacu::effects::performAmplifyFade(
         &state, cupuacu::effects::AmplifyFadeSettings{100.0, 0.0, 0, false});
 
-    REQUIRE(readMonoSamples(state.activeDocumentSession.document)[0] ==
+    REQUIRE(readMonoSamples(state.getActiveDocumentSession().document)[0] ==
             Catch::Approx(10.0f));
-    REQUIRE(readMonoSamples(state.activeDocumentSession.document)[1] ==
+    REQUIRE(readMonoSamples(state.getActiveDocumentSession().document)[1] ==
             Catch::Approx(10.0f));
-    REQUIRE(readMonoSamples(state.activeDocumentSession.document)[2] ==
+    REQUIRE(readMonoSamples(state.getActiveDocumentSession().document)[2] ==
             Catch::Approx(10.0f * (2.0f / 3.0f)));
-    REQUIRE(readMonoSamples(state.activeDocumentSession.document)[3] ==
+    REQUIRE(readMonoSamples(state.getActiveDocumentSession().document)[3] ==
             Catch::Approx(10.0f * (1.0f / 3.0f)));
-    REQUIRE(readMonoSamples(state.activeDocumentSession.document)[4] ==
+    REQUIRE(readMonoSamples(state.getActiveDocumentSession().document)[4] ==
             Catch::Approx(0.0f));
-    REQUIRE(readMonoSamples(state.activeDocumentSession.document)[5] ==
+    REQUIRE(readMonoSamples(state.getActiveDocumentSession().document)[5] ==
             Catch::Approx(10.0f));
 }
 
@@ -450,21 +450,21 @@ TEST_CASE("Dynamics compresses selected samples and respects undo", "[actions]")
     cupuacu::State state{};
     initializeMonoDocument(state, {0.2f, 0.5f, 0.9f, -1.0f});
 
-    state.activeDocumentSession.selection.setHighest(4.0);
-    state.activeDocumentSession.selection.setValue1(1.0);
-    state.activeDocumentSession.selection.setValue2(4.0);
+    state.getActiveDocumentSession().selection.setHighest(4.0);
+    state.getActiveDocumentSession().selection.setValue1(1.0);
+    state.getActiveDocumentSession().selection.setValue2(4.0);
 
     cupuacu::effects::performDynamics(
         &state, cupuacu::effects::DynamicsSettings{50.0, 1});
 
-    const auto processed = readMonoSamples(state.activeDocumentSession.document);
+    const auto processed = readMonoSamples(state.getActiveDocumentSession().document);
     REQUIRE(processed[0] == Catch::Approx(0.2f));
     REQUIRE(processed[1] == Catch::Approx(0.5f));
     REQUIRE(processed[2] == Catch::Approx(0.6f));
     REQUIRE(processed[3] == Catch::Approx(-0.625f));
 
     state.undo();
-    REQUIRE(readMonoSamples(state.activeDocumentSession.document) ==
+    REQUIRE(readMonoSamples(state.getActiveDocumentSession().document) ==
             std::vector<float>({0.2f, 0.5f, 0.9f, -1.0f}));
 }
 
@@ -555,22 +555,22 @@ TEST_CASE("RecordEdit restores overwritten samples and session state on undo",
     state.addAndDoUndoable(
         std::make_shared<cupuacu::actions::audio::RecordEdit>(&state, data));
 
-    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 0) ==
+    REQUIRE(readChannelSamples(state.getActiveDocumentSession().document, 0) ==
             std::vector<float>({0.0f, 1.0f, 100.0f, 101.0f}));
-    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 1) ==
+    REQUIRE(readChannelSamples(state.getActiveDocumentSession().document, 1) ==
             std::vector<float>({0.0f, -1.0f, -100.0f, -101.0f}));
-    REQUIRE(state.activeDocumentSession.cursor == 4);
+    REQUIRE(state.getActiveDocumentSession().cursor == 4);
 
     state.undo();
 
-    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 0) ==
+    REQUIRE(readChannelSamples(state.getActiveDocumentSession().document, 0) ==
             std::vector<float>({0.0f, 1.0f, 2.0f, 3.0f}));
-    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 1) ==
+    REQUIRE(readChannelSamples(state.getActiveDocumentSession().document, 1) ==
             std::vector<float>({0.0f, -1.0f, -2.0f, -3.0f}));
-    REQUIRE(state.activeDocumentSession.cursor == 2);
+    REQUIRE(state.getActiveDocumentSession().cursor == 2);
 
     state.redo();
-    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 0) ==
+    REQUIRE(readChannelSamples(state.getActiveDocumentSession().document, 0) ==
             std::vector<float>({0.0f, 1.0f, 100.0f, 101.0f}));
 }
 
@@ -599,18 +599,18 @@ TEST_CASE("RecordEdit appends recorded frames and removes them on undo",
     state.addAndDoUndoable(
         std::make_shared<cupuacu::actions::audio::RecordEdit>(&state, data));
 
-    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 0) ==
+    REQUIRE(readChannelSamples(state.getActiveDocumentSession().document, 0) ==
             std::vector<float>({0.0f, 1.0f, 2.0f, 3.0f, 10.0f, 11.0f, 12.0f}));
-    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 1) ==
+    REQUIRE(readChannelSamples(state.getActiveDocumentSession().document, 1) ==
             std::vector<float>({0.0f, -1.0f, -2.0f, -3.0f, -10.0f, -11.0f,
                                 -12.0f}));
-    REQUIRE(state.activeDocumentSession.cursor == 7);
+    REQUIRE(state.getActiveDocumentSession().cursor == 7);
 
     state.undo();
 
-    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 0) ==
+    REQUIRE(readChannelSamples(state.getActiveDocumentSession().document, 0) ==
             std::vector<float>({0.0f, 1.0f, 2.0f, 3.0f}));
-    REQUIRE(readChannelSamples(state.activeDocumentSession.document, 1) ==
+    REQUIRE(readChannelSamples(state.getActiveDocumentSession().document, 1) ==
             std::vector<float>({0.0f, -1.0f, -2.0f, -3.0f}));
-    REQUIRE(state.activeDocumentSession.cursor == 4);
+    REQUIRE(state.getActiveDocumentSession().cursor == 4);
 }

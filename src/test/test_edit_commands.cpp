@@ -9,7 +9,7 @@
 TEST_CASE("Edit command selection target is inactive without selection", "[session]")
 {
     cupuacu::State state{};
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 128);
 
     session.selection.reset();
@@ -21,7 +21,7 @@ TEST_CASE("Edit command selection target is inactive without selection", "[sessi
 TEST_CASE("Edit command selection target uses active selection bounds", "[session]")
 {
     cupuacu::State state{};
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 128);
 
     session.selection.setValue1(11.0);
@@ -34,7 +34,7 @@ TEST_CASE("Edit command selection target uses active selection bounds", "[sessio
 TEST_CASE("Edit command paste target without selection uses cursor", "[session]")
 {
     cupuacu::State state{};
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 128);
 
     session.selection.reset();
@@ -47,7 +47,7 @@ TEST_CASE("Edit command paste target without selection uses cursor", "[session]"
 TEST_CASE("Edit command paste target with selection uses selection bounds", "[session]")
 {
     cupuacu::State state{};
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 128);
 
     session.selection.setValue1(7.0);
@@ -61,7 +61,7 @@ TEST_CASE("Edit command insert silence inserts at cursor without replacing clipb
           "[session]")
 {
     cupuacu::State state{};
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 4);
     for (int i = 0; i < 4; ++i)
     {
@@ -71,8 +71,8 @@ TEST_CASE("Edit command insert silence inserts at cursor without replacing clipb
     state.clipboard.setSample(0, 0, 99.0f, false);
 
     session.cursor = 2;
-    state.undoables.clear();
-    state.redoables.clear();
+    state.getActiveUndoables().clear();
+    state.getActiveRedoables().clear();
 
     cupuacu::actions::audio::performInsertSilence(&state, 2);
 
@@ -90,7 +90,7 @@ TEST_CASE("Edit command insert silence replaces the active selection",
           "[session]")
 {
     cupuacu::State state{};
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 5);
     for (int i = 0; i < 5; ++i)
     {

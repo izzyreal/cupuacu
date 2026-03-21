@@ -641,7 +641,7 @@ namespace cupuacu::effects
                 return;
             }
 
-            auto &document = state->activeDocumentSession.document;
+            auto &document = state->getActiveDocumentSession().document;
             if (document.getFrameCount() <= 0 || document.getChannelCount() <= 0)
             {
                 return;
@@ -675,7 +675,7 @@ namespace cupuacu::effects
             playMsg.endPos = end;
             playMsg.loopEnabled = false;
             playMsg.selectionIsActive =
-                state->activeDocumentSession.selection.isActive();
+                state->getActiveDocumentSession().selection.isActive();
             playMsg.selectedChannels = getPreviewSelectedChannels(state);
             playMsg.vuMeter = cupuacu::gui::getVuMeterIfPresent(state);
             playMsg.previewProcessor = std::move(processor);

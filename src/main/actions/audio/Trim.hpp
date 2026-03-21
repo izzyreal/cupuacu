@@ -55,7 +55,7 @@ namespace cupuacu::actions::audio
                 return snapshot;
             }
 
-            const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+            const auto &viewState = state->getActiveViewState();
             snapshot.samplesPerPixel = viewState.samplesPerPixel;
             snapshot.verticalZoom = viewState.verticalZoom;
             snapshot.sampleOffset = viewState.sampleOffset;
@@ -69,7 +69,7 @@ namespace cupuacu::actions::audio
                 return;
             }
 
-            auto &viewState = state->mainDocumentSessionWindow->getViewState();
+            auto &viewState = state->getActiveViewState();
             viewState.samplesPerPixel = snapshot.samplesPerPixel;
             viewState.verticalZoom = snapshot.verticalZoom;
             updateSampleOffset(state, snapshot.sampleOffset);
@@ -119,7 +119,7 @@ namespace cupuacu::actions::audio
                                      ? PendingViewRestore::RestorePostRedo
                                      : PendingViewRestore::CapturePostRedo;
 
-            auto &session = state->activeDocumentSession;
+            auto &session = state->getActiveDocumentSession();
             auto &doc = session.document;
             const int64_t ch = doc.getChannelCount();
             sampleRate = doc.getSampleRate();
@@ -185,7 +185,7 @@ namespace cupuacu::actions::audio
         {
             pendingViewRestore = PendingViewRestore::RestorePreUndo;
 
-            auto &session = state->activeDocumentSession;
+            auto &session = state->getActiveDocumentSession();
             auto &doc = session.document;
             const int64_t ch = doc.getChannelCount();
 

@@ -31,9 +31,9 @@ void WaveformsUnderlay::mouseLeave()
 
 bool WaveformsUnderlay::mouseDown(const MouseEvent &e)
 {
-    auto &session = state->activeDocumentSession;
+    auto &session = state->getActiveDocumentSession();
     auto &doc = session.document;
-    auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    auto &viewState = state->getActiveViewState();
 
     lastNumClicks = e.numClicks;
 
@@ -107,7 +107,7 @@ bool WaveformsUnderlay::mouseDown(const MouseEvent &e)
 void WaveformsUnderlay::handleChannelSelection(
     const int32_t mouseY, const bool isMouseDownEvent) const
 {
-    auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    auto &viewState = state->getActiveViewState();
     viewState.hoveringOverChannels = planWaveformsUnderlayHoveredChannels(
         mouseY, getHeight(), static_cast<int>(state->waveforms.size()));
 
@@ -120,9 +120,9 @@ void WaveformsUnderlay::handleChannelSelection(
 
 bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
 {
-    auto &session = state->activeDocumentSession;
+    auto &session = state->getActiveDocumentSession();
     auto &doc = session.document;
-    auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    auto &viewState = state->getActiveViewState();
     if (state->waveforms.empty() || doc.getChannelCount() <= 0 ||
         doc.getFrameCount() <= 0)
     {
@@ -183,7 +183,7 @@ bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
 
 bool WaveformsUnderlay::mouseUp(const MouseEvent &e)
 {
-    auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    auto &viewState = state->getActiveViewState();
     viewState.samplesToScroll = 0.0f;
 
     return true;
@@ -191,7 +191,7 @@ bool WaveformsUnderlay::mouseUp(const MouseEvent &e)
 
 bool WaveformsUnderlay::mouseWheel(const MouseEvent &e)
 {
-    if (state->mainDocumentSessionWindow->getViewState().samplesPerPixel <= 0.0)
+    if (state->getActiveViewState().samplesPerPixel <= 0.0)
     {
         return false;
     }
@@ -220,7 +220,7 @@ void WaveformsUnderlay::timerCallback()
         return;
     }
 
-    auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    auto &viewState = state->getActiveViewState();
     if (viewState.samplesToScroll == 0.0)
     {
         return;
@@ -253,7 +253,7 @@ void WaveformsUnderlay::timerCallback()
 
 bool WaveformsUnderlay::applyPendingHorizontalWheelScroll()
 {
-    auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    auto &viewState = state->getActiveViewState();
     if (viewState.samplesPerPixel <= 0.0 ||
         horizontalWheelPendingPixels == 0.0)
     {
@@ -331,7 +331,7 @@ void WaveformsUnderlay::markAllWaveformsDirty() const
 
 void WaveformsUnderlay::handleScroll(const int32_t mouseX) const
 {
-    auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    auto &viewState = state->getActiveViewState();
     const auto plan = planWaveformsUnderlayAutoScroll(
         mouseX, getWidth(), viewState.samplesPerPixel);
     viewState.samplesToScroll = plan.samplesToScroll;

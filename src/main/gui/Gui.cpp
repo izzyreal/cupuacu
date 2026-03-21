@@ -6,6 +6,7 @@
 #include "MenuBar.hpp"
 #include "StatusBar.hpp"
 #include "MainView.hpp"
+#include "TabStrip.hpp"
 #include "TransportButtonsContainer.hpp"
 #include "UiScale.hpp"
 #include "VuMeterContainer.hpp"
@@ -117,6 +118,9 @@ void cupuacu::gui::buildComponents(State *state, Window *window)
     auto mainView = std::make_unique<MainView>(state);
     contentLayerPtr->addChild(mainView);
 
+    auto tabStrip = std::make_unique<TabStrip>(state);
+    contentLayerPtr->addChild(tabStrip);
+
     auto vuMeterContainer = std::make_unique<VuMeterContainer>(state);
     contentLayerPtr->addChild(vuMeterContainer);
 
@@ -159,16 +163,15 @@ void cupuacu::gui::resizeComponents(State *state, Window *window)
         window->getOverlayLayer()->setBounds(0, 0, newCanvasW, newCanvasH);
     }
 
-    const SDL_Rect menuBarRect{
-        0, 0, newCanvasW,
-        scaleUi(state, static_cast<float>(state->menuFontSize) * 1.33f)};
+    const int menuBarHeight =
+        scaleUi(state, static_cast<float>(state->menuFontSize) * 1.33f);
+    const SDL_Rect menuBarRect{0, 0, newCanvasW, menuBarHeight};
 
     const SDL_Rect statusBarRect{
         0,
-        newCanvasH -
-            scaleUi(state, static_cast<float>(state->menuFontSize) * 1.33f),
+        newCanvasH - menuBarHeight,
         newCanvasW,
-        scaleUi(state, static_cast<float>(state->menuFontSize) * 1.33f)};
+        menuBarHeight};
 
     const int vuMeterContainerHeight = scaleUi(state, 80.0f);
     const SDL_Rect transportButtonsContainerRect =
@@ -185,6 +188,7 @@ void cupuacu::gui::resizeComponents(State *state, Window *window)
 
     auto *contentLayer = window->getContentLayer();
     auto *mainView = findDirectChildOfType<cupuacu::gui::MainView>(contentLayer);
+    auto *tabStrip = findDirectChildOfType<cupuacu::gui::TabStrip>(contentLayer);
     auto *vuMeterContainer =
         findDirectChildOfType<cupuacu::gui::VuMeterContainer>(contentLayer);
     auto *transportButtonsContainer =
@@ -193,17 +197,22 @@ void cupuacu::gui::resizeComponents(State *state, Window *window)
     auto *statusBar =
         findDirectChildOfType<cupuacu::gui::StatusBar>(contentLayer);
 
-    if (!mainView || !vuMeterContainer || !transportButtonsContainer ||
+    if (!mainView || !tabStrip || !vuMeterContainer || !transportButtonsContainer ||
         !statusBar)
     {
         return;
     }
 
+    const int tabStripHeight = menuBarHeight;
+
     const SDL_Rect mainViewBounds{0, menuBarRect.h, newCanvasW,
-                                  newCanvasH - menuBarRect.h -
+                                  newCanvasH - menuBarRect.h - tabStripHeight -
                                       vuMeterContainerRect.h - statusBarRect.h};
 
-    mainView->setBounds(mainViewBounds.x, mainViewBounds.y, mainViewBounds.w,
+    tabStrip->setBounds(0, menuBarRect.h, newCanvasW, tabStripHeight);
+
+    mainView->setBounds(mainViewBounds.x, mainViewBounds.y + tabStripHeight,
+                        mainViewBounds.w,
                         mainViewBounds.h);
 
     vuMeterContainer->setBounds(
@@ -218,7 +227,7 @@ void cupuacu::gui::resizeComponents(State *state, Window *window)
 
     window->getRootComponent()->setDirty();
 
-    auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    auto &viewState = state->getActiveViewState();
     if (viewState.samplesPerPixel == 0)
     {
         actions::resetZoom(state);

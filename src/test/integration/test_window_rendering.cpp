@@ -29,6 +29,33 @@ namespace
             ++drawCount;
         }
     };
+
+    class WindowAwareComponent : public cupuacu::gui::Component
+    {
+    public:
+        explicit WindowAwareComponent(cupuacu::State *state,
+                                      const char *name = "WindowAware")
+            : Component(state, name)
+        {
+        }
+
+        bool hasWindowPointer() const
+        {
+            return getWindow() != nullptr;
+        }
+    };
+
+    class ParentWithNestedChild : public cupuacu::gui::Component
+    {
+    public:
+        explicit ParentWithNestedChild(cupuacu::State *state)
+            : Component(state, "ParentWithNestedChild")
+        {
+            nestedChild = emplaceChild<WindowAwareComponent>(state, "NestedChild");
+        }
+
+        WindowAwareComponent *nestedChild = nullptr;
+    };
 } // namespace
 
 TEST_CASE("Window rendering integration recreates canvas when pixel scale changes",
@@ -115,4 +142,26 @@ TEST_CASE("Window rendering integration exposes font cache and text measurement"
 
     cupuacu::gui::cleanupFonts();
     REQUIRE_FALSE(cupuacu::gui::hasCachedFontForPointSize(12));
+}
+
+TEST_CASE("Window rendering integration propagates window pointers to nested children added later",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::State state{};
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "window-nested-subtree", 320, 180, SDL_WINDOW_HIDDEN);
+
+    auto root =
+        std::make_unique<cupuacu::test::integration::RootComponent>(&state);
+    root->setBounds(0, 0, 320, 180);
+    window->setRootComponent(std::move(root));
+
+    auto *parent =
+        window->getRootComponent()->emplaceChild<ParentWithNestedChild>(&state);
+    REQUIRE(parent != nullptr);
+    REQUIRE(parent->nestedChild != nullptr);
+    REQUIRE(parent->hasWindowPointer());
+    REQUIRE(parent->nestedChild->hasWindowPointer());
 }

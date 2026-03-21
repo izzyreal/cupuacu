@@ -31,12 +31,13 @@ TEST_CASE("Empty session integration leaves underlay mouse move safe",
     cupuacu::test::ensureSdlTtfInitialized();
 
     cupuacu::State state{};
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     session.currentFile.clear();
 
     state.mainDocumentSessionWindow =
         std::make_unique<cupuacu::gui::DocumentSessionWindow>(
-            &state, &session, "test-empty", 800, 400, SDL_WINDOW_HIDDEN);
+            &state, &session, &state.getActiveViewState(), "test-empty", 800,
+            400, SDL_WINDOW_HIDDEN);
 
     auto mainView = std::make_unique<cupuacu::gui::MainView>(&state);
     mainView->setWindow(state.mainDocumentSessionWindow->getWindow());
@@ -53,6 +54,6 @@ TEST_CASE("Empty session integration leaves underlay mouse move safe",
     const bool consumed = underlay->mouseMove(makeMoveEvent(10, 10));
     REQUIRE_FALSE(consumed);
 
-    const auto &viewState = state.mainDocumentSessionWindow->getViewState();
+    const auto &viewState = state.getActiveViewState();
     REQUIRE_FALSE(viewState.sampleValueUnderMouseCursor.has_value());
 }

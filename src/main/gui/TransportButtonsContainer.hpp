@@ -64,9 +64,9 @@ namespace cupuacu::gui
                         return;
                     }
 
-                    auto &session = state->activeDocumentSession;
+                    auto &session = state->getActiveDocumentSession();
                     auto &viewState =
-                        state->mainDocumentSessionWindow->getViewState();
+                        state->getActiveViewState();
                     const auto range =
                         cupuacu::playback::computeRangeForLiveUpdate(
                             session, state->loopPlaybackEnabled,

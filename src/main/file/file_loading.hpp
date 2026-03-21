@@ -11,7 +11,7 @@ namespace cupuacu::file
 {
     static void loadSampleData(cupuacu::State *state)
     {
-        auto &session = state->activeDocumentSession;
+        auto &session = state->getActiveDocumentSession();
         auto &doc = session.document;
 
         // Prepare SF_INFO

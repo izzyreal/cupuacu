@@ -39,7 +39,7 @@ namespace
         {
             state->mainDocumentSessionWindow =
                 std::make_unique<cupuacu::gui::DocumentSessionWindow>(
-                    state, &state->activeDocumentSession, "main", 640, 360,
+                    state, &state->getActiveDocumentSession(), &state->getActiveViewState(), "main", 640, 360,
                     SDL_WINDOW_HIDDEN);
             state->windows.push_back(state->mainDocumentSessionWindow->getWindow());
         }
@@ -82,7 +82,7 @@ namespace
 
     void initializeActiveDocument(cupuacu::State *state)
     {
-        state->activeDocumentSession.document.initialize(
+        state->getActiveDocumentSession().document.initialize(
             cupuacu::SampleFormat::FLOAT32, 44100, 1, 3);
     }
 } // namespace
@@ -185,11 +185,11 @@ TEST_CASE("AmplifyFade dialog integration exposes shared controls and presets",
     REQUIRE(lockButton->mouseDown(cupuacu::test::integration::leftMouseDown()));
     REQUIRE(state.amplifyFadeDialog->isLocked());
 
-    state.activeDocumentSession.document.initialize(
+    state.getActiveDocumentSession().document.initialize(
         cupuacu::SampleFormat::FLOAT32, 44100, 1, 3);
-    state.activeDocumentSession.document.setSample(0, 0, 0.25f, false);
-    state.activeDocumentSession.document.setSample(0, 1, -0.5f, false);
-    state.activeDocumentSession.document.setSample(0, 2, 0.1f, false);
+    state.getActiveDocumentSession().document.setSample(0, 0, 0.25f, false);
+    state.getActiveDocumentSession().document.setSample(0, 1, -0.5f, false);
+    state.getActiveDocumentSession().document.setSample(0, 2, 0.1f, false);
     REQUIRE(normalizeButton->mouseDown(
         cupuacu::test::integration::leftMouseDown()));
     REQUIRE(state.amplifyFadeDialog->getStartPercent() == Approx(200.0));
@@ -205,7 +205,7 @@ TEST_CASE("AmplifyFade dialog preview toggles playback and restarts from the sel
 {
     cupuacu::State state{};
     auto ui = cupuacu::test::integration::createSessionUi(&state, 64, true);
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     session.selection.setValue1(10.0);
     session.selection.setValue2(30.0);
 
@@ -249,7 +249,7 @@ TEST_CASE("AmplifyFade dialog apply closes and respects the selected channel tar
 {
     cupuacu::State state{};
     auto ui = cupuacu::test::integration::createSessionUi(&state, 8, false, 2);
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     auto &doc = session.document;
 
     for (int64_t frame = 0; frame < doc.getFrameCount(); ++frame)
@@ -260,7 +260,7 @@ TEST_CASE("AmplifyFade dialog apply closes and respects the selected channel tar
 
     session.selection.setValue1(2.0);
     session.selection.setValue2(6.0);
-    state.mainDocumentSessionWindow->getViewState().selectedChannels =
+    state.getActiveViewState().selectedChannels =
         cupuacu::SelectedChannels::LEFT;
 
     auto harness = createEffectsMenuHarness(&state);
@@ -278,7 +278,7 @@ TEST_CASE("AmplifyFade dialog apply closes and respects the selected channel tar
     clickButton(fadeOutButton);
     clickButton(applyButton);
 
-    REQUIRE(state.undoables.size() == 1);
+    REQUIRE(state.getActiveUndoables().size() == 1);
     REQUIRE(state.modalWindow == nullptr);
     const bool dialogClosed =
         state.amplifyFadeDialog == nullptr || !state.amplifyFadeDialog->isOpen();
@@ -310,7 +310,7 @@ TEST_CASE("AmplifyFade dialog cancel closes without applying and reopens with re
     clickButton(fadeInButton);
     clickButton(cancelButton);
 
-    REQUIRE(state.undoables.empty());
+    REQUIRE(state.getActiveUndoables().empty());
     REQUIRE(state.modalWindow == nullptr);
     REQUIRE_FALSE(state.amplifyFadeDialog->isOpen());
     REQUIRE(state.effectSettings.amplifyFade.startPercent == 0.0);
@@ -328,7 +328,7 @@ TEST_CASE("Dynamics dialog preview uses the whole document and restarts from fra
 {
     cupuacu::State state{};
     auto ui = cupuacu::test::integration::createSessionUi(&state, 32, true);
-    state.activeDocumentSession.selection.reset();
+    state.getActiveDocumentSession().selection.reset();
 
     auto harness = createEffectsMenuHarness(&state);
     REQUIRE(harness.dynamicsMenu->mouseDown(

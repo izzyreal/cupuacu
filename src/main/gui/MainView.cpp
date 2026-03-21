@@ -16,6 +16,8 @@
 #include "WaveformRefresh.hpp"
 #include "WaveformCache.hpp"
 #include "playback/PlaybackRange.hpp"
+#include "Helpers.hpp"
+#include "Colors.hpp"
 
 #include <SDL3/SDL.h>
 #include <algorithm>
@@ -39,7 +41,7 @@ void MainView::beginRecordingUndoCaptureIfNeeded(const int64_t startFrame)
         return;
     }
 
-    auto &session = state->activeDocumentSession;
+    auto &session = state->getActiveDocumentSession();
     auto &doc = session.document;
 
     recordingUndoCapture = {};
@@ -81,7 +83,7 @@ void MainView::capturePreOverwriteSamples(const int64_t overlapEndFrame)
         return;
     }
 
-    auto &doc = state->activeDocumentSession.document;
+    auto &doc = state->getActiveDocumentSession().document;
 
     for (int ch = 0; ch < recordingUndoCapture.oldChannelCount; ++ch)
     {
@@ -105,7 +107,7 @@ void MainView::captureRecordedChunk(
         return;
     }
 
-    auto &doc = state->activeDocumentSession.document;
+    auto &doc = state->getActiveDocumentSession().document;
 
     const int64_t chunkStart = chunk.startFrame;
     const int64_t chunkEnd = chunk.startFrame + static_cast<int64_t>(chunk.frameCount);
@@ -176,7 +178,7 @@ void MainView::finalizeRecordingUndoCaptureIfComplete()
         return;
     }
 
-    auto &session = state->activeDocumentSession;
+    auto &session = state->getActiveDocumentSession();
     if (recordingUndoCapture.endFrame <= recordingUndoCapture.startFrame)
     {
         recordingUndoCapture = {};
@@ -244,7 +246,7 @@ void MainView::applyRecordedChunkToSession(
     const cupuacu::audio::AudioDevices::RecordedChunk &chunk,
     bool &channelLayoutChanged, bool &waveformCacheChanged)
 {
-    auto &session = state->activeDocumentSession;
+    auto &session = state->getActiveDocumentSession();
     auto &doc = session.document;
 
     beginRecordingUndoCaptureIfNeeded(chunk.startFrame);
@@ -270,7 +272,7 @@ void MainView::applyRecordedChunkToSession(
 void MainView::refreshWaveformsAfterRecordedAudio(
     const bool channelLayoutChanged, const bool waveformCacheChanged)
 {
-    auto &doc = state->activeDocumentSession.document;
+    auto &doc = state->getActiveDocumentSession().document;
 
     if (waveformCacheChanged)
     {
@@ -299,7 +301,7 @@ bool MainView::consumePendingRecordedAudio()
     }
     const uint64_t perfStart = SDL_GetPerformanceCounter();
     const uint64_t perfFreq = SDL_GetPerformanceFrequency();
-    auto &session = state->activeDocumentSession;
+    auto &session = state->getActiveDocumentSession();
 
     cupuacu::audio::AudioDevices::RecordedChunk chunk{};
     bool consumedAny = false;
@@ -361,7 +363,7 @@ bool MainView::followTransportHead()
 
     bool changed = false;
 
-    auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    auto &viewState = state->getActiveViewState();
     if (viewState.samplesPerPixel <= 0.0 || waveforms->getWidth() <= 0)
     {
         return changed;
@@ -448,7 +450,7 @@ void MainView::syncLivePlaybackRange(const bool selectionActive,
     if (isPlayingNow && state->audioDevices && !isSelectionInteractionActive())
     {
         const auto range = cupuacu::playback::computeRangeForLiveUpdate(
-            state->activeDocumentSession, state->loopPlaybackEnabled,
+            state->getActiveDocumentSession(), state->loopPlaybackEnabled,
             state->playbackRangeStart, state->playbackRangeEnd);
         const uint64_t start = range.start;
         const uint64_t end = range.end;
@@ -492,8 +494,8 @@ bool MainView::shouldRefreshMarkerBounds(const bool consumedRecordedAudio,
                                          const int64_t selectionStart,
                                          const int64_t selectionEnd) const
 {
-    const auto &session = state->activeDocumentSession;
-    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    const auto &session = state->getActiveDocumentSession();
+    const auto &viewState = state->getActiveViewState();
 
     return session.cursor != lastDrawnCursor ||
            selectionActive != lastSelectionIsActive ||
@@ -508,8 +510,8 @@ void MainView::rememberMarkerInputs(const bool selectionActive,
                                     const int64_t selectionStart,
                                     const int64_t selectionEnd)
 {
-    const auto &session = state->activeDocumentSession;
-    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    const auto &session = state->getActiveDocumentSession();
+    const auto &viewState = state->getActiveViewState();
 
     lastDrawnCursor = session.cursor;
     lastSelectionIsActive = selectionActive;
@@ -531,7 +533,7 @@ MainView::MainView(State *state) : Component(state, "MainView")
         [state]()
         {
             return static_cast<double>(
-                state->mainDocumentSessionWindow->getViewState().sampleOffset);
+                state->getActiveViewState().sampleOffset);
         },
         []() { return 0.0; },
         [state]() { return static_cast<double>(getMaxSampleOffset(state)); },
@@ -539,12 +541,12 @@ MainView::MainView(State *state) : Component(state, "MainView")
         {
             return std::max(
                 1.0, static_cast<double>(waveforms->getWidth()) *
-                         state->mainDocumentSessionWindow->getViewState()
+                         state->getActiveViewState()
                              .samplesPerPixel);
         },
         [state](const double value)
         {
-            auto &viewState = state->mainDocumentSessionWindow->getViewState();
+            auto &viewState = state->getActiveViewState();
             const int64_t oldOffset = viewState.sampleOffset;
             const int64_t requestedOffset =
                 static_cast<int64_t>(std::llround(value));
@@ -582,6 +584,11 @@ MainView::MainView(State *state) : Component(state, "MainView")
         state, TriangleMarkerType::SelectionStartBottom);
     selEndBot = borders[1]->emplaceChild<TriangleMarker>(
         state, TriangleMarkerType::SelectionEndBottom);
+}
+
+void MainView::onDraw(SDL_Renderer *renderer)
+{
+    Helpers::fillRect(renderer, getLocalBounds(), Colors::black);
 }
 
 uint8_t MainView::computeBorderWidth() const
@@ -627,8 +634,8 @@ void MainView::resized()
 void MainView::updateTriangleMarkerBounds() const
 
 {
-    const auto &session = state->activeDocumentSession;
-    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    const auto &session = state->getActiveDocumentSession();
+    const auto &viewState = state->getActiveViewState();
     const auto borderWidth = computeBorderWidth();
     const int scrollBarHeight =
         computeScrollBarHeightForScale(state);
@@ -748,8 +755,8 @@ void MainView::updateTriangleMarkerBounds() const
 
 void MainView::timerCallback()
 {
-    auto &session = state->activeDocumentSession;
-    auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    auto &session = state->getActiveDocumentSession();
+    auto &viewState = state->getActiveViewState();
     const bool consumedRecordedAudio = consumePendingRecordedAudio();
     const bool followedTransport = followTransportHead();
     const bool isRecordingNow =

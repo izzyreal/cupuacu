@@ -15,6 +15,7 @@
 #include "gui/NewFileDialogWindow.hpp"
 #include "gui/SamplePoint.hpp"
 #include "gui/StatusBar.hpp"
+#include "gui/TabStrip.hpp"
 #include "gui/TextButton.hpp"
 #include "gui/TextInput.hpp"
 #include "gui/TriangleMarker.hpp"
@@ -77,14 +78,14 @@ namespace
     {
         cupuacu::test::ensureSdlTtfInitialized();
 
-        auto &session = state->activeDocumentSession;
+        auto &session = state->getActiveDocumentSession();
         session.document.initialize(cupuacu::SampleFormat::FLOAT32, sampleRate,
                                     channels, frameCount);
         session.syncSelectionAndCursorToDocumentLength();
 
         state->mainDocumentSessionWindow =
             std::make_unique<cupuacu::gui::DocumentSessionWindow>(
-                state, &session, "built-session", width, height,
+                state, &session, &state->getActiveViewState(), "built-session", width, height,
                 SDL_WINDOW_HIDDEN);
         cupuacu::gui::buildComponents(state,
                                       state->mainDocumentSessionWindow->getWindow());
@@ -157,6 +158,36 @@ namespace
         REQUIRE(button != nullptr);
         REQUIRE(button->mouseDown(cupuacu::test::integration::leftMouseDown()));
         REQUIRE(button->mouseUp(cupuacu::test::integration::leftMouseUp()));
+    }
+
+    void clickTabClose(cupuacu::gui::TabStripTab *tab)
+    {
+        REQUIRE(tab != nullptr);
+
+        const int x = tab->getWidth() - 8;
+        const int y = tab->getHeight() / 2;
+        const auto down = cupuacu::gui::MouseEvent{
+            cupuacu::gui::DOWN, x, y, static_cast<float>(x),
+            static_cast<float>(y), static_cast<float>(x),
+            static_cast<float>(y),
+            cupuacu::gui::MouseButtonState{true, false, false}, 1};
+        const auto up = cupuacu::gui::MouseEvent{
+            cupuacu::gui::UP, x, y, static_cast<float>(x),
+            static_cast<float>(y), static_cast<float>(x),
+            static_cast<float>(y),
+            cupuacu::gui::MouseButtonState{true, false, false}, 1};
+
+        REQUIRE(tab->mouseDown(down));
+        REQUIRE(tab->mouseUp(up));
+    }
+
+    void processPendingSdlWindowEvents(cupuacu::State *state)
+    {
+        SDL_Event event{};
+        while (SDL_PollEvent(&event))
+        {
+            cupuacu::gui::handleAppEvent(state, &event);
+        }
     }
 
     class ScopedDirCleanup
@@ -244,11 +275,11 @@ TEST_CASE("Keyboard integration zooms to selection and scrolls horizontally",
     cupuacu::State state{};
     createBuiltSessionUi(&state, 4096);
 
-    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+    auto &viewState = state.getActiveViewState();
     viewState.samplesPerPixel = 8.0;
     viewState.sampleOffset = 160;
-    state.activeDocumentSession.selection.setValue1(200);
-    state.activeDocumentSession.selection.setValue2(500);
+    state.getActiveDocumentSession().selection.setValue1(200);
+    state.getActiveDocumentSession().selection.setValue2(500);
 
     SDL_Event event{};
     event.type = SDL_EVENT_KEY_DOWN;
@@ -278,7 +309,7 @@ TEST_CASE("Keyboard integration applies zoom and pixel scale shortcuts",
     cupuacu::State state{};
     createBuiltSessionUi(&state, 4096);
 
-    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+    auto &viewState = state.getActiveViewState();
     viewState.samplesPerPixel = 4.0;
     viewState.sampleOffset = 64;
 
@@ -331,7 +362,7 @@ TEST_CASE("Event handling integration blocks interactive events behind modal",
 
     state.mainDocumentSessionWindow =
         std::make_unique<cupuacu::gui::DocumentSessionWindow>(
-            &state, &state.activeDocumentSession, "main-doc", 320, 240, 0);
+            &state, &state.getActiveDocumentSession(), &state.getActiveViewState(), "main-doc", 320, 240, 0);
     state.mainDocumentSessionWindow->getWindow()->setRootComponent(
         std::make_unique<cupuacu::test::integration::RootComponent>(&state));
     state.modalWindow = modalWindow.get();
@@ -414,19 +445,19 @@ TEST_CASE("Startup document restore integration reopens the most recent file",
     state.recentFiles = {wavPath.string()};
     createBuiltSessionUi(&state, 8);
 
-    state.activeDocumentSession.currentFile = "before.wav";
-    state.activeDocumentSession.selection.setValue1(1.0);
-    state.activeDocumentSession.selection.setValue2(3.0);
-    state.activeDocumentSession.cursor = 2;
+    state.getActiveDocumentSession().currentFile = "before.wav";
+    state.getActiveDocumentSession().selection.setValue1(1.0);
+    state.getActiveDocumentSession().selection.setValue2(3.0);
+    state.getActiveDocumentSession().cursor = 2;
 
     cupuacu::actions::restoreStartupDocument(&state);
 
-    REQUIRE(state.activeDocumentSession.currentFile == wavPath.string());
-    REQUIRE(state.activeDocumentSession.document.getSampleRate() == 48000);
-    REQUIRE(state.activeDocumentSession.document.getChannelCount() == 2);
-    REQUIRE(state.activeDocumentSession.document.getFrameCount() == 3);
-    REQUIRE_FALSE(state.activeDocumentSession.selection.isActive());
-    REQUIRE(state.activeDocumentSession.cursor == 0);
+    REQUIRE(state.getActiveDocumentSession().currentFile == wavPath.string());
+    REQUIRE(state.getActiveDocumentSession().document.getSampleRate() == 48000);
+    REQUIRE(state.getActiveDocumentSession().document.getChannelCount() == 2);
+    REQUIRE(state.getActiveDocumentSession().document.getFrameCount() == 3);
+    REQUIRE_FALSE(state.getActiveDocumentSession().selection.isActive());
+    REQUIRE(state.getActiveDocumentSession().cursor == 0);
     REQUIRE(state.recentFiles == std::vector<std::string>{wavPath.string()});
 }
 
@@ -438,7 +469,7 @@ TEST_CASE("Event handling integration ignores unfocused key and text input",
     cupuacu::State state{};
     state.mainDocumentSessionWindow =
         std::make_unique<cupuacu::gui::DocumentSessionWindow>(
-            &state, &state.activeDocumentSession, "main-doc", 320, 240,
+            &state, &state.getActiveDocumentSession(), &state.getActiveViewState(), "main-doc", 320, 240,
             SDL_WINDOW_HIDDEN);
 
     auto window = std::make_unique<cupuacu::gui::Window>(
@@ -483,7 +514,7 @@ TEST_CASE("Event handling integration clears waveform highlight on main window m
 
     waveform->setSamplePosUnderCursor(42);
     mainWindow->setComponentUnderMouse(waveform);
-    state.activeDocumentSession.selection.reset();
+    state.getActiveDocumentSession().selection.reset();
 
     cupuacu::gui::handleWindowMouseLeave(&state, mainWindow);
     REQUIRE_FALSE(waveform->getSamplePosUnderCursor().has_value());
@@ -580,7 +611,7 @@ TEST_CASE("Status bar integration tolerates missing audio devices",
     REQUIRE(startField != nullptr);
 
     state.audioDevices.reset();
-    state.activeDocumentSession.cursor = 321;
+    state.getActiveDocumentSession().cursor = 321;
 
     statusBar->timerCallback();
 
@@ -625,13 +656,13 @@ TEST_CASE("Status bar integration shows persisted integer sample values for PCM"
     auto *valueField = findStatusField(statusBar, "Val");
     REQUIRE(valueField != nullptr);
 
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
 
     SECTION("edited PCM16 samples use the quantized writer code")
     {
         session.document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 1);
         session.document.setSample(0, 0, -1.0f);
-        state.mainDocumentSessionWindow->getViewState().sampleValueUnderMouseCursor =
+        state.getActiveViewState().sampleValueUnderMouseCursor =
             cupuacu::gui::HoveredSampleInfo{-1.0f, 0, 0};
 
         statusBar->timerCallback();
@@ -643,7 +674,7 @@ TEST_CASE("Status bar integration shows persisted integer sample values for PCM"
     {
         session.document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 1);
         session.document.setSample(0, 0, -1.0f, false);
-        state.mainDocumentSessionWindow->getViewState().sampleValueUnderMouseCursor =
+        state.getActiveViewState().sampleValueUnderMouseCursor =
             cupuacu::gui::HoveredSampleInfo{-1.0f, 0, 0};
 
         statusBar->timerCallback();
@@ -655,7 +686,7 @@ TEST_CASE("Status bar integration shows persisted integer sample values for PCM"
     {
         session.document.initialize(cupuacu::SampleFormat::PCM_S8, 44100, 1, 1);
         session.document.setSample(0, 0, 1.0f);
-        state.mainDocumentSessionWindow->getViewState().sampleValueUnderMouseCursor =
+        state.getActiveViewState().sampleValueUnderMouseCursor =
             cupuacu::gui::HoveredSampleInfo{1.0f, 0, 0};
 
         statusBar->timerCallback();
@@ -687,7 +718,7 @@ TEST_CASE("New file dialog integration creates an empty document with the select
             root, "TextButton:OK");
     clickButton(okButton);
 
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     REQUIRE(session.currentFile.empty());
     REQUIRE(session.document.getSampleRate() == 96000);
     REQUIRE(session.document.getSampleFormat() == cupuacu::SampleFormat::PCM_S8);
@@ -713,9 +744,87 @@ TEST_CASE("New file dialog integration can be opened and closed repeatedly",
         REQUIRE(okButton != nullptr);
 
         clickButton(okButton);
+        processPendingSdlWindowEvents(&state);
         REQUIRE_FALSE(state.newFileDialogWindow->isOpen());
         state.newFileDialogWindow.reset();
     }
+}
+
+TEST_CASE("Tab strip integration switches the active document", "[integration]")
+{
+    cupuacu::State state{};
+    state.tabs.resize(2);
+    state.activeTabIndex = 0;
+
+    state.tabs[0].session.currentFile = "/tmp/first.wav";
+    state.tabs[0].session.document.initialize(cupuacu::SampleFormat::FLOAT32,
+                                              44100, 2, 64);
+    state.tabs[1].session.currentFile = "/tmp/second.wav";
+    state.tabs[1].session.document.initialize(cupuacu::SampleFormat::FLOAT32,
+                                              48000, 1, 32);
+
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &state.getActiveDocumentSession(), &state.getActiveViewState(),
+            "tabs", 800, 400, SDL_WINDOW_HIDDEN);
+    cupuacu::gui::buildComponents(&state,
+                                  state.mainDocumentSessionWindow->getWindow());
+
+    auto *root = state.mainDocumentSessionWindow->getWindow()->getRootComponent();
+    REQUIRE(root != nullptr);
+    root->timerCallbackRecursive();
+
+    auto *tabStrip =
+        cupuacu::test::integration::findByNameRecursive<cupuacu::gui::TabStrip>(
+            root, "TabStrip");
+    REQUIRE(tabStrip != nullptr);
+
+    auto *secondButton =
+        cupuacu::test::integration::findByNameRecursive<cupuacu::gui::TabStripTab>(
+            tabStrip, "TabStripTab:second.wav");
+    REQUIRE(secondButton != nullptr);
+
+    REQUIRE(secondButton->mouseDown(
+        cupuacu::test::integration::leftMouseDown()));
+    REQUIRE(secondButton->mouseUp(
+        cupuacu::test::integration::leftMouseUp()));
+
+    REQUIRE(state.activeTabIndex == 1);
+    REQUIRE(state.mainDocumentSessionWindow->getDocumentSession() ==
+            &state.tabs[1].session);
+    REQUIRE(state.getActiveDocumentSession().document.getSampleRate() == 48000);
+}
+
+TEST_CASE("Tab strip integration can close tabs with the embedded close icon",
+          "[integration]")
+{
+    cupuacu::State state{};
+    createBuiltSessionUi(&state, 64, 44100, 2, 800, 400);
+    REQUIRE(cupuacu::actions::createNewDocumentInNewTab(
+        &state, 48000, cupuacu::SampleFormat::PCM_S16, 1));
+    REQUIRE(state.tabs.size() == 2);
+    REQUIRE(state.activeTabIndex == 1);
+
+    auto *root = state.mainDocumentSessionWindow->getWindow()->getRootComponent();
+    REQUIRE(root != nullptr);
+    root->timerCallbackRecursive();
+
+    auto *tabStrip =
+        cupuacu::test::integration::findByNameRecursive<cupuacu::gui::TabStrip>(
+            root, "TabStrip");
+    REQUIRE(tabStrip != nullptr);
+
+    auto *activeTab =
+        cupuacu::test::integration::findByNameRecursive<cupuacu::gui::TabStripTab>(
+            tabStrip, "TabStripTab:Untitled");
+    REQUIRE(activeTab != nullptr);
+
+    clickTabClose(activeTab);
+    root->timerCallbackRecursive();
+    REQUIRE(state.tabs.size() == 1);
+    REQUIRE(state.activeTabIndex == 0);
 }
 
 TEST_CASE("Repeated new document creation rebuilds waveform channels cleanly",
@@ -728,17 +837,17 @@ TEST_CASE("Repeated new document creation rebuilds waveform channels cleanly",
 
     cupuacu::actions::createNewDocument(
         &state, 44100, cupuacu::SampleFormat::PCM_S16, 2);
-    REQUIRE(state.activeDocumentSession.document.getChannelCount() == 2);
+    REQUIRE(state.getActiveDocumentSession().document.getChannelCount() == 2);
     REQUIRE(state.waveforms.size() == 2);
 
     cupuacu::actions::createNewDocument(
         &state, 48000, cupuacu::SampleFormat::PCM_S8, 1);
-    REQUIRE(state.activeDocumentSession.document.getChannelCount() == 1);
+    REQUIRE(state.getActiveDocumentSession().document.getChannelCount() == 1);
     REQUIRE(state.waveforms.size() == 1);
 
     cupuacu::actions::createNewDocument(
         &state, 44100, cupuacu::SampleFormat::PCM_S16, 2);
-    REQUIRE(state.activeDocumentSession.document.getChannelCount() == 2);
+    REQUIRE(state.getActiveDocumentSession().document.getChannelCount() == 2);
     REQUIRE(state.waveforms.size() == 2);
 }
 
@@ -766,8 +875,8 @@ TEST_CASE("Empty stereo document click keeps triangle markers hidden",
     REQUIRE(underlay != nullptr);
     REQUIRE(cursorTop != nullptr);
     REQUIRE(cursorBottom != nullptr);
-    REQUIRE(state.activeDocumentSession.document.getFrameCount() == 0);
-    REQUIRE(state.mainDocumentSessionWindow->getViewState().samplesPerPixel ==
+    REQUIRE(state.getActiveDocumentSession().document.getFrameCount() == 0);
+    REQUIRE(state.getActiveViewState().samplesPerPixel ==
             Catch::Approx(0.0));
 
     mainView->timerCallback();
@@ -788,8 +897,8 @@ TEST_CASE("Empty stereo document click keeps triangle markers hidden",
     mainView->timerCallback();
     REQUIRE_FALSE(cursorTop->isVisible());
     REQUIRE_FALSE(cursorBottom->isVisible());
-    REQUIRE_FALSE(state.activeDocumentSession.selection.isActive());
-    REQUIRE(state.activeDocumentSession.cursor == 0);
+    REQUIRE_FALSE(state.getActiveDocumentSession().selection.isActive());
+    REQUIRE(state.getActiveDocumentSession().cursor == 0);
 }
 
 TEST_CASE("Generate silence dialog integration inserts silence at the cursor",
@@ -798,12 +907,12 @@ TEST_CASE("Generate silence dialog integration inserts silence at the cursor",
     cupuacu::State state{};
     createBuiltSessionUi(&state, 4, 44100, 1, 800, 400);
 
-    auto &doc = state.activeDocumentSession.document;
+    auto &doc = state.getActiveDocumentSession().document;
     for (int i = 0; i < 4; ++i)
     {
         doc.setSample(0, i, static_cast<float>(i + 1), false);
     }
-    state.activeDocumentSession.cursor = 2;
+    state.getActiveDocumentSession().cursor = 2;
 
     state.generateSilenceDialogWindow.reset(
         new cupuacu::gui::GenerateSilenceDialogWindow(&state));
@@ -841,7 +950,7 @@ TEST_CASE("Waveform integration toggles sample points with playback state",
     REQUIRE_FALSE(state.waveforms.empty());
     auto *waveform = state.waveforms.front();
 
-    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+    auto &viewState = state.getActiveViewState();
     viewState.samplesPerPixel = 0.01;
     viewState.sampleOffset = 0;
     waveform->setBounds(0, 0, 800, 60);
@@ -868,7 +977,7 @@ TEST_CASE("Waveform integration preserves highlight when entering a sample point
     REQUIRE_FALSE(state.waveforms.empty());
     auto *waveform = state.waveforms.front();
 
-    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+    auto &viewState = state.getActiveViewState();
     viewState.samplesPerPixel = 0.01;
     viewState.sampleOffset = 0;
     waveform->setBounds(0, 0, 800, 60);
@@ -899,7 +1008,7 @@ TEST_CASE("Sample point integration drags a sample and records an undoable",
     REQUIRE_FALSE(state.waveforms.empty());
     auto *waveform = state.waveforms.front();
 
-    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+    auto &viewState = state.getActiveViewState();
     viewState.samplesPerPixel = 0.01;
     viewState.sampleOffset = 0;
     waveform->setBounds(0, 0, 800, 60);
@@ -931,8 +1040,8 @@ TEST_CASE("Sample point integration drags a sample and records an undoable",
         static_cast<float>(samplePoint->getYPos()), 0.0f, 0.0f,
         cupuacu::gui::MouseButtonState{true, false, false}, 1}));
 
-    REQUIRE(state.undoables.size() == 1);
-    REQUIRE(state.activeDocumentSession.document.getSample(0, sampleIndex) !=
+    REQUIRE(state.getActiveUndoables().size() == 1);
+    REQUIRE(state.getActiveDocumentSession().document.getSample(0, sampleIndex) !=
             Catch::Approx(oldValue));
 }
 
@@ -958,11 +1067,11 @@ TEST_CASE("Triangle marker integration updates cursor and selection while draggi
 
     window->setRootComponent(std::move(root));
 
-    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+    auto &viewState = state.getActiveViewState();
     viewState.samplesPerPixel = 2.0;
-    state.activeDocumentSession.cursor = 10;
-    state.activeDocumentSession.selection.setValue1(300);
-    state.activeDocumentSession.selection.setValue2(500);
+    state.getActiveDocumentSession().cursor = 10;
+    state.getActiveDocumentSession().selection.setValue1(300);
+    state.getActiveDocumentSession().selection.setValue2(500);
 
     REQUIRE(cursorMarker->mouseDown(cupuacu::gui::MouseEvent{
         cupuacu::gui::DOWN, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f,
@@ -971,7 +1080,7 @@ TEST_CASE("Triangle marker integration updates cursor and selection while draggi
     REQUIRE(cursorMarker->mouseMove(cupuacu::gui::MouseEvent{
         cupuacu::gui::MOVE, 0, 0, 40.0f, 0.0f, 0.0f, 0.0f,
         cupuacu::gui::MouseButtonState{true, false, false}, 0}));
-    REQUIRE(state.activeDocumentSession.cursor != 10);
+    REQUIRE(state.getActiveDocumentSession().cursor != 10);
 
     REQUIRE(startMarker->mouseDown(cupuacu::gui::MouseEvent{
         cupuacu::gui::DOWN, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f,
@@ -980,5 +1089,5 @@ TEST_CASE("Triangle marker integration updates cursor and selection while draggi
     REQUIRE(startMarker->mouseMove(cupuacu::gui::MouseEvent{
         cupuacu::gui::MOVE, 0, 0, 120.0f, 0.0f, 0.0f, 0.0f,
         cupuacu::gui::MouseButtonState{true, false, false}, 0}));
-    REQUIRE(state.activeDocumentSession.selection.getStartInt() != 300);
+    REQUIRE(state.getActiveDocumentSession().selection.getStartInt() != 300);
 }

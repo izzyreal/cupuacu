@@ -39,7 +39,7 @@ namespace cupuacu::actions
         }
 
         auto state = (cupuacu::State *)userdata;
-        loadFileIntoSession(state, absoluteFilePath);
+        loadFileIntoNewTab(state, absoluteFilePath);
     }
 
     static void ShowDialogMainThreadCallback(void *userdata)

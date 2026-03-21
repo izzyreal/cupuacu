@@ -75,7 +75,7 @@ namespace cupuacu::actions
     inline bool hasActiveDocument(const cupuacu::State *state)
     {
         return state &&
-               state->activeDocumentSession.document.getChannelCount() > 0;
+               state->getActiveDocumentSession().document.getChannelCount() > 0;
     }
 
     inline void persistRecentFiles(cupuacu::State *state)
@@ -160,8 +160,63 @@ namespace cupuacu::actions
             state->audioDevices->clearRecordedChunks();
         }
 
-        state->undoables.clear();
-        state->redoables.clear();
+        state->getActiveUndoables().clear();
+        state->getActiveRedoables().clear();
+    }
+
+    inline void bindMainWindowToActiveDocument(cupuacu::State *state)
+    {
+        if (!state || !state->mainDocumentSessionWindow)
+        {
+            return;
+        }
+
+        state->mainDocumentSessionWindow->bindDocumentSession(
+            &state->getActiveDocumentSession(), &state->getActiveViewState());
+    }
+
+    inline bool shouldReuseLoneBlankTab(const cupuacu::State *state)
+    {
+        if (!state || state->tabs.size() != 1 || state->activeTabIndex != 0)
+        {
+            return false;
+        }
+
+        const auto *tab = state->getActiveTab();
+        if (!tab)
+        {
+            return false;
+        }
+
+        return tab->session.currentFile.empty() &&
+               tab->session.document.getChannelCount() == 0 &&
+               tab->session.document.getFrameCount() == 0 &&
+               tab->undoables.empty() && tab->redoables.empty();
+    }
+
+    inline bool prepareTabForOpenedDocument(cupuacu::State *state)
+    {
+        if (!state)
+        {
+            return false;
+        }
+
+        if (state->audioDevices &&
+            (state->audioDevices->isPlaying() ||
+             state->audioDevices->isRecording()))
+        {
+            return false;
+        }
+
+        if (!shouldReuseLoneBlankTab(state))
+        {
+            state->tabs.emplace_back();
+            state->activeTabIndex = static_cast<int>(state->tabs.size()) - 1;
+        }
+
+        bindMainWindowToActiveDocument(state);
+        resetSampleValueUnderMouseCursor(state);
+        return true;
     }
 
     inline void refreshDocumentUi(cupuacu::State *state)
@@ -189,7 +244,7 @@ namespace cupuacu::actions
 
         prepareForDocumentTransition(state);
 
-        auto &session = state->activeDocumentSession;
+        auto &session = state->getActiveDocumentSession();
         session.currentFile.clear();
         session.document.initialize(cupuacu::SampleFormat::Unknown, 0, 0, 0);
         session.selection.reset();
@@ -211,7 +266,7 @@ namespace cupuacu::actions
 
         prepareForDocumentTransition(state);
 
-        auto &session = state->activeDocumentSession;
+        auto &session = state->getActiveDocumentSession();
         session.currentFile.clear();
         session.document.initialize(format, sampleRate, channels, 0);
         session.selection.reset();
@@ -220,6 +275,20 @@ namespace cupuacu::actions
 
         refreshDocumentUi(state);
         setMainWindowTitle(state, kUntitledDocumentTitle);
+    }
+
+    inline bool createNewDocumentInNewTab(cupuacu::State *state,
+                                          const int sampleRate,
+                                          const cupuacu::SampleFormat format,
+                                          const int channels = 2)
+    {
+        if (!prepareTabForOpenedDocument(state))
+        {
+            return false;
+        }
+
+        createNewDocument(state, sampleRate, format, channels);
+        return true;
     }
 
     inline bool loadFileIntoSession(cupuacu::State *state,
@@ -232,7 +301,7 @@ namespace cupuacu::actions
         }
 
         prepareForDocumentTransition(state);
-        state->activeDocumentSession.currentFile = absoluteFilePath;
+        state->getActiveDocumentSession().currentFile = absoluteFilePath;
         cupuacu::file::loadSampleData(state);
         refreshDocumentUi(state);
         setMainWindowTitle(state, absoluteFilePath);
@@ -243,6 +312,18 @@ namespace cupuacu::actions
         }
 
         return true;
+    }
+
+    inline bool loadFileIntoNewTab(cupuacu::State *state,
+                                   const std::string &absoluteFilePath,
+                                   const bool updateRecentFiles = true)
+    {
+        if (!prepareTabForOpenedDocument(state))
+        {
+            return false;
+        }
+
+        return loadFileIntoSession(state, absoluteFilePath, updateRecentFiles);
     }
 
     inline StartupDocumentRestorePlan planStartupDocumentRestore(
@@ -289,7 +370,7 @@ namespace cupuacu::actions
         {
             persistRecentFiles(state);
         }
-        state->activeDocumentSession.currentFile.clear();
+        state->getActiveDocumentSession().currentFile.clear();
     }
 
     inline void requestExit(cupuacu::State *state)

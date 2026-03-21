@@ -32,7 +32,7 @@ void Waveforms::rebuildWaveforms()
     }
 
     const int numChannels =
-        state->activeDocumentSession.document.getChannelCount();
+        state->getActiveDocumentSession().document.getChannelCount();
 
     if (numChannels > 0)
     {
@@ -47,7 +47,7 @@ void Waveforms::rebuildWaveforms()
 
 void Waveforms::resizeWaveforms() const
 {
-    auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    auto &viewState = state->getActiveViewState();
     const int numChannels = static_cast<int>(state->waveforms.size());
     if (numChannels > 0)
     {

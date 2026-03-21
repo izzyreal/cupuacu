@@ -206,7 +206,7 @@ TEST_CASE("Overwrite keeps untouched 16-bit PCM WAV byte-identical", "[file]")
     const auto originalBytes = readBytes(wavPath);
 
     cupuacu::State state{};
-    state.activeDocumentSession.currentFile = wavPath.string();
+    state.getActiveDocumentSession().currentFile = wavPath.string();
     cupuacu::file::loadSampleData(&state);
     cupuacu::actions::overwrite(&state);
 
@@ -225,7 +225,7 @@ TEST_CASE("Overwrite preserves non-audio WAV chunks around data", "[file]")
     const auto originalBytes = readBytes(wavPath);
 
     cupuacu::State state{};
-    state.activeDocumentSession.currentFile = wavPath.string();
+    state.getActiveDocumentSession().currentFile = wavPath.string();
     cupuacu::file::loadSampleData(&state);
     cupuacu::actions::overwrite(&state);
 
@@ -240,10 +240,10 @@ TEST_CASE("Overwrite clips edited samples into valid PCM16 range", "[file]")
     writePcm16WavFile(wavPath, 22050, 1, {0, 0, 0});
 
     cupuacu::State state{};
-    state.activeDocumentSession.currentFile = wavPath.string();
+    state.getActiveDocumentSession().currentFile = wavPath.string();
     cupuacu::file::loadSampleData(&state);
 
-    auto &document = state.activeDocumentSession.document;
+    auto &document = state.getActiveDocumentSession().document;
     document.setSample(0, 0, 1.25f);
     document.setSample(0, 1, -1.25f);
     document.setSample(0, 2, 0.5f);

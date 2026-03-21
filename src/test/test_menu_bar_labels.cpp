@@ -228,11 +228,11 @@ TEST_CASE("MenuBar planning builds dynamic undo redo labels and availability",
     REQUIRE_FALSE(cupuacu::gui::isSelectionEditAvailable(&state));
     REQUIRE_FALSE(cupuacu::gui::isPasteAvailable(&state));
 
-    state.activeDocumentSession.document.initialize(cupuacu::SampleFormat::FLOAT32,
+    state.getActiveDocumentSession().document.initialize(cupuacu::SampleFormat::FLOAT32,
                                                     44100, 1, 4);
-    state.activeDocumentSession.selection.setHighest(4.0);
-    state.activeDocumentSession.selection.setValue1(1.0);
-    state.activeDocumentSession.selection.setValue2(3.0);
+    state.getActiveDocumentSession().selection.setHighest(4.0);
+    state.getActiveDocumentSession().selection.setValue1(1.0);
+    state.getActiveDocumentSession().selection.setValue2(3.0);
     state.clipboard.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 2);
 
     REQUIRE(cupuacu::gui::isSelectionEditAvailable(&state));
@@ -314,8 +314,8 @@ TEST_CASE("MenuBar disables document-dependent menus when no file is open",
 
     REQUIRE(closeEntry->mouseDown(leftMouseDown()));
     REQUIRE(overwriteEntry->mouseDown(leftMouseDown()));
-    REQUIRE(state.activeDocumentSession.document.getChannelCount() == 0);
-    REQUIRE(state.activeDocumentSession.currentFile.empty());
+    REQUIRE(state.getActiveDocumentSession().document.getChannelCount() == 0);
+    REQUIRE(state.getActiveDocumentSession().currentFile.empty());
 }
 
 TEST_CASE("MenuBar edit actions invoke trim copy cut and paste through submenu actions",
@@ -328,7 +328,7 @@ TEST_CASE("MenuBar edit actions invoke trim copy cut and paste through submenu a
     auto editEntries = menuChildren(editMenu);
     REQUIRE(editEntries.size() == 6);
 
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     auto &doc = session.document;
     doc.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 5);
     for (int i = 0; i < 5; ++i)
@@ -388,11 +388,11 @@ TEST_CASE("MenuBar file overwrite action rewrites the current file", "[gui][file
     writePcm16TestWav(wavPath, 32000, 1, {0, 0, 0});
 
     cupuacu::State state{};
-    state.activeDocumentSession.currentFile = wavPath.string();
+    state.getActiveDocumentSession().currentFile = wavPath.string();
     cupuacu::file::loadSampleData(&state);
-    state.activeDocumentSession.document.setSample(0, 0, 0.25f, false);
-    state.activeDocumentSession.document.setSample(0, 1, -0.5f, false);
-    state.activeDocumentSession.document.setSample(0, 2, 0.75f, false);
+    state.getActiveDocumentSession().document.setSample(0, 0, 0.25f, false);
+    state.getActiveDocumentSession().document.setSample(0, 1, -0.5f, false);
+    state.getActiveDocumentSession().document.setSample(0, 2, 0.75f, false);
 
     RootComponent root(&state);
     auto *menuBar = makeMenuBar(&state, root);

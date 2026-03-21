@@ -114,7 +114,7 @@ namespace cupuacu::gui
         }
         auto &cursors = getCursorSet();
         const auto &viewState =
-            state->mainDocumentSessionWindow->getViewState();
+            state->getActiveViewState();
 
         SDL_Cursor *newCursor = cursors.defaultCursor;
         const SDL_Window *focus = SDL_GetKeyboardFocus();
@@ -175,7 +175,7 @@ namespace cupuacu::gui
             return;
         }
 
-        if (state->activeDocumentSession.selection.isActive())
+        if (state->getActiveDocumentSession().selection.isActive())
         {
             return;
         }
@@ -357,7 +357,7 @@ namespace cupuacu::gui
 
         if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
         {
-            // state->activeDocumentSession.selection.printInfo();
+            // state->getActiveDocumentSession().selection.printInfo();
         }
 
         return SDL_APP_CONTINUE;

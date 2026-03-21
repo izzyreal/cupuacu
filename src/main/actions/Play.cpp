@@ -18,8 +18,8 @@ void performStop(cupuacu::State *state)
 
 void cupuacu::actions::play(cupuacu::State *state)
 {
-    auto &session = state->activeDocumentSession;
-    auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    auto &session = state->getActiveDocumentSession();
+    auto &viewState = state->getActiveViewState();
     auto &doc = session.document;
 
     if (state->audioDevices->isRecording())

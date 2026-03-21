@@ -246,13 +246,13 @@ namespace cupuacu::file
             os.write("data", 4);
 
             size_t frames =
-                state->activeDocumentSession.document.getFrameCount();
+                state->getActiveDocumentSession().document.getFrameCount();
             size_t channels =
-                state->activeDocumentSession.document.getChannelCount();
+                state->getActiveDocumentSession().document.getChannelCount();
 
             std::vector<int16_t> interleaved(frames * channels);
 
-            auto buf = state->activeDocumentSession.document.getAudioBuffer();
+            auto buf = state->getActiveDocumentSession().document.getAudioBuffer();
 
             const bool shouldCheckForDirtiness =
                 std::dynamic_pointer_cast<
@@ -394,7 +394,7 @@ namespace cupuacu::file
         static void rewriteWavFile(cupuacu::State *state)
         {
             std::filesystem::path input(
-                state->activeDocumentSession.currentFile);
+                state->getActiveDocumentSession().currentFile);
             std::filesystem::path output = input;
             output += ".cupuacu.tmp";
 

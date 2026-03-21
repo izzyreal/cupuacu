@@ -48,7 +48,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 #endif
 
     cupuacu::State *state = new cupuacu::State();
-    auto &session = state->activeDocumentSession;
+    auto &session = state->getActiveDocumentSession();
     state->uiScale = cupuacu::gui::resolveInitialUiScale();
 
     state->audioDevices = std::make_shared<cupuacu::audio::AudioDevices>();
@@ -86,7 +86,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     state->mainDocumentSessionWindow =
         std::make_unique<cupuacu::gui::DocumentSessionWindow>(
-            state, &session, "", initialDimensions[0], initialDimensions[1],
+            state, &session, &state->getActiveViewState(), "",
+            initialDimensions[0], initialDimensions[1],
             SDL_WINDOW_RESIZABLE | getHighDensityWindowFlag());
 
     auto *mainWindow = state->mainDocumentSessionWindow->getWindow();

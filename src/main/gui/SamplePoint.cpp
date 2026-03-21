@@ -22,7 +22,7 @@ uint64_t SamplePoint::getSampleIndex() const
 
 float SamplePoint::getSampleValue() const
 {
-    return state->activeDocumentSession.document.getSample(channelIndex,
+    return state->getActiveDocumentSession().document.getSample(channelIndex,
                                                            sampleIndex);
 }
 
@@ -68,10 +68,10 @@ bool SamplePoint::mouseUp(const MouseEvent &e)
 
     state->addUndoable(undoable);
     auto &waveformCache =
-        state->activeDocumentSession.document.getWaveformCache(channelIndex);
+        state->getActiveDocumentSession().document.getWaveformCache(channelIndex);
     waveformCache.invalidateSample(sampleIndex);
     waveformCache.rebuildDirty(
-        state->activeDocumentSession.document.getAudioBuffer()
+        state->getActiveDocumentSession().document.getAudioBuffer()
             ->getImmutableChannelData(channelIndex)
             .data());
 
@@ -92,7 +92,7 @@ bool SamplePoint::mouseMove(const MouseEvent &e)
 
     const auto samplePointSize = getHeight();
     const auto parentHeight = getParent()->getHeight();
-    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    const auto &viewState = state->getActiveViewState();
     const auto verticalZoom = viewState.verticalZoom;
 
     const auto dragPlan = planSamplePointDrag(
@@ -101,7 +101,7 @@ bool SamplePoint::mouseMove(const MouseEvent &e)
     dragYPos = dragPlan.clampedY;
 
     setYPos(dragYPos);
-    state->activeDocumentSession.document.setSample(channelIndex, sampleIndex,
+    state->getActiveDocumentSession().document.setSample(channelIndex, sampleIndex,
                                                     dragPlan.sampleValue);
     updateSampleValueUnderMouseCursor(state, dragPlan.sampleValue, channelIndex,
                                       sampleIndex);

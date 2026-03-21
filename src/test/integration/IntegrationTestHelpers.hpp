@@ -95,7 +95,7 @@ namespace cupuacu::test::integration
     {
         ensureSdlTtfInitialized();
 
-        auto &session = state->activeDocumentSession;
+        auto &session = state->getActiveDocumentSession();
         session.document.initialize(cupuacu::SampleFormat::FLOAT32, sampleRate,
                                     channels, frameCount);
 
@@ -107,7 +107,7 @@ namespace cupuacu::test::integration
 
         state->mainDocumentSessionWindow =
             std::make_unique<cupuacu::gui::DocumentSessionWindow>(
-                state, &session, "test", windowWidth, windowHeight,
+                state, &session, &state->getActiveViewState(), "test", windowWidth, windowHeight,
                 SDL_WINDOW_HIDDEN);
 
         SessionUi ui{};

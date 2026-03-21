@@ -24,7 +24,7 @@ namespace cupuacu::gui
 
     static void handleKeyDown(SDL_Event *event, State *state)
     {
-        auto &viewState = state->mainDocumentSessionWindow->getViewState();
+        auto &viewState = state->getActiveViewState();
         auto *mainWindow = state->mainDocumentSessionWindow->getWindow();
         uint8_t multiplier = 1;
         const uint8_t multiplierFactor = 12 / state->pixelScale;
@@ -217,10 +217,10 @@ namespace cupuacu::gui
         {
 #if __APPLE__
             if (event->key.mod & SDL_KMOD_GUI &&
-                state->activeDocumentSession.selection.isActive())
+                state->getActiveDocumentSession().selection.isActive())
 #else
             if ((event->key.mod & SDL_KMOD_CTRL) &&
-                state->activeDocumentSession.selection.isActive())
+                state->getActiveDocumentSession().selection.isActive())
 #endif
             {
                 actions::audio::performCut(state);
@@ -230,10 +230,10 @@ namespace cupuacu::gui
         {
 #if __APPLE__
             if (event->key.mod & SDL_KMOD_GUI &&
-                state->activeDocumentSession.selection.isActive())
+                state->getActiveDocumentSession().selection.isActive())
 #else
             if ((event->key.mod & SDL_KMOD_CTRL) &&
-                state->activeDocumentSession.selection.isActive())
+                state->getActiveDocumentSession().selection.isActive())
 #endif
             {
                 actions::audio::performCopy(state);
@@ -255,10 +255,10 @@ namespace cupuacu::gui
         {
 #if __APPLE__
             if (event->key.mod & SDL_KMOD_GUI &&
-                state->activeDocumentSession.selection.isActive())
+                state->getActiveDocumentSession().selection.isActive())
 #else
             if ((event->key.mod & SDL_KMOD_CTRL) &&
-                state->activeDocumentSession.selection.isActive())
+                state->getActiveDocumentSession().selection.isActive())
 #endif
             {
                 actions::audio::performTrim(state);

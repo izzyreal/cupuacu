@@ -19,6 +19,7 @@ namespace cupuacu::gui
     {
     public:
         DocumentSessionWindow(State *state, DocumentSession *session,
+                              EditorViewState *viewState,
                               const std::string &title, int width, int height,
                               Uint32 flags);
 
@@ -29,12 +30,12 @@ namespace cupuacu::gui
 
         EditorViewState &getViewState()
         {
-            return viewState;
+            return *viewState;
         }
 
         const EditorViewState &getViewState() const
         {
-            return viewState;
+            return *viewState;
         }
 
         DocumentSession *getDocumentSession() const
@@ -42,9 +43,16 @@ namespace cupuacu::gui
             return documentSession;
         }
 
+        void bindDocumentSession(DocumentSession *sessionToUse,
+                                 EditorViewState *viewStateToUse)
+        {
+            documentSession = sessionToUse;
+            viewState = viewStateToUse;
+        }
+
     private:
         DocumentSession *documentSession = nullptr;
-        EditorViewState viewState{};
+        EditorViewState *viewState = nullptr;
         std::unique_ptr<Window> window;
     };
 } // namespace cupuacu::gui

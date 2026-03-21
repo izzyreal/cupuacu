@@ -52,7 +52,7 @@ TEST_CASE("Transport buttons container drives record stop play-stop and loop sta
 {
     cupuacu::State state{};
     state.audioDevices = std::make_shared<cupuacu::audio::AudioDevices>(false);
-    auto &doc = state.activeDocumentSession.document;
+    auto &doc = state.getActiveDocumentSession().document;
     doc.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 16);
 
     cupuacu::gui::TransportButtonsContainer container(&state);

@@ -18,8 +18,8 @@ namespace cupuacu::actions
             return;
         }
 
-        auto &session = state->activeDocumentSession;
-        auto &viewState = state->mainDocumentSessionWindow->getViewState();
+        auto &session = state->getActiveDocumentSession();
+        auto &viewState = state->getActiveViewState();
         const auto frameCount = std::max<int64_t>(0, session.document.getFrameCount());
         const auto waveformWidth =
             static_cast<double>(gui::Waveform::getWaveformWidth(state));

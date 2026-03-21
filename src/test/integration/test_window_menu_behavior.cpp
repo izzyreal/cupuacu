@@ -446,13 +446,13 @@ TEST_CASE("Menu integration undo and redo actions reflect undo stack state",
 
     undoMenu->mouseDown(cupuacu::test::integration::leftMouseDown());
     REQUIRE(undoable->undoCount == 1);
-    REQUIRE(state.undoables.empty());
-    REQUIRE(state.redoables.size() == 1);
+    REQUIRE(state.getActiveUndoables().empty());
+    REQUIRE(state.getActiveRedoables().size() == 1);
 
     redoMenu->mouseDown(cupuacu::test::integration::leftMouseDown());
     REQUIRE(undoable->redoCount == 1);
-    REQUIRE(state.undoables.size() == 1);
-    REQUIRE(state.redoables.empty());
+    REQUIRE(state.getActiveUndoables().size() == 1);
+    REQUIRE(state.getActiveRedoables().empty());
 }
 
 TEST_CASE("Options menu integration opens device properties window once",
@@ -858,10 +858,10 @@ TEST_CASE("File menu integration opens a recent file into the active session",
     REQUIRE(recentFileEntry->mouseDown(
         cupuacu::test::integration::leftMouseDown()));
 
-    REQUIRE(state.activeDocumentSession.currentFile == wavPath.string());
-    REQUIRE(state.activeDocumentSession.document.getSampleRate() == 22050);
-    REQUIRE(state.activeDocumentSession.document.getChannelCount() == 2);
-    REQUIRE(state.activeDocumentSession.document.getFrameCount() == 2);
+    REQUIRE(state.getActiveDocumentSession().currentFile == wavPath.string());
+    REQUIRE(state.getActiveDocumentSession().document.getSampleRate() == 22050);
+    REQUIRE(state.getActiveDocumentSession().document.getChannelCount() == 2);
+    REQUIRE(state.getActiveDocumentSession().document.getFrameCount() == 2);
     REQUIRE(state.recentFiles == std::vector<std::string>{wavPath.string()});
 }
 

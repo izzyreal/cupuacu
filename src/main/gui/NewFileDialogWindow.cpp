@@ -85,7 +85,7 @@ namespace cupuacu::gui
         okButton->setOnPress(
             [this]()
             {
-                cupuacu::actions::createNewDocument(
+                cupuacu::actions::createNewDocumentInNewTab(
                     state, selectedSampleRate(), selectedFormat(),
                     selectedChannelCount());
                 requestClose();

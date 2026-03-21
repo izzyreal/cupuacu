@@ -26,7 +26,7 @@ namespace cupuacu::actions::audio
 
     inline bool hasActiveSelection(const cupuacu::State *state)
     {
-        return state && state->activeDocumentSession.selection.isActive();
+        return state && state->getActiveDocumentSession().selection.isActive();
     }
 
     inline SelectionTarget selectionTarget(const cupuacu::State *state)
@@ -37,8 +37,8 @@ namespace cupuacu::actions::audio
             return target;
         }
 
-        target.start = state->activeDocumentSession.selection.getStartInt();
-        target.length = state->activeDocumentSession.selection.getLengthInt();
+        target.start = state->getActiveDocumentSession().selection.getStartInt();
+        target.length = state->getActiveDocumentSession().selection.getLengthInt();
         return target;
     }
 
@@ -50,15 +50,15 @@ namespace cupuacu::actions::audio
             return target;
         }
 
-        if (state->activeDocumentSession.selection.isActive())
+        if (state->getActiveDocumentSession().selection.isActive())
         {
-            target.start = state->activeDocumentSession.selection.getStartInt();
+            target.start = state->getActiveDocumentSession().selection.getStartInt();
             target.end =
-                state->activeDocumentSession.selection.getEndExclusiveInt();
+                state->getActiveDocumentSession().selection.getEndExclusiveInt();
             return target;
         }
 
-        target.start = state->activeDocumentSession.cursor;
+        target.start = state->getActiveDocumentSession().cursor;
         target.end = -1;
         return target;
     }
@@ -123,7 +123,7 @@ namespace cupuacu::actions::audio
             return;
         }
 
-        auto &doc = state->activeDocumentSession.document;
+        auto &doc = state->getActiveDocumentSession().document;
         if (doc.getChannelCount() <= 0 || doc.getSampleRate() <= 0)
         {
             return;

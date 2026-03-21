@@ -125,7 +125,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
                     return;
                 }
 
-                actions::loadFileIntoSession(state, path);
+                actions::loadFileIntoNewTab(state, path);
             });
         entry->setIsAvailable(
             [this, index]()
@@ -155,7 +155,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
         [&]
         {
             return actions::hasActiveDocument(state) &&
-                   !state->activeDocumentSession.currentFile.empty();
+                   !state->getActiveDocumentSession().currentFile.empty();
         });
     fileMenu->addSubMenu(
         state, exitText,

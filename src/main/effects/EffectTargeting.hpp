@@ -17,7 +17,7 @@ namespace cupuacu::effects
             return targetChannels;
         }
 
-        auto &session = state->activeDocumentSession;
+        auto &session = state->getActiveDocumentSession();
         auto &document = session.document;
         const int64_t channelCount = document.getChannelCount();
         if (channelCount <= 0)
@@ -38,7 +38,7 @@ namespace cupuacu::effects
         if (state->mainDocumentSessionWindow)
         {
             selectedChannels =
-                state->mainDocumentSessionWindow->getViewState().selectedChannels;
+                state->getActiveViewState().selectedChannels;
         }
 
         if (channelCount <= 1 || selectedChannels == SelectedChannels::BOTH)
@@ -70,7 +70,7 @@ namespace cupuacu::effects
             return false;
         }
 
-        auto &session = state->activeDocumentSession;
+        auto &session = state->getActiveDocumentSession();
         auto &document = session.document;
         if (document.getFrameCount() <= 0 || document.getChannelCount() <= 0)
         {
@@ -105,7 +105,7 @@ namespace cupuacu::effects
             return 0.0f;
         }
 
-        auto &document = state->activeDocumentSession.document;
+        auto &document = state->getActiveDocumentSession().document;
         float peak = 0.0f;
         for (const auto channel : targetChannels)
         {
@@ -145,18 +145,18 @@ namespace cupuacu::effects
             return cupuacu::SelectedChannels::BOTH;
         }
 
-        const auto &document = state->activeDocumentSession.document;
+        const auto &document = state->getActiveDocumentSession().document;
         if (document.getChannelCount() <= 1)
         {
             return cupuacu::SelectedChannels::BOTH;
         }
 
-        if (!state->activeDocumentSession.selection.isActive() ||
+        if (!state->getActiveDocumentSession().selection.isActive() ||
             !state->mainDocumentSessionWindow)
         {
             return cupuacu::SelectedChannels::BOTH;
         }
 
-        return state->mainDocumentSessionWindow->getViewState().selectedChannels;
+        return state->getActiveViewState().selectedChannels;
     }
 } // namespace cupuacu::effects

@@ -29,7 +29,7 @@ namespace cupuacu::actions::audio
             : DurationMutationUndoable(state), startFrame(start),
               endFrame(end)
         {
-            auto &session = state->activeDocumentSession;
+            auto &session = state->getActiveDocumentSession();
             if (session.selection.isActive())
             {
                 hadOldSelection = true;
@@ -48,7 +48,7 @@ namespace cupuacu::actions::audio
 
         void redo() override
         {
-            auto &session = state->activeDocumentSession;
+            auto &session = state->getActiveDocumentSession();
             const auto &clip = state->clipboard;
             if (clip.getFrameCount() == 0)
             {
@@ -131,7 +131,7 @@ namespace cupuacu::actions::audio
 
         void undo() override
         {
-            auto &session = state->activeDocumentSession;
+            auto &session = state->getActiveDocumentSession();
             auto &doc = session.document;
             const int64_t ch = doc.getChannelCount();
             const int64_t docFrames = doc.getFrameCount();

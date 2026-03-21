@@ -12,18 +12,17 @@
 int64_t getMaxSampleOffset(const cupuacu::State *state)
 {
     if (!state->mainDocumentSessionWindow || state->waveforms.empty() ||
-        state->activeDocumentSession.document.getFrameCount() == 0)
+        state->getActiveDocumentSession().document.getFrameCount() == 0)
     {
         return 0;
     }
-    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    const auto &viewState = state->getActiveViewState();
 
     const double waveformWidth =
         static_cast<double>(state->waveforms.front()->getWidth());
     const int64_t visibleSampleCount = static_cast<int64_t>(
         std::ceil(waveformWidth * viewState.samplesPerPixel));
-    const int64_t frameCount =
-        state->activeDocumentSession.document.getFrameCount();
+    const int64_t frameCount = state->getActiveDocumentSession().document.getFrameCount();
     const int64_t maxOffset = frameCount - visibleSampleCount;
     return std::max<int64_t>(0, maxOffset);
 }
@@ -54,6 +53,8 @@ cupuacu::State::~State() = default;
 void cupuacu::State::addUndoable(
     std::shared_ptr<cupuacu::actions::Undoable> undoable)
 {
+    auto &undoables = getActiveUndoables();
+    auto &redoables = getActiveRedoables();
     undoables.push_back(undoable);
     redoables.clear();
 }
@@ -68,6 +69,8 @@ void cupuacu::State::addAndDoUndoable(
 
 void cupuacu::State::undo()
 {
+    auto &undoables = getActiveUndoables();
+    auto &redoables = getActiveRedoables();
     if (undoables.empty())
     {
         return;
@@ -82,6 +85,8 @@ void cupuacu::State::undo()
 
 void cupuacu::State::redo()
 {
+    auto &undoables = getActiveUndoables();
+    auto &redoables = getActiveRedoables();
     if (redoables.empty())
     {
         return;
@@ -100,7 +105,7 @@ std::string cupuacu::State::getUndoDescription()
     {
         return "";
     }
-    return undoables.back()->getUndoDescription();
+    return getActiveUndoables().back()->getUndoDescription();
 }
 std::string cupuacu::State::getRedoDescription()
 {
@@ -108,5 +113,5 @@ std::string cupuacu::State::getRedoDescription()
     {
         return "";
     }
-    return redoables.back()->getRedoDescription();
+    return getActiveRedoables().back()->getRedoDescription();
 }

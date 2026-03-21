@@ -12,7 +12,7 @@ TEST_CASE("Playback follow integration does not mutate DocumentSession cursor",
           "[integration]")
 {
     cupuacu::State state{};
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     auto ui = cupuacu::test::integration::createSessionUi(&state, 64, true);
     session.selection.reset();
     session.cursor = 10;

@@ -17,7 +17,7 @@ void cupuacu::actions::record(cupuacu::State *state)
         return;
     }
 
-    auto &session = state->activeDocumentSession;
+    auto &session = state->getActiveDocumentSession();
 
     if (state->audioDevices->isRecording())
     {

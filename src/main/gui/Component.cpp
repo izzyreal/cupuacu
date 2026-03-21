@@ -38,9 +38,9 @@ void Component::setInterceptMouseEnabled(const bool shouldInterceptMouse)
 void Component::setParent(Component *parentToUse)
 {
     parent = parentToUse;
-    if (parent && !window)
+    if (parent)
     {
-        window = parent->window;
+        setWindow(parent->window);
     }
 }
 

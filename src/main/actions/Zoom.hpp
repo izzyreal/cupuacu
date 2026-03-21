@@ -17,9 +17,9 @@ namespace cupuacu::actions
 
     static void resetZoom(cupuacu::State *state)
     {
-        auto &viewState = state->mainDocumentSessionWindow->getViewState();
+        auto &viewState = state->getActiveViewState();
         const auto plan = planResetZoom(
-            state->activeDocumentSession.document.getFrameCount(),
+            state->getActiveDocumentSession().document.getFrameCount(),
             gui::Waveform::getWaveformWidth(state));
         viewState.samplesPerPixel = plan.samplesPerPixel;
         viewState.verticalZoom = plan.verticalZoom;
@@ -36,11 +36,11 @@ namespace cupuacu::actions
 
     static bool tryZoomInHorizontally(cupuacu::State *state)
     {
-        auto &viewState = state->mainDocumentSessionWindow->getViewState();
+        auto &viewState = state->getActiveViewState();
         const auto plan = planZoomInHorizontally(
             viewState.samplesPerPixel, viewState.sampleOffset,
             gui::Waveform::getWaveformWidth(state),
-            state->activeDocumentSession.document.getFrameCount());
+            state->getActiveDocumentSession().document.getFrameCount());
         if (!plan.changed)
         {
             return false;
@@ -54,11 +54,11 @@ namespace cupuacu::actions
 
     static bool tryZoomOutHorizontally(cupuacu::State *state)
     {
-        auto &viewState = state->mainDocumentSessionWindow->getViewState();
+        auto &viewState = state->getActiveViewState();
         const auto plan = planZoomOutHorizontally(
             viewState.samplesPerPixel, viewState.sampleOffset,
             gui::Waveform::getWaveformWidth(state),
-            state->activeDocumentSession.document.getFrameCount());
+            state->getActiveDocumentSession().document.getFrameCount());
         if (!plan.changed)
         {
             return false;
@@ -73,14 +73,14 @@ namespace cupuacu::actions
     static void zoomInVertically(cupuacu::State *state,
                                  const uint8_t multiplier)
     {
-        auto &viewState = state->mainDocumentSessionWindow->getViewState();
+        auto &viewState = state->getActiveViewState();
         viewState.verticalZoom += 0.3 * multiplier;
     }
 
     static bool tryZoomOutVertically(cupuacu::State *state,
                                      const uint8_t multiplier)
     {
-        auto &viewState = state->mainDocumentSessionWindow->getViewState();
+        auto &viewState = state->getActiveViewState();
         if (viewState.verticalZoom <= 1)
         {
             return false;
@@ -98,11 +98,11 @@ namespace cupuacu::actions
 
     static bool tryZoomSelection(cupuacu::State *state)
     {
-        auto &viewState = state->mainDocumentSessionWindow->getViewState();
+        auto &viewState = state->getActiveViewState();
         const auto plan = planZoomSelection(
-            state->activeDocumentSession.selection.isActive(),
-            state->activeDocumentSession.selection.getLengthInt(),
-            state->activeDocumentSession.selection.getStartInt(),
+            state->getActiveDocumentSession().selection.isActive(),
+            state->getActiveDocumentSession().selection.getLengthInt(),
+            state->getActiveDocumentSession().selection.getStartInt(),
             gui::Waveform::getWaveformWidth(state));
         if (!plan.changed)
         {

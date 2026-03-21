@@ -3,11 +3,13 @@
 #include "IntegrationTestHelpers.hpp"
 
 #include "State.hpp"
+#include "gui/Gui.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/MainView.hpp"
 #include "gui/MenuBar.hpp"
 #include "gui/OpaqueRect.hpp"
 #include "gui/ScrollBar.hpp"
+#include "gui/TabStrip.hpp"
 #include "gui/Timeline.hpp"
 #include "gui/WaveformsUnderlay.hpp"
 #include "gui/Waveforms.hpp"
@@ -73,6 +75,42 @@ TEST_CASE("MainView integration contains expected coarse structure",
     REQUIRE(scrollBarCount == 1);
 }
 
+TEST_CASE("Main window integration keeps the tab strip below overlay menus",
+          "[integration]")
+{
+    cupuacu::State state{};
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &state.getActiveDocumentSession(), &state.getActiveViewState(),
+            "structure", 800, 400, SDL_WINDOW_HIDDEN);
+    cupuacu::gui::buildComponents(&state,
+                                  state.mainDocumentSessionWindow->getWindow());
+
+    auto *window = state.mainDocumentSessionWindow->getWindow();
+    REQUIRE(window != nullptr);
+    REQUIRE(window->getContentLayer() != nullptr);
+    REQUIRE(window->getOverlayLayer() != nullptr);
+
+    auto *tabStrip =
+        cupuacu::test::integration::findByNameRecursive<cupuacu::gui::TabStrip>(
+            window->getContentLayer(), "TabStrip");
+    REQUIRE(tabStrip != nullptr);
+
+    auto *menuBar =
+        cupuacu::test::integration::findByNameRecursive<cupuacu::gui::MenuBar>(
+            window->getOverlayLayer(), "MenuBar");
+    REQUIRE(menuBar != nullptr);
+
+    const auto contentChildren = componentChildren(window->getContentLayer());
+    const auto overlayChildren = componentChildren(window->getOverlayLayer());
+    REQUIRE(std::find(contentChildren.begin(), contentChildren.end(), tabStrip) !=
+            contentChildren.end());
+    REQUIRE(std::find(overlayChildren.begin(), overlayChildren.end(), menuBar) !=
+            overlayChildren.end());
+}
+
 TEST_CASE("MainView integration double click selects the visible range",
           "[integration]")
 {
@@ -95,11 +133,11 @@ TEST_CASE("MainView integration double click selects the visible range",
         cupuacu::gui::MouseButtonState{true, false, false},
         2}));
 
-    const auto &selection = state.activeDocumentSession.selection;
+    const auto &selection = state.getActiveDocumentSession().selection;
     REQUIRE(selection.isActive());
     REQUIRE(selection.getStartInt() == 0);
     REQUIRE(selection.getEndInt() >=
-            state.activeDocumentSession.document.getFrameCount() - 1);
+            state.getActiveDocumentSession().document.getFrameCount() - 1);
 }
 
 TEST_CASE("MainView integration drag selection on the lower waveform selects the right channel",
@@ -148,8 +186,8 @@ TEST_CASE("MainView integration drag selection on the lower waveform selects the
         cupuacu::gui::MouseButtonState{true, false, false},
         1}));
 
-    const auto &selection = state.activeDocumentSession.selection;
+    const auto &selection = state.getActiveDocumentSession().selection;
     REQUIRE(selection.isActive());
     REQUIRE(selection.getLengthInt() > 0);
-    REQUIRE(state.activeDocumentSession.cursor == selection.getStartInt());
+    REQUIRE(state.getActiveDocumentSession().cursor == selection.getStartInt());
 }

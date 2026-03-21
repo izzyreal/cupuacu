@@ -132,7 +132,7 @@ namespace cupuacu::effects
                 return;
             }
 
-            auto &document = state->activeDocumentSession.document;
+            auto &document = state->getActiveDocumentSession().document;
             if (document.getChannelCount() <= 0)
             {
                 return;
@@ -177,7 +177,7 @@ namespace cupuacu::effects
                 return;
             }
 
-            auto &document = state->activeDocumentSession.document;
+            auto &document = state->getActiveDocumentSession().document;
             for (size_t channelIndex = 0; channelIndex < targetChannels.size();
                  ++channelIndex)
             {
@@ -199,15 +199,15 @@ namespace cupuacu::effects
                                    const AmplifyFadeSettings &settings)
     {
         if (!state ||
-            state->activeDocumentSession.document.getFrameCount() <= 0 ||
-            state->activeDocumentSession.document.getChannelCount() <= 0)
+            state->getActiveDocumentSession().document.getFrameCount() <= 0 ||
+            state->getActiveDocumentSession().document.getChannelCount() <= 0)
         {
             return;
         }
 
-        const bool hasSelection = state->activeDocumentSession.selection.isActive();
+        const bool hasSelection = state->getActiveDocumentSession().selection.isActive();
         if (hasSelection &&
-            state->activeDocumentSession.selection.getLengthInt() <= 0)
+            state->getActiveDocumentSession().selection.getLengthInt() <= 0)
         {
             return;
         }

@@ -48,7 +48,7 @@ namespace cupuacu::actions::audio
 
         void redo() override
         {
-            auto &session = state->activeDocumentSession;
+            auto &session = state->getActiveDocumentSession();
             auto &doc = session.document;
 
             if (data.targetChannelCount <= 0 || data.endFrame <= data.startFrame)
@@ -104,7 +104,7 @@ namespace cupuacu::actions::audio
 
         void undo() override
         {
-            auto &session = state->activeDocumentSession;
+            auto &session = state->getActiveDocumentSession();
             auto &doc = session.document;
 
             if (data.endFrame <= data.startFrame)
@@ -186,7 +186,7 @@ namespace cupuacu::actions::audio
             }
 
             const auto currentChannelCount =
-                state->activeDocumentSession.document.getChannelCount();
+                state->getActiveDocumentSession().document.getChannelCount();
             const auto currentWaveformCount =
                 static_cast<int64_t>(state->waveforms.size());
             if (currentWaveformCount != currentChannelCount)
@@ -197,7 +197,7 @@ namespace cupuacu::actions::audio
 
         void restoreOldSessionState() const
         {
-            auto &session = state->activeDocumentSession;
+            auto &session = state->getActiveDocumentSession();
             if (data.hadOldSelection)
             {
                 session.selection.setValue1(data.oldSelectionStart);
@@ -213,7 +213,7 @@ namespace cupuacu::actions::audio
 
         void restoreNewSessionState() const
         {
-            auto &session = state->activeDocumentSession;
+            auto &session = state->getActiveDocumentSession();
             if (data.hadNewSelection)
             {
                 session.selection.setValue1(data.newSelectionStart);

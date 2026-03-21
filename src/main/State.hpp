@@ -5,7 +5,7 @@
 #include "gui/Selection.hpp"
 
 #include "SelectedChannels.hpp"
-#include "DocumentSession.hpp"
+#include "DocumentTab.hpp"
 #include "effects/EffectSettings.hpp"
 #include "Paths.hpp"
 #include "gui/DocumentSessionWindow.hpp"
@@ -54,15 +54,14 @@ namespace cupuacu
     {
         std::shared_ptr<audio::AudioDevices> audioDevices;
         std::unique_ptr<Paths> paths = std::make_unique<Paths>();
-        std::deque<std::shared_ptr<actions::Undoable>> undoables;
-        std::deque<std::shared_ptr<actions::Undoable>> redoables;
         uint8_t menuFontSize = 30;
         uint8_t pixelScale = 1;
         float uiScale = 1.0f;
         bool loopPlaybackEnabled = false;
         uint64_t playbackRangeStart = 0;
         uint64_t playbackRangeEnd = 0;
-        DocumentSession activeDocumentSession;
+        std::vector<DocumentTab> tabs{DocumentTab{}};
+        int activeTabIndex = 0;
         Document clipboard;
         effects::EffectSettings effectSettings;
         std::vector<std::string> recentFiles;
@@ -88,17 +87,81 @@ namespace cupuacu
 
         ~State();
 
+        DocumentTab *getActiveTab()
+        {
+            if (tabs.empty())
+            {
+                tabs.emplace_back();
+                activeTabIndex = 0;
+            }
+            activeTabIndex =
+                std::clamp(activeTabIndex, 0, static_cast<int>(tabs.size()) - 1);
+            return &tabs[activeTabIndex];
+        }
+
+        const DocumentTab *getActiveTab() const
+        {
+            if (tabs.empty() || activeTabIndex < 0 ||
+                activeTabIndex >= static_cast<int>(tabs.size()))
+            {
+                return nullptr;
+            }
+            return &tabs[activeTabIndex];
+        }
+
+        DocumentSession &getActiveDocumentSession()
+        {
+            return getActiveTab()->session;
+        }
+
+        const DocumentSession &getActiveDocumentSession() const
+        {
+            return getActiveTab()->session;
+        }
+
+        gui::EditorViewState &getActiveViewState()
+        {
+            return getActiveTab()->viewState;
+        }
+
+        const gui::EditorViewState &getActiveViewState() const
+        {
+            return getActiveTab()->viewState;
+        }
+
+        std::deque<std::shared_ptr<actions::Undoable>> &getActiveUndoables()
+        {
+            return getActiveTab()->undoables;
+        }
+
+        const std::deque<std::shared_ptr<actions::Undoable>> &
+        getActiveUndoables() const
+        {
+            return getActiveTab()->undoables;
+        }
+
+        std::deque<std::shared_ptr<actions::Undoable>> &getActiveRedoables()
+        {
+            return getActiveTab()->redoables;
+        }
+
+        const std::deque<std::shared_ptr<actions::Undoable>> &
+        getActiveRedoables() const
+        {
+            return getActiveTab()->redoables;
+        }
+
         void addUndoable(std::shared_ptr<actions::Undoable>);
         void addAndDoUndoable(std::shared_ptr<actions::Undoable>);
         void undo();
         void redo();
         bool canUndo()
         {
-            return !undoables.empty();
+            return !getActiveUndoables().empty();
         }
         bool canRedo()
         {
-            return !redoables.empty();
+            return !getActiveRedoables().empty();
         }
         std::string getUndoDescription();
         std::string getRedoDescription();
@@ -109,7 +172,7 @@ static void resetSampleValueUnderMouseCursor(cupuacu::State *state)
 {
     if (state->mainDocumentSessionWindow)
     {
-        state->mainDocumentSessionWindow->getViewState()
+        state->getActiveViewState()
             .sampleValueUnderMouseCursor.reset();
     }
 }
@@ -121,7 +184,7 @@ static void updateSampleValueUnderMouseCursor(cupuacu::State *state,
 {
     if (state->mainDocumentSessionWindow)
     {
-        state->mainDocumentSessionWindow->getViewState()
+        state->getActiveViewState()
             .sampleValueUnderMouseCursor.emplace(
                 cupuacu::gui::HoveredSampleInfo{sampleValue, channel, frame});
     }
@@ -131,13 +194,13 @@ static void resetWaveformState(cupuacu::State *state)
 {
     if (state->mainDocumentSessionWindow)
     {
-        auto &viewState = state->mainDocumentSessionWindow->getViewState();
+        auto &viewState = state->getActiveViewState();
         viewState.verticalZoom = 1;
         viewState.sampleOffset = 0;
         viewState.selectedChannels = cupuacu::SelectedChannels::BOTH;
         viewState.samplesToScroll = 0;
     }
-    state->activeDocumentSession.selection.reset();
+    state->getActiveDocumentSession().selection.reset();
 }
 
 int64_t getMaxSampleOffset(const cupuacu::State *);
@@ -149,16 +212,17 @@ static void updateSampleOffset(cupuacu::State *state,
     {
         return;
     }
-    auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    auto &viewState = state->getActiveViewState();
     viewState.sampleOffset =
         std::clamp(sampleOffset, int64_t{0}, getMaxSampleOffset(state));
 }
 
 static bool updateCursorPos(cupuacu::State *state, const int64_t cursorPos)
 {
-    const int64_t oldCursor = state->activeDocumentSession.cursor;
-    state->activeDocumentSession.cursor =
+    auto &session = state->getActiveDocumentSession();
+    const int64_t oldCursor = session.cursor;
+    session.cursor =
         std::clamp(cursorPos, int64_t{0},
-                   state->activeDocumentSession.document.getFrameCount());
-    return state->activeDocumentSession.cursor != oldCursor;
+                   session.document.getFrameCount());
+    return session.cursor != oldCursor;
 }

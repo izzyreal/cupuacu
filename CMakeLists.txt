@@ -125,6 +125,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_wav_writer.cpp
     src/test/test_audio_device_properties_persistence.cpp
     src/test/test_recent_files_persistence.cpp
+    src/test/test_document_tabs.cpp
     src/test/test_sample_quantization.cpp
     src/test/test_audio_callback_core.cpp
     src/test/test_action_undoables.cpp

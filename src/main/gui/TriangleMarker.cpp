@@ -84,8 +84,8 @@ void TriangleMarker::onDraw(SDL_Renderer *r)
 
 bool TriangleMarker::mouseDown(const MouseEvent &e)
 {
-    auto &session = state->activeDocumentSession;
-    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    auto &session = state->getActiveDocumentSession();
+    const auto &viewState = state->getActiveViewState();
     const float mouseParentX = e.mouseXf + getXPos();
     const auto plan = planTriangleMarkerMouseDown(
         type, session.selection.getStart(),
@@ -108,8 +108,8 @@ bool TriangleMarker::mouseUp(const MouseEvent &e)
 
 bool TriangleMarker::mouseMove(const MouseEvent &e)
 {
-    auto &session = state->activeDocumentSession;
-    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    auto &session = state->getActiveDocumentSession();
+    const auto &viewState = state->getActiveViewState();
     if (!getWindow() || getWindow()->getCapturingComponent() != this ||
         !e.buttonState.left)
     {

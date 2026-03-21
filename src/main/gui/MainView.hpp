@@ -23,6 +23,7 @@ namespace cupuacu::gui
     public:
         MainView(State *);
 
+        void onDraw(SDL_Renderer *renderer) override;
         void rebuildWaveforms() const;
         void resized() override;
         void timerCallback() override;

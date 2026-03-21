@@ -50,7 +50,7 @@ namespace cupuacu::gui
 
     inline bool isSelectionEditAvailable(const cupuacu::State *state)
     {
-        return state->activeDocumentSession.selection.isActive();
+        return state->getActiveDocumentSession().selection.isActive();
     }
 
     inline bool isPasteAvailable(const cupuacu::State *state)

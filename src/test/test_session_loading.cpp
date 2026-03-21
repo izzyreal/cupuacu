@@ -134,7 +134,7 @@ TEST_CASE("Loading a file resets session selection and cursor", "[session]")
     writeTestWav(wavPath, 48000, 2, samples);
 
     cupuacu::State state{};
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     session.currentFile = wavPath.string();
 
     session.selection.setHighest(1'000'000.0);
@@ -177,7 +177,7 @@ TEST_CASE("Loading a second file fully reinitializes document cache and shape",
     writeTestWav(secondPath, 22050, 1, secondSamples);
 
     cupuacu::State state{};
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
 
     session.currentFile = firstPath.string();
     cupuacu::file::loadSampleData(&state);
@@ -219,7 +219,7 @@ TEST_CASE("Loading PCM16 and FLOAT64 files maps sample formats correctly",
                            {0.1, -0.1, 0.2, -0.2, 0.3, -0.3});
 
     cupuacu::State state{};
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
 
     session.currentFile = pcm16Path.string();
     cupuacu::file::loadSampleData(&state);
@@ -241,7 +241,7 @@ TEST_CASE("Loading PCM16 and FLOAT64 files maps sample formats correctly",
 TEST_CASE("Loading a missing file throws a descriptive error", "[session]")
 {
     cupuacu::State state{};
-    state.activeDocumentSession.currentFile =
+    state.getActiveDocumentSession().currentFile =
         (makeUniqueTempDir("cupuacu-test-session-missing") / "missing.wav")
             .string();
 

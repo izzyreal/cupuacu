@@ -21,7 +21,7 @@ namespace cupuacu::gui
         explicit Timeline(State *state) : Component(state, "Timeline")
         {
             const auto &viewState =
-                state->mainDocumentSessionWindow->getViewState();
+                state->getActiveViewState();
             ruler = emplaceChild<Ruler>(state, getComponentName());
             ruler->setCenterFirstLabel(false);
             setMode(Mode::Samples);
@@ -50,7 +50,7 @@ namespace cupuacu::gui
         void timerCallback() override
         {
             const auto &viewState =
-                state->mainDocumentSessionWindow->getViewState();
+                state->getActiveViewState();
             if (planTimelineNeedsRefresh(lastSamplesPerPixel, lastSampleOffset,
                                          viewState.samplesPerPixel,
                                          viewState.sampleOffset))
@@ -64,7 +64,7 @@ namespace cupuacu::gui
         void updateLabels() const
         {
             const auto &viewState =
-                state->mainDocumentSessionWindow->getViewState();
+                state->getActiveViewState();
             if (getWidth() <= 0)
             {
                 return;
@@ -76,7 +76,7 @@ namespace cupuacu::gui
             const auto plan = planTimelineRuler(
                 waveformWidth, state->pixelScale, viewState.sampleOffset,
                 viewState.samplesPerPixel,
-                state->activeDocumentSession.document.getSampleRate(),
+                state->getActiveDocumentSession().document.getSampleRate(),
                 mode == Mode::Samples ? TimelinePlanningMode::Samples
                                       : TimelinePlanningMode::Decimal,
                 showSamplePoints);

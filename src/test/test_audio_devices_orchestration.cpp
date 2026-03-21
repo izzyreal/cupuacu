@@ -15,7 +15,7 @@ TEST_CASE("Record action stops playback and records bounded selection",
 {
     cupuacu::State state{};
     state.audioDevices = std::make_shared<cupuacu::audio::AudioDevices>(false);
-    auto &document = state.activeDocumentSession.document;
+    auto &document = state.getActiveDocumentSession().document;
     document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 128);
 
     state.audioDevices->applyMessageImmediate(cupuacu::audio::Play{
@@ -28,7 +28,7 @@ TEST_CASE("Record action stops playback and records bounded selection",
         .vuMeter = nullptr});
     REQUIRE(state.audioDevices->isPlaying());
 
-    auto &selection = state.activeDocumentSession.selection;
+    auto &selection = state.getActiveDocumentSession().selection;
     selection.setValue1(11.0);
     selection.setValue2(19.0);
 

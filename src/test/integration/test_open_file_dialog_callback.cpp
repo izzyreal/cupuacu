@@ -112,24 +112,32 @@ TEST_CASE("Open file dialog callback loads the selected file into the session",
     auto sessionUi =
         cupuacu::test::integration::createSessionUi(&state, 32, false, 1);
 
-    auto &session = state.activeDocumentSession;
-    session.currentFile = "before.wav";
-    session.selection.setHighest(8.0);
-    session.selection.setValue1(3.0);
-    session.selection.setValue2(8.0);
-    session.cursor = 7;
+    auto &originalSession = state.getActiveDocumentSession();
+    originalSession.currentFile = "before.wav";
+    originalSession.selection.setHighest(8.0);
+    originalSession.selection.setValue1(3.0);
+    originalSession.selection.setValue2(8.0);
+    originalSession.cursor = 7;
 
-    auto &viewState = state.mainDocumentSessionWindow->getViewState();
-    viewState.verticalZoom = 4;
-    viewState.sampleOffset = 9;
-    viewState.samplesToScroll = 3;
-    viewState.selectedChannels = cupuacu::SelectedChannels::LEFT;
+    auto &originalViewState = state.getActiveViewState();
+    originalViewState.verticalZoom = 4;
+    originalViewState.sampleOffset = 9;
+    originalViewState.samplesToScroll = 3;
+    originalViewState.selectedChannels = cupuacu::SelectedChannels::LEFT;
 
     const std::string pathString = wavPath.string();
     const char *selectedFiles[] = {pathString.c_str(), nullptr};
 
     cupuacu::actions::fileDialogCallback(&state, selectedFiles, 0);
 
+    REQUIRE(state.tabs.size() == 2);
+    REQUIRE(state.activeTabIndex == 1);
+    REQUIRE(state.tabs[0].session.currentFile == "before.wav");
+    REQUIRE(state.tabs[0].viewState.verticalZoom == 4);
+    REQUIRE(state.tabs[0].viewState.sampleOffset == 9);
+
+    auto &session = state.getActiveDocumentSession();
+    auto &viewState = state.getActiveViewState();
     REQUIRE(session.currentFile == pathString);
     REQUIRE(session.document.getSampleRate() == 22050);
     REQUIRE(session.document.getChannelCount() == 2);
@@ -153,14 +161,14 @@ TEST_CASE("Open file dialog callback leaves state unchanged when canceled",
     auto sessionUi =
         cupuacu::test::integration::createSessionUi(&state, 12, false);
 
-    auto &session = state.activeDocumentSession;
+    auto &session = state.getActiveDocumentSession();
     session.currentFile = "unchanged.wav";
     session.selection.setHighest(4.0);
     session.selection.setValue1(1.0);
     session.selection.setValue2(4.0);
     session.cursor = 5;
 
-    auto &viewState = state.mainDocumentSessionWindow->getViewState();
+    auto &viewState = state.getActiveViewState();
     viewState.verticalZoom = 3;
     viewState.sampleOffset = 6;
 
@@ -177,8 +185,8 @@ TEST_CASE("Open file dialog callback leaves state unchanged when canceled",
 TEST_CASE("Open file dialog callback tolerates dialog errors", "[integration]")
 {
     cupuacu::State state{};
-    state.activeDocumentSession.currentFile = "still-unchanged.wav";
+    state.getActiveDocumentSession().currentFile = "still-unchanged.wav";
 
     REQUIRE_NOTHROW(cupuacu::actions::fileDialogCallback(&state, nullptr, 0));
-    REQUIRE(state.activeDocumentSession.currentFile == "still-unchanged.wav");
+    REQUIRE(state.getActiveDocumentSession().currentFile == "still-unchanged.wav");
 }

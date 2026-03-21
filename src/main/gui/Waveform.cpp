@@ -98,6 +98,11 @@ void Waveform::invalidateBaseTexture() const
     cachedBaseTextureValid = false;
     if (cachedBaseTexture)
     {
+        if (window && window->getRenderer() &&
+            SDL_GetRenderTarget(window->getRenderer()) == cachedBaseTexture)
+        {
+            SDL_SetRenderTarget(window->getRenderer(), nullptr);
+        }
         SDL_DestroyTexture(cachedBaseTexture);
         cachedBaseTexture = nullptr;
     }
@@ -105,8 +110,8 @@ void Waveform::invalidateBaseTexture() const
 
 Waveform::BaseTextureCacheKey Waveform::computeBaseTextureCacheKey() const
 {
-    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
-    const auto &doc = state->activeDocumentSession.document;
+    const auto &viewState = state->getActiveViewState();
+    const auto &doc = state->getActiveDocumentSession().document;
     return {
         .width = getWidth(),
         .height = getHeight(),
@@ -291,7 +296,7 @@ void Waveform::drawBaseWaveformContents(SDL_Renderer *renderer) const
 
     drawHorizontalLines(renderer);
 
-    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    const auto &viewState = state->getActiveViewState();
     if (viewState.samplesPerPixel < 1)
     {
         renderSmoothWaveform(renderer);
@@ -467,7 +472,7 @@ bool Waveform::rebuildShiftedBlockTexture(SDL_Renderer *renderer,
 void Waveform::updateSamplePoints()
 {
     removeAllChildren();
-    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    const auto &viewState = state->getActiveViewState();
     if (shouldRenderWaveformSamplePoints(playbackPosition,
                                          viewState.samplesPerPixel,
                                          state->pixelScale))
@@ -638,9 +643,9 @@ int getYPosForSampleValue(const float sampleValue,
 
 std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
 {
-    const auto &session = state->activeDocumentSession;
+    const auto &session = state->getActiveDocumentSession();
     const auto &doc = session.document;
-    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    const auto &viewState = state->getActiveViewState();
     const auto sampleData =
         doc.getAudioBuffer()->getImmutableChannelData(channelIndex);
     const auto plannedPoints = planWaveformSamplePoints(
@@ -672,7 +677,7 @@ void Waveform::drawHorizontalLines(SDL_Renderer *renderer) const
 {
     const auto samplePointSize =
         getWaveformSamplePointSize(state->pixelScale, state->uiScale);
-    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    const auto &viewState = state->getActiveViewState();
     const auto verticalZoom = viewState.verticalZoom;
     SDL_Rect viewport{};
     SDL_GetRenderViewport(renderer, &viewport);
@@ -696,8 +701,8 @@ void Waveform::drawHorizontalLines(SDL_Renderer *renderer) const
 
 bool Waveform::shouldDrawSelection() const
 {
-    const auto &session = state->activeDocumentSession;
-    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    const auto &session = state->getActiveDocumentSession();
+    const auto &viewState = state->getActiveViewState();
 
     return session.selection.isActive() &&
            (viewState.selectedChannels == BOTH ||
@@ -739,9 +744,9 @@ void Waveform::drawLinearSelection(SDL_Renderer *renderer,
 
 void Waveform::renderSmoothWaveform(SDL_Renderer *renderer) const
 {
-    const auto &session = state->activeDocumentSession;
+    const auto &session = state->getActiveDocumentSession();
     const auto &doc = session.document;
-    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    const auto &viewState = state->getActiveViewState();
     const auto samplesPerPixel = viewState.samplesPerPixel;
     const double halfSampleWidth = 0.5 / samplesPerPixel;
     const int64_t sampleOffset = viewState.sampleOffset;
@@ -829,7 +834,7 @@ void Waveform::renderSmoothWaveform(SDL_Renderer *renderer) const
 
 void Waveform::renderBlockWaveform(SDL_Renderer *renderer) const
 {
-    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    const auto &viewState = state->getActiveViewState();
     renderBlockWaveformRange(renderer, 0, getWidth(), getWidth(),
                              viewState.sampleOffset);
 }
@@ -838,9 +843,9 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
                                         int xEndExclusive, int widthToUse,
                                         int64_t sampleOffset) const
 {
-    auto &session = state->activeDocumentSession;
+    auto &session = state->getActiveDocumentSession();
     auto &doc = session.document;
-    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    const auto &viewState = state->getActiveViewState();
     SDL_SetRenderDrawColor(renderer, waveformColor.r, waveformColor.g,
                            waveformColor.b, waveformColor.a);
 
@@ -1092,8 +1097,8 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
 
 void Waveform::drawSelection(SDL_Renderer *renderer) const
 {
-    const auto &session = state->activeDocumentSession;
-    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    const auto &session = state->getActiveDocumentSession();
+    const auto &viewState = state->getActiveViewState();
     const double samplesPerPixel = viewState.samplesPerPixel;
     const bool isSelected = shouldDrawSelection();
 
@@ -1128,7 +1133,7 @@ std::optional<int64_t> Waveform::getHighlightedSampleIndex() const
         return std::nullopt;
     }
 
-    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    const auto &viewState = state->getActiveViewState();
     const auto samplesPerPixel = viewState.samplesPerPixel;
 
     if (!shouldShowSamplePoints(samplesPerPixel, state->pixelScale) ||
@@ -1155,9 +1160,9 @@ void Waveform::drawHighlight(SDL_Renderer *renderer) const
         return;
     }
 
-    const auto &session = state->activeDocumentSession;
+    const auto &session = state->getActiveDocumentSession();
     const auto &document = session.document;
-    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    const auto &viewState = state->getActiveViewState();
     const auto highlightRect = planWaveformHighlightRect(
         true, *highlightedSampleIndex, document.getFrameCount(),
         viewState.sampleOffset, viewState.samplesPerPixel, getHeight());
@@ -1192,7 +1197,7 @@ void Waveform::onDraw(SDL_Renderer *renderer)
 
 void Waveform::drawPlaybackPosition(SDL_Renderer *renderer) const
 {
-    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    const auto &viewState = state->getActiveViewState();
     const auto marker = planWaveformPlaybackMarker(
         playbackPosition, viewState.sampleOffset, viewState.samplesPerPixel,
         getWidth());
@@ -1205,8 +1210,8 @@ void Waveform::drawPlaybackPosition(SDL_Renderer *renderer) const
 
 void Waveform::drawCursor(SDL_Renderer *renderer) const
 {
-    const auto &session = state->activeDocumentSession;
-    const auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    const auto &session = state->getActiveDocumentSession();
+    const auto &viewState = state->getActiveViewState();
     const auto marker = planWaveformCursorMarker(
         session.selection.isActive(), session.cursor, viewState.sampleOffset,
         viewState.samplesPerPixel, getWidth());
@@ -1251,7 +1256,7 @@ void Waveform::setPlaybackPosition(const int64_t newPlaybackPosition)
 
 void Waveform::mouseLeave()
 {
-    auto &viewState = state->mainDocumentSessionWindow->getViewState();
+    auto &viewState = state->getActiveViewState();
     viewState.hoveringOverChannels = BOTH;
 
     for (auto &c : getChildren())
