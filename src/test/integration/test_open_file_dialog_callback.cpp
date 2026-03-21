@@ -154,6 +154,49 @@ TEST_CASE("Open file dialog callback loads the selected file into the session",
             pathString);
 }
 
+TEST_CASE("Open file dialog callback loads multiple selected files into tabs",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-open-dialog-multiple"));
+    const auto firstWavPath = cleanup.path() / "first.wav";
+    const auto secondWavPath = cleanup.path() / "second.wav";
+    writeTestWav(firstWavPath, 44100, 1, {0.1f, 0.2f});
+    writeTestWav(secondWavPath, 22050, 2, {0.25f, -0.25f, 0.5f, -0.5f});
+
+    cupuacu::State state{};
+    auto sessionUi =
+        cupuacu::test::integration::createSessionUi(&state, 32, false, 1);
+
+    const std::string firstPathString = firstWavPath.string();
+    const std::string secondPathString = secondWavPath.string();
+    const char *selectedFiles[] = {firstPathString.c_str(),
+                                   secondPathString.c_str(), nullptr};
+
+    cupuacu::actions::fileDialogCallback(&state, selectedFiles, 0);
+
+    REQUIRE(state.tabs.size() == 3);
+    REQUIRE(state.activeTabIndex == 2);
+
+    REQUIRE(state.tabs[0].session.document.getFrameCount() == 32);
+
+    REQUIRE(state.tabs[1].session.currentFile == firstPathString);
+    REQUIRE(state.tabs[1].session.document.getSampleRate() == 44100);
+    REQUIRE(state.tabs[1].session.document.getChannelCount() == 1);
+    REQUIRE(state.tabs[1].session.document.getFrameCount() == 2);
+
+    REQUIRE(state.getActiveDocumentSession().currentFile == secondPathString);
+    REQUIRE(state.getActiveDocumentSession().document.getSampleRate() == 22050);
+    REQUIRE(state.getActiveDocumentSession().document.getChannelCount() == 2);
+    REQUIRE(state.getActiveDocumentSession().document.getFrameCount() == 2);
+
+    REQUIRE(state.recentFiles.size() == 2);
+    REQUIRE(state.recentFiles[0] == secondPathString);
+    REQUIRE(state.recentFiles[1] == firstPathString);
+}
+
 TEST_CASE("Open file dialog callback leaves state unchanged when canceled",
           "[integration]")
 {

@@ -28,24 +28,18 @@ namespace cupuacu::actions
             return;
         }
 
-        std::string absoluteFilePath;
-
+        auto *state = (cupuacu::State *)userdata;
         while (*filelist)
         {
-            // SDL_Log("Full path to selected file: '%s'", *filelist);
-            absoluteFilePath = *filelist;
-            break;
-            filelist++;
+            actions::loadFileIntoNewTab(state, *filelist);
+            ++filelist;
         }
-
-        auto state = (cupuacu::State *)userdata;
-        loadFileIntoNewTab(state, absoluteFilePath);
     }
 
     static void ShowDialogMainThreadCallback(void *userdata)
     {
         SDL_ShowOpenFileDialog(fileDialogCallback, (State *)userdata, NULL,
-                               filters, 1, NULL, false);
+                               filters, 1, NULL, true);
     }
 
     static Uint32 ShowDialogTimerCallback(void *userdata, SDL_TimerID,
