@@ -333,16 +333,16 @@ TEST_CASE("MenuBar file menu shows platform-aware new open close and overwrite s
     REQUIRE(fileEntries.size() == 6);
 
 #ifdef __APPLE__
-    REQUIRE(findMenuLabel(fileEntries[0])->getText() == "New file (Cmd + N)");
-    REQUIRE(findMenuLabel(fileEntries[1])->getText() == "Open (Cmd + O)");
-    REQUIRE(findMenuLabel(fileEntries[3])->getText() == "Close file (Cmd + W)");
-    REQUIRE(findMenuLabel(fileEntries[4])->getText() == "Overwrite (Cmd + S)");
+    REQUIRE(fileEntries[0]->getMenuName() == "New file (Cmd + N)");
+    REQUIRE(fileEntries[1]->getMenuName() == "Open (Cmd + O)");
+    REQUIRE(fileEntries[3]->getMenuName() == "Close file (Cmd + W)");
+    REQUIRE(fileEntries[4]->getMenuName() == "Overwrite (Cmd + S)");
 #else
-    REQUIRE(findMenuLabel(fileEntries[0])->getText() == "New file (Ctrl + N)");
-    REQUIRE(findMenuLabel(fileEntries[1])->getText() == "Open (Ctrl + O)");
-    REQUIRE(findMenuLabel(fileEntries[3])->getText() ==
+    REQUIRE(fileEntries[0]->getMenuName() == "New file (Ctrl + N)");
+    REQUIRE(fileEntries[1]->getMenuName() == "Open (Ctrl + O)");
+    REQUIRE(fileEntries[3]->getMenuName() ==
             "Close file (Ctrl + W)");
-    REQUIRE(findMenuLabel(fileEntries[4])->getText() ==
+    REQUIRE(fileEntries[4]->getMenuName() ==
             "Overwrite (Ctrl + S)");
 #endif
 }

@@ -4,6 +4,7 @@
 #include "actions/DocumentLifecycle.hpp"
 #include "actions/DocumentTabs.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
+#include "gui/TabStrip.hpp"
 
 TEST_CASE("Document tabs can switch without an audio backend", "[tabs]")
 {
@@ -88,6 +89,25 @@ TEST_CASE("Switching tabs changes the active document context", "[tabs]")
     REQUIRE(state.activeTabIndex == 1);
     REQUIRE(state.getActiveDocumentSession().currentFile == "/tmp/second.wav");
     REQUIRE_FALSE(cupuacu::actions::switchToTab(&state, 1));
+}
+
+TEST_CASE("Tab strip exposes absolute file paths as tooltip text", "[tabs]")
+{
+    cupuacu::State state{};
+    state.tabs[0].session.currentFile = "/tmp/projects/first.wav";
+
+    cupuacu::gui::TabStrip tabStrip(&state);
+    tabStrip.timerCallback();
+
+    REQUIRE(tabStrip.getChildren().size() == 1);
+    auto *tab = dynamic_cast<cupuacu::gui::TabStripTab *>(
+        tabStrip.getChildren().front().get());
+    REQUIRE(tab != nullptr);
+    REQUIRE(tab->getTooltipText() == "/tmp/projects/first.wav");
+
+    state.tabs[0].session.currentFile.clear();
+    tabStrip.timerCallback();
+    REQUIRE(tab->getTooltipText().empty());
 }
 
 TEST_CASE("Closing the active tab removes it and keeps a valid selection",

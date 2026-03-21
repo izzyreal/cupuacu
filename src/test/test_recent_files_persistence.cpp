@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "actions/DocumentLifecycle.hpp"
+#include "gui/DevicePropertiesWindow.hpp"
 #include "persistence/RecentFilesPersistence.hpp"
 
 #include <filesystem>

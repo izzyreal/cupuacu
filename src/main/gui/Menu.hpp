@@ -34,7 +34,6 @@ namespace cupuacu::gui
 
         bool isFirstLevel() const;
 
-        std::string getMenuName() const;
         bool shouldShowAsSubMenuItem() const;
         bool isEffectivelyAvailable() const;
 
@@ -61,6 +60,8 @@ namespace cupuacu::gui
         {
             return currentlyOpen;
         }
+
+        std::string getMenuName() const;
 
         void resized() override;
         void onDraw(SDL_Renderer *) override;

@@ -170,6 +170,8 @@ namespace cupuacu::gui
             return;
         }
 
+        window->hideTooltip();
+
         if (window->getCapturingComponent() != nullptr)
         {
             return;

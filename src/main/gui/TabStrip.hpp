@@ -84,6 +84,16 @@ namespace cupuacu::gui
             setDirty();
         }
 
+        void setTooltipText(const std::string &tooltipTextToUse)
+        {
+            tooltipText = tooltipTextToUse;
+        }
+
+        std::string getTooltipText() const override
+        {
+            return tooltipText;
+        }
+
         void resized() override
         {
             const SDL_Rect closeRect = getCloseBounds();
@@ -241,6 +251,7 @@ namespace cupuacu::gui
         bool pointerInsideWhilePressed = false;
         PressTarget pressTarget = PressTarget::None;
         std::string title;
+        std::string tooltipText;
         Label *titleLabel = nullptr;
         std::function<void(int)> onSelect;
         std::function<void(int)> onClose;
@@ -383,10 +394,12 @@ namespace cupuacu::gui
             if (state)
             {
                 lastTitles.reserve(state->tabs.size());
+                lastTooltipTexts.reserve(state->tabs.size());
                 for (const auto &tab : state->tabs)
                 {
                     lastTitles.push_back(
                         cupuacu::actions::documentTabTitle(tab));
+                    lastTooltipTexts.push_back(tab.session.currentFile);
                 }
             }
         }
@@ -411,24 +424,29 @@ namespace cupuacu::gui
                 state ? static_cast<int>(state->tabs.size()) : 0;
             const int activeIndex = state ? state->activeTabIndex : -1;
             std::vector<std::string> titles;
+            std::vector<std::string> tooltipTexts;
             titles.reserve(tabCount);
+            tooltipTexts.reserve(tabCount);
             for (const auto &tab : state->tabs)
             {
                 titles.push_back(cupuacu::actions::documentTabTitle(tab));
+                tooltipTexts.push_back(tab.session.currentFile);
             }
 
             if (tabCount != lastTabCount)
             {
                 lastTabCount = tabCount;
                 lastTitles = std::move(titles);
+                lastTooltipTexts = std::move(tooltipTexts);
                 rebuildButtons();
                 layoutButtons();
                 setDirty();
             }
-            else if (titles != lastTitles)
+            else if (titles != lastTitles || tooltipTexts != lastTooltipTexts)
             {
                 lastTitles = titles;
-                updateTitles();
+                lastTooltipTexts = tooltipTexts;
+                updateTabMetadata();
                 setDirty();
             }
 
@@ -455,6 +473,7 @@ namespace cupuacu::gui
         int lastActiveTabIndex = -1;
         bool lastSwitchingAllowed = true;
         std::vector<std::string> lastTitles;
+        std::vector<std::string> lastTooltipTexts;
 
         void rebuildButtons()
         {
@@ -471,6 +490,7 @@ namespace cupuacu::gui
                 auto *tab = emplaceChild<TabStripTab>(
                     state, cupuacu::actions::documentTabTitle(state->tabs[i]),
                     i);
+                tab->setTooltipText(state->tabs[i].session.currentFile);
                 tab->setOnSelect(
                     [this](const int index)
                     {
@@ -507,7 +527,7 @@ namespace cupuacu::gui
             }
         }
 
-        void updateTitles()
+        void updateTabMetadata()
         {
             if (!state)
             {
@@ -522,6 +542,7 @@ namespace cupuacu::gui
                 {
                     tab->setTitle(
                         cupuacu::actions::documentTabTitle(state->tabs[i]));
+                    tab->setTooltipText(state->tabs[i].session.currentFile);
                 }
             }
         }

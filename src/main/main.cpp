@@ -131,6 +131,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     {
         if (window && window->isOpen())
         {
+            window->updateTooltip();
             const bool hadDirty = !window->getDirtyRects().empty();
             window->renderFrameIfDirty();
             renderedAnyWindow = renderedAnyWindow || hadDirty;

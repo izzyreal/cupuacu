@@ -110,6 +110,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/gui/SamplePoint.cpp
     src/main/gui/Menu.cpp
     src/main/gui/MenuBar.cpp
+    src/main/gui/TooltipController.cpp
     src/main/gui/Window.cpp
     src/main/actions/Play.cpp
     src/main/actions/Record.cpp
@@ -143,6 +144,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_menu_planning.cpp
     src/test/test_waveform_interaction_planning.cpp
     src/test/test_transport_and_vumeter.cpp
+    src/test/test_tooltip_planning.cpp
     src/test/test_waveform_render_and_buffers.cpp
 )
 

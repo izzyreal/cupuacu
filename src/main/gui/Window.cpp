@@ -2,6 +2,8 @@
 
 #include "../State.hpp"
 #include "MenuBar.hpp"
+#include "TooltipController.hpp"
+#include "TooltipPlanning.hpp"
 #include "WindowEventHandlingPlan.hpp"
 #include "WindowEventPlanning.hpp"
 #include "WindowMouseRouting.hpp"
@@ -108,10 +110,12 @@ Window::Window(State *stateToUse, const std::string &title, const int width,
     windowId = SDL_GetWindowID(window);
     resizeCanvasIfNeeded();
     setFontDisplayScale(getEffectiveWindowDisplayScale(window, canvas));
+    tooltipController = std::make_unique<TooltipController>(state, this);
 }
 
 Window::~Window()
 {
+    tooltipController.reset();
     rootComponent.reset();
     contentLayer = nullptr;
     overlayLayer = nullptr;
@@ -135,6 +139,7 @@ bool Window::hasFocus() const
 void Window::setRootComponent(std::unique_ptr<Component> rootToUse)
 {
     rootComponent = std::move(rootToUse);
+    hideTooltip();
     contentLayer = nullptr;
     overlayLayer = nullptr;
     menuBar = nullptr;
@@ -244,6 +249,8 @@ void Window::handleResize()
         return;
     }
 
+    hideTooltip();
+
     int winW = 0, winH = 0;
     SDL_GetWindowSize(window, &winW, &winH);
 
@@ -283,6 +290,7 @@ void Window::handleResize()
 
 void Window::refreshForScaleOrResize()
 {
+    hideTooltip();
     resizeCanvasIfNeeded();
     setFontDisplayScale(getEffectiveWindowDisplayScale(window, canvas));
     logWindowScaleDiagnostics(window, canvas, state->pixelScale);
@@ -294,6 +302,7 @@ void Window::refreshForScaleOrResize()
 
 void Window::close()
 {
+    hideTooltip();
     if (canvas)
     {
         SDL_DestroyTexture(canvas);
@@ -393,6 +402,49 @@ void Window::updateHoverFromCurrentMousePosition()
 
     const auto mouseEvent = makeMouseEvent(motion);
     updateComponentUnderMouse(mouseEvent.mouseXi, mouseEvent.mouseYi);
+}
+
+void Window::updateTooltip()
+{
+    if (tooltipController)
+    {
+        tooltipController->update();
+    }
+}
+
+void Window::hideTooltip()
+{
+    if (tooltipController)
+    {
+        tooltipController->hide();
+    }
+}
+
+SDL_Rect Window::mapCanvasRectToScreenRect(const SDL_Rect &rect) const
+{
+    if (!window)
+    {
+        return SDL_Rect{0, 0, 0, 0};
+    }
+
+    int windowX = 0;
+    int windowY = 0;
+    SDL_GetWindowPosition(window, &windowX, &windowY);
+
+    int logicalW = 0;
+    int logicalH = 0;
+    SDL_GetWindowSize(window, &logicalW, &logicalH);
+
+    float canvasW = 0.0f;
+    float canvasH = 0.0f;
+    if (canvas)
+    {
+        SDL_GetTextureSize(canvas, &canvasW, &canvasH);
+    }
+
+    return cupuacu::gui::mapCanvasRectToScreenRect(
+        rect, SDL_Rect{windowX, windowY, logicalW, logicalH},
+        SDL_FPoint{canvasW, canvasH});
 }
 
 bool Window::handleEvent(const SDL_Event &event)

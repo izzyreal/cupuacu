@@ -55,6 +55,10 @@ namespace cupuacu::gui
         {
             return visible;
         }
+        Component *getParentComponent() const
+        {
+            return parent;
+        }
         const std::vector<std::unique_ptr<Component>> &getChildren() const;
 
         int32_t getCenterX()
@@ -205,6 +209,14 @@ namespace cupuacu::gui
         virtual bool textInput(const std::string_view)
         {
             return false;
+        }
+        virtual std::string getTooltipText() const
+        {
+            return "";
+        }
+        virtual SDL_Rect getTooltipAnchorBounds() const
+        {
+            return getAbsoluteBounds();
         }
         virtual void timerCallback() {}
         virtual void resized() {}

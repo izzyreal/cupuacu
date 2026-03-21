@@ -18,6 +18,7 @@ namespace cupuacu
 namespace cupuacu::gui
 {
     class MenuBar;
+    class TooltipController;
 
     class Window
     {
@@ -131,6 +132,9 @@ namespace cupuacu::gui
         void renderFrame();
         void renderFrameIfDirty();
         void refreshForScaleOrResize();
+        void updateTooltip();
+        void hideTooltip();
+        SDL_Rect mapCanvasRectToScreenRect(const SDL_Rect &rect) const;
 
         MouseEvent makeMouseEvent(const SDL_Event &event) const;
         void updateComponentUnderMouse(const int32_t mouseX,
@@ -153,6 +157,7 @@ namespace cupuacu::gui
         MenuBar *menuBar = nullptr;
         Component *contentLayer = nullptr;
         Component *overlayLayer = nullptr;
+        std::unique_ptr<TooltipController> tooltipController;
 
         std::function<void()> onResize;
         std::function<void()> onClose;
