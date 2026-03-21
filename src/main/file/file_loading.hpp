@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../State.hpp"
+#include "AudioExport.hpp"
 
 #include <sndfile.hh>
 
@@ -53,6 +54,10 @@ namespace cupuacu::file
 
         int channels = sfinfo.channels;
         sf_count_t frames = sfinfo.frames;
+
+        session.currentFileExportSettings =
+            inferExportSettingsForFile(session.currentFile, sfinfo.format,
+                                       sampleFormat);
 
         doc.initialize(sampleFormat, sfinfo.samplerate, channels, frames);
 

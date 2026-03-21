@@ -20,7 +20,6 @@
 #include "gui/Helpers.hpp"
 
 #include "actions/ShowOpenFileDialog.hpp"
-#include "actions/ShowSaveFileDialog.hpp"
 #include "actions/Save.hpp"
 #include "actions/audio/Copy.hpp"
 #include "actions/audio/Trim.hpp"
@@ -85,7 +84,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
         state, saveAsText,
         [&]
         {
-            actions::showSaveFileDialog(state);
+            actions::showExportAudioDialog(state);
         });
     saveAsMenu->setIsAvailable(
         [&]

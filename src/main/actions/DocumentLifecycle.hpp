@@ -7,6 +7,7 @@
 #include "../file/file_loading.hpp"
 #include "../gui/MainViewAccess.hpp"
 #include "../gui/NewFileDialogWindow.hpp"
+#include "../gui/ExportAudioDialogWindow.hpp"
 #include "../gui/Waveform.hpp"
 #include "../persistence/RecentFilesPersistence.hpp"
 #include "../persistence/SessionStatePersistence.hpp"
@@ -281,7 +282,7 @@ namespace cupuacu::actions
         prepareForDocumentTransition(state);
 
         auto &session = state->getActiveDocumentSession();
-        session.currentFile.clear();
+        session.clearCurrentFile();
         session.document.initialize(cupuacu::SampleFormat::Unknown, 0, 0, 0);
         session.selection.reset();
         session.cursor = 0;
@@ -308,7 +309,7 @@ namespace cupuacu::actions
         prepareForDocumentTransition(state);
 
         auto &session = state->getActiveDocumentSession();
-        session.currentFile.clear();
+        session.clearCurrentFile();
         session.document.initialize(format, sampleRate, channels, 0);
         session.selection.reset();
         session.cursor = 0;
@@ -349,7 +350,7 @@ namespace cupuacu::actions
         }
 
         prepareForDocumentTransition(state);
-        state->getActiveDocumentSession().currentFile = absoluteFilePath;
+        state->getActiveDocumentSession().setCurrentFile(absoluteFilePath);
         cupuacu::file::loadSampleData(state);
         refreshDocumentUi(state);
         setMainWindowTitle(state, absoluteFilePath);
@@ -474,7 +475,7 @@ namespace cupuacu::actions
         {
             persistSessionState(state);
         }
-        state->getActiveDocumentSession().currentFile.clear();
+        state->getActiveDocumentSession().clearCurrentFile();
     }
 
     inline void showNewFileDialog(cupuacu::State *state)
@@ -491,6 +492,25 @@ namespace cupuacu::actions
         else
         {
             state->newFileDialogWindow->raise();
+        }
+    }
+
+    inline void showExportAudioDialog(cupuacu::State *state)
+    {
+        if (!state)
+        {
+            return;
+        }
+
+        if (!state->exportAudioDialogWindow ||
+            !state->exportAudioDialogWindow->isOpen())
+        {
+            state->exportAudioDialogWindow.reset(
+                new gui::ExportAudioDialogWindow(state));
+        }
+        else
+        {
+            state->exportAudioDialogWindow->raise();
         }
     }
 

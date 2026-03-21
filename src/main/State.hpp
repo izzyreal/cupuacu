@@ -35,6 +35,7 @@ namespace cupuacu
         class DevicePropertiesWindow;
         class NewFileDialogWindow;
         class GenerateSilenceDialogWindow;
+        class ExportAudioDialogWindow;
         class Component;
         class Waveform;
     } // namespace gui
@@ -49,6 +50,7 @@ namespace cupuacu
     void destroyDynamicsDialog(effects::DynamicsDialog *);
     void destroyNewFileDialogWindow(gui::NewFileDialogWindow *);
     void destroyGenerateSilenceDialogWindow(gui::GenerateSilenceDialogWindow *);
+    void destroyExportAudioDialogWindow(gui::ExportAudioDialogWindow *);
 
     struct State
     {
@@ -77,12 +79,16 @@ namespace cupuacu
                         void (*)(gui::GenerateSilenceDialogWindow *)>
             generateSilenceDialogWindow{nullptr,
                                         destroyGenerateSilenceDialogWindow};
+        std::unique_ptr<gui::ExportAudioDialogWindow,
+                        void (*)(gui::ExportAudioDialogWindow *)>
+            exportAudioDialogWindow{nullptr, destroyExportAudioDialogWindow};
         std::unique_ptr<effects::AmplifyFadeDialog,
                         void (*)(effects::AmplifyFadeDialog *)>
             amplifyFadeDialog{nullptr, destroyAmplifyFadeDialog};
         std::unique_ptr<effects::DynamicsDialog,
                         void (*)(effects::DynamicsDialog *)>
             dynamicsDialog{nullptr, destroyDynamicsDialog};
+        std::optional<file::AudioExportSettings> pendingSaveAsExportSettings;
         gui::Window *modalWindow = nullptr;
 
         ~State();

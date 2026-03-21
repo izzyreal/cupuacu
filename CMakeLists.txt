@@ -82,6 +82,8 @@ FetchContent_MakeAvailable(json)
 set(CUPUACU_SHARED_SOURCES
     src/main/State.cpp
     src/main/Paths.cpp
+    src/main/file/AudioExport.cpp
+    src/main/file/AudioFileWriter.cpp
     src/main/persistence/AudioDevicePropertiesPersistence.cpp
     src/main/persistence/RecentFilesPersistence.cpp
     src/main/persistence/SessionStatePersistence.cpp
@@ -100,6 +102,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/gui/DevicePropertiesWindow.cpp
     src/main/gui/NewFileDialogWindow.cpp
     src/main/gui/GenerateSilenceDialogWindow.cpp
+    src/main/gui/ExportAudioDialogWindow.cpp
     src/main/effects/AmplifyFadeEffect.cpp
     src/main/effects/DynamicsEffect.cpp
     src/main/gui/ScrollBar.cpp

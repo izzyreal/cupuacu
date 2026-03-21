@@ -5,6 +5,7 @@
 
 #include "gui/Waveform.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
+#include "gui/ExportAudioDialogWindow.hpp"
 #include "gui/GenerateSilenceDialogWindow.hpp"
 #include "gui/NewFileDialogWindow.hpp"
 #include "actions/Undoable.hpp"
@@ -44,6 +45,11 @@ void cupuacu::destroyNewFileDialogWindow(gui::NewFileDialogWindow *dialog)
 
 void cupuacu::destroyGenerateSilenceDialogWindow(
     gui::GenerateSilenceDialogWindow *dialog)
+{
+    delete dialog;
+}
+
+void cupuacu::destroyExportAudioDialogWindow(gui::ExportAudioDialogWindow *dialog)
 {
     delete dialog;
 }

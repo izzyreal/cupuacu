@@ -4,6 +4,7 @@
 #include "State.hpp"
 #include "TestPaths.hpp"
 #include "actions/Save.hpp"
+#include "file/AudioExport.hpp"
 #include "file/file_loading.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/Window.hpp"
@@ -282,6 +283,9 @@ TEST_CASE("Save as writes a new WAV file and updates active file state", "[file]
 
     REQUIRE(std::filesystem::exists(outputPath));
     REQUIRE(session.currentFile == outputPath.string());
+    REQUIRE(session.currentFileExportSettings.has_value());
+    REQUIRE(session.currentFileExportSettings->majorFormat == SF_FORMAT_WAV);
+    REQUIRE(session.currentFileExportSettings->subtype == SF_FORMAT_PCM_16);
     REQUIRE(state.recentFiles.size() == 1);
     REQUIRE(state.recentFiles.front() == outputPath.string());
 
@@ -297,4 +301,51 @@ TEST_CASE("Save as writes a new WAV file and updates active file state", "[file]
     REQUIRE(frames[3] == Catch::Approx(-0.5f).margin(1.0f / 32767.0f));
     REQUIRE(frames[4] == Catch::Approx(0.0f).margin(1.0f / 32767.0f));
     REQUIRE(frames[5] == Catch::Approx(0.25f).margin(1.0f / 32767.0f));
+}
+
+TEST_CASE("Save as normalizes the output extension to the selected format",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-save-as-extension"));
+    const auto requestedPath = cleanup.path() / "exports" / "saved.wav";
+    const auto probePath = cleanup.path() / "exports" / "saved.flac";
+
+    cupuacu::test::StateWithTestPaths state{cleanup.path()};
+
+    auto &session = state.getActiveDocumentSession();
+    session.document.initialize(cupuacu::SampleFormat::PCM_S24, 44100, 1, 2);
+    session.document.setSample(0, 0, 0.25f, false);
+    session.document.setSample(0, 1, -0.25f, false);
+
+    const auto settings = cupuacu::file::defaultExportSettingsForPath(
+        probePath, cupuacu::SampleFormat::PCM_S24);
+    if (!settings.has_value())
+    {
+        SUCCEED("FLAC export is not available in this libsndfile build.");
+        return;
+    }
+    REQUIRE(settings->majorFormat == SF_FORMAT_FLAC);
+
+    cupuacu::actions::saveAs(&state, requestedPath.string(), *settings);
+
+    const auto normalizedPath = cleanup.path() / "exports" / "saved.flac";
+    REQUIRE_FALSE(std::filesystem::exists(requestedPath));
+    REQUIRE(std::filesystem::exists(normalizedPath));
+    REQUIRE(session.currentFile == normalizedPath.string());
+    REQUIRE(session.currentFileExportSettings.has_value());
+    REQUIRE(session.currentFileExportSettings->majorFormat == SF_FORMAT_FLAC);
+}
+
+TEST_CASE("Default export settings preserve ALAC depth preferences", "[file]")
+{
+    const auto settings = cupuacu::file::defaultExportSettingsForPath(
+        "export.caf", cupuacu::SampleFormat::PCM_S24);
+
+    if (!settings.has_value())
+    {
+        SUCCEED("ALAC export is not available in this libsndfile build.");
+        return;
+    }
+    REQUIRE(settings->majorFormat == SF_FORMAT_CAF);
+    REQUIRE(settings->subtype == SF_FORMAT_ALAC_24);
 }
