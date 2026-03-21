@@ -1,10 +1,19 @@
 #pragma once
 
+#include "../State.hpp"
+#include "UiScale.hpp"
+
 #include <algorithm>
 #include <vector>
 
 namespace cupuacu::gui
 {
+    inline int menuItemHeight(const cupuacu::State *state)
+    {
+        return scaleUi(
+            state, static_cast<float>(state ? state->menuFontSize : 30) * 2.0f);
+    }
+
     struct MenuSubMenuLayoutPlanItem
     {
         bool visible = false;

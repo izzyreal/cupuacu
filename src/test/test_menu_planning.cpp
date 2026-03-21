@@ -207,3 +207,26 @@ TEST_CASE("Menu runtime propagates ancestor unavailability recursively",
     REQUIRE(grandChild->mouseDown(leftMouseDown()));
     REQUIRE(grandChildCalls == 0);
 }
+
+TEST_CASE("Menu runtime brings an opened nested submenu row in front of later siblings",
+          "[gui]")
+{
+    cupuacu::State state{};
+    RootComponent root(&state);
+
+    auto *fileMenu = root.emplaceChild<cupuacu::gui::Menu>(&state, "File");
+    fileMenu->setBounds(0, 0, 160, 40);
+
+    auto *first = fileMenu->addSubMenu(&state, "First");
+    auto *recent = fileMenu->addSubMenu(&state, "Recent");
+    auto *last = fileMenu->addSubMenu(&state, "Last");
+    (void)first;
+    (void)last;
+
+    recent->addSubMenu(&state, "Entry 1");
+    recent->addSubMenu(&state, "Entry 2");
+
+    recent->showSubMenus();
+
+    REQUIRE(fileMenu->getChildren().back().get() == recent);
+}

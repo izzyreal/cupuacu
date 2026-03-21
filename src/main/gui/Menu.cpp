@@ -123,8 +123,7 @@ void Menu::showSubMenus()
 
     const int nestedHorizontalOverlap = scaleUi(state, 10.0f);
     const bool firstLevel = isFirstLevel();
-    const int menuItemHeight =
-        scaleUi(state, static_cast<float>(state->menuFontSize) * 2.0f);
+    const int itemHeight = menuItemHeight(state);
     const int subMenuHorizontalMargin = scaleUi(state, 64.0f);
     std::vector<int> textWidths;
     std::vector<bool> shouldShow;
@@ -146,7 +145,7 @@ void Menu::showSubMenus()
     }
 
     const auto layoutPlan = planMenuSubMenuLayout(
-        firstLevel, getWidth(), getHeight(), menuItemHeight,
+        firstLevel, getWidth(), getHeight(), itemHeight,
         nestedHorizontalOverlap, subMenuHorizontalMargin, textWidths,
         shouldShow);
 
@@ -160,6 +159,11 @@ void Menu::showSubMenus()
             continue;
         }
         subMenu->setBounds(item.x, item.y, item.width, item.height);
+    }
+
+    if (!firstLevel)
+    {
+        bringToFront();
     }
 
     currentlyOpen = true;

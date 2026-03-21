@@ -4,6 +4,7 @@
 #include "../actions/Zoom.hpp"
 
 #include "MenuBar.hpp"
+#include "MenuLayoutPlanning.hpp"
 #include "StatusBar.hpp"
 #include "MainView.hpp"
 #include "TabStrip.hpp"
@@ -163,8 +164,7 @@ void cupuacu::gui::resizeComponents(State *state, Window *window)
         window->getOverlayLayer()->setBounds(0, 0, newCanvasW, newCanvasH);
     }
 
-    const int menuBarHeight =
-        scaleUi(state, static_cast<float>(state->menuFontSize) * 1.33f);
+    const int menuBarHeight = menuItemHeight(state);
     const SDL_Rect menuBarRect{0, 0, newCanvasW, menuBarHeight};
 
     const SDL_Rect statusBarRect{

@@ -54,6 +54,11 @@ namespace
             nestedChild = emplaceChild<WindowAwareComponent>(state, "NestedChild");
         }
 
+        bool hasWindowPointer() const
+        {
+            return getWindow() != nullptr;
+        }
+
         WindowAwareComponent *nestedChild = nullptr;
     };
 } // namespace

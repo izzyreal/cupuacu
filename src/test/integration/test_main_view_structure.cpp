@@ -109,6 +109,11 @@ TEST_CASE("Main window integration keeps the tab strip below overlay menus",
             contentChildren.end());
     REQUIRE(std::find(overlayChildren.begin(), overlayChildren.end(), menuBar) !=
             overlayChildren.end());
+    REQUIRE(tabStrip->getHeight() == menuBar->getHeight());
+
+    const auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
+    REQUIRE_FALSE(topLevelMenus.empty());
+    REQUIRE(topLevelMenus.front()->getHeight() == menuBar->getHeight());
 }
 
 TEST_CASE("MainView integration double click selects the visible range",
