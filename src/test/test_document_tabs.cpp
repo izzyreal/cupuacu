@@ -159,3 +159,73 @@ TEST_CASE("Closing the only tab clears its document but keeps the tab", "[tabs]"
     REQUIRE(state.getActiveDocumentSession().document.getChannelCount() == 0);
     REQUIRE(state.getActiveUndoables().empty());
 }
+
+TEST_CASE("Active tab body clicks are consumed without reselecting the tab",
+          "[tabs]")
+{
+    cupuacu::State state{};
+    cupuacu::gui::TabStripTab tab(&state, "Active", 0);
+    tab.setBounds(0, 0, 120, 32);
+    tab.setActive(true);
+
+    int selectCount = 0;
+    int closeCount = 0;
+    tab.setOnSelect([&](const int) { ++selectCount; });
+    tab.setOnClose([&](const int) { ++closeCount; });
+
+    REQUIRE(tab.mouseDown(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN,
+        10,
+        16,
+        10.0f,
+        16.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE_FALSE(tab.mouseUp(cupuacu::gui::MouseEvent{
+        cupuacu::gui::UP,
+        10,
+        16,
+        10.0f,
+        16.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{false, false, false},
+        1}));
+    REQUIRE(selectCount == 0);
+    REQUIRE(closeCount == 0);
+}
+
+TEST_CASE("Active tab close clicks still trigger close", "[tabs]")
+{
+    cupuacu::State state{};
+    cupuacu::gui::TabStripTab tab(&state, "Active", 0);
+    tab.setBounds(0, 0, 120, 32);
+    tab.setActive(true);
+
+    int closeIndex = -1;
+    tab.setOnClose([&](const int index) { closeIndex = index; });
+
+    REQUIRE(tab.mouseDown(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN,
+        110,
+        16,
+        110.0f,
+        16.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE(tab.mouseUp(cupuacu::gui::MouseEvent{
+        cupuacu::gui::UP,
+        110,
+        16,
+        110.0f,
+        16.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{false, false, false},
+        1}));
+    REQUIRE(closeIndex == 0);
+}

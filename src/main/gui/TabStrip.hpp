@@ -146,9 +146,19 @@ namespace cupuacu::gui
                 return false;
             }
 
-            pressTarget = isInsideRect(getCloseBounds(), e.mouseXi, e.mouseYi)
-                              ? PressTarget::Close
-                              : PressTarget::Body;
+            const bool clickingClose =
+                isInsideRect(getCloseBounds(), e.mouseXi, e.mouseYi);
+
+            // Active-tab body clicks should be inert: keep the active fill and
+            // avoid dispatching a redundant select action. The click is still
+            // consumed so it does not fall through to anything underneath.
+            if (active && !clickingClose)
+            {
+                return true;
+            }
+
+            pressTarget =
+                clickingClose ? PressTarget::Close : PressTarget::Body;
             pointerInsideWhilePressed = true;
             setDirty();
             return true;
