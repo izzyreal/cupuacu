@@ -9,6 +9,8 @@
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
+#include <cmath>
 #include <string>
 
 namespace cupuacu::gui
@@ -48,7 +50,14 @@ namespace cupuacu::gui
             const uint8_t fontPointSize =
                 scaleFontPointSize(state, state->menuFontSize);
             const std::string displayText = label + ": " + value;
-            const auto rect = getLocalBoundsF();
+            const auto [textW, textH] = measureText(displayText, fontPointSize);
+            auto rect = getLocalBoundsF();
+            const float inset = std::max(
+                0.0f, std::round((rect.h - static_cast<float>(textH)) / 2.0f));
+            rect.x += inset;
+            rect.y += inset;
+            rect.w = std::max(0.0f, rect.w - (inset * 2.0f));
+            rect.h = std::max(0.0f, rect.h - (inset * 2.0f));
             renderText(renderer, displayText, fontPointSize, rect, false);
         }
     };

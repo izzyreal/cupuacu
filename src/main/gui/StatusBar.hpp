@@ -76,12 +76,27 @@ namespace cupuacu::gui
                 format, hovered->value, preserveLoadedCode);
             if (quantized.has_value())
             {
-                return std::to_string(*quantized);
+                return formatIntegerWithThousandsSeparators(*quantized);
             }
 
             std::ostringstream value;
             value << std::setprecision(6) << hovered->value;
             return value.str();
+        }
+
+        static std::string
+        formatIntegerWithThousandsSeparators(const int64_t value)
+        {
+            std::string digits = std::to_string(value);
+            const bool negative = !digits.empty() && digits.front() == '-';
+            const size_t start = negative ? 1 : 0;
+
+            for (size_t i = digits.size(); i > start + 3; i -= 3)
+            {
+                digits.insert(i - 3, ",");
+            }
+
+            return digits;
         }
 
     public:

@@ -724,7 +724,7 @@ TEST_CASE("Status bar integration shows persisted integer sample values for PCM"
 
         statusBar->timerCallback();
 
-        REQUIRE(valueField->getValue() == "-32767");
+        REQUIRE(valueField->getValue() == "-32,767");
     }
 
     SECTION("untouched loaded PCM16 samples preserve the original sample code")
@@ -736,7 +736,7 @@ TEST_CASE("Status bar integration shows persisted integer sample values for PCM"
 
         statusBar->timerCallback();
 
-        REQUIRE(valueField->getValue() == "-32768");
+        REQUIRE(valueField->getValue() == "-32,768");
     }
 
     SECTION("PCM8 uses the true signed 8-bit range")
@@ -749,6 +749,21 @@ TEST_CASE("Status bar integration shows persisted integer sample values for PCM"
         statusBar->timerCallback();
 
         REQUIRE(valueField->getValue() == "127");
+    }
+
+    SECTION("PCM24 inserts separators for million-scale values")
+    {
+        session.document.initialize(cupuacu::SampleFormat::PCM_S24, 44100, 1, 1);
+        constexpr int64_t targetCode = 1234567;
+        constexpr double scale = static_cast<double>(int64_t{1} << 23);
+        const float sample = static_cast<float>(targetCode / scale);
+        session.document.setSample(0, 0, sample, false);
+        state.getActiveViewState().sampleValueUnderMouseCursor =
+            cupuacu::gui::HoveredSampleInfo{sample, 0, 0};
+
+        statusBar->timerCallback();
+
+        REQUIRE(valueField->getValue() == "1,234,567");
     }
 }
 

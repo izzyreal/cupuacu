@@ -269,18 +269,33 @@ namespace cupuacu::gui
                 closeWidth};
         }
 
+        static float snapToPixelGrid(const State *state, const float value)
+        {
+            const float step = 1.0f /
+                               std::max(1, static_cast<int>(
+                                               state ? state->pixelScale : 1));
+            return std::round(value / step) * step;
+        }
+
         void drawCloseIcon(SDL_Renderer *renderer, const SDL_Rect &closeRect) const
         {
             // Use the center of the covered pixel area so the icon rasterizes
             // symmetrically for both odd and even close-button sizes.
-            const float centerX = closeRect.x + (closeRect.w - 1) / 2.0f;
-            const float centerY = closeRect.y + (closeRect.h - 1) / 2.0f;
+            const float centerX = snapToPixelGrid(
+                state, closeRect.x + (closeRect.w - 1) / 2.0f);
+            const float centerY = snapToPixelGrid(
+                state, closeRect.y + (closeRect.h - 1) / 2.0f);
             const float opticalOffsetX = 0.25f;
             const float opticalOffsetY = 0.35f;
-            const float iconCenterX = centerX + opticalOffsetX;
-            const float iconCenterY = centerY + opticalOffsetY;
-            const float hoverDiameter = std::max(
-                1.0f, static_cast<float>(std::round(closeRect.w * 0.8f)));
+            const float iconCenterX =
+                snapToPixelGrid(state, centerX + opticalOffsetX);
+            const float iconCenterY =
+                snapToPixelGrid(state, centerY + opticalOffsetY);
+            const float hoverDiameter =
+                snapToPixelGrid(state, std::max(
+                                           1.0f, static_cast<float>(
+                                                     std::round(closeRect.w *
+                                                                0.8f))));
 
             if (closeHovered ||
                 (pressTarget == PressTarget::Close && pointerInsideWhilePressed))
@@ -294,11 +309,17 @@ namespace cupuacu::gui
                                 kTabCloseHoverFill);
             }
 
-            const float iconSize = std::max(
-                1.0f, static_cast<float>(std::round(hoverDiameter * 0.72f)));
-            const float inset = std::max(1.5f, iconSize * 0.22f);
-            const float halfSpan = iconSize / 2.0f - inset;
-            const float thickness = std::max(2.0f, scaleUiF(state, 2.0f));
+            const float iconSize =
+                snapToPixelGrid(state, std::max(
+                                           1.0f, static_cast<float>(
+                                                     std::round(hoverDiameter *
+                                                                0.72f))));
+            const float thickness = snapToPixelGrid(
+                state, std::max(1.0f, scaleUiF(state, 2.0f)));
+            const float inset = snapToPixelGrid(
+                state, std::max(scaleUiF(state, 1.5f), iconSize * 0.22f));
+            const float halfSpan = snapToPixelGrid(
+                state, std::max(0.0f, iconSize / 2.0f - inset));
 
             drawThickLine(renderer, iconCenterX - halfSpan,
                           iconCenterY - halfSpan, iconCenterX + halfSpan,
@@ -308,6 +329,12 @@ namespace cupuacu::gui
                           iconCenterY + halfSpan, iconCenterX + halfSpan,
                           iconCenterY - halfSpan, thickness,
                           Colors::white);
+            Helpers::fillRect(
+                renderer,
+                SDL_FRect{iconCenterX - thickness / 2.0f,
+                          iconCenterY - thickness / 2.0f, thickness,
+                          thickness},
+                Colors::white);
         }
 
         static void drawThickLine(SDL_Renderer *renderer, const float x1,
