@@ -9,6 +9,7 @@
 #include "Waveform.hpp"
 #include "TriangleMarker.hpp"
 #include "keyboard_handling.hpp"
+#include "../actions/DocumentTabs.hpp"
 #include "../ResourceUtil.hpp"
 
 namespace cupuacu::gui
@@ -336,11 +337,13 @@ namespace cupuacu::gui
             case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
                 if (eventWindow)
                 {
-                    eventWindow->handleEvent(*event);
                     if (mainWindow && eventWindow == mainWindow)
                     {
-                        cleanupCursors();
-                        return SDL_APP_SUCCESS;
+                        cupuacu::actions::closeActiveTab(state);
+                    }
+                    else
+                    {
+                        eventWindow->handleEvent(*event);
                     }
                 }
                 break;

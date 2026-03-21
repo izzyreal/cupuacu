@@ -276,7 +276,16 @@ else()
         src/main/main.cpp
     )
 endif()
+if(APPLE)
+    target_sources(Cupuacu PRIVATE
+        src/main/platform/macos/MenuAdjustments.mm
+    )
+endif()
 target_link_libraries(Cupuacu PRIVATE "${_cupuacu_app_core_target}")
+if(APPLE)
+    find_library(CUPUACU_APPKIT_FRAMEWORK AppKit REQUIRED)
+    target_link_libraries(Cupuacu PRIVATE "${CUPUACU_APPKIT_FRAMEWORK}")
+endif()
 if(CUPUACU_ENABLE_RTSAN_LIBS)
     rtsan_libs_enable(TARGET Cupuacu)
 endif()

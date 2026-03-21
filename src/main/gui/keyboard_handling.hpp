@@ -6,6 +6,7 @@
 #include "Window.hpp"
 #include "../actions/ShowOpenFileDialog.hpp"
 #include "../actions/DocumentLifecycle.hpp"
+#include "../actions/DocumentTabs.hpp"
 #include "../actions/Play.hpp"
 #include "../actions/Zoom.hpp"
 #include "../actions/Save.hpp"
@@ -69,7 +70,7 @@ namespace cupuacu::gui
         {
             if (primaryModifierHeld)
             {
-                actions::closeCurrentDocument(state);
+                actions::closeActiveTab(state);
             }
             else if (actions::tryZoomInHorizontally(state))
             {

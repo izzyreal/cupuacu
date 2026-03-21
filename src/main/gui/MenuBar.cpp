@@ -3,6 +3,7 @@
 #include "State.hpp"
 #include "ResourceUtil.hpp"
 #include "actions/DocumentLifecycle.hpp"
+#include "actions/DocumentTabs.hpp"
 #include "effects/AmplifyFadeEffect.hpp"
 #include "effects/DynamicsEffect.hpp"
 #include "effects/ReverseEffect.hpp"
@@ -131,7 +132,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
         state, closeText,
         [&]
         {
-            actions::closeCurrentDocument(state);
+            actions::closeActiveTab(state);
         });
     closeMenu->setIsAvailable(
         [&]

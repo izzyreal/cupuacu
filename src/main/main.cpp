@@ -25,6 +25,10 @@ const uint16_t initialDimensions[] = {1280, 720};
 #include "persistence/AudioDevicePropertiesPersistence.hpp"
 #include "persistence/RecentFilesPersistence.hpp"
 
+#if defined(__APPLE__)
+#include "platform/macos/MenuAdjustments.hpp"
+#endif
+
 #if CUPUACU_RTSAN_LIBS_ENABLED
 #include <rtsan_standalone/rtsan_standalone.h>
 #endif
@@ -98,6 +102,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
         return SDL_APP_FAILURE;
     }
     state->windows.push_back(mainWindow);
+
+#if defined(__APPLE__)
+    cupuacu::platform::macos::clearWindowCloseShortcut();
+#endif
 
     resetWaveformState(state);
     resetSampleValueUnderMouseCursor(state);

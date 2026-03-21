@@ -340,7 +340,7 @@ TEST_CASE("Keyboard integration applies zoom and pixel scale shortcuts",
             Catch::Approx(samplesPerPixelBeforeScale));
 }
 
-TEST_CASE("Keyboard integration opens new file dialog and closes the current document",
+TEST_CASE("Keyboard integration opens new file dialog and closes the active tab",
           "[integration]")
 {
     cupuacu::State state{};
@@ -365,6 +365,34 @@ TEST_CASE("Keyboard integration opens new file dialog and closes the current doc
     REQUIRE(state.getActiveDocumentSession().document.getChannelCount() == 0);
     REQUIRE_FALSE(state.getActiveDocumentSession().selection.isActive());
     REQUIRE(state.getActiveDocumentSession().cursor == 0);
+}
+
+TEST_CASE("Keyboard integration closes the active tab instead of blanking it",
+          "[integration]")
+{
+    cupuacu::State state{};
+    createBuiltSessionUi(&state, 256, 44100, 2, 800, 400);
+
+    state.tabs.resize(2);
+    state.tabs[0].session.currentFile = "/tmp/first.wav";
+    state.tabs[0].session.document.initialize(
+        cupuacu::SampleFormat::PCM_S16, 44100, 2, 256);
+    state.tabs[1].session.currentFile = "/tmp/second.wav";
+    state.tabs[1].session.document.initialize(
+        cupuacu::SampleFormat::PCM_S16, 44100, 2, 256);
+    state.activeTabIndex = 1;
+    state.mainDocumentSessionWindow->bindDocumentSession(
+        &state.getActiveDocumentSession(), &state.getActiveViewState());
+
+    SDL_Event event{};
+    event.type = SDL_EVENT_KEY_DOWN;
+    event.key.mod = SDL_KMOD_CTRL;
+    event.key.scancode = SDL_SCANCODE_W;
+    cupuacu::gui::handleKeyDown(&event, &state);
+
+    REQUIRE(state.tabs.size() == 1);
+    REQUIRE(state.activeTabIndex == 0);
+    REQUIRE(state.getActiveDocumentSession().currentFile == "/tmp/first.wav");
 }
 
 TEST_CASE("Event handling integration blocks interactive events behind modal",
@@ -429,7 +457,7 @@ TEST_CASE("Event handling integration still forwards non-interactive window even
     REQUIRE(resizeCount == 1);
 }
 
-TEST_CASE("Event handling integration returns success for quit and main-window close requests",
+TEST_CASE("Event handling integration returns success for quit and keeps app open on main-window close requests",
           "[integration]")
 {
     SECTION("quit event exits immediately")
@@ -444,10 +472,14 @@ TEST_CASE("Event handling integration returns success for quit and main-window c
         REQUIRE(state.mainDocumentSessionWindow->getWindow()->isOpen());
     }
 
-    SECTION("main document close request exits and closes the window")
+    SECTION("main document close request closes the active file instead of exiting")
     {
         cupuacu::State state{};
         createBuiltSessionUi(&state, 256);
+        state.getActiveDocumentSession().currentFile = "/tmp/current.wav";
+        state.getActiveDocumentSession().selection.setValue1(10.0);
+        state.getActiveDocumentSession().selection.setValue2(20.0);
+        state.getActiveDocumentSession().cursor = 12;
 
         auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
         state.windows.push_back(mainWindow);
@@ -456,8 +488,12 @@ TEST_CASE("Event handling integration returns success for quit and main-window c
         event.type = SDL_EVENT_WINDOW_CLOSE_REQUESTED;
         event.window.windowID = mainWindow->getId();
 
-        REQUIRE(cupuacu::gui::handleAppEvent(&state, &event) == SDL_APP_SUCCESS);
-        REQUIRE_FALSE(mainWindow->isOpen());
+        REQUIRE(cupuacu::gui::handleAppEvent(&state, &event) == SDL_APP_CONTINUE);
+        REQUIRE(mainWindow->isOpen());
+        REQUIRE(state.getActiveDocumentSession().currentFile.empty());
+        REQUIRE(state.getActiveDocumentSession().document.getChannelCount() == 0);
+        REQUIRE_FALSE(state.getActiveDocumentSession().selection.isActive());
+        REQUIRE(state.getActiveDocumentSession().cursor == 0);
     }
 }
 
