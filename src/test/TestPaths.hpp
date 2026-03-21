@@ -72,10 +72,17 @@ namespace cupuacu::test
         state.paths = std::make_unique<TestPaths>(makeUniqueTestRoot(label));
     }
 
+    inline void installTestPaths(cupuacu::State &state,
+                                 std::filesystem::path root)
+    {
+        state.paths = std::make_unique<TestPaths>(std::move(root));
+    }
+
     inline void ensureTestPaths(cupuacu::State &state,
                                 const std::string_view label = "state")
     {
-        if (state.paths == nullptr || typeid(*state.paths) == typeid(cupuacu::Paths))
+        const auto *paths = state.paths.get();
+        if (paths == nullptr || typeid(*paths) == typeid(cupuacu::Paths))
         {
             installTestPaths(state, label);
         }
@@ -86,6 +93,11 @@ namespace cupuacu::test
         explicit StateWithTestPaths(const std::string_view label = "state")
         {
             installTestPaths(*this, label);
+        }
+
+        explicit StateWithTestPaths(std::filesystem::path root)
+        {
+            installTestPaths(*this, std::move(root));
         }
     };
 } // namespace cupuacu::test

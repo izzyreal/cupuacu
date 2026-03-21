@@ -5,7 +5,6 @@
 #include "TestPaths.hpp"
 #include "actions/Save.hpp"
 #include "file/file_loading.hpp"
-#include "Paths.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/Window.hpp"
 
@@ -24,29 +23,6 @@
 
 namespace
 {
-    class TestPaths : public cupuacu::Paths
-    {
-    public:
-        explicit TestPaths(std::filesystem::path rootToUse)
-            : root(std::move(rootToUse))
-        {
-        }
-
-    protected:
-        std::filesystem::path appConfigHome() const override
-        {
-            return root / "config";
-        }
-
-        std::filesystem::path appDocumentsPath() const override
-        {
-            return root / "documents";
-        }
-
-    private:
-        std::filesystem::path root;
-    };
-
     class ScopedDirCleanup
     {
     public:
@@ -291,8 +267,7 @@ TEST_CASE("Save as writes a new WAV file and updates active file state", "[file]
     ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-save-as"));
     const auto outputPath = cleanup.path() / "exports" / "saved.wav";
 
-    cupuacu::test::StateWithTestPaths state{};
-    state.paths = std::make_unique<TestPaths>(cleanup.path());
+    cupuacu::test::StateWithTestPaths state{cleanup.path()};
 
     auto &session = state.getActiveDocumentSession();
     session.document.initialize(cupuacu::SampleFormat::PCM_S16, 22050, 2, 3);

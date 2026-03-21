@@ -3,7 +3,6 @@
 #include "IntegrationTestHelpers.hpp"
 
 #include "State.hpp"
-#include "Paths.hpp"
 #include "actions/DocumentLifecycle.hpp"
 #include "actions/Undoable.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
@@ -164,24 +163,6 @@ namespace
         {
             return description;
         }
-    };
-
-    class TestPaths : public cupuacu::Paths
-    {
-    public:
-        explicit TestPaths(std::filesystem::path rootToUse)
-            : root(std::move(rootToUse))
-        {
-        }
-
-    protected:
-        std::filesystem::path appConfigHome() const override
-        {
-            return root;
-        }
-
-    private:
-        std::filesystem::path root;
     };
 
     class ScopedConfigCleanup
@@ -630,12 +611,11 @@ TEST_CASE("Device properties integration persists normalized selection when reop
     cupuacu::test::ensureSdlTtfInitialized();
 
     const auto configRoot =
-        std::filesystem::temp_directory_path() /
-        "cupuacu-device-properties-integration";
+        cupuacu::test::makeUniqueTestRoot(
+            "device-properties-integration");
     ScopedConfigCleanup cleanup(configRoot);
 
-    cupuacu::test::StateWithTestPaths state{};
-    state.paths = std::make_unique<TestPaths>(configRoot);
+    cupuacu::test::StateWithTestPaths state{configRoot};
     auto sessionUi =
         cupuacu::test::integration::createSessionUi(&state, 512, false);
     state.audioDevices = std::make_shared<cupuacu::audio::AudioDevices>(false);

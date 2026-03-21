@@ -14,24 +14,6 @@
 
 namespace
 {
-    class TestPaths : public cupuacu::Paths
-    {
-    public:
-        explicit TestPaths(std::filesystem::path rootToUse)
-            : root(std::move(rootToUse))
-        {
-        }
-
-    protected:
-        std::filesystem::path appConfigHome() const override
-        {
-            return root;
-        }
-
-    private:
-        std::filesystem::path root;
-    };
-
     class ScopedCleanup
     {
     public:
@@ -56,9 +38,8 @@ namespace
 TEST_CASE("Recent files persistence round-trips and trims to ten entries",
           "[persistence]")
 {
-    const auto path = std::filesystem::temp_directory_path() /
-                      "cupuacu-recent-files-test" /
-                      "recently_opened_files.json";
+    const auto root = cupuacu::test::makeUniqueTestRoot("recent-files-test");
+    const auto path = root / "recently_opened_files.json";
     ScopedCleanup cleanup(path);
 
     std::vector<std::string> files;
@@ -77,9 +58,8 @@ TEST_CASE("Recent files persistence round-trips and trims to ten entries",
 
 TEST_CASE("Recent files persistence rejects malformed payloads", "[persistence]")
 {
-    const auto path = std::filesystem::temp_directory_path() /
-                      "cupuacu-recent-files-invalid" /
-                      "recently_opened_files.json";
+    const auto root = cupuacu::test::makeUniqueTestRoot("recent-files-invalid");
+    const auto path = root / "recently_opened_files.json";
     ScopedCleanup cleanup(path);
 
     std::filesystem::create_directories(path.parent_path());
@@ -103,9 +83,8 @@ TEST_CASE("Recent files persistence rejects malformed payloads", "[persistence]"
 TEST_CASE("Recent files persistence loads the current format",
           "[persistence]")
 {
-    const auto path = std::filesystem::temp_directory_path() /
-                      "cupuacu-recent-files-current" /
-                      "recently_opened_files.json";
+    const auto root = cupuacu::test::makeUniqueTestRoot("recent-files-current");
+    const auto path = root / "recently_opened_files.json";
     ScopedCleanup cleanup(path);
 
     std::filesystem::create_directories(path.parent_path());
@@ -123,8 +102,8 @@ TEST_CASE("Recent files persistence loads the current format",
 TEST_CASE("Session state persistence round-trips open files and active index",
           "[persistence]")
 {
-    const auto path = std::filesystem::temp_directory_path() /
-                      "cupuacu-session-state-test" / "session_state.json";
+    const auto root = cupuacu::test::makeUniqueTestRoot("session-state-test");
+    const auto path = root / "session_state.json";
     ScopedCleanup cleanup(path);
 
     cupuacu::persistence::PersistedSessionState state{};
@@ -141,8 +120,8 @@ TEST_CASE("Session state persistence round-trips open files and active index",
 
 TEST_CASE("Session state persistence rejects malformed payloads", "[persistence]")
 {
-    const auto path = std::filesystem::temp_directory_path() /
-                      "cupuacu-session-state-invalid" / "session_state.json";
+    const auto root = cupuacu::test::makeUniqueTestRoot("session-state-invalid");
+    const auto path = root / "session_state.json";
     ScopedCleanup cleanup(path);
 
     std::filesystem::create_directories(path.parent_path());
@@ -159,8 +138,8 @@ TEST_CASE("Session state persistence rejects malformed payloads", "[persistence]
 TEST_CASE("Startup document restore plan restores multiple open files and active tab",
           "[persistence]")
 {
-    const auto root = std::filesystem::temp_directory_path() /
-                      "cupuacu-startup-restore-multi";
+    const auto root =
+        cupuacu::test::makeUniqueTestRoot("startup-restore-multi");
     const auto first = root / "first.wav";
     const auto second = root / "second.wav";
     const auto third = root / "third.wav";
@@ -200,8 +179,8 @@ TEST_CASE("Startup document restore plan restores multiple open files and active
 TEST_CASE("Startup document restore plan prunes missing recent and open files",
           "[persistence]")
 {
-    const auto root = std::filesystem::temp_directory_path() /
-                      "cupuacu-startup-restore-prune";
+    const auto root =
+        cupuacu::test::makeUniqueTestRoot("startup-restore-prune");
     const auto existing = root / "keep.wav";
     const auto existingOpen = root / "open.wav";
     const auto missing = root / "missing.wav";
@@ -250,12 +229,10 @@ TEST_CASE("Persisted open session state captures open file tabs and the active f
 TEST_CASE("Persisted recent files and session state save to separate files",
           "[persistence]")
 {
-    const auto root = std::filesystem::temp_directory_path() /
-                      "cupuacu-session-persist-save";
+    const auto root = cupuacu::test::makeUniqueTestRoot("session-persist-save");
     ScopedCleanup cleanup(root / "placeholder");
 
-    cupuacu::test::StateWithTestPaths state{};
-    state.paths = std::make_unique<TestPaths>(root);
+    cupuacu::test::StateWithTestPaths state{root};
     state.recentFiles = {"/tmp/recent-a.wav", "/tmp/recent-b.wav"};
     state.tabs.resize(2);
     state.tabs[0].session.currentFile = "/tmp/open-a.wav";
@@ -279,12 +256,10 @@ TEST_CASE("Persisted recent files and session state save to separate files",
 TEST_CASE("Document lifecycle helpers can skip persistence when requested",
           "[persistence]")
 {
-    const auto root = std::filesystem::temp_directory_path() /
-                      "cupuacu-session-persist-skip";
+    const auto root = cupuacu::test::makeUniqueTestRoot("session-persist-skip");
     ScopedCleanup cleanup(root / "placeholder");
 
-    cupuacu::test::StateWithTestPaths state{};
-    state.paths = std::make_unique<TestPaths>(root);
+    cupuacu::test::StateWithTestPaths state{root};
     state.recentFiles = {"/tmp/recent-a.wav"};
     state.tabs.resize(1);
     state.tabs[0].session.currentFile = "/tmp/open-a.wav";

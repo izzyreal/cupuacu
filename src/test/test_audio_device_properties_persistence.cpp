@@ -1,7 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "Paths.hpp"
-#include "State.hpp"
 #include "TestPaths.hpp"
 #include "audio/AudioDevices.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
@@ -19,16 +17,6 @@
 
 namespace
 {
-    class TestPaths : public cupuacu::Paths
-    {
-    protected:
-        std::filesystem::path appConfigHome() const override
-        {
-            return std::filesystem::temp_directory_path() /
-                   "cupuacu-test-config";
-        }
-    };
-
     class ScopedConfigCleanup
     {
     public:
@@ -71,11 +59,10 @@ namespace
 TEST_CASE("Audio device properties persistence round-trip", "[persistence]")
 {
     const auto testConfigRoot =
-        std::filesystem::temp_directory_path() / "cupuacu-test-config";
+        cupuacu::test::makeUniqueTestRoot("audio-device-properties-round-trip");
     ScopedConfigCleanup cleanup(testConfigRoot);
 
-    cupuacu::test::StateWithTestPaths state{};
-    state.paths = std::make_unique<TestPaths>();
+    cupuacu::test::StateWithTestPaths state{testConfigRoot};
     const auto propertiesPath = state.paths->audioDevicePropertiesPath();
 
     ScopedResolverOverride resolverOverride(
@@ -183,11 +170,11 @@ TEST_CASE("Audio device properties persistence rejects malformed or incomplete J
           "[persistence]")
 {
     const auto testConfigRoot =
-        std::filesystem::temp_directory_path() / "cupuacu-test-config-invalid";
+        cupuacu::test::makeUniqueTestRoot("audio-device-properties-invalid");
     ScopedConfigCleanup cleanup(testConfigRoot);
-    const auto malformedPath = testConfigRoot / "malformed.json";
+    const auto malformedPath = testConfigRoot / "config-home" / "malformed.json";
 
-    std::filesystem::create_directories(testConfigRoot);
+    std::filesystem::create_directories(malformedPath.parent_path());
 
     {
         std::ofstream out(malformedPath, std::ios::binary | std::ios::trunc);
@@ -212,11 +199,12 @@ TEST_CASE("Audio device properties persistence rejects unsupported versions",
           "[persistence]")
 {
     const auto testConfigRoot =
-        std::filesystem::temp_directory_path() / "cupuacu-test-config-version";
+        cupuacu::test::makeUniqueTestRoot("audio-device-properties-version");
     ScopedConfigCleanup cleanup(testConfigRoot);
-    const auto versionedPath = testConfigRoot / "unsupported-version.json";
+    const auto versionedPath =
+        testConfigRoot / "config-home" / "unsupported-version.json";
 
-    std::filesystem::create_directories(testConfigRoot);
+    std::filesystem::create_directories(versionedPath.parent_path());
     {
         std::ofstream out(versionedPath, std::ios::binary | std::ios::trunc);
         REQUIRE(out.good());
@@ -232,11 +220,12 @@ TEST_CASE("Audio device properties persistence maps unresolved names to -1 index
           "[persistence]")
 {
     const auto testConfigRoot =
-        std::filesystem::temp_directory_path() / "cupuacu-test-config-unresolved";
+        cupuacu::test::makeUniqueTestRoot("audio-device-properties-unresolved");
     ScopedConfigCleanup cleanup(testConfigRoot);
-    const auto propertiesPath = testConfigRoot / "audio-device-properties.json";
+    const auto propertiesPath =
+        testConfigRoot / "config-home" / "audio-device-properties.json";
 
-    std::filesystem::create_directories(testConfigRoot);
+    std::filesystem::create_directories(propertiesPath.parent_path());
 
     ScopedResolverOverride resolverOverride(
         cupuacu::persistence::AudioDevicePropertiesPersistence::Resolver{
