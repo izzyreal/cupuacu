@@ -301,9 +301,10 @@ TEST_CASE("MenuBar disables document-dependent menus when no file is open",
     REQUIRE(state.generateSilenceDialogWindow == nullptr);
 
     auto effectEntries = menuChildren(effectsMenu);
-    REQUIRE(effectEntries.size() == 2);
+    REQUIRE(effectEntries.size() == 3);
     REQUIRE(effectEntries[0]->mouseDown(leftMouseDown()));
     REQUIRE(effectEntries[1]->mouseDown(leftMouseDown()));
+    REQUIRE(effectEntries[2]->mouseDown(leftMouseDown()));
     REQUIRE(state.amplifyFadeDialog == nullptr);
     REQUIRE(state.dynamicsDialog == nullptr);
 
@@ -316,6 +317,34 @@ TEST_CASE("MenuBar disables document-dependent menus when no file is open",
     REQUIRE(overwriteEntry->mouseDown(leftMouseDown()));
     REQUIRE(state.getActiveDocumentSession().document.getChannelCount() == 0);
     REQUIRE(state.getActiveDocumentSession().currentFile.empty());
+}
+
+TEST_CASE("MenuBar file menu shows platform-aware new open close and overwrite shortcuts",
+          "[gui]")
+{
+    cupuacu::State state{};
+    RootComponent root(&state);
+    auto *menuBar = makeMenuBar(&state, root);
+
+    auto topLevelMenus = menuChildren(menuBar);
+    REQUIRE(topLevelMenus.size() == 6);
+    auto *fileMenu = topLevelMenus[0];
+    auto fileEntries = menuChildren(fileMenu);
+    REQUIRE(fileEntries.size() == 6);
+
+#ifdef __APPLE__
+    REQUIRE(findMenuLabel(fileEntries[0])->getText() == "New file (Cmd + N)");
+    REQUIRE(findMenuLabel(fileEntries[1])->getText() == "Open (Cmd + O)");
+    REQUIRE(findMenuLabel(fileEntries[3])->getText() == "Close file (Cmd + W)");
+    REQUIRE(findMenuLabel(fileEntries[4])->getText() == "Overwrite (Cmd + S)");
+#else
+    REQUIRE(findMenuLabel(fileEntries[0])->getText() == "New file (Ctrl + N)");
+    REQUIRE(findMenuLabel(fileEntries[1])->getText() == "Open (Ctrl + O)");
+    REQUIRE(findMenuLabel(fileEntries[3])->getText() ==
+            "Close file (Ctrl + W)");
+    REQUIRE(findMenuLabel(fileEntries[4])->getText() ==
+            "Overwrite (Ctrl + S)");
+#endif
 }
 
 TEST_CASE("MenuBar edit actions invoke trim copy cut and paste through submenu actions",

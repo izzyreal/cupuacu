@@ -9,6 +9,7 @@
 #include "gui/MenuBar.hpp"
 #include "gui/OpaqueRect.hpp"
 #include "gui/ScrollBar.hpp"
+#include "gui/StatusBar.hpp"
 #include "gui/TabStrip.hpp"
 #include "gui/Timeline.hpp"
 #include "gui/WaveformsUnderlay.hpp"
@@ -114,6 +115,12 @@ TEST_CASE("Main window integration keeps the tab strip below overlay menus",
     const auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
     REQUIRE_FALSE(topLevelMenus.empty());
     REQUIRE(topLevelMenus.front()->getHeight() == menuBar->getHeight());
+
+    auto *statusBar =
+        cupuacu::test::integration::findByNameRecursive<cupuacu::gui::StatusBar>(
+            window->getContentLayer(), "StatusBar");
+    REQUIRE(statusBar != nullptr);
+    REQUIRE(statusBar->getHeight() == menuBar->getHeight());
 }
 
 TEST_CASE("MainView integration double click selects the visible range",

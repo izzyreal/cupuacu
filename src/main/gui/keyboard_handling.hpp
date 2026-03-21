@@ -5,6 +5,7 @@
 #include "WaveformRefresh.hpp"
 #include "Window.hpp"
 #include "../actions/ShowOpenFileDialog.hpp"
+#include "../actions/DocumentLifecycle.hpp"
 #include "../actions/Play.hpp"
 #include "../actions/Zoom.hpp"
 #include "../actions/Save.hpp"
@@ -50,6 +51,12 @@ namespace cupuacu::gui
         }
 
         const auto waveformWidth = Waveform::getWaveformWidth(state);
+        const bool primaryModifierHeld =
+#if __APPLE__
+            (event->key.mod & SDL_KMOD_GUI) != 0;
+#else
+            (event->key.mod & SDL_KMOD_CTRL) != 0;
+#endif
 
         if (event->key.scancode == SDL_SCANCODE_Q)
         {
@@ -60,7 +67,11 @@ namespace cupuacu::gui
         }
         else if (event->key.scancode == SDL_SCANCODE_W)
         {
-            if (actions::tryZoomInHorizontally(state))
+            if (primaryModifierHeld)
+            {
+                actions::closeCurrentDocument(state);
+            }
+            else if (actions::tryZoomInHorizontally(state))
             {
                 updateWaveforms(state);
             }
@@ -79,11 +90,7 @@ namespace cupuacu::gui
         }
         else if (event->key.scancode == SDL_SCANCODE_Z)
         {
-#if __APPLE__
-            if (event->key.mod & SDL_KMOD_GUI)
-#else
-            if (event->key.mod & SDL_KMOD_CTRL)
-#endif
+            if (primaryModifierHeld)
             {
                 if (event->key.mod & SDL_KMOD_SHIFT)
                 {
@@ -141,22 +148,21 @@ namespace cupuacu::gui
         }
         else if (event->key.scancode == SDL_SCANCODE_O)
         {
-#if __APPLE__
-            if (event->key.mod & SDL_KMOD_GUI)
-#else
-            if (event->key.mod & SDL_KMOD_CTRL)
-#endif
+            if (primaryModifierHeld)
             {
                 actions::showOpenFileDialog(state);
             }
         }
+        else if (event->key.scancode == SDL_SCANCODE_N)
+        {
+            if (primaryModifierHeld)
+            {
+                actions::showNewFileDialog(state);
+            }
+        }
         else if (event->key.scancode == SDL_SCANCODE_S)
         {
-#if __APPLE__
-            if (event->key.mod & SDL_KMOD_GUI)
-#else
-            if (event->key.mod & SDL_KMOD_CTRL)
-#endif
+            if (primaryModifierHeld)
             {
                 actions::overwrite(state);
             }
@@ -215,26 +221,16 @@ namespace cupuacu::gui
         }
         else if (event->key.scancode == SDL_SCANCODE_X)
         {
-#if __APPLE__
-            if (event->key.mod & SDL_KMOD_GUI &&
+            if (primaryModifierHeld &&
                 state->getActiveDocumentSession().selection.isActive())
-#else
-            if ((event->key.mod & SDL_KMOD_CTRL) &&
-                state->getActiveDocumentSession().selection.isActive())
-#endif
             {
                 actions::audio::performCut(state);
             }
         }
         else if (event->key.scancode == SDL_SCANCODE_C)
         {
-#if __APPLE__
-            if (event->key.mod & SDL_KMOD_GUI &&
+            if (primaryModifierHeld &&
                 state->getActiveDocumentSession().selection.isActive())
-#else
-            if ((event->key.mod & SDL_KMOD_CTRL) &&
-                state->getActiveDocumentSession().selection.isActive())
-#endif
             {
                 actions::audio::performCopy(state);
             }
@@ -242,24 +238,15 @@ namespace cupuacu::gui
         else if (event->key.scancode == SDL_SCANCODE_V &&
                  state->clipboard.getFrameCount() > 0)
         {
-#if __APPLE__
-            if (event->key.mod & SDL_KMOD_GUI)
-#else
-            if (event->key.mod & SDL_KMOD_CTRL)
-#endif
+            if (primaryModifierHeld)
             {
                 actions::audio::performPaste(state);
             }
         }
         else if (event->key.scancode == SDL_SCANCODE_T)
         {
-#if __APPLE__
-            if (event->key.mod & SDL_KMOD_GUI &&
+            if (primaryModifierHeld &&
                 state->getActiveDocumentSession().selection.isActive())
-#else
-            if ((event->key.mod & SDL_KMOD_CTRL) &&
-                state->getActiveDocumentSession().selection.isActive())
-#endif
             {
                 actions::audio::performTrim(state);
             }

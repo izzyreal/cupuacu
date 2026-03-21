@@ -36,3 +36,12 @@ TEST_CASE("WaveformsUnderlay drag planning updates selection and right-channel h
     REQUIRE(cupuacu::gui::planWaveformsUnderlayHoveredChannels(79, 80, 2) ==
             cupuacu::RIGHT);
 }
+
+TEST_CASE("WaveformsUnderlay mono hover planning keeps channel selection unified",
+          "[gui]")
+{
+    REQUIRE(cupuacu::gui::planWaveformsUnderlayHoveredChannels(0, 80, 1) ==
+            cupuacu::BOTH);
+    REQUIRE(cupuacu::gui::planWaveformsUnderlayHoveredChannels(79, 80, 1) ==
+            cupuacu::BOTH);
+}

@@ -3,6 +3,7 @@
 
 #include "effects/AmplifyFadeEffect.hpp"
 #include "effects/DynamicsEffect.hpp"
+#include "effects/ReverseEffect.hpp"
 #include "gui/MainView.hpp"
 #include "State.hpp"
 #include "actions/audio/Cut.hpp"
@@ -198,6 +199,49 @@ TEST_CASE("Trim undoable keeps requested middle range and restores document",
     REQUIRE(session.selection.getStartInt() == 1);
     REQUIRE(session.selection.getLengthInt() == 3);
     REQUIRE(session.cursor == 1);
+}
+
+TEST_CASE("Reverse applies across the whole mono document and respects undo",
+          "[actions]")
+{
+    cupuacu::State state{};
+    initializeMonoDocument(state, {0, 1, 2, 3, 4});
+
+    cupuacu::effects::performReverse(&state);
+
+    REQUIRE(readMonoSamples(state.getActiveDocumentSession().document) ==
+            std::vector<float>({4, 3, 2, 1, 0}));
+    REQUIRE(state.getActiveUndoables().size() == 1);
+
+    state.undo();
+    REQUIRE(readMonoSamples(state.getActiveDocumentSession().document) ==
+            std::vector<float>({0, 1, 2, 3, 4}));
+}
+
+TEST_CASE("Reverse respects the selected range and selected channel",
+          "[actions]")
+{
+    cupuacu::State state{};
+    initializeStereoDocument(
+        state, {0, 1, 2, 3, 4}, {10, 11, 12, 13, 14});
+
+    auto &session = state.getActiveDocumentSession();
+    session.selection.setValue1(1.0);
+    session.selection.setValue2(4.0);
+    state.getActiveViewState().selectedChannels = cupuacu::SelectedChannels::LEFT;
+
+    cupuacu::effects::performReverse(&state);
+
+    REQUIRE(readChannelSamples(session.document, 0) ==
+            std::vector<float>({0, 3, 2, 1, 4}));
+    REQUIRE(readChannelSamples(session.document, 1) ==
+            std::vector<float>({10, 11, 12, 13, 14}));
+
+    state.undo();
+    REQUIRE(readChannelSamples(session.document, 0) ==
+            std::vector<float>({0, 1, 2, 3, 4}));
+    REQUIRE(readChannelSamples(session.document, 1) ==
+            std::vector<float>({10, 11, 12, 13, 14}));
 }
 
 TEST_CASE("Cut at document tail removes trailing frames and restores on undo",

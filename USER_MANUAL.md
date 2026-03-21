@@ -20,6 +20,7 @@ This manual describes the current user-visible behavior of the app.
 The main window contains:
 
 - a menu bar at the top
+- a tab strip below the menu bar
 - one waveform per channel
 - transport controls and level metering
 - a status bar at the bottom
@@ -32,12 +33,17 @@ Use `File -> Open` to open an audio file with the system file picker.
 
 When a file is opened successfully:
 
-- it becomes the current document
+- it opens in a tab
+- it becomes the active tab
 - the window title changes to the file path
 - it is added to `File -> Recent`
 - it is moved to the top of the recent-files list
 
-On startup, Cupuacu attempts to reopen the most recently opened file if it still exists.
+If Cupuacu starts with only the initial blank tab, opening a file reuses that blank tab. Otherwise, opening a file creates a new tab.
+
+On startup, Cupuacu restores the previously open file-backed tabs when those files still exist.
+
+If the saved session data only contains the older recent-files list, Cupuacu falls back to reopening the most recent existing file.
 
 ## Recent Files
 
@@ -49,10 +55,15 @@ Behavior:
 - the newest entry is shown first
 - if an entry points to a file that no longer exists, Cupuacu removes that entry from the list
 - if there are no recent files, the submenu shows `No recent files`
+- selecting a recent file opens it in a tab
 
 ## Creating a New File
 
 Use `File -> New file`.
+
+Shortcut:
+
+- `Cmd/Ctrl + N`
 
 The dialog currently lets you choose:
 
@@ -62,11 +73,28 @@ The dialog currently lets you choose:
 
 Selecting `OK` creates a new empty untitled document with those settings.
 
+If Cupuacu still only has the initial blank tab, that tab is reused. Otherwise, a new tab is created.
+
 Selecting `Cancel` closes the dialog without changing the current document.
+
+## Tabs
+
+Each open document appears in the tab strip.
+
+Behavior:
+
+- clicking a tab activates it
+- clicking the `x` inside a tab closes that tab
+- if only one tab exists, closing the file clears it back to an empty untitled document
+- Cupuacu currently allows only one actively playing or recording tab at a time
 
 ## Closing and Exiting
 
 Use `File -> Close file` to close the current document and return to an empty untitled document.
+
+Shortcut:
+
+- `Cmd/Ctrl + W`
 
 Use `File -> Exit` to quit Cupuacu.
 
@@ -140,6 +168,34 @@ Current shortcut labels in the menu include:
 - `Copy`
 - `Paste`
 
+## Keyboard Shortcuts
+
+The current app-wide shortcuts are:
+
+- `Cmd/Ctrl + O`: open a file
+- `Cmd/Ctrl + N`: open the New File dialog
+- `Cmd/Ctrl + W`: close the current file
+- `Cmd/Ctrl + S`: overwrite the current file
+- `Cmd/Ctrl + Z`: undo
+- `Cmd/Ctrl + Shift + Z`: redo
+- `Cmd/Ctrl + X`: cut the current selection
+- `Cmd/Ctrl + C`: copy the current selection
+- `Cmd/Ctrl + V`: paste the clipboard
+- `Cmd/Ctrl + T`: trim to the current selection
+- `Space`: play or stop playback
+- `Esc`: reset zoom
+- `Z`: zoom to the current selection
+- `Q`: zoom out horizontally
+- `W`: zoom in horizontally
+- `E`: zoom out vertically
+- `R`: zoom in vertically
+- `Left Arrow`: scroll the view left
+- `Right Arrow`: scroll the view right
+- `Shift + .`: increase pixel scale
+- `Shift + ,`: decrease pixel scale
+
+For the arrow keys and vertical zoom keys, holding modifier keys increases the step size. The current implementation multiplies the step when `Shift`, `Alt`, or `Ctrl` are held.
+
 ## View Menu
 
 The `View` menu currently contains:
@@ -192,6 +248,7 @@ Behavior:
 
 The `Effects` menu currently contains:
 
+- `Reverse`
 - `Amplify/Fade`
 - `Dynamics`
 
@@ -220,26 +277,32 @@ Cupuacu currently persists two JSON settings files:
 - `recently_opened_files.json`
 - `audio_device_properties.json`
 
-These files are stored in Cupuacu's config directory:
+These files are stored in Cupuacu's config directory. The current paths are:
 
-- macOS: typically `~/Library/Application Support/Cupuacu/config/`
-- Linux: typically `~/.config/Cupuacu/config/`
-- Windows: typically `%AppData%\Cupuacu\config\`
-
-So the full paths are usually:
-
-- `.../Cupuacu/config/recently_opened_files.json`
-- `.../Cupuacu/config/audio_device_properties.json`
+- macOS:
+  - `~/Library/Application Support/Cupuacu/config/recently_opened_files.json`
+  - `~/Library/Application Support/Cupuacu/config/audio_device_properties.json`
+- Linux:
+  - `~/.config/Cupuacu/config/recently_opened_files.json`
+  - `~/.config/Cupuacu/config/audio_device_properties.json`
+- Windows:
+  - `%AppData%\Cupuacu\config\recently_opened_files.json`
+  - `%AppData%\Cupuacu\config\audio_device_properties.json`
 
 ### recently_opened_files.json
 
-This file stores the recent-files list used by `File -> Recent`.
+This file stores both:
+
+- the recent-files list used by `File -> Recent`
+- the currently restorable file-backed tab session
 
 User-visible behavior:
 
 - at most 10 entries are kept
 - the newest file is first
-- startup uses the first valid entry as the file to reopen automatically
+- file-backed tabs from the last session are reopened on startup when those paths still exist
+- the active restored tab is remembered when it refers to a file-backed tab
+- when only the old recent-files format is available, startup falls back to reopening the newest valid recent file
 
 ### audio_device_properties.json
 
@@ -251,27 +314,17 @@ In practical terms, it remembers:
 - the selected output device
 - the selected input device
 
-## Other App Files
-
-Cupuacu also uses a per-user documents area named `Cupuacu`.
-
-At the moment, this area is used for things like:
-
-- `cupuacu.log`
-- a `Temp` directory
-
-The exact location depends on the platform's standard user documents folder.
-
 ## Current Behavior and Limitations
 
 This section summarizes the current state of the app as it exists today.
 
 - Opening files is supported through the system file picker
 - Recent files are persistent and restored across launches
-- The last successfully opened file is reopened on startup if it still exists
+- File-backed tabs from the previous session are reopened on startup when they still exist
 - New empty files can be created with sample rate, bit depth, and channel count
+- Documents are tabbed within a single main window
 - Saving is currently an overwrite-style workflow, not a full save/save-as workflow
 - Generate currently provides silence generation only
-- Effects currently provide `Amplify/Fade` and `Dynamics`
+- Effects currently provide `Reverse`, `Amplify/Fade`, and `Dynamics`
 
 As Cupuacu evolves, this manual should be updated alongside user-visible changes.

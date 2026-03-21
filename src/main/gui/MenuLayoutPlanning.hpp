@@ -11,7 +11,7 @@ namespace cupuacu::gui
     inline int menuItemHeight(const cupuacu::State *state)
     {
         return scaleUi(
-            state, static_cast<float>(state ? state->menuFontSize : 30) * 2.0f);
+            state, static_cast<float>(state ? state->menuFontSize : 30) * 1.75f);
     }
 
     struct MenuSubMenuLayoutPlanItem

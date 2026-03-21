@@ -29,7 +29,7 @@ namespace cupuacu::gui
     inline SelectedChannels planWaveformsUnderlayHoveredChannels(
         const int32_t mouseY, const int height, const int channelCount)
     {
-        if (channelCount <= 0 || height <= 0)
+        if (channelCount <= 1 || height <= 0)
         {
             return BOTH;
         }

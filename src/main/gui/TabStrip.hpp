@@ -12,6 +12,7 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <string>
 #include <utility>
@@ -21,11 +22,11 @@ namespace cupuacu::gui
 {
     namespace
     {
-        constexpr SDL_Color kTabDisabledFill{56, 56, 56, 255};
         constexpr SDL_Color kTabBaseFill{78, 78, 78, 255};
         constexpr SDL_Color kTabHoverFill{96, 96, 96, 255};
         constexpr SDL_Color kTabPressedFill{66, 92, 134, 255};
         constexpr SDL_Color kTabActiveFill{74, 110, 170, 255};
+        constexpr SDL_Color kTabCloseHoverFill{52, 52, 52, 128};
     }
 
     class TabStripTab : public Component
@@ -39,11 +40,6 @@ namespace cupuacu::gui
             titleLabel = emplaceChild<Label>(state, titleToUse);
             titleLabel->setInterceptMouseEnabled(false);
             titleLabel->setFontSize(state->menuFontSize - 6);
-
-            closeLabel = emplaceChild<Label>(state, "x");
-            closeLabel->setInterceptMouseEnabled(false);
-            closeLabel->setCenterHorizontally(true);
-            closeLabel->setFontSize(state->menuFontSize - 6);
         }
 
         void setActive(const bool shouldBeActive)
@@ -63,9 +59,6 @@ namespace cupuacu::gui
                 return;
             }
             enabled = shouldBeEnabled;
-            const Uint8 opacity = enabled ? 255 : 160;
-            titleLabel->setOpacity(opacity);
-            closeLabel->setOpacity(opacity);
             setDirty();
         }
 
@@ -98,20 +91,19 @@ namespace cupuacu::gui
             titleLabel->setBounds(
                 titlePadding, 0,
                 std::max(0, closeRect.x - titlePadding * 2), getHeight());
-            closeLabel->setBounds(closeRect);
         }
 
         void onDraw(SDL_Renderer *renderer) override
         {
+            SDL_BlendMode previousBlendMode = SDL_BLENDMODE_NONE;
+            SDL_GetRenderDrawBlendMode(renderer, &previousBlendMode);
+            SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+
             const SDL_FRect bounds = getLocalBoundsF();
             const float radius = scaleUiF(state, 8.0f);
             SDL_Color fill = kTabBaseFill;
 
-            if (!enabled)
-            {
-                fill = kTabDisabledFill;
-            }
-            else if (pressTarget != PressTarget::None &&
+            if (pressTarget != PressTarget::None &&
                      pointerInsideWhilePressed)
             {
                 fill = kTabPressedFill;
@@ -127,6 +119,9 @@ namespace cupuacu::gui
 
             drawRoundedRect(renderer, bounds, radius, fill);
             drawRoundedRectOutline(renderer, bounds, radius, Colors::border);
+            drawCloseIcon(renderer, getCloseBounds());
+
+            SDL_SetRenderDrawBlendMode(renderer, previousBlendMode);
         }
 
         bool mouseDown(const MouseEvent &e) override
@@ -151,9 +146,19 @@ namespace cupuacu::gui
 
         bool mouseMove(const MouseEvent &e) override
         {
+            const bool nextCloseHovered =
+                containsLocalPoint(e.mouseXi, e.mouseYi) &&
+                isInsideRect(getCloseBounds(), e.mouseXi, e.mouseYi);
+            const bool hoverChanged = nextCloseHovered != closeHovered;
+            if (hoverChanged)
+            {
+                closeHovered = nextCloseHovered;
+                setDirty();
+            }
+
             if (pressTarget == PressTarget::None)
             {
-                return false;
+                return hoverChanged;
             }
 
             const bool insidePressedTarget =
@@ -217,6 +222,7 @@ namespace cupuacu::gui
 
         void mouseLeave() override
         {
+            closeHovered = false;
             setDirty();
         }
 
@@ -231,11 +237,11 @@ namespace cupuacu::gui
         int tabIndex = 0;
         bool active = false;
         bool enabled = true;
+        bool closeHovered = false;
         bool pointerInsideWhilePressed = false;
         PressTarget pressTarget = PressTarget::None;
         std::string title;
         Label *titleLabel = nullptr;
-        Label *closeLabel = nullptr;
         std::function<void(int)> onSelect;
         std::function<void(int)> onClose;
 
@@ -252,14 +258,90 @@ namespace cupuacu::gui
 
         SDL_Rect getCloseBounds() const
         {
-            const int closeWidth = scaleUi(state, 28.0f);
-            const int horizontalPadding = scaleUi(state, 6.0f);
+            const int horizontalPadding = scaleUi(state, 4.0f);
+            const int closeWidth =
+                std::max(1, getHeight() - horizontalPadding * 2);
             return {
                 std::max(horizontalPadding,
                          getWidth() - closeWidth - horizontalPadding),
-                0,
+                std::max(0, (getHeight() - closeWidth) / 2),
                 closeWidth,
-                getHeight()};
+                closeWidth};
+        }
+
+        void drawCloseIcon(SDL_Renderer *renderer, const SDL_Rect &closeRect) const
+        {
+            // Use the center of the covered pixel area so the icon rasterizes
+            // symmetrically for both odd and even close-button sizes.
+            const float centerX = closeRect.x + (closeRect.w - 1) / 2.0f;
+            const float centerY = closeRect.y + (closeRect.h - 1) / 2.0f;
+            const float opticalOffsetX = 0.25f;
+            const float opticalOffsetY = 0.35f;
+            const float iconCenterX = centerX + opticalOffsetX;
+            const float iconCenterY = centerY + opticalOffsetY;
+            const float hoverDiameter = std::max(
+                1.0f, static_cast<float>(std::round(closeRect.w * 0.8f)));
+
+            if (closeHovered ||
+                (pressTarget == PressTarget::Close && pointerInsideWhilePressed))
+            {
+                const SDL_FRect hoverCircle{
+                    centerX - hoverDiameter / 2.0f,
+                    centerY - hoverDiameter / 2.0f,
+                    hoverDiameter,
+                    hoverDiameter};
+                drawRoundedRect(renderer, hoverCircle, hoverCircle.w / 2.0f,
+                                kTabCloseHoverFill);
+            }
+
+            const float iconSize = std::max(
+                1.0f, static_cast<float>(std::round(hoverDiameter * 0.72f)));
+            const float inset = std::max(1.5f, iconSize * 0.22f);
+            const float halfSpan = iconSize / 2.0f - inset;
+            const float thickness = std::max(2.0f, scaleUiF(state, 2.0f));
+
+            drawThickLine(renderer, iconCenterX - halfSpan,
+                          iconCenterY - halfSpan, iconCenterX + halfSpan,
+                          iconCenterY + halfSpan, thickness,
+                          Colors::white);
+            drawThickLine(renderer, iconCenterX - halfSpan,
+                          iconCenterY + halfSpan, iconCenterX + halfSpan,
+                          iconCenterY - halfSpan, thickness,
+                          Colors::white);
+        }
+
+        static void drawThickLine(SDL_Renderer *renderer, const float x1,
+                                  const float y1, const float x2,
+                                  const float y2, const float thickness,
+                                  const SDL_Color &color)
+        {
+            const float dx = x2 - x1;
+            const float dy = y2 - y1;
+            const float length = std::sqrt(dx * dx + dy * dy);
+            if (length <= 0.0f)
+            {
+                return;
+            }
+
+            const float halfThickness = thickness / 2.0f;
+            const float px = -dy / length * halfThickness;
+            const float py = dx / length * halfThickness;
+            const SDL_FColor fcolor{color.r / 255.0f, color.g / 255.0f,
+                                    color.b / 255.0f, color.a / 255.0f};
+
+            SDL_Vertex vertices[4]{};
+            vertices[0].position = SDL_FPoint{x1 + px, y1 + py};
+            vertices[1].position = SDL_FPoint{x1 - px, y1 - py};
+            vertices[2].position = SDL_FPoint{x2 - px, y2 - py};
+            vertices[3].position = SDL_FPoint{x2 + px, y2 + py};
+            for (auto &vertex : vertices)
+            {
+                vertex.color = fcolor;
+                vertex.tex_coord = SDL_FPoint{0.0f, 0.0f};
+            }
+
+            constexpr int indices[6]{0, 1, 2, 0, 2, 3};
+            SDL_RenderGeometry(renderer, nullptr, vertices, 4, indices, 6);
         }
     };
 

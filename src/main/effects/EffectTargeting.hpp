@@ -34,12 +34,8 @@ namespace cupuacu::effects
             return targetChannels;
         }
 
-        SelectedChannels selectedChannels = SelectedChannels::BOTH;
-        if (state->mainDocumentSessionWindow)
-        {
-            selectedChannels =
-                state->getActiveViewState().selectedChannels;
-        }
+        const SelectedChannels selectedChannels =
+            state->getActiveViewState().selectedChannels;
 
         if (channelCount <= 1 || selectedChannels == SelectedChannels::BOTH)
         {
@@ -151,8 +147,7 @@ namespace cupuacu::effects
             return cupuacu::SelectedChannels::BOTH;
         }
 
-        if (!state->getActiveDocumentSession().selection.isActive() ||
-            !state->mainDocumentSessionWindow)
+        if (!state->getActiveDocumentSession().selection.isActive())
         {
             return cupuacu::SelectedChannels::BOTH;
         }

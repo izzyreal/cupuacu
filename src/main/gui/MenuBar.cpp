@@ -5,6 +5,7 @@
 #include "actions/DocumentLifecycle.hpp"
 #include "effects/AmplifyFadeEffect.hpp"
 #include "effects/DynamicsEffect.hpp"
+#include "effects/ReverseEffect.hpp"
 
 #include "gui/OpaqueRect.hpp"
 #include "gui/Menu.hpp"
@@ -43,9 +44,9 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
     optionsMenu = emplaceChild<Menu>(state, "Options");
 
 #ifdef __APPLE__
-    constexpr std::string newText{"New file"};
+    constexpr std::string newText{"New file (Cmd + N)"};
     constexpr std::string openText{"Open (Cmd + O)"};
-    constexpr std::string closeText{"Close file"};
+    constexpr std::string closeText{"Close file (Cmd + W)"};
     constexpr std::string overwriteText{"Overwrite (Cmd + S)"};
     constexpr std::string exitText{"Exit"};
     constexpr std::string trimText{"Trim (Cmd + T)"};
@@ -53,9 +54,9 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
     constexpr std::string copyText{"Copy (Cmd + C)"};
     constexpr std::string pasteText{"Paste (Cmd + V)"};
 #else
-    const std::string newText{"New file"};
+    const std::string newText{"New file (Ctrl + N)"};
     const std::string openText{"Open (Ctrl + O)"};
-    const std::string closeText{"Close file"};
+    const std::string closeText{"Close file (Ctrl + W)"};
     const std::string overwriteText{"Overwrite (Ctrl + S)"};
     const std::string exitText{"Exit"};
     const std::string trimText{"Trim (Ctrl + T)"};
@@ -68,15 +69,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
         state, newText,
         [&]
         {
-            if (!state->newFileDialogWindow ||
-                !state->newFileDialogWindow->isOpen())
-            {
-                state->newFileDialogWindow.reset(new NewFileDialogWindow(state));
-            }
-            else
-            {
-                state->newFileDialogWindow->raise();
-            }
+            actions::showNewFileDialog(state);
         });
     fileMenu->addSubMenu(
         state, openText,
@@ -300,6 +293,12 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
             return isPasteAvailable(state);
         });
 
+    effectsMenu->addSubMenu(
+        state, "Reverse",
+        [&]
+        {
+            effects::performReverse(state);
+        });
     effectsMenu->addSubMenu(
         state, "Amplify/Fade",
         [&]

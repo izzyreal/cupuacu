@@ -60,8 +60,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
         state->audioDevices->setDeviceSelection(*persistedSelection);
     }
 
-    state->recentFiles = cupuacu::persistence::RecentFilesPersistence::load(
-        state->paths->recentlyOpenedFilesPath());
+    const auto persistedSessionState =
+        cupuacu::persistence::RecentFilesPersistence::load(
+            state->paths->recentlyOpenedFilesPath());
+    state->recentFiles = persistedSessionState.recentFiles;
 
     *appstate = state;
 
@@ -102,7 +104,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     cupuacu::gui::initCursors();
 
-    cupuacu::actions::restoreStartupDocument(state);
+    cupuacu::actions::restoreStartupDocument(state, persistedSessionState);
 
     cupuacu::gui::buildComponents(state, mainWindow);
 
@@ -174,6 +176,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
     TTF_Quit();
     cupuacu::State *state = (cupuacu::State *)appstate;
+    cupuacu::actions::persistSessionState(state);
     state->generateSilenceDialogWindow.reset();
     state->newFileDialogWindow.reset();
     state->devicePropertiesWindow.reset();

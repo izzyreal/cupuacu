@@ -340,6 +340,33 @@ TEST_CASE("Keyboard integration applies zoom and pixel scale shortcuts",
             Catch::Approx(samplesPerPixelBeforeScale));
 }
 
+TEST_CASE("Keyboard integration opens new file dialog and closes the current document",
+          "[integration]")
+{
+    cupuacu::State state{};
+    createBuiltSessionUi(&state, 256, 44100, 2, 800, 400);
+    state.getActiveDocumentSession().currentFile = "/tmp/current.wav";
+    state.getActiveDocumentSession().selection.setValue1(10.0);
+    state.getActiveDocumentSession().selection.setValue2(20.0);
+    state.getActiveDocumentSession().cursor = 12;
+
+    SDL_Event event{};
+    event.type = SDL_EVENT_KEY_DOWN;
+    event.key.mod = SDL_KMOD_CTRL;
+
+    event.key.scancode = SDL_SCANCODE_N;
+    cupuacu::gui::handleKeyDown(&event, &state);
+    REQUIRE(state.newFileDialogWindow != nullptr);
+    REQUIRE(state.newFileDialogWindow->isOpen());
+
+    event.key.scancode = SDL_SCANCODE_W;
+    cupuacu::gui::handleKeyDown(&event, &state);
+    REQUIRE(state.getActiveDocumentSession().currentFile.empty());
+    REQUIRE(state.getActiveDocumentSession().document.getChannelCount() == 0);
+    REQUIRE_FALSE(state.getActiveDocumentSession().selection.isActive());
+    REQUIRE(state.getActiveDocumentSession().cursor == 0);
+}
+
 TEST_CASE("Event handling integration blocks interactive events behind modal",
           "[integration]")
 {
@@ -442,15 +469,16 @@ TEST_CASE("Startup document restore integration reopens the most recent file",
     writeTestWav(wavPath, 48000, 2, {0.1f, -0.1f, 0.2f, -0.2f, 0.3f, -0.3f});
 
     cupuacu::State state{};
-    state.recentFiles = {wavPath.string()};
     createBuiltSessionUi(&state, 8);
+    cupuacu::persistence::PersistedSessionState persistedState{};
+    persistedState.recentFiles = {wavPath.string()};
 
     state.getActiveDocumentSession().currentFile = "before.wav";
     state.getActiveDocumentSession().selection.setValue1(1.0);
     state.getActiveDocumentSession().selection.setValue2(3.0);
     state.getActiveDocumentSession().cursor = 2;
 
-    cupuacu::actions::restoreStartupDocument(&state);
+    cupuacu::actions::restoreStartupDocument(&state, persistedState);
 
     REQUIRE(state.getActiveDocumentSession().currentFile == wavPath.string());
     REQUIRE(state.getActiveDocumentSession().document.getSampleRate() == 48000);
@@ -459,6 +487,35 @@ TEST_CASE("Startup document restore integration reopens the most recent file",
     REQUIRE_FALSE(state.getActiveDocumentSession().selection.isActive());
     REQUIRE(state.getActiveDocumentSession().cursor == 0);
     REQUIRE(state.recentFiles == std::vector<std::string>{wavPath.string()});
+}
+
+TEST_CASE("Startup document restore integration reopens multiple file-backed tabs",
+          "[integration]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-startup-restore-multi"));
+    const auto firstPath = cleanup.path() / "first.wav";
+    const auto secondPath = cleanup.path() / "second.wav";
+    writeTestWav(firstPath, 44100, 1, {0.1f, 0.2f, 0.3f});
+    writeTestWav(secondPath, 22050, 2, {0.4f, -0.4f, 0.5f, -0.5f});
+
+    cupuacu::State state{};
+    createBuiltSessionUi(&state, 8);
+
+    cupuacu::persistence::PersistedSessionState persistedState{};
+    persistedState.recentFiles = {secondPath.string(), firstPath.string()};
+    persistedState.openFiles = {firstPath.string(), secondPath.string()};
+    persistedState.activeOpenFileIndex = 1;
+
+    cupuacu::actions::restoreStartupDocument(&state, persistedState);
+
+    REQUIRE(state.tabs.size() == 2);
+    REQUIRE(state.activeTabIndex == 1);
+    REQUIRE(state.tabs[0].session.currentFile == firstPath.string());
+    REQUIRE(state.tabs[0].session.document.getSampleRate() == 44100);
+    REQUIRE(state.tabs[1].session.currentFile == secondPath.string());
+    REQUIRE(state.tabs[1].session.document.getSampleRate() == 22050);
+    REQUIRE(state.getActiveDocumentSession().currentFile == secondPath.string());
 }
 
 TEST_CASE("Event handling integration ignores unfocused key and text input",
@@ -899,6 +956,54 @@ TEST_CASE("Empty stereo document click keeps triangle markers hidden",
     REQUIRE_FALSE(cursorBottom->isVisible());
     REQUIRE_FALSE(state.getActiveDocumentSession().selection.isActive());
     REQUIRE(state.getActiveDocumentSession().cursor == 0);
+}
+
+TEST_CASE("Mono waveform integration keeps channel selection unified across the full height",
+          "[integration]")
+{
+    cupuacu::State state{};
+    createBuiltSessionUi(&state, 64, 44100, 1, 800, 400);
+
+    auto *root = state.mainDocumentSessionWindow->getWindow()->getRootComponent();
+    auto *underlay = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::WaveformsUnderlay>(root, "WaveformsUnderlay");
+    REQUIRE(underlay != nullptr);
+
+    auto &viewState = state.getActiveViewState();
+    const int dragY = underlay->getHeight() * 3 / 4;
+
+    REQUIRE(underlay->mouseDown(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN,
+        20,
+        dragY,
+        20.0f,
+        static_cast<float>(dragY),
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+
+    REQUIRE(viewState.selectedChannels == cupuacu::SelectedChannels::BOTH);
+    REQUIRE(viewState.hoveringOverChannels == cupuacu::SelectedChannels::BOTH);
+
+    underlay->getWindow()->setCapturingComponent(underlay);
+
+    REQUIRE(underlay->mouseMove(cupuacu::gui::MouseEvent{
+        cupuacu::gui::MOVE,
+        120,
+        dragY,
+        120.0f,
+        static_cast<float>(dragY),
+        100.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+
+    const auto &selection = state.getActiveDocumentSession().selection;
+    REQUIRE(selection.isActive());
+    REQUIRE(selection.getLengthInt() > 0);
+    REQUIRE(viewState.selectedChannels == cupuacu::SelectedChannels::BOTH);
+    REQUIRE(viewState.hoveringOverChannels == cupuacu::SelectedChannels::BOTH);
 }
 
 TEST_CASE("Generate silence dialog integration inserts silence at the cursor",

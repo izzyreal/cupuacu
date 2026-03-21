@@ -6,6 +6,7 @@
 #include "../State.hpp"
 #include "../file/file_loading.hpp"
 #include "../gui/MainViewAccess.hpp"
+#include "../gui/NewFileDialogWindow.hpp"
 #include "../gui/Waveform.hpp"
 #include "../persistence/RecentFilesPersistence.hpp"
 #include "Play.hpp"
@@ -24,9 +25,10 @@ namespace cupuacu::actions
 
     struct StartupDocumentRestorePlan
     {
-        std::string fileToOpen;
         std::vector<std::string> recentFiles;
-        bool shouldPersistRecentFiles = false;
+        std::vector<std::string> openFiles;
+        int activeOpenFileIndex = -1;
+        bool shouldPersistState = false;
     };
 
     inline int sampleFormatBitDepth(const cupuacu::SampleFormat format)
@@ -78,7 +80,38 @@ namespace cupuacu::actions
                state->getActiveDocumentSession().document.getChannelCount() > 0;
     }
 
-    inline void persistRecentFiles(cupuacu::State *state)
+    inline cupuacu::persistence::PersistedSessionState
+    buildPersistedSessionState(const cupuacu::State *state)
+    {
+        cupuacu::persistence::PersistedSessionState persisted{};
+        if (!state)
+        {
+            return persisted;
+        }
+
+        persisted.recentFiles = state->recentFiles;
+
+        int openFileIndex = 0;
+        for (int i = 0; i < static_cast<int>(state->tabs.size()); ++i)
+        {
+            const auto &tab = state->tabs[static_cast<size_t>(i)];
+            if (tab.session.currentFile.empty())
+            {
+                continue;
+            }
+
+            persisted.openFiles.push_back(tab.session.currentFile);
+            if (i == state->activeTabIndex)
+            {
+                persisted.activeOpenFileIndex = openFileIndex;
+            }
+            ++openFileIndex;
+        }
+
+        return persisted;
+    }
+
+    inline void persistSessionState(cupuacu::State *state)
     {
         if (!state || !state->paths)
         {
@@ -86,7 +119,8 @@ namespace cupuacu::actions
         }
 
         cupuacu::persistence::RecentFilesPersistence::save(
-            state->paths->recentlyOpenedFilesPath(), state->recentFiles);
+            state->paths->recentlyOpenedFilesPath(),
+            buildPersistedSessionState(state));
     }
 
     inline void removeRecentFile(cupuacu::State *state,
@@ -101,7 +135,7 @@ namespace cupuacu::actions
         recentFiles.erase(
             std::remove(recentFiles.begin(), recentFiles.end(), absolutePath),
             recentFiles.end());
-        persistRecentFiles(state);
+        persistSessionState(state);
     }
 
     inline void rememberRecentFile(cupuacu::State *state,
@@ -123,7 +157,7 @@ namespace cupuacu::actions
             recentFiles.resize(
                 cupuacu::persistence::RecentFilesPersistence::kMaxEntries);
         }
-        persistRecentFiles(state);
+        persistSessionState(state);
     }
 
     inline void setMainWindowTitle(cupuacu::State *state,
@@ -253,6 +287,7 @@ namespace cupuacu::actions
 
         refreshDocumentUi(state);
         setMainWindowTitle(state, kUntitledDocumentTitle);
+        persistSessionState(state);
     }
 
     inline void createNewDocument(cupuacu::State *state, const int sampleRate,
@@ -275,6 +310,7 @@ namespace cupuacu::actions
 
         refreshDocumentUi(state);
         setMainWindowTitle(state, kUntitledDocumentTitle);
+        persistSessionState(state);
     }
 
     inline bool createNewDocumentInNewTab(cupuacu::State *state,
@@ -310,6 +346,10 @@ namespace cupuacu::actions
         {
             rememberRecentFile(state, absoluteFilePath);
         }
+        else
+        {
+            persistSessionState(state);
+        }
 
         return true;
     }
@@ -327,50 +367,119 @@ namespace cupuacu::actions
     }
 
     inline StartupDocumentRestorePlan planStartupDocumentRestore(
-        const std::vector<std::string> &recentFiles)
+        const cupuacu::persistence::PersistedSessionState &persistedState)
     {
         StartupDocumentRestorePlan plan{};
+        plan.activeOpenFileIndex = persistedState.activeOpenFileIndex;
 
-        if (!recentFiles.empty() &&
-            std::filesystem::exists(recentFiles.front()))
-        {
-            plan.fileToOpen = recentFiles.front();
-            plan.recentFiles = recentFiles;
-            return plan;
-        }
-
-        plan.recentFiles.reserve(recentFiles.size());
-        for (const auto &path : recentFiles)
+        plan.recentFiles.reserve(persistedState.recentFiles.size());
+        for (const auto &path : persistedState.recentFiles)
         {
             if (!path.empty() && std::filesystem::exists(path))
             {
                 plan.recentFiles.push_back(path);
             }
         }
-        plan.shouldPersistRecentFiles = plan.recentFiles != recentFiles;
+
+        plan.openFiles.reserve(persistedState.openFiles.size());
+        for (const auto &path : persistedState.openFiles)
+        {
+            if (!path.empty() && std::filesystem::exists(path))
+            {
+                plan.openFiles.push_back(path);
+            }
+        }
+
+        if (plan.openFiles.empty() && !plan.recentFiles.empty())
+        {
+            plan.openFiles.push_back(plan.recentFiles.front());
+            plan.activeOpenFileIndex = 0;
+        }
+        else if (plan.openFiles.empty())
+        {
+            plan.activeOpenFileIndex = -1;
+        }
+        else
+        {
+            const int normalizedIndex =
+                std::clamp(plan.activeOpenFileIndex, 0,
+                           static_cast<int>(plan.openFiles.size()) - 1);
+            if (normalizedIndex != plan.activeOpenFileIndex)
+            {
+                plan.shouldPersistState = true;
+            }
+            plan.activeOpenFileIndex = normalizedIndex;
+        }
+
+        if (plan.recentFiles != persistedState.recentFiles ||
+            plan.openFiles != persistedState.openFiles)
+        {
+            plan.shouldPersistState = true;
+        }
+
         return plan;
     }
 
-    inline void restoreStartupDocument(cupuacu::State *state)
+    inline void restoreStartupDocument(
+        cupuacu::State *state,
+        const cupuacu::persistence::PersistedSessionState &persistedState)
     {
         if (!state)
         {
             return;
         }
 
-        const auto plan = planStartupDocumentRestore(state->recentFiles);
+        const auto plan = planStartupDocumentRestore(persistedState);
         state->recentFiles = plan.recentFiles;
-        if (!plan.fileToOpen.empty())
+
+        if (!plan.openFiles.empty())
         {
-            loadFileIntoSession(state, plan.fileToOpen, false);
+            loadFileIntoSession(state, plan.openFiles.front(), false);
+
+            for (size_t index = 1; index < plan.openFiles.size(); ++index)
+            {
+                loadFileIntoNewTab(state, plan.openFiles[index], false);
+            }
+
+            if (plan.activeOpenFileIndex >= 0 &&
+                plan.activeOpenFileIndex < static_cast<int>(state->tabs.size()))
+            {
+                state->activeTabIndex = plan.activeOpenFileIndex;
+                bindMainWindowToActiveDocument(state);
+                refreshDocumentUi(state);
+                setMainWindowTitle(
+                    state, state->getActiveDocumentSession().currentFile);
+            }
+
+            if (plan.shouldPersistState)
+            {
+                persistSessionState(state);
+            }
             return;
         }
 
-        if (plan.shouldPersistRecentFiles)
+        if (plan.shouldPersistState)
         {
-            persistRecentFiles(state);
+            persistSessionState(state);
         }
         state->getActiveDocumentSession().currentFile.clear();
+    }
+
+    inline void showNewFileDialog(cupuacu::State *state)
+    {
+        if (!state)
+        {
+            return;
+        }
+
+        if (!state->newFileDialogWindow || !state->newFileDialogWindow->isOpen())
+        {
+            state->newFileDialogWindow.reset(new gui::NewFileDialogWindow(state));
+        }
+        else
+        {
+            state->newFileDialogWindow->raise();
+        }
     }
 
     inline void requestExit(cupuacu::State *state)

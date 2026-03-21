@@ -5,6 +5,7 @@
 
 #include "effects/AmplifyFadeEffect.hpp"
 #include "effects/DynamicsEffect.hpp"
+#include "effects/ReverseEffect.hpp"
 #include "State.hpp"
 #include "SelectedChannels.hpp"
 #include "audio/AudioDevices.hpp"
@@ -28,6 +29,7 @@ namespace
     {
         std::unique_ptr<cupuacu::gui::Window> window;
         cupuacu::gui::MenuBar *menuBar = nullptr;
+        cupuacu::gui::Menu *reverseMenu = nullptr;
         cupuacu::gui::Menu *amplifyFadeMenu = nullptr;
         cupuacu::gui::Menu *dynamicsMenu = nullptr;
     };
@@ -61,9 +63,10 @@ namespace
         auto *effectsMenu = topLevelMenus[4];
         auto effectSubMenus =
             cupuacu::test::integration::menuChildren(effectsMenu);
-        REQUIRE(effectSubMenus.size() == 2);
-        harness.amplifyFadeMenu = effectSubMenus[0];
-        harness.dynamicsMenu = effectSubMenus[1];
+        REQUIRE(effectSubMenus.size() == 3);
+        harness.reverseMenu = effectSubMenus[0];
+        harness.amplifyFadeMenu = effectSubMenus[1];
+        harness.dynamicsMenu = effectSubMenus[2];
         return harness;
     }
 
@@ -108,6 +111,45 @@ TEST_CASE("Effects menu integration opens AmplifyFade and Dynamics dialogs",
         cupuacu::test::integration::leftMouseDown()));
     REQUIRE(state.dynamicsDialog != nullptr);
     REQUIRE(state.dynamicsDialog->isOpen());
+}
+
+TEST_CASE("Reverse menu integration applies immediately without opening a dialog",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::State state{};
+    auto ui = cupuacu::test::integration::createSessionUi(&state, 5, false, 2);
+    auto &session = state.getActiveDocumentSession();
+    auto &doc = session.document;
+
+    for (int64_t frame = 0; frame < doc.getFrameCount(); ++frame)
+    {
+        doc.setSample(0, frame, static_cast<float>(frame), false);
+        doc.setSample(1, frame, static_cast<float>(10 + frame), false);
+    }
+
+    session.selection.setValue1(1.0);
+    session.selection.setValue2(4.0);
+    state.getActiveViewState().selectedChannels =
+        cupuacu::SelectedChannels::LEFT;
+
+    auto harness = createEffectsMenuHarness(&state);
+    REQUIRE(harness.reverseMenu->mouseDown(
+        cupuacu::test::integration::leftMouseDown()));
+
+    REQUIRE(state.modalWindow == nullptr);
+    REQUIRE(state.getActiveUndoables().size() == 1);
+    REQUIRE(doc.getSample(0, 0) == Approx(0.0f));
+    REQUIRE(doc.getSample(0, 1) == Approx(3.0f));
+    REQUIRE(doc.getSample(0, 2) == Approx(2.0f));
+    REQUIRE(doc.getSample(0, 3) == Approx(1.0f));
+    REQUIRE(doc.getSample(0, 4) == Approx(4.0f));
+    REQUIRE(doc.getSample(1, 0) == Approx(10.0f));
+    REQUIRE(doc.getSample(1, 1) == Approx(11.0f));
+    REQUIRE(doc.getSample(1, 2) == Approx(12.0f));
+    REQUIRE(doc.getSample(1, 3) == Approx(13.0f));
+    REQUIRE(doc.getSample(1, 4) == Approx(14.0f));
 }
 
 TEST_CASE("AmplifyFade dialog integration exposes shared controls and presets",

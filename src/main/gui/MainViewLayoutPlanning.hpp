@@ -38,9 +38,13 @@ namespace cupuacu::gui
                                                  const uint8_t pixelScale)
     {
         MainViewLayoutPlan plan{};
+        constexpr float kTimelineLabelAreaHeight = 30.0f;
+        constexpr float kTimelineLongTickHeight = 14.0f;
         plan.borderWidth = scaleUiValue(uiScale, pixelScale, 16.0f);
         plan.scrollBarHeight = scaleUiValue(uiScale, pixelScale, 14.0f);
-        plan.timelineHeight = scaleUiValue(uiScale, pixelScale, 60.0f);
+        plan.timelineHeight = scaleUiValue(
+            uiScale, pixelScale,
+            kTimelineLabelAreaHeight + kTimelineLongTickHeight);
 
         plan.horizontalScrollBar = {
             plan.borderWidth,
