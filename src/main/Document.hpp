@@ -21,6 +21,11 @@ namespace cupuacu
         std::vector<gui::WaveformCache> waveformCache =
             std::vector<gui::WaveformCache>(2);
 
+        void syncWaveformCacheToChannelCount(const int64_t channelCount)
+        {
+            waveformCache.resize(static_cast<std::size_t>(channelCount));
+        }
+
     public:
         void initialize(const SampleFormat sampleFormatToUse,
                         const uint32_t sampleRateToUse,
@@ -39,7 +44,7 @@ namespace cupuacu
                          : std::make_shared<cupuacu::audio::AudioBuffer>();
             buffer->resize(channelCount, frameCount);
             ++waveformDataVersion;
-            waveformCache.assign(channelCount, gui::WaveformCache{});
+            syncWaveformCacheToChannelCount(channelCount);
         }
 
         gui::WaveformCache &getWaveformCache(const int channel)
@@ -87,6 +92,7 @@ namespace cupuacu
         void resizeBuffer(int64_t channels, int64_t frames)
         {
             buffer->resize(channels, frames);
+            syncWaveformCacheToChannelCount(channels);
             ++waveformDataVersion;
         }
 
