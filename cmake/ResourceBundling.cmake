@@ -40,5 +40,5 @@ function(_bundle_test_resources _target_name)
         )
     endif()
 
-    target_link_libraries(${_target_name} PUBLIC cupuacu::test_rc)
+    target_link_libraries(${_target_name} PUBLIC test_resources)
 endfunction()
