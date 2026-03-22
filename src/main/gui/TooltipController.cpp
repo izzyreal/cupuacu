@@ -59,8 +59,6 @@ namespace cupuacu::gui
 
             const float displayScale =
                 std::max(1.0f, SDL_GetWindowDisplayScale(parentWindow));
-            const float previousFontDisplayScale = getFontDisplayScale();
-            setFontDisplayScale(displayScale);
 
             const uint8_t fontPointSize = scaleFontPointSize(
                 state, std::max(1, static_cast<int>(state->menuFontSize) - 6));
@@ -85,7 +83,6 @@ namespace cupuacu::gui
                 displayBounds.h);
             if (!geometry.valid)
             {
-                setFontDisplayScale(previousFontDisplayScale);
                 hide();
                 return;
             }
@@ -103,7 +100,6 @@ namespace cupuacu::gui
                 geometry.logicalHeight, geometry.gapLogical);
             if (!placement.valid)
             {
-                setFontDisplayScale(previousFontDisplayScale);
                 hide();
                 return;
             }
@@ -111,14 +107,12 @@ namespace cupuacu::gui
             if (!ensureWindow(parentWindow, placement.offsetX, placement.offsetY,
                               geometry.logicalWidth, geometry.logicalHeight))
             {
-                setFontDisplayScale(previousFontDisplayScale);
                 hide();
                 return;
             }
 
             if (!ensureCanvas(geometry.canvasWidth, geometry.canvasHeight))
             {
-                setFontDisplayScale(previousFontDisplayScale);
                 hide();
                 return;
             }
@@ -126,7 +120,6 @@ namespace cupuacu::gui
             render(text, fontPointSize, geometry.renderPaddingPx);
             SDL_ShowWindow(window);
             visible = true;
-            setFontDisplayScale(previousFontDisplayScale);
         }
 
         void hide()
