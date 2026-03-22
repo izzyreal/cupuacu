@@ -46,6 +46,29 @@ TEST_CASE("Block-mode selection fill rect keeps fully covered interior pixels",
     REQUIRE(rect.h == 20.0f);
 }
 
+TEST_CASE("Block-mode selection rect covers any pixel whose block window intersects the selection",
+          "[selection]")
+{
+    const int64_t firstSample = 42152;
+    const int64_t lastSampleExclusive = 84376;
+    const double samplesPerPixel = 84448.0 / 2528.0;
+    SDL_FRect rect{};
+
+    const bool ok = cupuacu::gui::Waveform::computeBlockModeSelectionRect(
+        firstSample, lastSampleExclusive, 0, samplesPerPixel, 2528, 20, rect);
+
+    REQUIRE(ok);
+    REQUIRE(rect.x == 1261.0f);
+
+    double windowStart = 0.0;
+    double windowEnd = 0.0;
+    cupuacu::gui::Waveform::getBlockRenderSampleWindowForPixel(
+        1261, 0, samplesPerPixel, windowStart, windowEnd);
+
+    REQUIRE(windowStart < static_cast<double>(firstSample));
+    REQUIRE(windowEnd > static_cast<double>(firstSample));
+}
+
 TEST_CASE("Block-mode selection rect expands to cache-bin boundaries",
           "[selection]")
 {

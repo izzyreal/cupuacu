@@ -718,10 +718,10 @@ void Waveform::drawBlockSelection(SDL_Renderer *renderer,
                                   const double samplesPerPixel) const
 {
     SDL_FRect selectionRect{};
-    if (computeBlockModeSelectionFillRect(firstSample, lastSampleExclusive,
-                                          sampleOffset, samplesPerPixel,
-                                          getWidth(), getHeight(),
-                                          selectionRect))
+    if (computeBlockModeSelectionRect(firstSample, lastSampleExclusive,
+                                      sampleOffset, samplesPerPixel,
+                                      getWidth(), getHeight(),
+                                      selectionRect))
     {
         SDL_RenderFillRect(renderer, &selectionRect);
     }
