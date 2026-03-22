@@ -12,7 +12,11 @@ LLVM_PROFDATA_BIN="${LLVM_PROFDATA_BIN:-$(xcrun --find llvm-profdata)}"
 
 mkdir -p "$DIST_DIR"
 
-if [[ ! -f "$BUILD_DIR/CMakeCache.txt" || "${FORCE_CONFIGURE:-0}" == "1" ]]; then
+build_tree_ready() {
+  [[ -f "$BUILD_DIR/Makefile" || -f "$BUILD_DIR/build.ninja" ]]
+}
+
+if [[ ! -f "$BUILD_DIR/CMakeCache.txt" || "${FORCE_CONFIGURE:-0}" == "1" || ! build_tree_ready ]]; then
   cmake -S "$ROOT_DIR" -B "$BUILD_DIR" \
     -DCMAKE_BUILD_TYPE=Debug \
     -DCMAKE_C_FLAGS="-fprofile-instr-generate -fcoverage-mapping" \
