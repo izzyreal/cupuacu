@@ -271,6 +271,12 @@ void DropdownMenu::destroyPopupWindow()
         }
     }
 
+    if (popupWindow->isOpen())
+    {
+        popupWindow->requestClose();
+        return;
+    }
+
     popupWindow.reset();
 }
 
