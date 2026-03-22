@@ -298,6 +298,7 @@ set(CUPUACU_MAC_ICONSET_DIR
     "${CUPUACU_ICON_DIR}/macos/Cupuacu.iconset")
 set(CUPUACU_MAC_ICNS "${CUPUACU_ICON_DIR}/macos/Cupuacu.icns")
 set(CUPUACU_WINDOWS_ICON "${CUPUACU_ICON_DIR}/windows/cupuacu.ico")
+set(CUPUACU_WINDOWS_MANIFEST "${CMAKE_SOURCE_DIR}/cmake/Cupuacu.exe.manifest")
 set(CUPUACU_LINUX_ICON "${CUPUACU_ICON_DIR}/linux/cupuacu.png")
 
 if(APPLE)
