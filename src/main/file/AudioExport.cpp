@@ -6,7 +6,6 @@
 #include <array>
 #include <cctype>
 #include <cmath>
-#include <initializer_list>
 #include <limits>
 #include <optional>
 #include <string_view>
@@ -37,7 +36,35 @@ namespace
         const char *containerLabel;
         const char *codecLabel;
         int majorFormat;
-        std::initializer_list<CandidateEncoding> encodings;
+        const CandidateEncoding *encodings;
+        std::size_t encodingCount;
+    };
+
+    constexpr CandidateEncoding kWavEncodings[] = {
+        {"16-bit PCM", SF_FORMAT_PCM_16, "wav"},
+        {"24-bit PCM", SF_FORMAT_PCM_24, "wav"},
+        {"32-bit PCM", SF_FORMAT_PCM_32, "wav"},
+        {"32-bit float", SF_FORMAT_FLOAT, "wav"},
+    };
+    constexpr CandidateEncoding kAiffEncodings[] = {
+        {"16-bit PCM", SF_FORMAT_PCM_16, "aiff"},
+        {"24-bit PCM", SF_FORMAT_PCM_24, "aiff"},
+        {"32-bit PCM", SF_FORMAT_PCM_32, "aiff"},
+    };
+    constexpr CandidateEncoding kCafEncodings[] = {
+        {"16-bit ALAC", SF_FORMAT_ALAC_16, "caf"},
+        {"24-bit ALAC", SF_FORMAT_ALAC_24, "caf"},
+        {"32-bit ALAC", SF_FORMAT_ALAC_32, "caf"},
+    };
+    constexpr CandidateEncoding kFlacEncodings[] = {
+        {"16-bit FLAC", SF_FORMAT_PCM_16, "flac"},
+        {"24-bit FLAC", SF_FORMAT_PCM_24, "flac"},
+    };
+    constexpr CandidateEncoding kOggEncodings[] = {
+        {"Default quality", SF_FORMAT_VORBIS, "ogg"},
+    };
+    constexpr CandidateEncoding kMpegEncodings[] = {
+        {"Default quality", SF_FORMAT_MPEG_LAYER_III, "mp3"},
     };
 
     constexpr CandidateFormat kCandidateFormats[] = {
@@ -46,61 +73,73 @@ namespace
          "WAV",
          "PCM",
          SF_FORMAT_WAV,
-         {{"16-bit PCM", SF_FORMAT_PCM_16, "wav"},
-          {"24-bit PCM", SF_FORMAT_PCM_24, "wav"},
-          {"32-bit PCM", SF_FORMAT_PCM_32, "wav"},
-          {"32-bit float", SF_FORMAT_FLOAT, "wav"}}},
+         kWavEncodings,
+         std::size(kWavEncodings)},
         {AudioExportContainer::AIFF,
          AudioExportCodec::PCM,
          "AIFF",
          "PCM",
          SF_FORMAT_AIFF,
-         {{"16-bit PCM", SF_FORMAT_PCM_16, "aiff"},
-          {"24-bit PCM", SF_FORMAT_PCM_24, "aiff"},
-          {"32-bit PCM", SF_FORMAT_PCM_32, "aiff"}}},
+         kAiffEncodings,
+         std::size(kAiffEncodings)},
         {AudioExportContainer::CAF,
          AudioExportCodec::ALAC,
          "CAF",
          "ALAC",
          SF_FORMAT_CAF,
-         {{"16-bit ALAC", SF_FORMAT_ALAC_16, "caf"},
-          {"24-bit ALAC", SF_FORMAT_ALAC_24, "caf"},
-          {"32-bit ALAC", SF_FORMAT_ALAC_32, "caf"}}},
+         kCafEncodings,
+         std::size(kCafEncodings)},
         {AudioExportContainer::FLAC,
          AudioExportCodec::FLAC,
          "FLAC",
          "FLAC",
          SF_FORMAT_FLAC,
-         {{"16-bit FLAC", SF_FORMAT_PCM_16, "flac"},
-          {"24-bit FLAC", SF_FORMAT_PCM_24, "flac"}}},
+         kFlacEncodings,
+         std::size(kFlacEncodings)},
         {AudioExportContainer::OGG,
          AudioExportCodec::VORBIS,
          "OGG",
          "Vorbis",
          SF_FORMAT_OGG,
-         {{"Default quality", SF_FORMAT_VORBIS, "ogg"}}},
+         kOggEncodings,
+         std::size(kOggEncodings)},
         {AudioExportContainer::MPEG,
          AudioExportCodec::MP3,
          "MPEG",
          "MP3",
          SF_FORMAT_MPEG,
-         {{"Default quality", SF_FORMAT_MPEG_LAYER_III, "mp3"}}},
+         kMpegEncodings,
+         std::size(kMpegEncodings)},
     };
 
     struct CandidateOpenFormat
     {
         int majorFormat;
         const char *label;
-        std::initializer_list<const char *> extensions;
+        const char *const *extensions;
+        std::size_t extensionCount;
     };
 
+    constexpr const char *kWavOpenExtensions[] = {"wav"};
+    constexpr const char *kAiffOpenExtensions[] = {"aiff", "aif", "aifc"};
+    constexpr const char *kCafOpenExtensions[] = {"caf"};
+    constexpr const char *kFlacOpenExtensions[] = {"flac"};
+    constexpr const char *kOggOpenExtensions[] = {"ogg", "oga"};
+    constexpr const char *kMpegOpenExtensions[] = {"mp3"};
+
     constexpr CandidateOpenFormat kCandidateOpenFormats[] = {
-        {SF_FORMAT_WAV, "WAV audio", {"wav"}},
-        {SF_FORMAT_AIFF, "AIFF audio", {"aiff", "aif", "aifc"}},
-        {SF_FORMAT_CAF, "CAF audio", {"caf"}},
-        {SF_FORMAT_FLAC, "FLAC audio", {"flac"}},
-        {SF_FORMAT_OGG, "OGG audio", {"ogg", "oga"}},
-        {SF_FORMAT_MPEG, "MP3 audio", {"mp3"}},
+        {SF_FORMAT_WAV, "WAV audio", kWavOpenExtensions,
+         std::size(kWavOpenExtensions)},
+        {SF_FORMAT_AIFF, "AIFF audio", kAiffOpenExtensions,
+         std::size(kAiffOpenExtensions)},
+        {SF_FORMAT_CAF, "CAF audio", kCafOpenExtensions,
+         std::size(kCafOpenExtensions)},
+        {SF_FORMAT_FLAC, "FLAC audio", kFlacOpenExtensions,
+         std::size(kFlacOpenExtensions)},
+        {SF_FORMAT_OGG, "OGG audio", kOggOpenExtensions,
+         std::size(kOggOpenExtensions)},
+        {SF_FORMAT_MPEG, "MP3 audio", kMpegOpenExtensions,
+         std::size(kMpegOpenExtensions)},
     };
 
     bool isFormatWritable(const int combinedFormat)
@@ -236,16 +275,21 @@ namespace
         int maxSampleRateExclusive = 0;
         int minKbps = 0;
         int maxKbps = 0;
-        std::initializer_list<int> bitrates;
+        const int *bitrates = nullptr;
+        std::size_t bitrateCount = 0;
     };
 
+    constexpr int kMpeg1Bitrates[] = {32, 40, 48, 56, 64, 80, 96, 112,
+                                      128, 160, 192, 224, 256, 320};
+    constexpr int kMpeg2Bitrates[] = {8,  16, 24, 32, 40, 48, 56,
+                                      64, 80, 96, 112, 128, 144, 160};
+    constexpr int kMpeg25Bitrates[] = {8, 16, 24, 32, 40, 48, 56, 64};
+
     constexpr MpegBitrateBand kMpegBitrateBands[] = {
-        {32000, std::numeric_limits<int>::max(), 32, 320,
-         {32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320}},
-        {16000, 32000, 8, 160,
-         {8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160}},
-        {0, 16000, 8, 64,
-         {8, 16, 24, 32, 40, 48, 56, 64}},
+        {32000, std::numeric_limits<int>::max(), 32, 320, kMpeg1Bitrates,
+         std::size(kMpeg1Bitrates)},
+        {16000, 32000, 8, 160, kMpeg2Bitrates, std::size(kMpeg2Bitrates)},
+        {0, 16000, 8, 64, kMpeg25Bitrates, std::size(kMpeg25Bitrates)},
     };
 
     const MpegBitrateBand *mpegBitrateBandForSampleRate(const int sampleRate)
@@ -288,8 +332,9 @@ namespace
         option.codecLabel = candidate.codecLabel;
         option.majorFormat = candidate.majorFormat;
 
-        for (const auto &encoding : candidate.encodings)
+        for (std::size_t i = 0; i < candidate.encodingCount; ++i)
         {
+            const auto &encoding = candidate.encodings[i];
             if (encoding.subtype == subtype)
             {
                 return makeSettings(
@@ -322,9 +367,9 @@ namespace
             return preferred;
         }
 
-        if (candidate.encodings.size() > 0)
+        if (candidate.encodingCount > 0)
         {
-            return makeSettings(candidate, candidate.encodings.begin()->subtype);
+            return makeSettings(candidate, candidate.encodings[0].subtype);
         }
 
         return std::nullopt;
@@ -336,12 +381,13 @@ namespace
     {
         for (const auto &candidate : kCandidateFormats)
         {
-            for (const auto &encoding : candidate.encodings)
+            for (std::size_t i = 0; i < candidate.encodingCount; ++i)
             {
+                const auto &encoding = candidate.encodings[i];
                 if (extensionEquals(outputPath, encoding.extension))
                 {
                     return fallbackSettingsForCandidate(candidate,
-                                                       documentFormat);
+                                                        documentFormat);
                 }
             }
         }
@@ -372,8 +418,9 @@ std::vector<AudioExportFormatOption> cupuacu::file::probeAvailableExportFormats(
         option.codecLabel = candidate.codecLabel;
         option.majorFormat = candidate.majorFormat;
 
-        for (const auto &encoding : candidate.encodings)
+        for (std::size_t i = 0; i < candidate.encodingCount; ++i)
         {
+            const auto &encoding = candidate.encodings[i];
             if (isFormatWritable(candidate.majorFormat | encoding.subtype))
             {
                 option.encodings.push_back(AudioExportEncoding{
@@ -400,8 +447,8 @@ std::vector<AudioOpenFormatOption> cupuacu::file::probeAvailableOpenFormats()
         AudioOpenFormatOption option{};
         option.majorFormat = candidate.majorFormat;
         option.label = candidate.label;
-        option.extensions.assign(candidate.extensions.begin(),
-                                 candidate.extensions.end());
+        option.extensions.assign(candidate.extensions,
+                                 candidate.extensions + candidate.extensionCount);
         result.push_back(std::move(option));
     }
 
@@ -460,9 +507,10 @@ cupuacu::file::bitrateOptionsForSettings(const AudioExportSettings &settings,
     }
 
     std::vector<AudioExportNamedIntOption> result;
-    result.reserve(static_cast<std::size_t>(band->bitrates.size()));
-    for (const int bitrate : band->bitrates)
+    result.reserve(band->bitrateCount);
+    for (std::size_t i = 0; i < band->bitrateCount; ++i)
     {
+        const int bitrate = band->bitrates[i];
         result.push_back({std::to_string(bitrate) + " kbps", bitrate});
     }
     return result;
