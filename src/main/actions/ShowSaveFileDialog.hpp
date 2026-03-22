@@ -10,6 +10,25 @@
 
 namespace cupuacu::actions
 {
+    static SDL_Window *getSaveFileDialogParentWindow(cupuacu::State *state)
+    {
+        if (!state)
+        {
+            return nullptr;
+        }
+        if (state->modalWindow && state->modalWindow->isOpen())
+        {
+            return state->modalWindow->getSdlWindow();
+        }
+        if (state->mainDocumentSessionWindow &&
+            state->mainDocumentSessionWindow->getWindow() &&
+            state->mainDocumentSessionWindow->getWindow()->isOpen())
+        {
+            return state->mainDocumentSessionWindow->getWindow()->getSdlWindow();
+        }
+        return nullptr;
+    }
+
     static void saveFileDialogCallback(void *userdata,
                                        const char *const *filelist, int)
     {
@@ -41,29 +60,6 @@ namespace cupuacu::actions
         actions::saveAs(state, *filelist, *settings);
     }
 
-    static void showSaveFileDialogMainThreadCallback(void *userdata)
-    {
-        auto *state = static_cast<cupuacu::State *>(userdata);
-        if (!state || !state->pendingSaveAsExportSettings.has_value())
-        {
-            return;
-        }
-
-        const char *defaultLocation =
-            (state && !state->getActiveDocumentSession().currentFile.empty())
-                ? state->getActiveDocumentSession().currentFile.c_str()
-                : SDL_GetUserFolder(SDL_FOLDER_HOME);
-        SDL_ShowSaveFileDialog(saveFileDialogCallback, userdata, nullptr, nullptr,
-                               0, defaultLocation);
-    }
-
-    static Uint32 showSaveFileDialogTimerCallback(void *userdata, SDL_TimerID,
-                                                  Uint32)
-    {
-        SDL_RunOnMainThread(showSaveFileDialogMainThreadCallback, userdata, false);
-        return 0;
-    }
-
     static void showSaveFileDialog(cupuacu::State *state,
                                    const file::AudioExportSettings &settings)
     {
@@ -73,6 +69,12 @@ namespace cupuacu::actions
         }
 
         state->pendingSaveAsExportSettings = settings;
-        SDL_AddTimer(0, showSaveFileDialogTimerCallback, static_cast<void *>(state));
+        const char *defaultLocation =
+            !state->getActiveDocumentSession().currentFile.empty()
+                ? state->getActiveDocumentSession().currentFile.c_str()
+                : SDL_GetUserFolder(SDL_FOLDER_HOME);
+        SDL_ShowSaveFileDialog(
+            saveFileDialogCallback, state, getSaveFileDialogParentWindow(state),
+            nullptr, 0, defaultLocation);
     }
 } // namespace cupuacu::actions

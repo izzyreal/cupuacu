@@ -12,6 +12,25 @@
 
 namespace cupuacu::actions
 {
+    static SDL_Window *getFileDialogParentWindow(cupuacu::State *state)
+    {
+        if (!state)
+        {
+            return nullptr;
+        }
+        if (state->modalWindow && state->modalWindow->isOpen())
+        {
+            return state->modalWindow->getSdlWindow();
+        }
+        if (state->mainDocumentSessionWindow &&
+            state->mainDocumentSessionWindow->getWindow() &&
+            state->mainDocumentSessionWindow->getWindow()->isOpen())
+        {
+            return state->mainDocumentSessionWindow->getWindow()->getSdlWindow();
+        }
+        return nullptr;
+    }
+
     struct OpenDialogFilterSet
     {
         std::vector<std::string> names;
@@ -93,25 +112,14 @@ namespace cupuacu::actions
         }
     }
 
-    static void ShowDialogMainThreadCallback(void *userdata)
+    static void showOpenFileDialog(cupuacu::State *state)
     {
         const auto &filters = getOpenDialogFilters();
         const auto *filterPtr =
             filters.filters.empty() ? nullptr : filters.filters.data();
         const int filterCount = static_cast<int>(filters.filters.size());
-        SDL_ShowOpenFileDialog(fileDialogCallback, (State *)userdata, NULL,
-                               filterPtr, filterCount, NULL, true);
-    }
-
-    static Uint32 ShowDialogTimerCallback(void *userdata, SDL_TimerID,
-                                          Uint32 interval)
-    {
-        SDL_RunOnMainThread(ShowDialogMainThreadCallback, userdata, false);
-        return 0;
-    }
-
-    static void showOpenFileDialog(cupuacu::State *state)
-    {
-        SDL_AddTimer(0, ShowDialogTimerCallback, (void *)state);
+        SDL_ShowOpenFileDialog(fileDialogCallback, state,
+                               getFileDialogParentWindow(state), filterPtr,
+                               filterCount, nullptr, true);
     }
 } // namespace cupuacu::actions
