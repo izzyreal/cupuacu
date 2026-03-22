@@ -129,6 +129,29 @@ def write_ico(path: pathlib.Path, png_paths):
     path.write_bytes(header + b"".join(entries) + payload)
 
 
+def write_icns(path: pathlib.Path, png_path_by_size):
+    type_by_size = {
+        16: b"icp4",
+        32: b"icp5",
+        64: b"icp6",
+        128: b"ic07",
+        256: b"ic08",
+        512: b"ic09",
+        1024: b"ic10",
+    }
+
+    chunks = bytearray()
+    for size in (16, 32, 64, 128, 256, 512, 1024):
+        image = png_path_by_size[size].read_bytes()
+        chunk_type = type_by_size[size]
+        chunks.extend(chunk_type)
+        chunks.extend(struct.pack(">I", len(image) + 8))
+        chunks.extend(image)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"icns" + struct.pack(">I", len(chunks) + 8) + chunks)
+
+
 def generate_mac_iconset(output_dir: pathlib.Path, pixels):
     iconset_dir = output_dir / "macos" / "Cupuacu.iconset"
     sizes = {
@@ -143,8 +166,12 @@ def generate_mac_iconset(output_dir: pathlib.Path, pixels):
         "icon_512x512.png": 512,
         "icon_512x512@2x.png": 1024,
     }
+    png_path_by_size = {}
     for filename, size in sizes.items():
-        write_png(iconset_dir / filename, scale_nearest(pixels, size))
+        png_path = iconset_dir / filename
+        write_png(png_path, scale_nearest(pixels, size))
+        png_path_by_size[size] = png_path
+    write_icns(output_dir / "macos" / "Cupuacu.icns", png_path_by_size)
 
 
 def generate_windows_ico(output_dir: pathlib.Path, pixels):
