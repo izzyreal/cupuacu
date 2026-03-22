@@ -43,7 +43,7 @@ namespace
             {
                 auto *label = emplaceChild<Label>(state, item);
                 label->setFontSize(fontSize);
-                label->setMargin(itemMargin * state->pixelScale);
+                label->setMargin(itemMargin);
                 label->setCenterHorizontally(false);
                 label->setOpacity(160);
                 itemLabels.push_back(label);
@@ -230,7 +230,7 @@ void DropdownMenu::rebuildLabels()
     {
         auto *label = emplaceChild<Label>(state, item);
         label->setFontSize(fontSize);
-        label->setMargin(itemMargin * state->pixelScale);
+        label->setMargin(itemMargin);
         label->setCenterHorizontally(false);
         itemLabels.push_back(label);
     }
@@ -427,7 +427,7 @@ void DropdownMenu::setItemMargin(const int margin)
     itemMargin = margin;
     for (auto *label : itemLabels)
     {
-        label->setMargin(itemMargin * state->pixelScale);
+        label->setMargin(itemMargin);
     }
     const int targetHeight =
         collapsedHeight > 0 ? std::max(collapsedHeight, getRowHeight())

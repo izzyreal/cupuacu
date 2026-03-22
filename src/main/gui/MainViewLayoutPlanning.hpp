@@ -26,11 +26,9 @@ namespace cupuacu::gui
     inline int scaleUiValue(const float uiScale, const uint8_t pixelScale,
                             const float base, const int minimum = 1)
     {
-        const int safePixelScale = std::max(1, static_cast<int>(pixelScale));
         const float safeUiScale = std::max(0.25f, uiScale);
-        const float canvasScale = safeUiScale / safePixelScale;
         return std::max(minimum,
-                        static_cast<int>(std::lround(base * canvasScale)));
+                        static_cast<int>(std::lround(base * safeUiScale)));
     }
 
     inline MainViewLayoutPlan planMainViewLayout(const int width, const int height,

@@ -9,10 +9,6 @@
 
 namespace cupuacu::gui
 {
-#if defined(_WIN32)
-    constexpr float kWindowsUiBaselineScale = 0.5f;
-#endif
-
     inline float &getDisplayScaleFactor()
     {
         static float displayScaleFactor = 1.0f;
@@ -31,16 +27,7 @@ namespace cupuacu::gui
 
     inline float getCanvasSpaceScale(const State *state)
     {
-        const int safePixelScale =
-            std::max(1, static_cast<int>(state ? state->pixelScale : 1));
-#if defined(_WIN32)
-        const float displayScale = getDisplayScaleFactor();
-        return getUiScale(state) * kWindowsUiBaselineScale * displayScale *
-               displayScale /
-               safePixelScale;
-#else
-        return getUiScale(state) / safePixelScale;
-#endif
+        return getUiScale(state) * getDisplayScaleFactor();
     }
 
     inline int scaleUi(const State *state, const float base,

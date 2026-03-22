@@ -19,6 +19,23 @@ using namespace cupuacu::gui;
 
 namespace
 {
+    SDL_Point getWindowLogicalDimensions(SDL_Window *window)
+    {
+        if (!window)
+        {
+            return {0, 0};
+        }
+
+        SDL_Point logicalSize{0, 0};
+        if (!SDL_GetWindowSize(window, &logicalSize.x, &logicalSize.y) ||
+            logicalSize.x <= 0 || logicalSize.y <= 0)
+        {
+            return {0, 0};
+        }
+
+        return logicalSize;
+    }
+
     bool shouldLogWindowScaleDiagnostics()
     {
         const char *value = SDL_getenv("CUPUACU_DEBUG_WINDOW_SCALE");
@@ -34,6 +51,16 @@ namespace
         }
 
 #if defined(_WIN32)
+        const SDL_DisplayID displayId = SDL_GetDisplayForWindow(window);
+        if (displayId)
+        {
+            const float contentScale = SDL_GetDisplayContentScale(displayId);
+            if (contentScale > 0.0f)
+            {
+                return contentScale;
+            }
+        }
+
         const float windowScale = SDL_GetWindowDisplayScale(window);
         if (windowScale > 0.0f)
         {
@@ -75,6 +102,30 @@ namespace
         const float displayScale = getEffectiveWindowDisplayScale(window, canvas);
         setDisplayScaleFactor(displayScale);
         setFontDisplayScale(displayScale);
+    }
+
+    void applyCanvasRenderScale(SDL_Renderer *renderer, SDL_Window *window,
+                                SDL_Texture *canvas)
+    {
+        if (!renderer || !window || !canvas)
+        {
+            return;
+        }
+
+        float canvasW = 0.0f;
+        float canvasH = 0.0f;
+        SDL_GetTextureSize(canvas, &canvasW, &canvasH);
+
+        const SDL_Point logicalSize = getWindowLogicalDimensions(window);
+        if (logicalSize.x <= 0 || logicalSize.y <= 0 || canvasW <= 0.0f ||
+            canvasH <= 0.0f)
+        {
+            SDL_SetRenderScale(renderer, 1.0f, 1.0f);
+            return;
+        }
+
+        SDL_SetRenderScale(renderer, canvasW / logicalSize.x,
+                           canvasH / logicalSize.y);
     }
 
     void logWindowScaleDiagnostics(SDL_Window *window, SDL_Texture *canvas,
@@ -440,20 +491,6 @@ SDL_Point Window::computeRequiredCanvasDimensions() const
         return {0, 0};
     }
 
-    SDL_Point logicalSize{0, 0};
-    if (SDL_GetWindowSize(window, &logicalSize.x, &logicalSize.y) &&
-        logicalSize.x > 0 && logicalSize.y > 0)
-    {
-        const float displayScale =
-            getEffectiveWindowDisplayScale(window, nullptr);
-        pixelSize.x = std::max(
-            pixelSize.x,
-            static_cast<int>(std::lround(logicalSize.x * displayScale)));
-        pixelSize.y = std::max(
-            pixelSize.y,
-            static_cast<int>(std::lround(logicalSize.y * displayScale)));
-    }
-
     return planWindowCanvasDimensions(pixelSize.x, pixelSize.y,
                                       state->pixelScale);
 }
@@ -590,16 +627,18 @@ MouseEvent Window::makeMouseEvent(const SDL_Event &event) const
 
     if (canvas && window)
     {
-        SDL_FPoint canvasDimensions{0.0f, 0.0f};
-        SDL_GetTextureSize(canvas, &canvasDimensions.x, &canvasDimensions.y);
+        const SDL_Point logicalSize = rootComponent
+                                          ? SDL_Point{rootComponent->getWidth(),
+                                                      rootComponent->getHeight()}
+                                          : getWindowLogicalDimensions(window);
+        const SDL_Point winDimensions = getWindowLogicalDimensions(window);
 
-        SDL_Point winDimensions{0, 0};
-        SDL_GetWindowSize(window, &winDimensions.x, &winDimensions.y);
-
-        if (winDimensions.x > 0 && winDimensions.y > 0)
+        if (logicalSize.x > 0 && logicalSize.y > 0 && winDimensions.x > 0 &&
+            winDimensions.y > 0)
         {
-            scaleWindowMouseEventDraft(draft, canvasDimensions.x,
-                                       canvasDimensions.y, winDimensions.x,
+            scaleWindowMouseEventDraft(draft, static_cast<float>(logicalSize.x),
+                                       static_cast<float>(logicalSize.y),
+                                       winDimensions.x,
                                        winDimensions.y);
         }
     }
@@ -683,20 +722,17 @@ SDL_Rect Window::mapCanvasRectToScreenRect(const SDL_Rect &rect) const
     int windowY = 0;
     SDL_GetWindowPosition(window, &windowX, &windowY);
 
-    int logicalW = 0;
-    int logicalH = 0;
-    SDL_GetWindowSize(window, &logicalW, &logicalH);
-
-    float canvasW = 0.0f;
-    float canvasH = 0.0f;
-    if (canvas)
-    {
-        SDL_GetTextureSize(canvas, &canvasW, &canvasH);
-    }
+    const SDL_Point logicalSize = rootComponent
+                                      ? SDL_Point{rootComponent->getWidth(),
+                                                  rootComponent->getHeight()}
+                                      : getWindowLogicalDimensions(window);
+    const SDL_Point windowLogicalSize = getWindowLogicalDimensions(window);
 
     return cupuacu::gui::mapCanvasRectToScreenRect(
-        rect, SDL_Rect{windowX, windowY, logicalW, logicalH},
-        SDL_FPoint{canvasW, canvasH});
+        rect,
+        SDL_Rect{windowX, windowY, windowLogicalSize.x, windowLogicalSize.y},
+        SDL_FPoint{static_cast<float>(logicalSize.x),
+                   static_cast<float>(logicalSize.y)});
 }
 
 bool Window::handleEvent(const SDL_Event &event)
@@ -895,6 +931,7 @@ void Window::renderFrame()
     rootComponent->setDirty();
 
     SDL_SetRenderTarget(renderer, canvas);
+    applyCanvasRenderScale(renderer, window, canvas);
     if (transparentWindow)
     {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
@@ -902,6 +939,7 @@ void Window::renderFrame()
     }
     rootComponent->draw(renderer);
     SDL_SetRenderTarget(renderer, nullptr);
+    SDL_SetRenderScale(renderer, 1.0f, 1.0f);
     if (transparentWindow)
     {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
@@ -929,6 +967,7 @@ void Window::renderFrameIfDirty()
     }
 
     SDL_SetRenderTarget(renderer, canvas);
+    applyCanvasRenderScale(renderer, window, canvas);
     if (transparentWindow)
     {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
@@ -936,6 +975,7 @@ void Window::renderFrameIfDirty()
     }
     rootComponent->draw(renderer);
     SDL_SetRenderTarget(renderer, nullptr);
+    SDL_SetRenderScale(renderer, 1.0f, 1.0f);
     if (transparentWindow)
     {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);

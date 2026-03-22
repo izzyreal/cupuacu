@@ -33,6 +33,23 @@ namespace
 
         return nullptr;
     }
+
+    SDL_Point getWindowLogicalDimensions(cupuacu::gui::Window *window)
+    {
+        if (!window || !window->getSdlWindow())
+        {
+            return {0, 0};
+        }
+
+        SDL_Point size{0, 0};
+        if (!SDL_GetWindowSize(window->getSdlWindow(), &size.x, &size.y) ||
+            size.x <= 0 || size.y <= 0)
+        {
+            return {0, 0};
+        }
+
+        return size;
+    }
 }
 
 SDL_Rect computeMainViewBounds(const uint16_t canvasWidth,
@@ -149,11 +166,14 @@ void cupuacu::gui::resizeComponents(State *state, Window *window)
         return;
     }
 
-    float currentCanvasW = 0.0f, currentCanvasH = 0.0f;
-    SDL_GetTextureSize(window->getCanvas(), &currentCanvasW, &currentCanvasH);
+    const SDL_Point logicalSize = getWindowLogicalDimensions(window);
+    if (logicalSize.x <= 0 || logicalSize.y <= 0)
+    {
+        return;
+    }
 
-    const int newCanvasW = (int)currentCanvasW;
-    const int newCanvasH = (int)currentCanvasH;
+    const int newCanvasW = logicalSize.x;
+    const int newCanvasH = logicalSize.y;
     window->getRootComponent()->setSize(newCanvasW, newCanvasH);
     if (window->getContentLayer())
     {
