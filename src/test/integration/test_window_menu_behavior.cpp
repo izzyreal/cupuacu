@@ -849,6 +849,59 @@ TEST_CASE("Dropdown integration keeps only one dropdown open and closes on outsi
     REQUIRE_FALSE(second->isExpanded());
 }
 
+TEST_CASE("Dropdown integration selection does not consume the next owner-window click",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "dropdown-selection-handoff", 360, 240, SDL_WINDOW_HIDDEN);
+    state.windows.push_back(window.get());
+
+    auto root =
+        std::make_unique<cupuacu::test::integration::RootComponent>(&state);
+    root->setBounds(0, 0, 360, 240);
+    auto *dropdown = root->emplaceChild<cupuacu::gui::DropdownMenu>(&state);
+    auto *target = root->emplaceChild<TestComponent>(&state, "Target");
+    dropdown->setBounds(20, 20, 180, 30);
+    dropdown->setItems({"Alpha", "Beta", "Gamma"});
+    dropdown->setCollapsedHeight(30);
+    target->setBounds(220, 20, 100, 40);
+    window->setRootComponent(std::move(root));
+
+    REQUIRE(window->handleMouseEvent(leftMouseDownAt(40, 35)));
+    REQUIRE(window->handleMouseEvent(leftMouseUpAt(40, 35)));
+    REQUIRE(dropdown->isExpanded());
+
+    cupuacu::gui::Window *popupWindow = nullptr;
+    for (auto *candidate : state.windows)
+    {
+        if (candidate != window.get())
+        {
+            popupWindow = candidate;
+            break;
+        }
+    }
+    REQUIRE(popupWindow != nullptr);
+    REQUIRE(popupWindow->getRootComponent() != nullptr);
+
+    const int popupSelectX = 40;
+    const int popupSelectY = 45; // second row ("Beta")
+    REQUIRE(popupWindow->handleMouseEvent(
+        leftMouseDownAt(popupSelectX, popupSelectY)));
+    REQUIRE(popupWindow->handleMouseEvent(
+        leftMouseUpAt(popupSelectX, popupSelectY)));
+
+    REQUIRE_FALSE(dropdown->isExpanded());
+    REQUIRE(dropdown->getSelectedIndex() == 1);
+
+    REQUIRE(window->handleMouseEvent(leftMouseDownAt(250, 35)));
+    REQUIRE(window->handleMouseEvent(leftMouseUpAt(250, 35)));
+    REQUIRE(target->mouseDownCount == 1);
+    REQUIRE(target->mouseUpCount == 1);
+}
+
 TEST_CASE("Main window integration opens Export Audio on primary-modifier Shift-S",
           "[integration]")
 {
