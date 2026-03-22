@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Cupuacu
+Comment=A minimalist audio editor
+Exec=Cupuacu
+Icon=cupuacu
+Terminal=false
+Categories=AudioVideo;Audio;AudioEditing;

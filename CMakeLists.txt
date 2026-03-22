@@ -39,6 +39,7 @@ set(CMAKE_CXX_STANDARD 20)
 include(FetchContent)
 
 find_package(Git)
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 macro(AddDependency name source_name default_source_dir repo tag)
     fetchcontent_declare_cached_git(
@@ -290,6 +291,82 @@ else()
     add_executable(Cupuacu
         src/main/main.cpp
     )
+endif()
+
+set(CUPUACU_GENERATED_ICON_DIR "${CMAKE_BINARY_DIR}/generated-icons")
+set(CUPUACU_MAC_ICONSET_DIR
+    "${CUPUACU_GENERATED_ICON_DIR}/macos/Cupuacu.iconset")
+set(CUPUACU_MAC_ICNS "${CUPUACU_GENERATED_ICON_DIR}/macos/Cupuacu.icns")
+set(CUPUACU_WINDOWS_ICON "${CUPUACU_GENERATED_ICON_DIR}/windows/cupuacu.ico")
+set(CUPUACU_LINUX_ICON "${CUPUACU_GENERATED_ICON_DIR}/linux/cupuacu.png")
+set(CUPUACU_MAC_ICONSET_PNGS
+    "${CUPUACU_MAC_ICONSET_DIR}/icon_16x16.png"
+    "${CUPUACU_MAC_ICONSET_DIR}/icon_16x16@2x.png"
+    "${CUPUACU_MAC_ICONSET_DIR}/icon_32x32.png"
+    "${CUPUACU_MAC_ICONSET_DIR}/icon_32x32@2x.png"
+    "${CUPUACU_MAC_ICONSET_DIR}/icon_128x128.png"
+    "${CUPUACU_MAC_ICONSET_DIR}/icon_128x128@2x.png"
+    "${CUPUACU_MAC_ICONSET_DIR}/icon_256x256.png"
+    "${CUPUACU_MAC_ICONSET_DIR}/icon_256x256@2x.png"
+    "${CUPUACU_MAC_ICONSET_DIR}/icon_512x512.png"
+    "${CUPUACU_MAC_ICONSET_DIR}/icon_512x512@2x.png"
+)
+
+add_custom_command(
+    OUTPUT
+        ${CUPUACU_MAC_ICONSET_PNGS}
+        ${CUPUACU_WINDOWS_ICON}
+        ${CUPUACU_LINUX_ICON}
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CUPUACU_GENERATED_ICON_DIR}"
+    COMMAND ${Python3_EXECUTABLE}
+        "${CMAKE_SOURCE_DIR}/scripts/generate_app_icons.py"
+        --input "${CMAKE_SOURCE_DIR}/resources/cupuacu-logo1.bmp"
+        --output-dir "${CUPUACU_GENERATED_ICON_DIR}"
+    DEPENDS
+        "${CMAKE_SOURCE_DIR}/resources/cupuacu-logo1.bmp"
+        "${CMAKE_SOURCE_DIR}/scripts/generate_app_icons.py"
+)
+
+add_custom_target(cupuacu_generated_icons
+    DEPENDS
+        ${CUPUACU_MAC_ICONSET_PNGS}
+        ${CUPUACU_WINDOWS_ICON}
+        ${CUPUACU_LINUX_ICON}
+)
+add_dependencies(Cupuacu cupuacu_generated_icons)
+
+if(APPLE)
+    add_custom_command(
+        OUTPUT "${CUPUACU_MAC_ICNS}"
+        COMMAND /usr/bin/iconutil -c icns "${CUPUACU_MAC_ICONSET_DIR}"
+            -o "${CUPUACU_MAC_ICNS}"
+        DEPENDS ${CUPUACU_MAC_ICONSET_PNGS}
+    )
+    add_custom_target(cupuacu_macos_icon DEPENDS "${CUPUACU_MAC_ICNS}")
+    add_dependencies(Cupuacu cupuacu_macos_icon)
+    set_source_files_properties("${CUPUACU_MAC_ICNS}" PROPERTIES
+        MACOSX_PACKAGE_LOCATION "Resources")
+    target_sources(Cupuacu PRIVATE "${CUPUACU_MAC_ICNS}")
+    set_target_properties(Cupuacu PROPERTIES
+        MACOSX_BUNDLE_ICON_FILE "Cupuacu.icns"
+        MACOSX_BUNDLE_BUNDLE_NAME "Cupuacu"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "nl.izmar.cupuacu"
+        MACOSX_BUNDLE_BUNDLE_VERSION "0.1"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1")
+endif()
+
+if(WIN32)
+    configure_file(cmake/Cupuacu.rc.in "${CMAKE_BINARY_DIR}/Cupuacu.rc" @ONLY)
+    target_sources(Cupuacu PRIVATE "${CMAKE_BINARY_DIR}/Cupuacu.rc")
+endif()
+
+if(UNIX AND NOT APPLE)
+    configure_file(cmake/Cupuacu.desktop.in
+        "${CMAKE_BINARY_DIR}/Cupuacu.desktop" @ONLY)
+    install(FILES "${CMAKE_BINARY_DIR}/Cupuacu.desktop"
+        DESTINATION share/applications)
+    install(FILES "${CUPUACU_LINUX_ICON}"
+        DESTINATION share/icons/hicolor/256x256/apps)
 endif()
 if(APPLE)
     target_sources(Cupuacu PRIVATE

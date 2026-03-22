@@ -1,5 +1,6 @@
 #include "Window.hpp"
 
+#include "../ResourceUtil.hpp"
 #include "../State.hpp"
 #include "MenuBar.hpp"
 #include "TooltipController.hpp"
@@ -10,6 +11,7 @@
 #include "WindowResizePlanning.hpp"
 #include "text.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 using namespace cupuacu::gui;
@@ -89,6 +91,95 @@ namespace
             canvasW, canvasH, pixelScale,
             getEffectiveWindowDisplayScale(window, canvas));
     }
+
+    SDL_Surface *createWindowIconSurface()
+    {
+        static const std::string iconData =
+            cupuacu::get_resource_data("cupuacu-logo1.bmp");
+        if (iconData.empty())
+        {
+            SDL_Log("Failed to load bundled icon resource");
+            return nullptr;
+        }
+
+        SDL_IOStream *stream =
+            SDL_IOFromConstMem(iconData.data(), iconData.size());
+        if (!stream)
+        {
+            SDL_Log("SDL_IOFromConstMem() failed for icon: %s",
+                    SDL_GetError());
+            return nullptr;
+        }
+
+        SDL_Surface *source = SDL_LoadBMP_IO(stream, true);
+        if (!source)
+        {
+            SDL_Log("SDL_LoadBMP_IO() failed for icon: %s", SDL_GetError());
+            return nullptr;
+        }
+
+        constexpr int iconSize = 256;
+        const int upscaleFactor =
+            std::max(1, iconSize / std::max(source->w, source->h));
+        const int scaledWidth = source->w * upscaleFactor;
+        const int scaledHeight = source->h * upscaleFactor;
+
+        SDL_Surface *scaled =
+            SDL_ScaleSurface(source, scaledWidth, scaledHeight,
+                             SDL_SCALEMODE_NEAREST);
+        SDL_DestroySurface(source);
+        if (!scaled)
+        {
+            SDL_Log("SDL_ScaleSurface() failed for icon: %s", SDL_GetError());
+            return nullptr;
+        }
+
+        SDL_Surface *canvas =
+            SDL_CreateSurface(iconSize, iconSize, SDL_PIXELFORMAT_ARGB8888);
+        if (!canvas)
+        {
+            SDL_Log("SDL_CreateSurface() failed for icon: %s", SDL_GetError());
+            SDL_DestroySurface(scaled);
+            return nullptr;
+        }
+
+        SDL_ClearSurface(canvas, 0.0f, 0.0f, 0.0f, 0.0f);
+        const SDL_Rect destination{
+            (iconSize - scaledWidth) / 2, (iconSize - scaledHeight) / 2,
+            scaledWidth, scaledHeight};
+        if (!SDL_BlitSurfaceScaled(scaled, nullptr, canvas, &destination,
+                                   SDL_SCALEMODE_NEAREST))
+        {
+            SDL_Log("SDL_BlitSurfaceScaled() failed for icon: %s",
+                    SDL_GetError());
+            SDL_DestroySurface(canvas);
+            SDL_DestroySurface(scaled);
+            return nullptr;
+        }
+
+        SDL_DestroySurface(scaled);
+        return canvas;
+    }
+
+    void applyWindowIcon(SDL_Window *window)
+    {
+        if (!window)
+        {
+            return;
+        }
+
+        SDL_Surface *icon = createWindowIconSurface();
+        if (!icon)
+        {
+            return;
+        }
+
+        if (!SDL_SetWindowIcon(window, icon))
+        {
+            SDL_Log("SDL_SetWindowIcon() failed: %s", SDL_GetError());
+        }
+        SDL_DestroySurface(icon);
+    }
 }
 
 Window::Window(State *stateToUse, const std::string &title, const int width,
@@ -101,6 +192,8 @@ Window::Window(State *stateToUse, const std::string &title, const int width,
         SDL_Log("SDL_CreateWindowAndRenderer() failed: %s", SDL_GetError());
         return;
     }
+
+    applyWindowIcon(window);
 
     if (!SDL_SetRenderVSync(renderer, 1))
     {
