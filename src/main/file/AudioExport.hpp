@@ -76,6 +76,7 @@ namespace cupuacu::file
         std::string extension;
         std::optional<double> compressionLevel;
         std::optional<int> bitrateMode;
+        std::optional<int> bitrateKbps;
 
         bool isValid() const
         {
@@ -94,9 +95,14 @@ namespace cupuacu::file
     compressionLevelOptionsForCodec(AudioExportCodec codec);
     std::vector<AudioExportNamedIntOption>
     bitrateModeOptionsForCodec(AudioExportCodec codec);
+    std::vector<AudioExportNamedIntOption>
+    bitrateOptionsForSettings(const AudioExportSettings &settings, int sampleRate);
     std::optional<double>
     defaultCompressionLevelForCodec(AudioExportCodec codec);
     std::optional<int> defaultBitrateModeForCodec(AudioExportCodec codec);
+    std::optional<int>
+    defaultBitrateKbpsForSettings(const AudioExportSettings &settings,
+                                  int sampleRate);
     std::string describeExportSettings(const AudioExportSettings &settings);
 
     cupuacu::SampleFormat sampleFormatForSndfileFormat(int sndfileFormat);

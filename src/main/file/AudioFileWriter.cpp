@@ -1,7 +1,10 @@
 #include "AudioFileWriter.hpp"
 
+#include "AudioExport.hpp"
+
 #include <sndfile.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <ios>
 #include <stdexcept>
@@ -10,6 +13,7 @@
 namespace
 {
     void applyEncodingSettings(SNDFILE *snd,
+                               const int sampleRate,
                                const cupuacu::file::AudioExportSettings &settings)
     {
         if (snd == nullptr)
@@ -24,7 +28,46 @@ namespace
                        sizeof(bitrateMode));
         }
 
-        if (settings.compressionLevel.has_value())
+        if (settings.bitrateKbps.has_value())
+        {
+            const auto bitrateOptions =
+                cupuacu::file::bitrateOptionsForSettings(settings, sampleRate);
+            if (!bitrateOptions.empty())
+            {
+                const auto derivedLevel =
+                    [sampleRate, &settings]() -> std::optional<double>
+                {
+                    cupuacu::file::AudioExportSettings tmp = settings;
+                    const auto options =
+                        cupuacu::file::bitrateOptionsForSettings(tmp, sampleRate);
+                    for (const auto &option : options)
+                    {
+                        if (option.value == *settings.bitrateKbps)
+                        {
+                            const int minBitrate = options.front().value;
+                            const int maxBitrate = options.back().value;
+                            if (maxBitrate <= minBitrate)
+                            {
+                                return std::nullopt;
+                            }
+                            const double normalized =
+                                1.0 -
+                                (static_cast<double>(option.value - minBitrate) /
+                                 static_cast<double>(maxBitrate - minBitrate));
+                            return std::clamp(normalized, 0.0, 1.0);
+                        }
+                    }
+                    return std::nullopt;
+                }();
+                if (derivedLevel.has_value())
+                {
+                    double compressionLevel = *derivedLevel;
+                    sf_command(snd, SFC_SET_COMPRESSION_LEVEL, &compressionLevel,
+                               sizeof(compressionLevel));
+                }
+            }
+        }
+        else if (settings.compressionLevel.has_value())
         {
             double compressionLevel = *settings.compressionLevel;
             sf_command(snd, SFC_SET_COMPRESSION_LEVEL, &compressionLevel,
@@ -82,7 +125,7 @@ void cupuacu::file::AudioFileWriter::writeFile(
         throw std::ios_base::failure("Failed to open output audio file");
     }
 
-    applyEncodingSettings(snd, settings);
+    applyEncodingSettings(snd, sampleRate, settings);
 
     const sf_count_t frames = document.getFrameCount();
     std::vector<float> interleaved(static_cast<std::size_t>(frames) *

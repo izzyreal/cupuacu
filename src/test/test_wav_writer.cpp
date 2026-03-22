@@ -307,8 +307,8 @@ TEST_CASE("Save as normalizes the output extension to the selected format",
           "[file]")
 {
     ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-save-as-extension"));
-    const auto requestedPath = cleanup.path() / "exports" / "saved.wav";
-    const auto probePath = cleanup.path() / "exports" / "saved.flac";
+    const auto requestedPath = cleanup.path() / "exports" / "saved.flac";
+    const auto normalizedPath = cleanup.path() / "exports" / "saved.wav";
 
     cupuacu::test::StateWithTestPaths state{cleanup.path()};
 
@@ -317,23 +317,24 @@ TEST_CASE("Save as normalizes the output extension to the selected format",
     session.document.setSample(0, 0, 0.25f, false);
     session.document.setSample(0, 1, -0.25f, false);
 
-    const auto settings = cupuacu::file::defaultExportSettingsForPath(
-        probePath, cupuacu::SampleFormat::PCM_S24);
-    if (!settings.has_value())
-    {
-        SUCCEED("FLAC export is not available in this libsndfile build.");
-        return;
-    }
-    REQUIRE(settings->majorFormat == SF_FORMAT_FLAC);
+    cupuacu::file::AudioExportSettings settings{
+        .container = cupuacu::file::AudioExportContainer::WAV,
+        .codec = cupuacu::file::AudioExportCodec::PCM,
+        .majorFormat = SF_FORMAT_WAV,
+        .subtype = SF_FORMAT_PCM_24,
+        .containerLabel = "WAV",
+        .codecLabel = "PCM",
+        .encodingLabel = "24-bit PCM",
+        .extension = "wav",
+    };
 
-    cupuacu::actions::saveAs(&state, requestedPath.string(), *settings);
+    cupuacu::actions::saveAs(&state, requestedPath.string(), settings);
 
-    const auto normalizedPath = cleanup.path() / "exports" / "saved.flac";
     REQUIRE_FALSE(std::filesystem::exists(requestedPath));
     REQUIRE(std::filesystem::exists(normalizedPath));
     REQUIRE(session.currentFile == normalizedPath.string());
     REQUIRE(session.currentFileExportSettings.has_value());
-    REQUIRE(session.currentFileExportSettings->majorFormat == SF_FORMAT_FLAC);
+    REQUIRE(session.currentFileExportSettings->majorFormat == SF_FORMAT_WAV);
 }
 
 TEST_CASE("Default export settings preserve ALAC depth preferences", "[file]")
@@ -401,6 +402,35 @@ TEST_CASE("Lossy export defaults expose Vorbis quality and MP3 bitrate mode",
     REQUIRE(mp3Modes.size() == 3);
 }
 
+TEST_CASE("MP3 bitrate options follow sample rate band and mode", "[file]")
+{
+    cupuacu::file::AudioExportSettings cbrSettings{
+        .container = cupuacu::file::AudioExportContainer::MPEG,
+        .codec = cupuacu::file::AudioExportCodec::MP3,
+        .majorFormat = SF_FORMAT_MPEG,
+        .subtype = SF_FORMAT_MPEG_LAYER_III,
+        .containerLabel = "MPEG",
+        .codecLabel = "MP3",
+        .encodingLabel = "Default quality",
+        .extension = "mp3",
+        .bitrateMode = SF_BITRATE_MODE_CONSTANT,
+    };
+    const auto mpeg1Options =
+        cupuacu::file::bitrateOptionsForSettings(cbrSettings, 44100);
+    REQUIRE_FALSE(mpeg1Options.empty());
+    REQUIRE(mpeg1Options.front().value == 32);
+    REQUIRE(mpeg1Options.back().value == 320);
+
+    const auto mpeg25Options =
+        cupuacu::file::bitrateOptionsForSettings(cbrSettings, 12000);
+    REQUIRE_FALSE(mpeg25Options.empty());
+    REQUIRE(mpeg25Options.front().value == 8);
+    REQUIRE(mpeg25Options.back().value == 64);
+
+    cbrSettings.bitrateMode = SF_BITRATE_MODE_VARIABLE;
+    REQUIRE(cupuacu::file::bitrateOptionsForSettings(cbrSettings, 44100).empty());
+}
+
 TEST_CASE("Export settings description includes lossy quality controls", "[file]")
 {
     cupuacu::file::AudioExportSettings settings{
@@ -419,4 +449,25 @@ TEST_CASE("Export settings description includes lossy quality controls", "[file]
     const auto description = cupuacu::file::describeExportSettings(settings);
     REQUIRE(description.find("VBR") != std::string::npos);
     REQUIRE(description.find("quality 75%") != std::string::npos);
+}
+
+TEST_CASE("Export settings description includes MP3 bitrate when selected",
+          "[file]")
+{
+    cupuacu::file::AudioExportSettings settings{
+        .container = cupuacu::file::AudioExportContainer::MPEG,
+        .codec = cupuacu::file::AudioExportCodec::MP3,
+        .majorFormat = SF_FORMAT_MPEG,
+        .subtype = SF_FORMAT_MPEG_LAYER_III,
+        .containerLabel = "MPEG",
+        .codecLabel = "MP3",
+        .encodingLabel = "Default quality",
+        .extension = "mp3",
+        .bitrateMode = SF_BITRATE_MODE_CONSTANT,
+        .bitrateKbps = 192,
+    };
+
+    const auto description = cupuacu::file::describeExportSettings(settings);
+    REQUIRE(description.find("CBR") != std::string::npos);
+    REQUIRE(description.find("192 kbps") != std::string::npos);
 }

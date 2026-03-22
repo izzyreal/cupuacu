@@ -7,6 +7,7 @@
 #include <cctype>
 #include <cmath>
 #include <initializer_list>
+#include <limits>
 #include <optional>
 #include <string_view>
 #include <vector>
@@ -258,6 +259,54 @@ namespace
 
         return result;
     }
+
+    struct MpegBitrateBand
+    {
+        int minSampleRate = 0;
+        int maxSampleRateExclusive = 0;
+        int minKbps = 0;
+        int maxKbps = 0;
+        std::initializer_list<int> bitrates;
+    };
+
+    constexpr MpegBitrateBand kMpegBitrateBands[] = {
+        {32000, std::numeric_limits<int>::max(), 32, 320,
+         {32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320}},
+        {16000, 32000, 8, 160,
+         {8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160}},
+        {0, 16000, 8, 64,
+         {8, 16, 24, 32, 40, 48, 56, 64}},
+    };
+
+    const MpegBitrateBand *mpegBitrateBandForSampleRate(const int sampleRate)
+    {
+        for (const auto &band : kMpegBitrateBands)
+        {
+            if (sampleRate >= band.minSampleRate &&
+                sampleRate < band.maxSampleRateExclusive)
+            {
+                return &band;
+            }
+        }
+        return nullptr;
+    }
+
+    std::optional<double> compressionLevelForMpegBitrate(const int sampleRate,
+                                                         const int bitrateKbps)
+    {
+        const auto *band = mpegBitrateBandForSampleRate(sampleRate);
+        if (band == nullptr || band->maxKbps <= band->minKbps)
+        {
+            return std::nullopt;
+        }
+
+        const int clampedBitrate =
+            std::clamp(bitrateKbps, band->minKbps, band->maxKbps);
+        const double normalized =
+            1.0 - (static_cast<double>(clampedBitrate - band->minKbps) /
+                   static_cast<double>(band->maxKbps - band->minKbps));
+        return std::clamp(normalized, 0.0, 1.0);
+    }
 } // namespace
 
 std::vector<AudioExportFormatOption> cupuacu::file::probeAvailableExportFormats()
@@ -325,10 +374,10 @@ cupuacu::file::compressionLevelOptionsForCodec(const AudioExportCodec codec)
                     {"High", 0.7},
                     {"Very high", 0.9}};
         case AudioExportCodec::MP3:
-            return {{"Smaller file", 0.2},
-                    {"Balanced", 0.5},
-                    {"Higher quality", 0.75},
-                    {"Best quality", 0.95}};
+            return {{"Lower quality", 0.95},
+                    {"Balanced", 0.75},
+                    {"High quality", 0.5},
+                    {"Best quality", 0.2}};
         default:
             return {};
     }
@@ -346,6 +395,32 @@ cupuacu::file::bitrateModeOptionsForCodec(const AudioExportCodec codec)
         default:
             return {};
     }
+}
+
+std::vector<AudioExportNamedIntOption>
+cupuacu::file::bitrateOptionsForSettings(const AudioExportSettings &settings,
+                                         const int sampleRate)
+{
+    if (settings.codec != AudioExportCodec::MP3 ||
+        !settings.bitrateMode.has_value() ||
+        *settings.bitrateMode == SF_BITRATE_MODE_VARIABLE)
+    {
+        return {};
+    }
+
+    const auto *band = mpegBitrateBandForSampleRate(sampleRate);
+    if (band == nullptr)
+    {
+        return {};
+    }
+
+    std::vector<AudioExportNamedIntOption> result;
+    result.reserve(static_cast<std::size_t>(band->bitrates.size()));
+    for (const int bitrate : band->bitrates)
+    {
+        result.push_back({std::to_string(bitrate) + " kbps", bitrate});
+    }
+    return result;
 }
 
 std::optional<double>
@@ -372,6 +447,35 @@ cupuacu::file::defaultBitrateModeForCodec(const AudioExportCodec codec)
         default:
             return std::nullopt;
     }
+}
+
+std::optional<int>
+cupuacu::file::defaultBitrateKbpsForSettings(const AudioExportSettings &settings,
+                                             const int sampleRate)
+{
+    const auto options = bitrateOptionsForSettings(settings, sampleRate);
+    if (options.empty())
+    {
+        return std::nullopt;
+    }
+
+    if (settings.codec == AudioExportCodec::MP3)
+    {
+        const auto hasBitrate = [&](const int bitrate)
+        {
+            return std::any_of(options.begin(), options.end(),
+                               [bitrate](const AudioExportNamedIntOption &option)
+                               {
+                                   return option.value == bitrate;
+                               });
+        };
+        if (hasBitrate(192))
+        {
+            return 192;
+        }
+    }
+
+    return options.front().value;
 }
 
 std::string
@@ -408,7 +512,12 @@ cupuacu::file::describeExportSettings(const AudioExportSettings &settings)
                     break;
             }
         }
-        if (settings.compressionLevel.has_value())
+        if (settings.bitrateKbps.has_value())
+        {
+            description += " / " + std::to_string(*settings.bitrateKbps) +
+                           " kbps";
+        }
+        else if (settings.compressionLevel.has_value())
         {
             const int percent = static_cast<int>(
                 std::lround(*settings.compressionLevel * 100.0));

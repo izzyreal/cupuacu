@@ -37,12 +37,14 @@ namespace cupuacu::gui
         Label *codecLabel = nullptr;
         Label *encodingLabel = nullptr;
         Label *bitrateModeLabel = nullptr;
+        Label *bitrateLabel = nullptr;
         Label *qualityLabel = nullptr;
         Label *detailsLabel = nullptr;
         DropdownMenu *containerDropdown = nullptr;
         DropdownMenu *codecDropdown = nullptr;
         DropdownMenu *encodingDropdown = nullptr;
         DropdownMenu *bitrateModeDropdown = nullptr;
+        DropdownMenu *bitrateDropdown = nullptr;
         DropdownMenu *qualityDropdown = nullptr;
         TextButton *cancelButton = nullptr;
         TextButton *nextButton = nullptr;
@@ -54,6 +56,7 @@ namespace cupuacu::gui
         void refreshCodecItems();
         void refreshEncodingItems();
         void refreshBitrateModeItems();
+        void refreshBitrateItems();
         void refreshQualityItems();
         void refreshAdvancedControlVisibility();
         void refreshDetailsLabel();

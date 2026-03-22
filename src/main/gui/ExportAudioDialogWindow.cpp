@@ -66,12 +66,14 @@ namespace cupuacu::gui
         codecLabel = root->emplaceChild<Label>(state, "Codec");
         encodingLabel = root->emplaceChild<Label>(state, "Encoding");
         bitrateModeLabel = root->emplaceChild<Label>(state, "Bitrate mode");
+        bitrateLabel = root->emplaceChild<Label>(state, "Bitrate");
         qualityLabel = root->emplaceChild<Label>(state, "Quality");
         detailsLabel = root->emplaceChild<Label>(state);
         containerDropdown = root->emplaceChild<DropdownMenu>(state);
         codecDropdown = root->emplaceChild<DropdownMenu>(state);
         encodingDropdown = root->emplaceChild<DropdownMenu>(state);
         bitrateModeDropdown = root->emplaceChild<DropdownMenu>(state);
+        bitrateDropdown = root->emplaceChild<DropdownMenu>(state);
         qualityDropdown = root->emplaceChild<DropdownMenu>(state);
         cancelButton = root->emplaceChild<TextButton>(state, "Cancel");
         nextButton = root->emplaceChild<TextButton>(state, "Next...");
@@ -80,12 +82,14 @@ namespace cupuacu::gui
         codecLabel->setFontSize(state->menuFontSize);
         encodingLabel->setFontSize(state->menuFontSize);
         bitrateModeLabel->setFontSize(state->menuFontSize);
+        bitrateLabel->setFontSize(state->menuFontSize);
         qualityLabel->setFontSize(state->menuFontSize);
         detailsLabel->setFontSize(state->menuFontSize - 8);
         containerDropdown->setFontSize(state->menuFontSize);
         codecDropdown->setFontSize(state->menuFontSize);
         encodingDropdown->setFontSize(state->menuFontSize);
         bitrateModeDropdown->setFontSize(state->menuFontSize);
+        bitrateDropdown->setFontSize(state->menuFontSize);
         qualityDropdown->setFontSize(state->menuFontSize);
         cancelButton->setTriggerOnMouseUp(true);
         nextButton->setTriggerOnMouseUp(true);
@@ -96,6 +100,7 @@ namespace cupuacu::gui
                 refreshCodecItems();
                 refreshEncodingItems();
                 refreshBitrateModeItems();
+                refreshBitrateItems();
                 refreshQualityItems();
                 refreshAdvancedControlVisibility();
                 refreshDetailsLabel();
@@ -105,6 +110,7 @@ namespace cupuacu::gui
             {
                 refreshEncodingItems();
                 refreshBitrateModeItems();
+                refreshBitrateItems();
                 refreshQualityItems();
                 refreshAdvancedControlVisibility();
                 refreshDetailsLabel();
@@ -112,6 +118,14 @@ namespace cupuacu::gui
         encodingDropdown->setOnSelectionChanged(
             [this](const int) { refreshDetailsLabel(); });
         bitrateModeDropdown->setOnSelectionChanged(
+            [this](const int)
+            {
+                refreshBitrateItems();
+                refreshQualityItems();
+                refreshAdvancedControlVisibility();
+                refreshDetailsLabel();
+            });
+        bitrateDropdown->setOnSelectionChanged(
             [this](const int) { refreshDetailsLabel(); });
         qualityDropdown->setOnSelectionChanged(
             [this](const int) { refreshDetailsLabel(); });
@@ -131,6 +145,7 @@ namespace cupuacu::gui
         refreshCodecItems();
         refreshEncodingItems();
         refreshBitrateModeItems();
+        refreshBitrateItems();
         refreshQualityItems();
         refreshAdvancedControlVisibility();
         refreshDetailsLabel();
@@ -223,11 +238,14 @@ namespace cupuacu::gui
             measureText("Encoding", state->menuFontSize);
         const auto [bitrateTextWidth, _bitrateTextHeight] =
             measureText("Bitrate mode", state->menuFontSize);
+        const auto [bitrateValueTextWidth, _bitrateValueTextHeight] =
+            measureText("Bitrate", state->menuFontSize);
         const auto [qualityTextWidth, _qualityTextHeight] =
             measureText("Quality", state->menuFontSize);
         const int labelWidth =
             std::max({containerTextWidth, codecTextWidth, encodingTextWidth,
-                      bitrateTextWidth, qualityTextWidth}) +
+                      bitrateTextWidth, bitrateValueTextWidth,
+                      qualityTextWidth}) +
             scaleUi(state, 20.0f);
         const int rowHeight = scaleUi(state, 42.0f);
         const int detailHeight = scaleUi(state, 48.0f);
@@ -256,6 +274,7 @@ namespace cupuacu::gui
         layoutRow(codecLabel, codecDropdown);
         layoutRow(encodingLabel, encodingDropdown);
         layoutRow(bitrateModeLabel, bitrateModeDropdown);
+        layoutRow(bitrateLabel, bitrateDropdown);
         layoutRow(qualityLabel, qualityDropdown);
 
         detailsLabel->setBounds(padding, currentY, width - padding * 2, detailHeight);
@@ -392,6 +411,23 @@ namespace cupuacu::gui
         int selectedIndex = -1;
         if (const auto *format = selectedFormatOption())
         {
+            if (format->codec == file::AudioExportCodec::MP3 &&
+                bitrateModeDropdown &&
+                bitrateModeDropdown->getSelectedIndex() >= 0)
+            {
+                const auto bitrateModes =
+                    file::bitrateModeOptionsForCodec(format->codec);
+                const int bitrateModeIndex =
+                    bitrateModeDropdown->getSelectedIndex();
+                if (bitrateModeIndex < static_cast<int>(bitrateModes.size()) &&
+                    bitrateModes[static_cast<std::size_t>(bitrateModeIndex)].value !=
+                        SF_BITRATE_MODE_VARIABLE)
+                {
+                    qualityDropdown->setItems({});
+                    qualityDropdown->setSelectedIndex(-1);
+                    return;
+                }
+            }
             const auto options =
                 file::compressionLevelOptionsForCodec(format->codec);
             const auto defaultLevel =
@@ -412,6 +448,32 @@ namespace cupuacu::gui
                                                         : std::max(0, selectedIndex));
     }
 
+    void ExportAudioDialogWindow::refreshBitrateItems()
+    {
+        std::vector<std::string> items;
+        int selectedIndex = -1;
+        if (const auto settings = selectedSettings(); settings.has_value())
+        {
+            const auto options = file::bitrateOptionsForSettings(
+                *settings, state->getActiveDocumentSession().document.getSampleRate());
+            const auto defaultBitrate = file::defaultBitrateKbpsForSettings(
+                *settings, state->getActiveDocumentSession().document.getSampleRate());
+            for (std::size_t i = 0; i < options.size(); ++i)
+            {
+                items.push_back(options[i].label);
+                if (defaultBitrate.has_value() &&
+                    options[i].value == *defaultBitrate)
+                {
+                    selectedIndex = static_cast<int>(i);
+                }
+            }
+        }
+
+        bitrateDropdown->setItems(items);
+        bitrateDropdown->setSelectedIndex(items.empty() ? -1
+                                                        : std::max(0, selectedIndex));
+    }
+
     void ExportAudioDialogWindow::refreshAdvancedControlVisibility()
     {
         const auto *format = selectedFormatOption();
@@ -420,14 +482,24 @@ namespace cupuacu::gui
         const bool showBitrateMode =
             format != nullptr &&
             !file::bitrateModeOptionsForCodec(format->codec).empty();
+        const auto settings = selectedSettings();
+        const bool showBitrate =
+            settings.has_value() &&
+            !file::bitrateOptionsForSettings(
+                 *settings,
+                 state->getActiveDocumentSession().document.getSampleRate())
+                 .empty();
         const bool showQuality =
             format != nullptr &&
-            !file::compressionLevelOptionsForCodec(format->codec).empty();
+            !file::compressionLevelOptionsForCodec(format->codec).empty() &&
+            !showBitrate;
 
         encodingLabel->setVisible(showEncoding);
         encodingDropdown->setVisible(showEncoding);
         bitrateModeLabel->setVisible(showBitrateMode);
         bitrateModeDropdown->setVisible(showBitrateMode);
+        bitrateLabel->setVisible(showBitrate);
+        bitrateDropdown->setVisible(showBitrate);
         qualityLabel->setVisible(showQuality);
         qualityDropdown->setVisible(showQuality);
         layoutComponents();
@@ -473,20 +545,41 @@ namespace cupuacu::gui
             settings.bitrateMode = file::defaultBitrateModeForCodec(format->codec);
         }
 
+        const auto bitrateOptions = file::bitrateOptionsForSettings(
+            settings, state->getActiveDocumentSession().document.getSampleRate());
+        const int bitrateIndex =
+            bitrateDropdown ? bitrateDropdown->getSelectedIndex() : -1;
+        if (bitrateIndex >= 0 &&
+            bitrateIndex < static_cast<int>(bitrateOptions.size()))
+        {
+            settings.bitrateKbps =
+                bitrateOptions[static_cast<std::size_t>(bitrateIndex)].value;
+            settings.compressionLevel = std::nullopt;
+        }
+        else
+        {
+            settings.bitrateKbps = file::defaultBitrateKbpsForSettings(
+                settings, state->getActiveDocumentSession().document.getSampleRate());
+        }
+
         const auto qualityOptions =
             file::compressionLevelOptionsForCodec(format->codec);
         const int qualityIndex =
             qualityDropdown ? qualityDropdown->getSelectedIndex() : -1;
-        if (qualityIndex >= 0 &&
+        if (!settings.bitrateKbps.has_value() && qualityIndex >= 0 &&
             qualityIndex < static_cast<int>(qualityOptions.size()))
         {
             settings.compressionLevel =
                 qualityOptions[static_cast<std::size_t>(qualityIndex)].value;
         }
-        else
+        else if (!settings.bitrateKbps.has_value())
         {
             settings.compressionLevel =
                 file::defaultCompressionLevelForCodec(format->codec);
+        }
+        else
+        {
+            settings.compressionLevel = std::nullopt;
         }
 
         return settings;
