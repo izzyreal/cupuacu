@@ -13,7 +13,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <cstdio>
 #include <filesystem>
 #include <random>
 #include <string>
@@ -81,11 +80,6 @@ namespace
                       const int channels,
                       const std::vector<float> &interleavedFrames)
     {
-        std::fprintf(stderr,
-                     "CUPUACU_DEBUG_SESSION_TEST: writeTestWav path=%s sampleRate=%d channels=%d samples=%zu\n",
-                     path.string().c_str(), sampleRate, channels,
-                     interleavedFrames.size());
-        std::fflush(stderr);
         REQUIRE(channels > 0);
         REQUIRE(interleavedFrames.size() % channels == 0);
 
@@ -95,10 +89,6 @@ namespace
         info.format = SF_FORMAT_WAV | SF_FORMAT_FLOAT;
 
         SNDFILE *file = cupuacu::file::openSndfile(path, SFM_WRITE, &info);
-        std::fprintf(stderr,
-                     "CUPUACU_DEBUG_SESSION_TEST: writeTestWav after open file=%p format=0x%x\n",
-                     static_cast<void *>(file), info.format);
-        std::fflush(stderr);
         REQUIRE(file != nullptr);
 
         const sf_count_t frameCount =
@@ -107,11 +97,6 @@ namespace
             sf_writef_float(file, interleavedFrames.data(), frameCount);
 
         sf_close(file);
-        std::fprintf(stderr,
-                     "CUPUACU_DEBUG_SESSION_TEST: writeTestWav frameCount=%lld written=%lld\n",
-                     static_cast<long long>(frameCount),
-                     static_cast<long long>(written));
-        std::fflush(stderr);
         REQUIRE(written == frameCount);
     }
 
@@ -120,11 +105,6 @@ namespace
                                 const int format,
                                 const std::vector<double> &interleavedFrames)
     {
-        std::fprintf(stderr,
-                     "CUPUACU_DEBUG_SESSION_TEST: writeTestWavWithFormat path=%s sampleRate=%d channels=%d format=0x%x samples=%zu\n",
-                     path.string().c_str(), sampleRate, channels, format,
-                     interleavedFrames.size());
-        std::fflush(stderr);
         REQUIRE(channels > 0);
         REQUIRE(interleavedFrames.size() % channels == 0);
 
@@ -134,10 +114,6 @@ namespace
         info.format = format;
 
         SNDFILE *file = cupuacu::file::openSndfile(path, SFM_WRITE, &info);
-        std::fprintf(stderr,
-                     "CUPUACU_DEBUG_SESSION_TEST: writeTestWavWithFormat after open file=%p\n",
-                     static_cast<void *>(file));
-        std::fflush(stderr);
         REQUIRE(file != nullptr);
 
         const sf_count_t frameCount =
@@ -146,49 +122,22 @@ namespace
             sf_writef_double(file, interleavedFrames.data(), frameCount);
 
         sf_close(file);
-        std::fprintf(stderr,
-                     "CUPUACU_DEBUG_SESSION_TEST: writeTestWavWithFormat frameCount=%lld written=%lld\n",
-                     static_cast<long long>(frameCount),
-                     static_cast<long long>(written));
-        std::fflush(stderr);
         REQUIRE(written == frameCount);
     }
 } // namespace
 
 TEST_CASE("Loading a file resets session selection and cursor", "[session]")
 {
-    std::fprintf(stderr,
-                 "CUPUACU_DEBUG_SESSION_TEST: begin case=reset_selection_and_cursor\n");
-    std::fflush(stderr);
     ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-session-init-a"));
-    std::fprintf(stderr,
-                 "CUPUACU_DEBUG_SESSION_TEST: cleanupRoot=%s\n",
-                 cleanup.path().string().c_str());
-    std::fflush(stderr);
 
     const auto wavPath = cleanup.path() / "session_a.wav";
-    std::fprintf(stderr,
-                 "CUPUACU_DEBUG_SESSION_TEST: wavPath=%s\n",
-                 wavPath.string().c_str());
-    std::fflush(stderr);
     const std::vector<float> samples = {
         0.1f, -0.1f, 0.2f, -0.2f, 0.3f, -0.3f, 0.4f, -0.4f};
     writeTestWav(wavPath, 48000, 2, samples);
-    std::fprintf(stderr,
-                 "CUPUACU_DEBUG_SESSION_TEST: after writeTestWav exists=%d\n",
-                 std::filesystem::exists(wavPath) ? 1 : 0);
-    std::fflush(stderr);
 
     cupuacu::test::StateWithTestPaths state{};
-    std::fprintf(stderr,
-                 "CUPUACU_DEBUG_SESSION_TEST: after state init\n");
-    std::fflush(stderr);
     auto &session = state.getActiveDocumentSession();
     session.currentFile = wavPath.string();
-    std::fprintf(stderr,
-                 "CUPUACU_DEBUG_SESSION_TEST: before load currentFile=%s\n",
-                 session.currentFile.c_str());
-    std::fflush(stderr);
 
     session.selection.setHighest(1'000'000.0);
     session.selection.setValue1(20.0);
@@ -198,9 +147,6 @@ TEST_CASE("Loading a file resets session selection and cursor", "[session]")
     REQUIRE(session.cursor == 77);
 
     cupuacu::file::loadSampleData(&state);
-    std::fprintf(stderr,
-                 "CUPUACU_DEBUG_SESSION_TEST: after load\n");
-    std::fflush(stderr);
 
     REQUIRE(session.document.getSampleRate() == 48000);
     REQUIRE(session.document.getChannelCount() == 2);

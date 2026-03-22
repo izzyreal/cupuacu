@@ -12,13 +12,8 @@
 
 #include <sndfile.h>
 
-#if defined(_WIN32)
-#include <crtdbg.h>
-#endif
-
 #include <algorithm>
 #include <chrono>
-#include <cstdio>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -30,21 +25,6 @@
 
 namespace
 {
-#if defined(_WIN32)
-    struct WindowsCrtReportToStderr
-    {
-        WindowsCrtReportToStderr()
-        {
-            _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE);
-            _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
-            _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE);
-            _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
-            _CrtSetReportMode(_CRT_WARN, _CRTDBG_MODE_FILE);
-            _CrtSetReportFile(_CRT_WARN, _CRTDBG_FILE_STDERR);
-        }
-    } g_windowsCrtReportToStderr;
-#endif
-
     class ScopedDirCleanup
     {
     public:
@@ -204,17 +184,8 @@ namespace
     std::vector<float> readFramesAsFloat(const std::filesystem::path &path,
                                          int &sampleRate, int &channels)
     {
-        std::fprintf(stderr,
-                     "CUPUACU_DEBUG_WAV_TEST: readFramesAsFloat path=%s\n",
-                     path.string().c_str());
-        std::fflush(stderr);
         SF_INFO info{};
         SNDFILE *file = cupuacu::file::openSndfile(path, SFM_READ, &info);
-        std::fprintf(stderr,
-                     "CUPUACU_DEBUG_WAV_TEST: readFramesAsFloat after open file=%p samplerate=%d channels=%d frames=%lld format=0x%x\n",
-                     static_cast<void *>(file), info.samplerate, info.channels,
-                     static_cast<long long>(info.frames), info.format);
-        std::fflush(stderr);
         REQUIRE(file != nullptr);
 
         sampleRate = info.samplerate;
@@ -223,10 +194,6 @@ namespace
         const sf_count_t readCount =
             sf_readf_float(file, frames.data(), info.frames);
         sf_close(file);
-        std::fprintf(stderr,
-                     "CUPUACU_DEBUG_WAV_TEST: readFramesAsFloat readCount=%lld vectorSize=%zu\n",
-                     static_cast<long long>(readCount), frames.size());
-        std::fflush(stderr);
         REQUIRE(readCount == info.frames);
         return frames;
     }
@@ -270,9 +237,6 @@ TEST_CASE("Overwrite preserves non-audio WAV chunks around data", "[file]")
 
 TEST_CASE("Overwrite clips edited samples into valid PCM16 range", "[file]")
 {
-    std::fprintf(stderr,
-                 "CUPUACU_DEBUG_WAV_TEST: begin case=overwrite_clips\n");
-    std::fflush(stderr);
     ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-wav-clipping"));
     const auto wavPath = cleanup.path() / "clipped.wav";
 
@@ -287,23 +251,11 @@ TEST_CASE("Overwrite clips edited samples into valid PCM16 range", "[file]")
     document.setSample(0, 1, -1.25f);
     document.setSample(0, 2, 0.5f);
 
-    std::fprintf(stderr,
-                 "CUPUACU_DEBUG_WAV_TEST: before overwrite currentFile=%s\n",
-                 state.getActiveDocumentSession().currentFile.c_str());
-    std::fflush(stderr);
     cupuacu::actions::overwrite(&state);
-    std::fprintf(stderr,
-                 "CUPUACU_DEBUG_WAV_TEST: after overwrite exists=%d\n",
-                 std::filesystem::exists(wavPath) ? 1 : 0);
-    std::fflush(stderr);
 
     int sampleRate = 0;
     int channels = 0;
     const auto frames = readFramesAsFloat(wavPath, sampleRate, channels);
-    std::fprintf(stderr,
-                 "CUPUACU_DEBUG_WAV_TEST: after read framesSize=%zu sampleRate=%d channels=%d\n",
-                 frames.size(), sampleRate, channels);
-    std::fflush(stderr);
     REQUIRE(sampleRate == 22050);
     REQUIRE(channels == 1);
     REQUIRE(frames.size() == 3);
@@ -314,9 +266,6 @@ TEST_CASE("Overwrite clips edited samples into valid PCM16 range", "[file]")
 
 TEST_CASE("Save as writes a new WAV file and updates active file state", "[file]")
 {
-    std::fprintf(stderr,
-                 "CUPUACU_DEBUG_WAV_TEST: begin case=save_as_wav\n");
-    std::fflush(stderr);
     ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-save-as"));
     const auto outputPath = cleanup.path() / "exports" / "saved.wav";
 
@@ -331,16 +280,7 @@ TEST_CASE("Save as writes a new WAV file and updates active file state", "[file]
     session.document.setSample(0, 2, 0.0f, false);
     session.document.setSample(1, 2, 0.25f, false);
 
-    std::fprintf(stderr,
-                 "CUPUACU_DEBUG_WAV_TEST: before saveAs output=%s\n",
-                 outputPath.string().c_str());
-    std::fflush(stderr);
     cupuacu::actions::saveAs(&state, outputPath.string());
-    std::fprintf(stderr,
-                 "CUPUACU_DEBUG_WAV_TEST: after saveAs exists=%d currentFile=%s recentFiles=%zu\n",
-                 std::filesystem::exists(outputPath) ? 1 : 0,
-                 session.currentFile.c_str(), state.recentFiles.size());
-    std::fflush(stderr);
 
     REQUIRE(std::filesystem::exists(outputPath));
     REQUIRE(session.currentFile == outputPath.string());
@@ -367,9 +307,6 @@ TEST_CASE("Save as writes a new WAV file and updates active file state", "[file]
 TEST_CASE("Save as normalizes the output extension to the selected format",
           "[file]")
 {
-    std::fprintf(stderr,
-                 "CUPUACU_DEBUG_WAV_TEST: begin case=save_as_normalize_extension\n");
-    std::fflush(stderr);
     ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-save-as-extension"));
     const auto requestedPath = cleanup.path() / "exports" / "saved.flac";
     const auto normalizedPath = cleanup.path() / "exports" / "saved.wav";
@@ -403,9 +340,6 @@ TEST_CASE("Save as normalizes the output extension to the selected format",
 
 TEST_CASE("Default export settings preserve ALAC depth preferences", "[file]")
 {
-    std::fprintf(stderr,
-                 "CUPUACU_DEBUG_WAV_TEST: begin case=default_export_alac_depth\n");
-    std::fflush(stderr);
     const auto settings = cupuacu::file::defaultExportSettingsForPath(
         "export.caf", cupuacu::SampleFormat::PCM_S24);
 
@@ -420,9 +354,6 @@ TEST_CASE("Default export settings preserve ALAC depth preferences", "[file]")
 
 TEST_CASE("Open format probe includes WAV support", "[file]")
 {
-    std::fprintf(stderr,
-                 "CUPUACU_DEBUG_WAV_TEST: begin case=open_probe_wav\n");
-    std::fflush(stderr);
     const auto formats = cupuacu::file::probeAvailableOpenFormats();
 
     const auto it = std::find_if(
@@ -437,9 +368,6 @@ TEST_CASE("Open format probe includes WAV support", "[file]")
 TEST_CASE("Import sample format inference handles compressed and ALAC input",
           "[file]")
 {
-    std::fprintf(stderr,
-                 "CUPUACU_DEBUG_WAV_TEST: begin case=sample_format_inference\n");
-    std::fflush(stderr);
     REQUIRE(cupuacu::file::sampleFormatForSndfileFormat(
                 SF_FORMAT_WAV | SF_FORMAT_PCM_16) ==
             cupuacu::SampleFormat::PCM_S16);
@@ -457,9 +385,6 @@ TEST_CASE("Import sample format inference handles compressed and ALAC input",
 TEST_CASE("Lossy export defaults expose Vorbis quality and MP3 bitrate mode",
           "[file]")
 {
-    std::fprintf(stderr,
-                 "CUPUACU_DEBUG_WAV_TEST: begin case=lossy_defaults\n");
-    std::fflush(stderr);
     const auto vorbisQuality =
         cupuacu::file::defaultCompressionLevelForCodec(
             cupuacu::file::AudioExportCodec::VORBIS);
@@ -480,9 +405,6 @@ TEST_CASE("Lossy export defaults expose Vorbis quality and MP3 bitrate mode",
 
 TEST_CASE("MP3 bitrate options follow sample rate band and mode", "[file]")
 {
-    std::fprintf(stderr,
-                 "CUPUACU_DEBUG_WAV_TEST: begin case=mp3_bitrate_options\n");
-    std::fflush(stderr);
     cupuacu::file::AudioExportSettings cbrSettings{
         .container = cupuacu::file::AudioExportContainer::MPEG,
         .codec = cupuacu::file::AudioExportCodec::MP3,
@@ -512,9 +434,6 @@ TEST_CASE("MP3 bitrate options follow sample rate band and mode", "[file]")
 
 TEST_CASE("Export settings description includes lossy quality controls", "[file]")
 {
-    std::fprintf(stderr,
-                 "CUPUACU_DEBUG_WAV_TEST: begin case=describe_lossy_quality\n");
-    std::fflush(stderr);
     cupuacu::file::AudioExportSettings settings{
         .container = cupuacu::file::AudioExportContainer::MPEG,
         .codec = cupuacu::file::AudioExportCodec::MP3,
@@ -536,9 +455,6 @@ TEST_CASE("Export settings description includes lossy quality controls", "[file]
 TEST_CASE("Export settings description includes MP3 bitrate when selected",
           "[file]")
 {
-    std::fprintf(stderr,
-                 "CUPUACU_DEBUG_WAV_TEST: begin case=describe_mp3_bitrate\n");
-    std::fflush(stderr);
     cupuacu::file::AudioExportSettings settings{
         .container = cupuacu::file::AudioExportContainer::MPEG,
         .codec = cupuacu::file::AudioExportCodec::MP3,
