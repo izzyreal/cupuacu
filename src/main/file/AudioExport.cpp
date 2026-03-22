@@ -631,49 +631,6 @@ cupuacu::file::defaultExportSettingsForPath(
     const std::filesystem::path &outputPath,
     const cupuacu::SampleFormat documentFormat)
 {
-    const auto formats = probeAvailableExportFormats();
-
-    auto chooseSettings =
-        [&](const AudioExportFormatOption &option) -> std::optional<AudioExportSettings>
-    {
-        const int preferredSubtype =
-            preferredSubtypeForDocument(option, documentFormat);
-        if (const auto *preferred = findEncoding(option, preferredSubtype))
-        {
-            return makeSettings(option, *preferred);
-        }
-        if (!option.encodings.empty())
-        {
-            return makeSettings(option, option.encodings.front());
-        }
-        return std::nullopt;
-    };
-
-    for (const auto &format : formats)
-    {
-        for (const auto &encoding : format.encodings)
-        {
-            if (extensionEquals(outputPath, encoding.extension))
-            {
-                return chooseSettings(format);
-            }
-        }
-    }
-
-    for (const auto &format : formats)
-    {
-        if (format.container == AudioExportContainer::WAV &&
-            format.codec == AudioExportCodec::PCM)
-        {
-            return chooseSettings(format);
-        }
-    }
-
-    if (!formats.empty())
-    {
-        return chooseSettings(formats.front());
-    }
-
     return fallbackSettingsForPath(outputPath, documentFormat);
 }
 
@@ -684,19 +641,6 @@ cupuacu::file::inferExportSettingsForFile(const std::filesystem::path &path,
 {
     const int major = sndfileFormat & SF_FORMAT_TYPEMASK;
     const int subtype = sndfileFormat & SF_FORMAT_SUBMASK;
-
-    for (const auto &format : probeAvailableExportFormats())
-    {
-        if (format.majorFormat != major)
-        {
-            continue;
-        }
-
-        if (const auto *encoding = findEncoding(format, subtype))
-        {
-            return makeSettings(format, *encoding);
-        }
-    }
 
     for (const auto &candidate : kCandidateFormats)
     {
