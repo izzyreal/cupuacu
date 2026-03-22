@@ -91,6 +91,7 @@ fetchcontent_declare_cached_url(
 FetchContent_MakeAvailable(json)
 
 set(CUPUACU_SHARED_SOURCES
+    src/main/Document.cpp
     src/main/State.cpp
     src/main/Paths.cpp
     src/main/file/AudioExport.cpp

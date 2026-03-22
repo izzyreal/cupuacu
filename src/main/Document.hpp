@@ -21,132 +21,36 @@ namespace cupuacu
         std::vector<gui::WaveformCache> waveformCache =
             std::vector<gui::WaveformCache>(2);
 
-        void syncWaveformCacheToChannelCount(const int64_t channelCount)
-        {
-            waveformCache.resize(static_cast<std::size_t>(channelCount));
-        }
-
-        void resetWaveformCacheToChannelCount(const int64_t channelCount)
-        {
-            waveformCache.assign(static_cast<std::size_t>(channelCount),
-                                 gui::WaveformCache{});
-        }
+        void syncWaveformCacheToChannelCount(int64_t channelCount);
+        void resetWaveformCacheToChannelCount(int64_t channelCount);
 
     public:
-        void initialize(const SampleFormat sampleFormatToUse,
-                        const uint32_t sampleRateToUse,
-                        const uint32_t channelCount, const int64_t frameCount)
-        {
-            format = sampleFormatToUse;
-            sampleRate = sampleRateToUse;
-            const bool usesIntegerPcm =
-                format == SampleFormat::PCM_S8 ||
-                format == SampleFormat::PCM_S16 ||
-                format == SampleFormat::PCM_S24 ||
-                format == SampleFormat::PCM_S32;
-            buffer = usesIntegerPcm
-                         ? std::make_shared<
-                               cupuacu::audio::DirtyTrackingAudioBuffer>()
-                         : std::make_shared<cupuacu::audio::AudioBuffer>();
-            buffer->resize(channelCount, frameCount);
-            ++waveformDataVersion;
-            resetWaveformCacheToChannelCount(channelCount);
-        }
+        void initialize(SampleFormat sampleFormatToUse,
+                        uint32_t sampleRateToUse,
+                        uint32_t channelCount, int64_t frameCount);
 
-        gui::WaveformCache &getWaveformCache(const int channel)
-        {
-            return waveformCache[channel];
-        }
-        const gui::WaveformCache &getWaveformCache(const int channel) const
-        {
-            return waveformCache[channel];
-        }
+        gui::WaveformCache &getWaveformCache(int channel);
+        const gui::WaveformCache &getWaveformCache(int channel) const;
 
-        SampleFormat getSampleFormat() const
-        {
-            return format;
-        }
+        SampleFormat getSampleFormat() const;
 
-        int getSampleRate() const
-        {
-            return sampleRate;
-        }
-        uint64_t getWaveformDataVersion() const
-        {
-            return waveformDataVersion;
-        }
-        int64_t getFrameCount() const
-        {
-            return buffer->getFrameCount();
-        }
-        int64_t getChannelCount() const
-        {
-            return buffer->getChannelCount();
-        }
+        int getSampleRate() const;
+        uint64_t getWaveformDataVersion() const;
+        int64_t getFrameCount() const;
+        int64_t getChannelCount() const;
 
-        float getSample(int64_t channel, int64_t frame) const
-        {
-            return buffer->getSample(channel, frame);
-        }
+        float getSample(int64_t channel, int64_t frame) const;
         void setSample(int64_t channel, int64_t frame, float value,
-                       const bool shouldMarkDirty = true)
-        {
-            buffer->setSample(channel, frame, value, shouldMarkDirty);
-            ++waveformDataVersion;
-        }
+                       bool shouldMarkDirty = true);
 
-        void resizeBuffer(int64_t channels, int64_t frames)
-        {
-            buffer->resize(channels, frames);
-            syncWaveformCacheToChannelCount(channels);
-            ++waveformDataVersion;
-        }
+        void resizeBuffer(int64_t channels, int64_t frames);
 
-        void insertFrames(int64_t frameIndex, int64_t numFrames)
-        {
-            buffer->insertFrames(frameIndex, numFrames);
-            ++waveformDataVersion;
+        void insertFrames(int64_t frameIndex, int64_t numFrames);
 
-            for (int ch = 0; ch < getChannelCount(); ++ch)
-            {
-                waveformCache[ch].applyInsert(frameIndex, numFrames);
-            }
-        }
+        void removeFrames(int64_t frameIndex, int64_t numFrames);
 
-        void removeFrames(int64_t frameIndex, int64_t numFrames)
-        {
-            buffer->removeFrames(frameIndex, numFrames);
-            ++waveformDataVersion;
+        void updateWaveformCache();
 
-            for (int ch = 0; ch < getChannelCount(); ++ch)
-            {
-                waveformCache[ch].applyErase(frameIndex,
-                                             frameIndex + numFrames);
-            }
-        }
-
-        void updateWaveformCache()
-        {
-            for (int ch = 0; ch < getChannelCount(); ++ch)
-            {
-                const auto channelData =
-                    getAudioBuffer()->getImmutableChannelData(ch);
-                if (waveformCache[ch].levelsCount() == 0)
-                {
-                    waveformCache[ch].rebuildAll(channelData.data(),
-                                                 getFrameCount());
-                }
-                else
-                {
-                    waveformCache[ch].rebuildDirty(channelData.data());
-                }
-            }
-        }
-
-        const std::shared_ptr<cupuacu::audio::AudioBuffer>
-        getAudioBuffer() const
-        {
-            return buffer;
-        }
+        std::shared_ptr<cupuacu::audio::AudioBuffer> getAudioBuffer() const;
     };
 } // namespace cupuacu
