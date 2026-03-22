@@ -78,19 +78,20 @@ namespace cupuacu::gui
         cancelButton = root->emplaceChild<TextButton>(state, "Cancel");
         nextButton = root->emplaceChild<TextButton>(state, "Next...");
 
-        containerLabel->setFontSize(state->menuFontSize);
-        codecLabel->setFontSize(state->menuFontSize);
-        encodingLabel->setFontSize(state->menuFontSize);
-        bitrateModeLabel->setFontSize(state->menuFontSize);
-        bitrateLabel->setFontSize(state->menuFontSize);
-        qualityLabel->setFontSize(state->menuFontSize);
-        detailsLabel->setFontSize(state->menuFontSize - 8);
-        containerDropdown->setFontSize(state->menuFontSize);
-        codecDropdown->setFontSize(state->menuFontSize);
-        encodingDropdown->setFontSize(state->menuFontSize);
-        bitrateModeDropdown->setFontSize(state->menuFontSize);
-        bitrateDropdown->setFontSize(state->menuFontSize);
-        qualityDropdown->setFontSize(state->menuFontSize);
+        const int labelFontSize = state->menuFontSize;
+        containerLabel->setFontSize(labelFontSize);
+        codecLabel->setFontSize(labelFontSize);
+        encodingLabel->setFontSize(labelFontSize);
+        bitrateModeLabel->setFontSize(labelFontSize);
+        bitrateLabel->setFontSize(labelFontSize);
+        qualityLabel->setFontSize(labelFontSize);
+        detailsLabel->setFontSize(labelFontSize - 8);
+        containerDropdown->setFontSize(labelFontSize);
+        codecDropdown->setFontSize(labelFontSize);
+        encodingDropdown->setFontSize(labelFontSize);
+        bitrateModeDropdown->setFontSize(labelFontSize);
+        bitrateDropdown->setFontSize(labelFontSize);
+        qualityDropdown->setFontSize(labelFontSize);
         cancelButton->setTriggerOnMouseUp(true);
         nextButton->setTriggerOnMouseUp(true);
 

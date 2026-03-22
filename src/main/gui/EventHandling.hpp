@@ -218,19 +218,53 @@ namespace cupuacu::gui
 
     static Window *findWindowForEvent(State *state, const SDL_Event *event)
     {
-        const SDL_WindowID windowId = getEventWindowId(event);
-        if (windowId == 0)
+        auto findById = [state](const SDL_WindowID windowId) -> Window *
         {
+            if (windowId == 0)
+            {
+                return nullptr;
+            }
+
+            for (auto *window : state->windows)
+            {
+                if (window && window->getId() == windowId)
+                {
+                    return window;
+                }
+            }
             return nullptr;
+        };
+
+        const SDL_WindowID windowId = getEventWindowId(event);
+        if (auto *window = findById(windowId))
+        {
+            return window;
         }
 
-        for (auto *window : state->windows)
+        switch (event->type)
         {
-            if (window && window->getId() == windowId)
-            {
-                return window;
-            }
+            case SDL_EVENT_MOUSE_MOTION:
+            case SDL_EVENT_MOUSE_BUTTON_DOWN:
+            case SDL_EVENT_MOUSE_BUTTON_UP:
+            case SDL_EVENT_MOUSE_WHEEL:
+                if (const SDL_Window *mouseFocus = SDL_GetMouseFocus())
+                {
+                    return findById(SDL_GetWindowID(
+                        const_cast<SDL_Window *>(mouseFocus)));
+                }
+                break;
+            case SDL_EVENT_KEY_DOWN:
+            case SDL_EVENT_TEXT_INPUT:
+                if (const SDL_Window *keyboardFocus = SDL_GetKeyboardFocus())
+                {
+                    return findById(SDL_GetWindowID(
+                        const_cast<SDL_Window *>(keyboardFocus)));
+                }
+                break;
+            default:
+                break;
         }
+
         return nullptr;
     }
 

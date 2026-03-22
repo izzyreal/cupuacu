@@ -2,6 +2,7 @@
 
 #include "../ResourceUtil.hpp"
 #include "../State.hpp"
+#include "DropdownMenu.hpp"
 #include "MenuBar.hpp"
 #include "TooltipController.hpp"
 #include "TooltipPlanning.hpp"
@@ -180,12 +181,111 @@ namespace
         }
         SDL_DestroySurface(icon);
     }
+
+    void collectExpandedDropdowns(Component *component,
+                                  std::vector<DropdownMenu *> &dropdowns)
+    {
+        if (!component)
+        {
+            return;
+        }
+
+        if (auto *dropdown = dynamic_cast<DropdownMenu *>(component);
+            dropdown != nullptr && dropdown->isExpanded())
+        {
+            dropdowns.push_back(dropdown);
+        }
+
+        for (const auto &child : component->getChildren())
+        {
+            collectExpandedDropdowns(child.get(), dropdowns);
+        }
+    }
+
+    DropdownMenu *findAncestorDropdown(Component *component)
+    {
+        while (component != nullptr)
+        {
+            if (auto *dropdown = dynamic_cast<DropdownMenu *>(component))
+            {
+                return dropdown;
+            }
+            if (auto *ownerProvider =
+                    dynamic_cast<DropdownOwnerComponent *>(component))
+            {
+                return ownerProvider->getOwningDropdown();
+            }
+            component = component->getParentComponent();
+        }
+        return nullptr;
+    }
+
+    void collectExpandedDropdownsFromWindow(Window *window,
+                                            std::vector<DropdownMenu *> &dropdowns)
+    {
+        if (!window || !window->getRootComponent())
+        {
+            return;
+        }
+
+        collectExpandedDropdowns(window->getRootComponent(), dropdowns);
+    }
+
+    bool collapseExpandedDropdowns(Window *activeWindow, cupuacu::State *state,
+                                   DropdownMenu *dropdownToKeepOpen)
+    {
+        std::vector<DropdownMenu *> expandedDropdowns;
+        if (activeWindow)
+        {
+            collectExpandedDropdownsFromWindow(activeWindow, expandedDropdowns);
+        }
+
+        if (!state)
+        {
+            bool changed = false;
+            for (auto *dropdown : expandedDropdowns)
+            {
+                if (dropdown == dropdownToKeepOpen)
+                {
+                    continue;
+                }
+
+                dropdown->setExpanded(false);
+                changed = true;
+            }
+            return changed;
+        }
+
+        for (auto *candidateWindow : state->windows)
+        {
+            if (candidateWindow == activeWindow)
+            {
+                continue;
+            }
+            collectExpandedDropdownsFromWindow(candidateWindow, expandedDropdowns);
+        }
+
+        bool changed = false;
+        for (auto *dropdown : expandedDropdowns)
+        {
+            if (dropdown == dropdownToKeepOpen)
+            {
+                continue;
+            }
+
+            dropdown->setExpanded(false);
+            changed = true;
+        }
+
+        return changed;
+    }
 }
 
 Window::Window(State *stateToUse, const std::string &title, const int width,
                const int height, const Uint32 flags)
     : state(stateToUse)
 {
+    transparentWindow = (flags & SDL_WINDOW_TRANSPARENT) != 0;
     if (!SDL_CreateWindowAndRenderer(title.c_str(), width, height, flags,
                                      &window, &renderer))
     {
@@ -199,6 +299,43 @@ Window::Window(State *stateToUse, const std::string &title, const int width,
     {
         SDL_Log("SDL_SetRenderVSync(1) failed: %s", SDL_GetError());
     }
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+
+    windowId = SDL_GetWindowID(window);
+    resizeCanvasIfNeeded();
+    setFontDisplayScale(getEffectiveWindowDisplayScale(window, canvas));
+    tooltipController = std::make_unique<TooltipController>(state, this);
+}
+
+Window::Window(State *stateToUse, SDL_Window *parentWindow, const int offsetX,
+               const int offsetY, const int width, const int height,
+               const Uint32 flags)
+    : state(stateToUse)
+{
+    popupWindow = true;
+    transparentWindow = (flags & SDL_WINDOW_TRANSPARENT) != 0;
+    window = SDL_CreatePopupWindow(parentWindow, offsetX, offsetY, width, height,
+                                   flags);
+    if (!window)
+    {
+        SDL_Log("SDL_CreatePopupWindow() failed: %s", SDL_GetError());
+        return;
+    }
+
+    renderer = SDL_CreateRenderer(window, nullptr);
+    if (!renderer)
+    {
+        SDL_Log("SDL_CreateRenderer() failed for popup window: %s",
+                SDL_GetError());
+        close();
+        return;
+    }
+
+    if (!SDL_SetRenderVSync(renderer, 1))
+    {
+        SDL_Log("SDL_SetRenderVSync(1) failed: %s", SDL_GetError());
+    }
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
     windowId = SDL_GetWindowID(window);
     resizeCanvasIfNeeded();
@@ -244,6 +381,43 @@ void Window::setRootComponent(std::unique_ptr<Component> rootToUse)
         rootComponent->setWindow(this);
         rootComponent->setVisible(true);
     }
+}
+
+bool Window::setCanvasSize(const int width, const int height)
+{
+    if (!renderer || width <= 0 || height <= 0)
+    {
+        return false;
+    }
+
+    if (canvas)
+    {
+        float currentW = 0.0f;
+        float currentH = 0.0f;
+        SDL_GetTextureSize(canvas, &currentW, &currentH);
+        if (static_cast<int>(currentW) == width &&
+            static_cast<int>(currentH) == height)
+        {
+            return true;
+        }
+        SDL_DestroyTexture(canvas);
+        canvas = nullptr;
+    }
+
+    canvas =
+        SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
+                          SDL_TEXTUREACCESS_TARGET, width, height);
+    if (!canvas)
+    {
+        SDL_Log("SDL_CreateTexture() for window canvas failed: %s",
+                SDL_GetError());
+        return false;
+    }
+
+    SDL_SetTextureScaleMode(canvas, SDL_SCALEMODE_NEAREST);
+    SDL_SetTextureBlendMode(canvas, SDL_BLENDMODE_BLEND);
+    logWindowScaleDiagnostics(window, canvas, state->pixelScale);
+    return true;
 }
 
 void Window::setFocusedComponent(Component *component)
@@ -664,6 +838,15 @@ bool Window::handleMouseEvent(const MouseEvent &mouseEvent)
         updateComponentUnderMouse(mouseEvent.mouseXi, mouseEvent.mouseYi);
     }
 
+    if (mouseEvent.type == DOWN && rootComponent != nullptr)
+    {
+        DropdownMenu *clickedDropdown = findAncestorDropdown(componentUnderMouse);
+        if (collapseExpandedDropdowns(this, state, clickedDropdown))
+        {
+            updateComponentUnderMouse(mouseEvent.mouseXi, mouseEvent.mouseYi);
+        }
+    }
+
     if (mouseEvent.type == DOWN && focusedComponent != nullptr &&
         (componentUnderMouse == nullptr ||
          !Component::isComponentOrChildOf(componentUnderMouse, focusedComponent)))
@@ -711,6 +894,8 @@ void Window::renderFrame()
         return;
     }
 
+    setFontDisplayScale(getEffectiveWindowDisplayScale(window, canvas));
+
     dirtyRects.clear();
     SDL_Rect fullBounds{0, 0, 0, 0};
     if (canvas)
@@ -725,8 +910,18 @@ void Window::renderFrame()
     rootComponent->setDirty();
 
     SDL_SetRenderTarget(renderer, canvas);
+    if (transparentWindow)
+    {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+        SDL_RenderClear(renderer);
+    }
     rootComponent->draw(renderer);
     SDL_SetRenderTarget(renderer, nullptr);
+    if (transparentWindow)
+    {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+        SDL_RenderClear(renderer);
+    }
     SDL_RenderTexture(renderer, canvas, nullptr, nullptr);
     SDL_RenderPresent(renderer);
     dirtyRects.clear();
@@ -739,6 +934,8 @@ void Window::renderFrameIfDirty()
         return;
     }
 
+    setFontDisplayScale(getEffectiveWindowDisplayScale(window, canvas));
+
     // Overlay must repaint whenever anything below changes so popups stay on
     // top even when underlying content (e.g. waveforms) is animating.
     if (overlayLayer)
@@ -747,8 +944,18 @@ void Window::renderFrameIfDirty()
     }
 
     SDL_SetRenderTarget(renderer, canvas);
+    if (transparentWindow)
+    {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+        SDL_RenderClear(renderer);
+    }
     rootComponent->draw(renderer);
     SDL_SetRenderTarget(renderer, nullptr);
+    if (transparentWindow)
+    {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+        SDL_RenderClear(renderer);
+    }
     SDL_RenderTexture(renderer, canvas, nullptr, nullptr);
     SDL_RenderPresent(renderer);
     dirtyRects.clear();

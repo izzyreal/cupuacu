@@ -45,20 +45,20 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
     optionsMenu = emplaceChild<Menu>(state, "Options");
 
 #ifdef __APPLE__
-    constexpr std::string newText{"New file (Cmd + N)"};
-    constexpr std::string openText{"Open (Cmd + O)"};
-    constexpr std::string saveAsText{"Save as"};
-    constexpr std::string closeText{"Close file (Cmd + W)"};
-    constexpr std::string overwriteText{"Overwrite (Cmd + S)"};
-    constexpr std::string exitText{"Exit"};
-    constexpr std::string trimText{"Trim (Cmd + T)"};
-    constexpr std::string cutText{"Cut (Cmd + X)"};
-    constexpr std::string copyText{"Copy (Cmd + C)"};
-    constexpr std::string pasteText{"Paste (Cmd + V)"};
+    const std::string newText{"New file (Cmd + N)"};
+    const std::string openText{"Open (Cmd + O)"};
+    const std::string saveAsText{"Save as (Cmd + Shift + S)"};
+    const std::string closeText{"Close file (Cmd + W)"};
+    const std::string overwriteText{"Overwrite (Cmd + S)"};
+    const std::string exitText{"Exit"};
+    const std::string trimText{"Trim (Cmd + T)"};
+    const std::string cutText{"Cut (Cmd + X)"};
+    const std::string copyText{"Copy (Cmd + C)"};
+    const std::string pasteText{"Paste (Cmd + V)"};
 #else
     const std::string newText{"New file (Ctrl + N)"};
     const std::string openText{"Open (Ctrl + O)"};
-    const std::string saveAsText{"Save as"};
+    const std::string saveAsText{"Save as (Ctrl + Shift + S)"};
     const std::string closeText{"Close file (Ctrl + W)"};
     const std::string overwriteText{"Overwrite (Ctrl + S)"};
     const std::string exitText{"Exit"};

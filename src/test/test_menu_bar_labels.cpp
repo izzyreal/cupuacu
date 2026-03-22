@@ -338,13 +338,14 @@ TEST_CASE("MenuBar file menu shows platform-aware new open close and overwrite s
 #ifdef __APPLE__
     REQUIRE(fileEntries[0]->getMenuName() == "New file (Cmd + N)");
     REQUIRE(fileEntries[1]->getMenuName() == "Open (Cmd + O)");
-    REQUIRE(fileEntries[2]->getMenuName() == "Save as");
+    REQUIRE(fileEntries[2]->getMenuName() == "Save as (Cmd + Shift + S)");
     REQUIRE(fileEntries[4]->getMenuName() == "Close file (Cmd + W)");
     REQUIRE(fileEntries[5]->getMenuName() == "Overwrite (Cmd + S)");
 #else
     REQUIRE(fileEntries[0]->getMenuName() == "New file (Ctrl + N)");
     REQUIRE(fileEntries[1]->getMenuName() == "Open (Ctrl + O)");
-    REQUIRE(fileEntries[2]->getMenuName() == "Save as");
+    REQUIRE(fileEntries[2]->getMenuName() ==
+            "Save as (Ctrl + Shift + S)");
     REQUIRE(fileEntries[4]->getMenuName() ==
             "Close file (Ctrl + W)");
     REQUIRE(fileEntries[5]->getMenuName() ==

@@ -165,6 +165,21 @@ namespace
         }
     };
 
+    cupuacu::gui::MouseEvent leftMouseDownAt(const int x, const int y)
+    {
+        return cupuacu::gui::MouseEvent{
+            cupuacu::gui::DOWN, x, y, static_cast<float>(x),
+            static_cast<float>(y), 0.0f, 0.0f,
+            cupuacu::gui::MouseButtonState{true, false, false}, 1};
+    }
+
+    cupuacu::gui::MouseEvent leftMouseUpAt(const int x, const int y)
+    {
+        return cupuacu::gui::MouseEvent{
+            cupuacu::gui::UP, x, y, static_cast<float>(x), static_cast<float>(y),
+            0.0f, 0.0f, cupuacu::gui::MouseButtonState{true, false, false}, 1};
+    }
+
     class ScopedConfigCleanup
     {
     public:
@@ -794,6 +809,70 @@ TEST_CASE("Device properties integration refreshes layout when pixel scale chang
 
     REQUIRE(dropdowns[0]->getHeight() != originalHeight);
     REQUIRE(dropdowns[1]->getYPos() != originalY);
+}
+
+TEST_CASE("Dropdown integration keeps only one dropdown open and closes on outside clicks",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "dropdown-exclusive", 320, 240, SDL_WINDOW_HIDDEN);
+
+    auto root =
+        std::make_unique<cupuacu::test::integration::RootComponent>(&state);
+    root->setBounds(0, 0, 320, 240);
+    auto *first = root->emplaceChild<cupuacu::gui::DropdownMenu>(&state);
+    auto *second = root->emplaceChild<cupuacu::gui::DropdownMenu>(&state);
+    first->setBounds(20, 20, 180, 30);
+    second->setBounds(20, 140, 180, 30);
+    first->setItems({"Alpha", "Beta", "Gamma"});
+    second->setItems({"One", "Two", "Three"});
+    first->setCollapsedHeight(30);
+    second->setCollapsedHeight(30);
+    window->setRootComponent(std::move(root));
+
+    REQUIRE(window->handleMouseEvent(leftMouseDownAt(40, 35)));
+    REQUIRE(window->handleMouseEvent(leftMouseUpAt(40, 35)));
+    REQUIRE(first->isExpanded());
+    REQUIRE_FALSE(second->isExpanded());
+
+    REQUIRE(window->handleMouseEvent(leftMouseDownAt(40, 155)));
+    REQUIRE(window->handleMouseEvent(leftMouseUpAt(40, 155)));
+    REQUIRE_FALSE(first->isExpanded());
+    REQUIRE(second->isExpanded());
+
+    REQUIRE(window->handleMouseEvent(leftMouseDownAt(260, 220)));
+    REQUIRE(window->handleMouseEvent(leftMouseUpAt(260, 220)));
+    REQUIRE_FALSE(first->isExpanded());
+    REQUIRE_FALSE(second->isExpanded());
+}
+
+TEST_CASE("Main window integration opens Export Audio on primary-modifier Shift-S",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto sessionUi =
+        cupuacu::test::integration::createSessionUi(&state, 32, false, 2);
+    (void)sessionUi;
+
+    SDL_Event event{};
+    event.type = SDL_EVENT_KEY_DOWN;
+    event.key.windowID =
+        state.mainDocumentSessionWindow->getWindow()->getId();
+    event.key.scancode = SDL_SCANCODE_S;
+#if __APPLE__
+    event.key.mod = SDL_KMOD_GUI | SDL_KMOD_SHIFT;
+#else
+    event.key.mod = SDL_KMOD_CTRL | SDL_KMOD_SHIFT;
+#endif
+
+    cupuacu::gui::handleKeyDown(&event, &state);
+    REQUIRE(state.exportAudioDialogWindow != nullptr);
+    REQUIRE(state.exportAudioDialogWindow->isOpen());
 }
 
 TEST_CASE("File menu integration opens a recent file into the active session",

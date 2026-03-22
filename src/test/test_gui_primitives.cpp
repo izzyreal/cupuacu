@@ -111,7 +111,7 @@ TEST_CASE("ScrollBar click and drag update value with clamping", "[gui]")
         1}));
 }
 
-TEST_CASE("DropdownMenu expands collapses and notifies on selection change",
+TEST_CASE("DropdownMenu toggles popup state while keeping collapsed labels in place",
           "[gui]")
 {
     cupuacu::test::StateWithTestPaths state{};
@@ -122,10 +122,6 @@ TEST_CASE("DropdownMenu expands collapses and notifies on selection change",
     dropdown.setBounds(0, 0, 160, 30);
     dropdown.setItems({"Alpha", "Beta", "Gamma"});
     dropdown.setCollapsedHeight(30);
-
-    int callbackIndex = -1;
-    dropdown.setOnSelectionChanged(
-        [&](const int index) { callbackIndex = index; });
 
     auto labels = labelChildren(&dropdown);
     REQUIRE(labels.size() == 3);
@@ -145,32 +141,54 @@ TEST_CASE("DropdownMenu expands collapses and notifies on selection change",
         cupuacu::gui::MouseButtonState{true, false, false},
         1}));
 
-    REQUIRE(dropdown.getHeight() > 30);
+    REQUIRE(dropdown.isExpanded());
+    REQUIRE(dropdown.getHeight() == 30);
     REQUIRE(labels[0]->isVisible());
-    REQUIRE(labels[1]->isVisible());
-    REQUIRE(labels[2]->isVisible());
-
-    const int rowHeight = labels[1]->getBounds().y - labels[0]->getBounds().y;
-    REQUIRE(rowHeight > 0);
+    REQUIRE_FALSE(labels[1]->isVisible());
+    REQUIRE_FALSE(labels[2]->isVisible());
 
     REQUIRE(dropdown.mouseDown(cupuacu::gui::MouseEvent{
         cupuacu::gui::DOWN,
         10,
-        rowHeight + 1,
+        10,
         10.0f,
-        static_cast<float>(rowHeight + 1),
+        10.0f,
         0.0f,
         0.0f,
         cupuacu::gui::MouseButtonState{true, false, false},
         1}));
 
-    REQUIRE(dropdown.getSelectedIndex() == 1);
-    REQUIRE(callbackIndex == 1);
-    REQUIRE(dropdown.getHeight() >= 30);
-    REQUIRE(dropdown.getHeight() >= dropdown.getRowHeight());
-    REQUIRE_FALSE(labels[0]->isVisible());
-    REQUIRE(labels[1]->isVisible());
-    REQUIRE_FALSE(labels[2]->isVisible());
+    REQUIRE_FALSE(dropdown.isExpanded());
+    REQUIRE(dropdown.getSelectedIndex() == 0);
+}
+
+TEST_CASE("DropdownMenu expansion keeps the collapsed control bounds unchanged",
+          "[gui]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    state.menuFontSize = 32;
+
+    cupuacu::gui::DropdownMenu dropdown(&state);
+    dropdown.setVisible(true);
+    dropdown.setBounds(8, 90, 160, 30);
+    dropdown.setItems({"Alpha", "Beta", "Gamma", "Delta"});
+    dropdown.setCollapsedHeight(30);
+    dropdown.setSelectedIndex(2);
+
+    const int collapsedY = dropdown.getYPos();
+    const int collapsedHeight = dropdown.getHeight();
+
+    dropdown.setExpanded(true);
+
+    REQUIRE(dropdown.isExpanded());
+    REQUIRE(dropdown.getYPos() == collapsedY);
+    REQUIRE(dropdown.getHeight() == collapsedHeight);
+
+    dropdown.setExpanded(false);
+
+    REQUIRE_FALSE(dropdown.isExpanded());
+    REQUIRE(dropdown.getYPos() == collapsedY);
+    REQUIRE(dropdown.getHeight() == collapsedHeight);
 }
 
 TEST_CASE("DropdownMenu collapsed height tracks row height after margin changes",

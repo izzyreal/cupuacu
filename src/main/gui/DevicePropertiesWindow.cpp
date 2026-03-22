@@ -100,7 +100,6 @@ DevicePropertiesWindow::DevicePropertiesWindow(State *stateToUse)
     inputDeviceDropdown = rootComponent->emplaceChild<DropdownMenu>(state);
 
     const int labelFontSize = static_cast<int>(state->menuFontSize);
-
     deviceTypeLabel->setFontSize(labelFontSize);
     outputDeviceLabel->setFontSize(labelFontSize);
     inputDeviceLabel->setFontSize(labelFontSize);

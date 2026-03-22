@@ -67,12 +67,14 @@ namespace cupuacu::gui
         cancelButton = root->emplaceChild<TextButton>(state, "Cancel");
         okButton = root->emplaceChild<TextButton>(state, "OK");
 
-        durationLabel->setFontSize(state->menuFontSize);
-        unitLabel->setFontSize(state->menuFontSize);
-        durationInput->setFontSize(state->menuFontSize - 6);
+        const int labelFontSize = state->menuFontSize;
+        const int controlFontSize = std::max(1, labelFontSize - 6);
+        durationLabel->setFontSize(labelFontSize);
+        unitLabel->setFontSize(labelFontSize);
+        durationInput->setFontSize(controlFontSize);
         durationInput->setAllowedCharacters("0123456789.");
         durationInput->setText("1");
-        unitDropdown->setFontSize(state->menuFontSize);
+        unitDropdown->setFontSize(labelFontSize);
         unitDropdown->setItems({"samples", "seconds", "milliseconds"});
         unitDropdown->setSelectedIndex(1);
         cancelButton->setTriggerOnMouseUp(true);

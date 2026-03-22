@@ -165,7 +165,17 @@ namespace cupuacu::gui
         {
             if (primaryModifierHeld)
             {
-                actions::overwrite(state);
+                if (event->key.mod & SDL_KMOD_SHIFT)
+                {
+                    if (actions::hasActiveDocument(state))
+                    {
+                        actions::showExportAudioDialog(state);
+                    }
+                }
+                else
+                {
+                    actions::overwrite(state);
+                }
             }
         }
         else if (event->key.scancode == SDL_SCANCODE_SPACE)

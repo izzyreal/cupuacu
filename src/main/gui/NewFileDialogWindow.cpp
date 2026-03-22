@@ -67,12 +67,13 @@ namespace cupuacu::gui
         cancelButton = root->emplaceChild<TextButton>(state, "Cancel");
         okButton = root->emplaceChild<TextButton>(state, "OK");
 
-        sampleRateLabel->setFontSize(state->menuFontSize);
-        bitDepthLabel->setFontSize(state->menuFontSize);
-        channelCountLabel->setFontSize(state->menuFontSize);
-        sampleRateDropdown->setFontSize(state->menuFontSize);
-        bitDepthDropdown->setFontSize(state->menuFontSize);
-        channelCountDropdown->setFontSize(state->menuFontSize);
+        const int labelFontSize = state->menuFontSize;
+        sampleRateLabel->setFontSize(labelFontSize);
+        bitDepthLabel->setFontSize(labelFontSize);
+        channelCountLabel->setFontSize(labelFontSize);
+        sampleRateDropdown->setFontSize(labelFontSize);
+        bitDepthDropdown->setFontSize(labelFontSize);
+        channelCountDropdown->setFontSize(labelFontSize);
         sampleRateDropdown->setItems({"11025", "22050", "44100", "48000", "96000"});
         bitDepthDropdown->setItems({"8 bit", "16 bit"});
         channelCountDropdown->setItems({"1", "2"});
