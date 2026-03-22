@@ -274,6 +274,10 @@ namespace cupuacu::file
                 state->getActiveDocumentSession().document.getFrameCount();
             size_t channels =
                 state->getActiveDocumentSession().document.getChannelCount();
+            std::fprintf(stderr,
+                         "CUPUACU_DEBUG_WAV_REWRITE: writeDataChunk frames=%zu channels=%zu dataOffset=%lld\n",
+                         frames, channels, static_cast<long long>(dataOffset));
+            std::fflush(stderr);
 
             std::vector<int16_t> interleaved(frames * channels);
 
@@ -282,6 +286,11 @@ namespace cupuacu::file
             const bool shouldCheckForDirtiness =
                 std::dynamic_pointer_cast<
                     cupuacu::audio::DirtyTrackingAudioBuffer>(buf) != nullptr;
+            std::fprintf(stderr,
+                         "CUPUACU_DEBUG_WAV_REWRITE: buffer=%p checkDirty=%d\n",
+                         static_cast<void *>(buf.get()),
+                         shouldCheckForDirtiness ? 1 : 0);
+            std::fflush(stderr);
 
             for (size_t f = 0; f < frames; ++f)
             {
@@ -313,6 +322,10 @@ namespace cupuacu::file
                     }
                 }
             }
+            std::fprintf(stderr,
+                         "CUPUACU_DEBUG_WAV_REWRITE: interleavedCount=%zu\n",
+                         interleaved.size());
+            std::fflush(stderr);
 
             // Write chunk size
             uint32_t dataSize =
@@ -486,6 +499,10 @@ namespace cupuacu::file
                 state->getActiveDocumentSession().currentFile);
             std::filesystem::path output = input;
             output += ".cupuacu.tmp";
+            std::fprintf(stderr,
+                         "CUPUACU_DEBUG_WAV_REWRITE: begin input=%s output=%s\n",
+                         input.string().c_str(), output.string().c_str());
+            std::fflush(stderr);
 
             if (std::filesystem::exists(output))
             {
@@ -504,6 +521,9 @@ namespace cupuacu::file
                 copyBytesBeforeDataChunk(ifs, ofs);
                 writeDataChunk(state, ifs, ofs);
                 copyBytesAfterDataChunk(ifs, ofs);
+                std::fprintf(stderr,
+                             "CUPUACU_DEBUG_WAV_REWRITE: copied chunks and flushed temp\n");
+                std::fflush(stderr);
 
                 ofs.flush();
                 ofs.close();
@@ -512,9 +532,14 @@ namespace cupuacu::file
 
             [[maybe_unused]] const bool identical =
                 isCopyBinaryIdentical(input, output);
+            std::fprintf(stderr,
+                         "CUPUACU_DEBUG_WAV_REWRITE: rename temp into place\n");
+            std::fflush(stderr);
 
             std::filesystem::remove(input);
             std::filesystem::rename(output, input);
+            std::fprintf(stderr, "CUPUACU_DEBUG_WAV_REWRITE: finished\n");
+            std::fflush(stderr);
         }
     };
 } // namespace cupuacu::file

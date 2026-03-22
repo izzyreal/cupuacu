@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -184,8 +185,17 @@ namespace
     std::vector<float> readFramesAsFloat(const std::filesystem::path &path,
                                          int &sampleRate, int &channels)
     {
+        std::fprintf(stderr,
+                     "CUPUACU_DEBUG_WAV_TEST: readFramesAsFloat path=%s\n",
+                     path.string().c_str());
+        std::fflush(stderr);
         SF_INFO info{};
         SNDFILE *file = cupuacu::file::openSndfile(path, SFM_READ, &info);
+        std::fprintf(stderr,
+                     "CUPUACU_DEBUG_WAV_TEST: readFramesAsFloat after open file=%p samplerate=%d channels=%d frames=%lld format=0x%x\n",
+                     static_cast<void *>(file), info.samplerate, info.channels,
+                     static_cast<long long>(info.frames), info.format);
+        std::fflush(stderr);
         REQUIRE(file != nullptr);
 
         sampleRate = info.samplerate;
@@ -194,6 +204,10 @@ namespace
         const sf_count_t readCount =
             sf_readf_float(file, frames.data(), info.frames);
         sf_close(file);
+        std::fprintf(stderr,
+                     "CUPUACU_DEBUG_WAV_TEST: readFramesAsFloat readCount=%lld vectorSize=%zu\n",
+                     static_cast<long long>(readCount), frames.size());
+        std::fflush(stderr);
         REQUIRE(readCount == info.frames);
         return frames;
     }
@@ -237,6 +251,9 @@ TEST_CASE("Overwrite preserves non-audio WAV chunks around data", "[file]")
 
 TEST_CASE("Overwrite clips edited samples into valid PCM16 range", "[file]")
 {
+    std::fprintf(stderr,
+                 "CUPUACU_DEBUG_WAV_TEST: begin case=overwrite_clips\n");
+    std::fflush(stderr);
     ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-wav-clipping"));
     const auto wavPath = cleanup.path() / "clipped.wav";
 
@@ -251,11 +268,23 @@ TEST_CASE("Overwrite clips edited samples into valid PCM16 range", "[file]")
     document.setSample(0, 1, -1.25f);
     document.setSample(0, 2, 0.5f);
 
+    std::fprintf(stderr,
+                 "CUPUACU_DEBUG_WAV_TEST: before overwrite currentFile=%s\n",
+                 state.getActiveDocumentSession().currentFile.c_str());
+    std::fflush(stderr);
     cupuacu::actions::overwrite(&state);
+    std::fprintf(stderr,
+                 "CUPUACU_DEBUG_WAV_TEST: after overwrite exists=%d\n",
+                 std::filesystem::exists(wavPath) ? 1 : 0);
+    std::fflush(stderr);
 
     int sampleRate = 0;
     int channels = 0;
     const auto frames = readFramesAsFloat(wavPath, sampleRate, channels);
+    std::fprintf(stderr,
+                 "CUPUACU_DEBUG_WAV_TEST: after read framesSize=%zu sampleRate=%d channels=%d\n",
+                 frames.size(), sampleRate, channels);
+    std::fflush(stderr);
     REQUIRE(sampleRate == 22050);
     REQUIRE(channels == 1);
     REQUIRE(frames.size() == 3);
@@ -266,6 +295,9 @@ TEST_CASE("Overwrite clips edited samples into valid PCM16 range", "[file]")
 
 TEST_CASE("Save as writes a new WAV file and updates active file state", "[file]")
 {
+    std::fprintf(stderr,
+                 "CUPUACU_DEBUG_WAV_TEST: begin case=save_as_wav\n");
+    std::fflush(stderr);
     ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-save-as"));
     const auto outputPath = cleanup.path() / "exports" / "saved.wav";
 
@@ -280,7 +312,16 @@ TEST_CASE("Save as writes a new WAV file and updates active file state", "[file]
     session.document.setSample(0, 2, 0.0f, false);
     session.document.setSample(1, 2, 0.25f, false);
 
+    std::fprintf(stderr,
+                 "CUPUACU_DEBUG_WAV_TEST: before saveAs output=%s\n",
+                 outputPath.string().c_str());
+    std::fflush(stderr);
     cupuacu::actions::saveAs(&state, outputPath.string());
+    std::fprintf(stderr,
+                 "CUPUACU_DEBUG_WAV_TEST: after saveAs exists=%d currentFile=%s recentFiles=%zu\n",
+                 std::filesystem::exists(outputPath) ? 1 : 0,
+                 session.currentFile.c_str(), state.recentFiles.size());
+    std::fflush(stderr);
 
     REQUIRE(std::filesystem::exists(outputPath));
     REQUIRE(session.currentFile == outputPath.string());
