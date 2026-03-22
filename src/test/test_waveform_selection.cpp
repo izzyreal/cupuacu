@@ -111,12 +111,12 @@ TEST_CASE("Block render anchor, phase, and sample windows stay aligned",
     cupuacu::gui::Waveform::getBlockRenderSampleWindowForPixel(
         1, 15, 10.0, pixel1Start, pixel1End);
 
-    REQUIRE(anchor == 10.0);
-    REQUIRE(phase == 0.5);
-    REQUIRE(pixel0Start == 10.0);
-    REQUIRE(pixel0End == 20.0);
-    REQUIRE(pixel1Start == 20.0);
-    REQUIRE(pixel1End == 30.0);
+    REQUIRE(anchor == 15.0);
+    REQUIRE(phase == 0.0);
+    REQUIRE(pixel0Start == 15.0);
+    REQUIRE(pixel0End == 25.0);
+    REQUIRE(pixel1Start == 25.0);
+    REQUIRE(pixel1End == 35.0);
 }
 
 TEST_CASE("Waveform block-mode selection rect rejects invalid or offscreen inputs",

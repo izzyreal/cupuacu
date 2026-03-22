@@ -3,11 +3,23 @@
 
 #include "State.hpp"
 #include "TestPaths.hpp"
+#include "TestResourceUtil.hpp"
+#include "actions/audio/EditCommands.hpp"
 #include "audio/DirtyTrackingAudioBuffer.hpp"
+#include "file/file_loading.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/LabeledField.hpp"
+#include "gui/Waveform.hpp"
+#include "gui/WaveformBlockRenderPlanning.hpp"
 #include "gui/ScrollBar.hpp"
 #include "gui/WaveformSmoothRenderPlanning.hpp"
+
+#include <algorithm>
+#include <cmath>
+#include <map>
+#include <filesystem>
+#include <system_error>
+#include <vector>
 
 namespace
 {
@@ -25,6 +37,190 @@ namespace
             cupuacu::gui::MOVE, x, y, static_cast<float>(x),
             static_cast<float>(y), 0.0f, 0.0f,
             cupuacu::gui::MouseButtonState{true, false, false}, 0};
+    }
+
+    class ScopedDirCleanup
+    {
+    public:
+        explicit ScopedDirCleanup(std::filesystem::path rootDir)
+            : root(std::move(rootDir))
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(root, ec);
+            std::filesystem::create_directories(root, ec);
+        }
+
+        ~ScopedDirCleanup()
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(root, ec);
+        }
+
+        const std::filesystem::path &path() const
+        {
+            return root;
+        }
+
+    private:
+        std::filesystem::path root;
+    };
+
+    std::vector<cupuacu::gui::BlockWaveformPeakColumnPlan>
+    planBlockPeaks(const cupuacu::Document &document,
+                   const int channelIndex,
+                   const int64_t sampleOffset,
+                   const double samplesPerPixel,
+                   const int widthToUse,
+                   const uint8_t pixelScale)
+    {
+        const auto &sampleData =
+            document.getAudioBuffer()->getImmutableChannelData(channelIndex);
+        const int64_t frameCount = document.getFrameCount();
+        const auto &waveformCache = document.getWaveformCache(channelIndex);
+        const double cacheBypassThreshold =
+            static_cast<double>(cupuacu::gui::WaveformCache::BASE_BLOCK_SIZE) *
+            static_cast<double>(std::max<uint8_t>(1, pixelScale));
+        const bool bypassCache = samplesPerPixel < cacheBypassThreshold;
+        const int cacheLevel =
+            bypassCache ? 0 : waveformCache.getLevelIndex(samplesPerPixel);
+        const int64_t samplesPerPeak =
+            bypassCache ? 0
+                        : cupuacu::gui::WaveformCache::samplesPerPeakForLevel(
+                              cacheLevel);
+        const std::vector<cupuacu::gui::Peak> *peaks =
+            bypassCache ? nullptr : &waveformCache.getLevel(samplesPerPixel);
+
+        auto accumulateRawPeakRange =
+            [&](const int64_t startSample, const int64_t endSampleExclusive,
+                cupuacu::gui::Peak &ioPeak, bool &ioHasPeak) -> void
+        {
+            if (startSample >= endSampleExclusive)
+            {
+                return;
+            }
+
+            float minv = sampleData[startSample];
+            float maxv = sampleData[startSample];
+            for (int64_t i = startSample + 1; i < endSampleExclusive; ++i)
+            {
+                const float v = sampleData[i];
+                minv = std::min(minv, v);
+                maxv = std::max(maxv, v);
+            }
+
+            if (!ioHasPeak)
+            {
+                ioPeak = {minv, maxv};
+                ioHasPeak = true;
+                return;
+            }
+
+            ioPeak.min = std::min(ioPeak.min, minv);
+            ioPeak.max = std::max(ioPeak.max, maxv);
+        };
+
+        auto lookupPeak = [&](const int x, cupuacu::gui::Peak &out) -> bool
+        {
+            double aD = 0.0;
+            double bD = 0.0;
+            cupuacu::gui::Waveform::getBlockRenderSampleWindowForPixel(
+                x, sampleOffset, samplesPerPixel, aD, bD);
+
+            if (bD <= 0.0 || aD >= static_cast<double>(frameCount))
+            {
+                return false;
+            }
+
+            int64_t a = static_cast<int64_t>(std::floor(aD));
+            int64_t b = static_cast<int64_t>(std::floor(bD));
+            a = std::clamp<int64_t>(a, 0, frameCount - 1);
+            b = std::clamp<int64_t>(b, a + 1, frameCount);
+
+            if (bypassCache)
+            {
+                float minv = sampleData[a];
+                float maxv = sampleData[a];
+                for (int64_t i = a + 1; i < b; ++i)
+                {
+                    const float v = sampleData[i];
+                    minv = std::min(minv, v);
+                    maxv = std::max(maxv, v);
+                }
+                out = {minv, maxv};
+                return true;
+            }
+
+            if (!peaks || peaks->empty())
+            {
+                return false;
+            }
+
+            cupuacu::gui::Peak peak{};
+            bool hasPeak = false;
+            const int64_t firstFullBlockStart =
+                ((a + samplesPerPeak - 1) / samplesPerPeak) * samplesPerPeak;
+            const int64_t lastFullBlockEnd =
+                (b / samplesPerPeak) * samplesPerPeak;
+
+            accumulateRawPeakRange(a, std::min(b, firstFullBlockStart), peak,
+                                   hasPeak);
+
+            if (firstFullBlockStart < lastFullBlockEnd)
+            {
+                const int64_t requestedI0 =
+                    firstFullBlockStart / samplesPerPeak;
+                const int64_t requestedI1Exclusive =
+                    lastFullBlockEnd / samplesPerPeak;
+                const int64_t cachedI0 = std::clamp<int64_t>(
+                    requestedI0, 0, static_cast<int64_t>(peaks->size()));
+                const int64_t cachedI1Exclusive = std::clamp<int64_t>(
+                    requestedI1Exclusive, 0,
+                    static_cast<int64_t>(peaks->size()));
+
+                const int64_t cachedFullBlockStart =
+                    cachedI0 * samplesPerPeak;
+                const int64_t cachedFullBlockEnd =
+                    cachedI1Exclusive * samplesPerPeak;
+
+                accumulateRawPeakRange(firstFullBlockStart,
+                                       std::min(lastFullBlockEnd,
+                                                cachedFullBlockStart),
+                                       peak, hasPeak);
+
+                for (int64_t i = cachedI0; i < cachedI1Exclusive; ++i)
+                {
+                    if (!hasPeak)
+                    {
+                        peak = (*peaks)[i];
+                        hasPeak = true;
+                        continue;
+                    }
+
+                    peak.min = std::min(peak.min, (*peaks)[i].min);
+                    peak.max = std::max(peak.max, (*peaks)[i].max);
+                }
+
+                accumulateRawPeakRange(std::max(firstFullBlockStart,
+                                                cachedFullBlockEnd),
+                                       lastFullBlockEnd, peak, hasPeak);
+            }
+
+            accumulateRawPeakRange(std::max(a, lastFullBlockEnd), b, peak,
+                                   hasPeak);
+            if (!hasPeak)
+            {
+                return false;
+            }
+
+            out = peak;
+            return true;
+        };
+
+        return cupuacu::gui::planBlockWaveformPeakColumns(
+            widthToUse,
+            cupuacu::gui::Waveform::getBlockRenderPhasePixels(sampleOffset,
+                                                              samplesPerPixel),
+            lookupPeak);
     }
 } // namespace
 
@@ -172,4 +368,83 @@ TEST_CASE("ScrollBar vertical drag updates value and non-left clicks are ignored
     REQUIRE(bar.mouseUp(cupuacu::gui::MouseEvent{
         cupuacu::gui::UP, 6, 200, 6.0f, 200.0f, 0.0f, 0.0f,
         cupuacu::gui::MouseButtonState{true, false, false}, 1}));
+}
+
+TEST_CASE("Block waveform overview preserves pasted-copy peaks in the former comb region",
+          "[gui][waveform]")
+{
+    ScopedDirCleanup cleanup(cupuacu::test::makeUniqueTestRoot(
+        "waveform-render-finger-cym1"));
+    const auto wavPath = cleanup.path() / "FINGER_CYM1.WAV";
+    cupuacu::test::write_test_resource_file("FINGER_CYM1.WAV", wavPath);
+
+    cupuacu::test::StateWithTestPaths originalState(cleanup.path() / "original");
+    auto &originalSession = originalState.getActiveDocumentSession();
+    originalSession.currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&originalState);
+    originalSession.document.updateWaveformCache();
+
+    cupuacu::test::StateWithTestPaths pastedState(cleanup.path() / "pasted");
+    auto &pastedSession = pastedState.getActiveDocumentSession();
+    pastedSession.currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&pastedState);
+    pastedSession.document.updateWaveformCache();
+
+    const int64_t pasteOffset = 42197;
+    pastedSession.selection.setValue1(0.0);
+    pastedSession.selection.setValue2(
+        static_cast<double>(pastedSession.document.getFrameCount()));
+    cupuacu::actions::audio::performCopy(&pastedState);
+    pastedSession.selection.reset();
+    pastedSession.cursor = pasteOffset;
+    cupuacu::actions::audio::performPaste(&pastedState);
+    pastedSession.document.updateWaveformCache();
+
+    for (const int totalWidth : {756, 1200})
+    {
+        const int64_t formerCombProbeSamplesInCopy[] = {14091, 34607};
+        const double samplesPerPixel =
+            static_cast<double>(pastedSession.document.getFrameCount()) /
+            static_cast<double>(totalWidth);
+        const int copyWidth = static_cast<int>(std::ceil(
+            static_cast<double>(originalSession.document.getFrameCount()) /
+            samplesPerPixel));
+
+        const auto originalColumns =
+            planBlockPeaks(originalSession.document, 0, 0, samplesPerPixel,
+                           copyWidth, pastedState.pixelScale);
+        const auto pastedColumns =
+            planBlockPeaks(pastedSession.document, 0, pasteOffset,
+                           samplesPerPixel, copyWidth, pastedState.pixelScale);
+
+        std::map<int, cupuacu::gui::Peak> originalByDrawXi;
+        std::map<int, cupuacu::gui::Peak> pastedByDrawXi;
+        for (const auto &column : originalColumns)
+        {
+            originalByDrawXi[column.drawXi] = column.peak;
+        }
+        for (const auto &column : pastedColumns)
+        {
+            pastedByDrawXi[column.drawXi] = column.peak;
+        }
+
+        REQUIRE_FALSE(originalByDrawXi.empty());
+        REQUIRE_FALSE(pastedByDrawXi.empty());
+
+        for (const int64_t probeSampleInCopy : formerCombProbeSamplesInCopy)
+        {
+            const int probeDrawXi = static_cast<int>(std::floor(
+                static_cast<double>(probeSampleInCopy) / samplesPerPixel));
+            REQUIRE(originalByDrawXi.find(probeDrawXi) != originalByDrawXi.end());
+            REQUIRE(pastedByDrawXi.find(probeDrawXi) != pastedByDrawXi.end());
+        }
+
+        for (const auto &[drawXi, peak] : originalByDrawXi)
+        {
+            const auto pastedIt = pastedByDrawXi.find(drawXi);
+            REQUIRE(pastedIt != pastedByDrawXi.end());
+            REQUIRE(peak.min == Catch::Approx(pastedIt->second.min));
+            REQUIRE(peak.max == Catch::Approx(pastedIt->second.max));
+        }
+    }
 }

@@ -109,12 +109,34 @@ namespace cupuacu
         }
     }
 
+    void Document::invalidateWaveformSamples(int64_t startSample,
+                                             int64_t endSample)
+    {
+        for (int ch = 0; ch < getChannelCount(); ++ch)
+        {
+            waveformCache[ch].invalidateSamples(startSample, endSample);
+        }
+    }
+
     void Document::updateWaveformCache()
     {
         for (int ch = 0; ch < getChannelCount(); ++ch)
         {
             const auto channelData = getAudioBuffer()->getImmutableChannelData(ch);
-            if (waveformCache[ch].levelsCount() == 0)
+            const auto expectedLevel0Size =
+                getFrameCount() <= 0
+                    ? 0
+                    : (getFrameCount() +
+                       gui::WaveformCache::BASE_BLOCK_SIZE - 1) /
+                          gui::WaveformCache::BASE_BLOCK_SIZE;
+            const bool hasLevels = waveformCache[ch].levelsCount() > 0;
+            const bool level0SizeMatches =
+                hasLevels &&
+                static_cast<int64_t>(
+                    waveformCache[ch].getLevelByIndex(0).size()) ==
+                    expectedLevel0Size;
+
+            if (!hasLevels || !level0SizeMatches)
             {
                 waveformCache[ch].rebuildAll(channelData.data(), getFrameCount());
             }

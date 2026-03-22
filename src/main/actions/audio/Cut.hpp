@@ -91,6 +91,11 @@ namespace cupuacu::actions::audio
                 }
             }
 
+            if (doc.getFrameCount() > 0)
+            {
+                doc.invalidateWaveformSamples(startFrame,
+                                              doc.getFrameCount() - 1);
+            }
             doc.updateWaveformCache();
             session.syncSelectionAndCursorToDocumentLength();
 

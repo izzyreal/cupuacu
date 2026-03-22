@@ -351,6 +351,7 @@ cupuacu_enable_coverage_for_target(cupuacu-tests)
 
 _bundle_resources(Cupuacu)
 target_link_libraries(cupuacu-tests PUBLIC cupuacu::rc)
+_bundle_test_resources(cupuacu-tests)
 
 if(CUPUACU_BUILD_INTEGRATION_TESTS)
     add_executable(cupuacu-tests-integration
@@ -364,6 +365,7 @@ if(CUPUACU_BUILD_INTEGRATION_TESTS)
     )
     cupuacu_enable_coverage_for_target(cupuacu-tests-integration)
     target_link_libraries(cupuacu-tests-integration PUBLIC cupuacu::rc)
+    _bundle_test_resources(cupuacu-tests-integration)
 endif()
 
 if(CUPUACU_RTSAN_SUPPORTED)
@@ -373,6 +375,7 @@ if(CUPUACU_RTSAN_SUPPORTED)
     )
     target_link_libraries(cupuacu-tests-rtsan PRIVATE cupuacu_core_rtsan Catch2::Catch2WithMain)
     target_link_libraries(cupuacu-tests-rtsan PUBLIC cupuacu::rc)
+    _bundle_test_resources(cupuacu-tests-rtsan)
     rtsan_libs_enable(TARGET cupuacu-tests-rtsan)
     target_compile_definitions(cupuacu-tests-rtsan PRIVATE
         CUPUACU_RTSAN_LIBS_ENABLED=1
@@ -394,6 +397,7 @@ if(CUPUACU_RTSAN_SUPPORTED)
         )
         target_link_libraries(cupuacu-tests-tsan PRIVATE cupuacu_core_tsan Catch2::Catch2WithMain)
         target_link_libraries(cupuacu-tests-tsan PUBLIC cupuacu::rc)
+        _bundle_test_resources(cupuacu-tests-tsan)
         target_compile_definitions(cupuacu-tests-tsan PRIVATE CUPUACU_RTSAN_LIBS_ENABLED=0)
         target_compile_definitions(cupuacu-tests-tsan PRIVATE
             CUPUACU_TSAN_RACE_PROBE_PATH="$<TARGET_FILE:cupuacu-tsan-race-probe>")

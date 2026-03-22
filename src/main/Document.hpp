@@ -48,6 +48,7 @@ namespace cupuacu
         void insertFrames(int64_t frameIndex, int64_t numFrames);
 
         void removeFrames(int64_t frameIndex, int64_t numFrames);
+        void invalidateWaveformSamples(int64_t startSample, int64_t endSample);
 
         void updateWaveformCache();
 
