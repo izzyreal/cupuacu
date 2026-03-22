@@ -5,6 +5,7 @@
 #include "TestPaths.hpp"
 #include "TestSdlTtfGuard.hpp"
 #include "actions/Undoable.hpp"
+#include "file/SndfilePath.hpp"
 #include "file/file_loading.hpp"
 #include "gui/Component.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
@@ -151,7 +152,7 @@ namespace
         info.channels = channels;
         info.format = SF_FORMAT_WAV | SF_FORMAT_FLOAT;
 
-        SNDFILE *file = sf_open(path.string().c_str(), SFM_WRITE, &info);
+        SNDFILE *file = cupuacu::file::openSndfile(path, SFM_WRITE, &info);
         REQUIRE(file != nullptr);
 
         const sf_count_t frameCount =
@@ -175,7 +176,7 @@ namespace
         info.channels = channels;
         info.format = SF_FORMAT_WAV | SF_FORMAT_PCM_16;
 
-        SNDFILE *file = sf_open(path.string().c_str(), SFM_WRITE, &info);
+        SNDFILE *file = cupuacu::file::openSndfile(path, SFM_WRITE, &info);
         REQUIRE(file != nullptr);
 
         const sf_count_t frameCount =
@@ -190,7 +191,7 @@ namespace
     std::vector<float> readFramesAsFloat(const std::filesystem::path &path)
     {
         SF_INFO info{};
-        SNDFILE *file = sf_open(path.string().c_str(), SFM_READ, &info);
+        SNDFILE *file = cupuacu::file::openSndfile(path, SFM_READ, &info);
         REQUIRE(file != nullptr);
 
         std::vector<float> frames(static_cast<size_t>(info.frames * info.channels));

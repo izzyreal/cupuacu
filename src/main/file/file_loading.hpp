@@ -2,6 +2,7 @@
 
 #include "../State.hpp"
 #include "AudioExport.hpp"
+#include "SndfilePath.hpp"
 
 #include <sndfile.hh>
 
@@ -17,7 +18,9 @@ namespace cupuacu::file
 
         // Prepare SF_INFO
         SF_INFO sfinfo{};
-        SNDFILE *snd = sf_open(session.currentFile.c_str(), SFM_READ, &sfinfo);
+        SNDFILE *snd =
+            openSndfile(std::filesystem::path(session.currentFile), SFM_READ,
+                        &sfinfo);
         if (!snd)
         {
             throw std::runtime_error("Failed to open file: " +

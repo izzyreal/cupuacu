@@ -1,6 +1,7 @@
 #include "AudioFileWriter.hpp"
 
 #include "AudioExport.hpp"
+#include "SndfilePath.hpp"
 
 #include <sndfile.h>
 
@@ -119,7 +120,7 @@ void cupuacu::file::AudioFileWriter::writeFile(
         throw std::invalid_argument("Export format is not supported by libsndfile");
     }
 
-    SNDFILE *snd = sf_open(outputPath.string().c_str(), SFM_WRITE, &sfinfo);
+    SNDFILE *snd = openSndfile(outputPath, SFM_WRITE, &sfinfo);
     if (!snd)
     {
         throw std::ios_base::failure("Failed to open output audio file");

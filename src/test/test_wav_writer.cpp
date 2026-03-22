@@ -5,6 +5,7 @@
 #include "TestPaths.hpp"
 #include "actions/Save.hpp"
 #include "file/AudioExport.hpp"
+#include "file/SndfilePath.hpp"
 #include "file/file_loading.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/Window.hpp"
@@ -184,7 +185,7 @@ namespace
                                          int &sampleRate, int &channels)
     {
         SF_INFO info{};
-        SNDFILE *file = sf_open(path.string().c_str(), SFM_READ, &info);
+        SNDFILE *file = cupuacu::file::openSndfile(path, SFM_READ, &info);
         REQUIRE(file != nullptr);
 
         sampleRate = info.samplerate;

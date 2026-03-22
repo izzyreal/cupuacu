@@ -4,6 +4,7 @@
 
 #include "State.hpp"
 #include "TestPaths.hpp"
+#include "file/SndfilePath.hpp"
 #include "file/file_loading.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/Window.hpp"
@@ -87,7 +88,7 @@ namespace
         info.channels = channels;
         info.format = SF_FORMAT_WAV | SF_FORMAT_FLOAT;
 
-        SNDFILE *file = sf_open(path.string().c_str(), SFM_WRITE, &info);
+        SNDFILE *file = cupuacu::file::openSndfile(path, SFM_WRITE, &info);
         REQUIRE(file != nullptr);
 
         const sf_count_t frameCount =
@@ -112,7 +113,7 @@ namespace
         info.channels = channels;
         info.format = format;
 
-        SNDFILE *file = sf_open(path.string().c_str(), SFM_WRITE, &info);
+        SNDFILE *file = cupuacu::file::openSndfile(path, SFM_WRITE, &info);
         REQUIRE(file != nullptr);
 
         const sf_count_t frameCount =

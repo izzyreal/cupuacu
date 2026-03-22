@@ -230,36 +230,6 @@ namespace
         return nullptr;
     }
 
-    bool hasMajorFormat(const std::vector<int> &availableMajorFormats,
-                        const int majorFormat)
-    {
-        return std::find(availableMajorFormats.begin(),
-                         availableMajorFormats.end(),
-                         majorFormat) != availableMajorFormats.end();
-    }
-
-    std::vector<int> probeAvailableMajorFormats()
-    {
-        std::vector<int> result;
-        int majorCount = 0;
-        sf_command(nullptr, SFC_GET_FORMAT_MAJOR_COUNT, &majorCount,
-                   sizeof(majorCount));
-        result.reserve(static_cast<std::size_t>(std::max(majorCount, 0)));
-
-        for (int index = 0; index < majorCount; ++index)
-        {
-            SF_FORMAT_INFO info{};
-            info.format = index;
-            if (sf_command(nullptr, SFC_GET_FORMAT_MAJOR, &info, sizeof(info)) ==
-                0)
-            {
-                result.push_back(info.format);
-            }
-        }
-
-        return result;
-    }
-
     struct MpegBitrateBand
     {
         int minSampleRate = 0;
@@ -307,6 +277,86 @@ namespace
                    static_cast<double>(band->maxKbps - band->minKbps));
         return std::clamp(normalized, 0.0, 1.0);
     }
+
+    std::optional<AudioExportSettings>
+    makeSettings(const CandidateFormat &candidate, const int subtype)
+    {
+        AudioExportFormatOption option{};
+        option.container = candidate.container;
+        option.codec = candidate.codec;
+        option.containerLabel = candidate.containerLabel;
+        option.codecLabel = candidate.codecLabel;
+        option.majorFormat = candidate.majorFormat;
+
+        for (const auto &encoding : candidate.encodings)
+        {
+            if (encoding.subtype == subtype)
+            {
+                return makeSettings(
+                    option,
+                    AudioExportEncoding{encoding.label, encoding.subtype,
+                                        encoding.extension});
+            }
+        }
+
+        return std::nullopt;
+    }
+
+    std::optional<AudioExportSettings>
+    fallbackSettingsForCandidate(const CandidateFormat &candidate,
+                                 const cupuacu::SampleFormat documentFormat)
+    {
+        const int preferredSubtype =
+            preferredSubtypeForDocument(AudioExportFormatOption{
+                                            .container = candidate.container,
+                                            .codec = candidate.codec,
+                                            .containerLabel =
+                                                candidate.containerLabel,
+                                            .codecLabel = candidate.codecLabel,
+                                            .majorFormat = candidate.majorFormat,
+                                        },
+                                        documentFormat);
+
+        if (const auto preferred = makeSettings(candidate, preferredSubtype))
+        {
+            return preferred;
+        }
+
+        if (candidate.encodings.size() > 0)
+        {
+            return makeSettings(candidate, candidate.encodings.begin()->subtype);
+        }
+
+        return std::nullopt;
+    }
+
+    std::optional<AudioExportSettings>
+    fallbackSettingsForPath(const std::filesystem::path &outputPath,
+                            const cupuacu::SampleFormat documentFormat)
+    {
+        for (const auto &candidate : kCandidateFormats)
+        {
+            for (const auto &encoding : candidate.encodings)
+            {
+                if (extensionEquals(outputPath, encoding.extension))
+                {
+                    return fallbackSettingsForCandidate(candidate,
+                                                       documentFormat);
+                }
+            }
+        }
+
+        for (const auto &candidate : kCandidateFormats)
+        {
+            if (candidate.container == AudioExportContainer::WAV &&
+                candidate.codec == AudioExportCodec::PCM)
+            {
+                return fallbackSettingsForCandidate(candidate, documentFormat);
+            }
+        }
+
+        return std::nullopt;
+    }
 } // namespace
 
 std::vector<AudioExportFormatOption> cupuacu::file::probeAvailableExportFormats()
@@ -342,16 +392,11 @@ std::vector<AudioExportFormatOption> cupuacu::file::probeAvailableExportFormats(
 
 std::vector<AudioOpenFormatOption> cupuacu::file::probeAvailableOpenFormats()
 {
-    const auto availableMajorFormats = probeAvailableMajorFormats();
     std::vector<AudioOpenFormatOption> result;
+    result.reserve(std::size(kCandidateOpenFormats));
 
     for (const auto &candidate : kCandidateOpenFormats)
     {
-        if (!hasMajorFormat(availableMajorFormats, candidate.majorFormat))
-        {
-            continue;
-        }
-
         AudioOpenFormatOption option{};
         option.majorFormat = candidate.majorFormat;
         option.label = candidate.label;
@@ -629,7 +674,7 @@ cupuacu::file::defaultExportSettingsForPath(
         return chooseSettings(formats.front());
     }
 
-    return std::nullopt;
+    return fallbackSettingsForPath(outputPath, documentFormat);
 }
 
 std::optional<AudioExportSettings>
@@ -653,7 +698,20 @@ cupuacu::file::inferExportSettingsForFile(const std::filesystem::path &path,
         }
     }
 
-    return defaultExportSettingsForPath(path, documentFormat);
+    for (const auto &candidate : kCandidateFormats)
+    {
+        if (candidate.majorFormat != major)
+        {
+            continue;
+        }
+
+        if (const auto fallback = makeSettings(candidate, subtype))
+        {
+            return fallback;
+        }
+    }
+
+    return fallbackSettingsForPath(path, documentFormat);
 }
 
 std::filesystem::path

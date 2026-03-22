@@ -2,6 +2,7 @@
 
 #include "../State.hpp"
 #include "SampleQuantization.hpp"
+#include "SndfilePath.hpp"
 
 #include <sndfile.h>
 
@@ -448,7 +449,7 @@ namespace cupuacu::file
             sfinfo.samplerate = sampleRate;
             sfinfo.format = SF_FORMAT_WAV | subtype;
 
-            SNDFILE *snd = sf_open(outputPath.string().c_str(), SFM_WRITE, &sfinfo);
+            SNDFILE *snd = openSndfile(outputPath, SFM_WRITE, &sfinfo);
             if (!snd)
             {
                 throw std::ios_base::failure("Failed to open output WAV file");
