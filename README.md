@@ -89,6 +89,13 @@ There is also a helper script for the blessed Linux contract:
 ./scripts/run-integration-linux.sh
 ```
 
+It reuses the existing `build-integration-linux` directory for incremental
+builds. To force a fresh CMake configure, run:
+
+```sh
+CUPUACU_FORCE_CMAKE_CONFIGURE=1 ./scripts/run-integration-linux.sh
+```
+
 On macOS, you can run that same Linux contract locally through Podman:
 
 ```sh

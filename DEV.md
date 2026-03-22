@@ -144,6 +144,13 @@ There is also a helper script:
 ./scripts/run-integration-linux.sh
 ```
 
+It reuses `build-integration-linux` for incremental rebuilds. If you need to
+force a fresh configure:
+
+```sh
+CUPUACU_FORCE_CMAKE_CONFIGURE=1 ./scripts/run-integration-linux.sh
+```
+
 For local iteration on macOS, use Podman to run the same Linux image and
 runtime contract:
 
