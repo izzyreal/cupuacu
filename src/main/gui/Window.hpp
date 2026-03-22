@@ -25,8 +25,6 @@ namespace cupuacu::gui
     public:
         Window(State *stateToUse, const std::string &title, int width,
                int height, Uint32 flags);
-        Window(State *stateToUse, SDL_Window *parentWindow, int offsetX,
-               int offsetY, int width, int height, Uint32 flags);
         ~Window();
 
         bool isOpen() const
@@ -164,7 +162,6 @@ namespace cupuacu::gui
         SDL_WindowID windowId = 0;
         bool wasMaximized = false;
         bool transparentWindow = false;
-        bool popupWindow = false;
 
         std::unique_ptr<Component> rootComponent;
         std::vector<SDL_Rect> dirtyRects;

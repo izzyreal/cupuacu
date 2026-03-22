@@ -3,7 +3,6 @@
 #include "Colors.hpp"
 #include "Helpers.hpp"
 #include "RoundedRect.hpp"
-#include "TooltipPlanning.hpp"
 #include "UiScale.hpp"
 #include "Window.hpp"
 #include "text.hpp"
@@ -262,9 +261,6 @@ void DropdownMenu::destroyPopupWindow()
         return;
     }
 
-    SDL_Window *ownerSdlWindow =
-        window != nullptr ? window->getSdlWindow() : nullptr;
-
     if (state)
     {
         const auto it =
@@ -276,11 +272,6 @@ void DropdownMenu::destroyPopupWindow()
     }
 
     popupWindow.reset();
-
-    if (ownerSdlWindow)
-    {
-        SDL_RaiseWindow(ownerSdlWindow);
-    }
 }
 
 void DropdownMenu::ensurePopupWindow()

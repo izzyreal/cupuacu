@@ -307,42 +307,6 @@ Window::Window(State *stateToUse, const std::string &title, const int width,
     tooltipController = std::make_unique<TooltipController>(state, this);
 }
 
-Window::Window(State *stateToUse, SDL_Window *parentWindow, const int offsetX,
-               const int offsetY, const int width, const int height,
-               const Uint32 flags)
-    : state(stateToUse)
-{
-    popupWindow = true;
-    transparentWindow = (flags & SDL_WINDOW_TRANSPARENT) != 0;
-    window = SDL_CreatePopupWindow(parentWindow, offsetX, offsetY, width, height,
-                                   flags);
-    if (!window)
-    {
-        SDL_Log("SDL_CreatePopupWindow() failed: %s", SDL_GetError());
-        return;
-    }
-
-    renderer = SDL_CreateRenderer(window, nullptr);
-    if (!renderer)
-    {
-        SDL_Log("SDL_CreateRenderer() failed for popup window: %s",
-                SDL_GetError());
-        close();
-        return;
-    }
-
-    if (!SDL_SetRenderVSync(renderer, 1))
-    {
-        SDL_Log("SDL_SetRenderVSync(1) failed: %s", SDL_GetError());
-    }
-    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-
-    windowId = SDL_GetWindowID(window);
-    resizeCanvasIfNeeded();
-    setFontDisplayScale(getEffectiveWindowDisplayScale(window, canvas));
-    tooltipController = std::make_unique<TooltipController>(state, this);
-}
-
 Window::~Window()
 {
     tooltipController.reset();
