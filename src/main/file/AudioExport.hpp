@@ -45,6 +45,25 @@ namespace cupuacu::file
         std::vector<AudioExportEncoding> encodings;
     };
 
+    struct AudioOpenFormatOption
+    {
+        int majorFormat = 0;
+        std::string label;
+        std::vector<std::string> extensions;
+    };
+
+    struct AudioExportNamedDoubleOption
+    {
+        std::string label;
+        double value = 0.0;
+    };
+
+    struct AudioExportNamedIntOption
+    {
+        std::string label;
+        int value = 0;
+    };
+
     struct AudioExportSettings
     {
         AudioExportContainer container = AudioExportContainer::WAV;
@@ -55,6 +74,8 @@ namespace cupuacu::file
         std::string codecLabel;
         std::string encodingLabel;
         std::string extension;
+        std::optional<double> compressionLevel;
+        std::optional<int> bitrateMode;
 
         bool isValid() const
         {
@@ -68,6 +89,17 @@ namespace cupuacu::file
     };
 
     std::vector<AudioExportFormatOption> probeAvailableExportFormats();
+    std::vector<AudioOpenFormatOption> probeAvailableOpenFormats();
+    std::vector<AudioExportNamedDoubleOption>
+    compressionLevelOptionsForCodec(AudioExportCodec codec);
+    std::vector<AudioExportNamedIntOption>
+    bitrateModeOptionsForCodec(AudioExportCodec codec);
+    std::optional<double>
+    defaultCompressionLevelForCodec(AudioExportCodec codec);
+    std::optional<int> defaultBitrateModeForCodec(AudioExportCodec codec);
+    std::string describeExportSettings(const AudioExportSettings &settings);
+
+    cupuacu::SampleFormat sampleFormatForSndfileFormat(int sndfileFormat);
 
     std::optional<AudioExportSettings>
     defaultExportSettingsForPath(const std::filesystem::path &outputPath,

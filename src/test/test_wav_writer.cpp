@@ -349,3 +349,74 @@ TEST_CASE("Default export settings preserve ALAC depth preferences", "[file]")
     REQUIRE(settings->majorFormat == SF_FORMAT_CAF);
     REQUIRE(settings->subtype == SF_FORMAT_ALAC_24);
 }
+
+TEST_CASE("Open format probe includes WAV support", "[file]")
+{
+    const auto formats = cupuacu::file::probeAvailableOpenFormats();
+
+    const auto it = std::find_if(
+        formats.begin(), formats.end(),
+        [](const cupuacu::file::AudioOpenFormatOption &format)
+        { return format.majorFormat == SF_FORMAT_WAV; });
+    REQUIRE(it != formats.end());
+    REQUIRE(std::find(it->extensions.begin(), it->extensions.end(), "wav") !=
+            it->extensions.end());
+}
+
+TEST_CASE("Import sample format inference handles compressed and ALAC input",
+          "[file]")
+{
+    REQUIRE(cupuacu::file::sampleFormatForSndfileFormat(
+                SF_FORMAT_WAV | SF_FORMAT_PCM_16) ==
+            cupuacu::SampleFormat::PCM_S16);
+    REQUIRE(cupuacu::file::sampleFormatForSndfileFormat(
+                SF_FORMAT_CAF | SF_FORMAT_ALAC_24) ==
+            cupuacu::SampleFormat::PCM_S24);
+    REQUIRE(cupuacu::file::sampleFormatForSndfileFormat(
+                SF_FORMAT_MPEG | SF_FORMAT_MPEG_LAYER_III) ==
+            cupuacu::SampleFormat::FLOAT32);
+    REQUIRE(cupuacu::file::sampleFormatForSndfileFormat(
+                SF_FORMAT_OGG | SF_FORMAT_VORBIS) ==
+            cupuacu::SampleFormat::FLOAT32);
+}
+
+TEST_CASE("Lossy export defaults expose Vorbis quality and MP3 bitrate mode",
+          "[file]")
+{
+    const auto vorbisQuality =
+        cupuacu::file::defaultCompressionLevelForCodec(
+            cupuacu::file::AudioExportCodec::VORBIS);
+    REQUIRE(vorbisQuality.has_value());
+    REQUIRE(*vorbisQuality == Catch::Approx(0.7));
+
+    const auto mp3BitrateMode =
+        cupuacu::file::defaultBitrateModeForCodec(
+            cupuacu::file::AudioExportCodec::MP3);
+    REQUIRE(mp3BitrateMode.has_value());
+    REQUIRE(*mp3BitrateMode == SF_BITRATE_MODE_VARIABLE);
+
+    const auto mp3Modes =
+        cupuacu::file::bitrateModeOptionsForCodec(
+            cupuacu::file::AudioExportCodec::MP3);
+    REQUIRE(mp3Modes.size() == 3);
+}
+
+TEST_CASE("Export settings description includes lossy quality controls", "[file]")
+{
+    cupuacu::file::AudioExportSettings settings{
+        .container = cupuacu::file::AudioExportContainer::MPEG,
+        .codec = cupuacu::file::AudioExportCodec::MP3,
+        .majorFormat = SF_FORMAT_MPEG,
+        .subtype = SF_FORMAT_MPEG_LAYER_III,
+        .containerLabel = "MPEG",
+        .codecLabel = "MP3",
+        .encodingLabel = "Default quality",
+        .extension = "mp3",
+        .compressionLevel = 0.75,
+        .bitrateMode = SF_BITRATE_MODE_VARIABLE,
+    };
+
+    const auto description = cupuacu::file::describeExportSettings(settings);
+    REQUIRE(description.find("VBR") != std::string::npos);
+    REQUIRE(description.find("quality 75%") != std::string::npos);
+}

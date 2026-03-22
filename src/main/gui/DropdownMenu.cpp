@@ -189,7 +189,7 @@ void DropdownMenu::resized()
     if (!expanded && selectedIndex >= 0 &&
         selectedIndex < (int)itemLabels.size())
     {
-        itemLabels[selectedIndex]->setBounds(0, 0, getWidth(), rowHeight);
+        itemLabels[selectedIndex]->setBounds(0, 0, getWidth(), getHeight());
         for (size_t i = 0; i < itemLabels.size(); ++i)
         {
             if ((int)i == selectedIndex)
@@ -250,7 +250,8 @@ void DropdownMenu::onDraw(SDL_Renderer *renderer)
         const float arrowOffset = scaleUiF(state, 4.0f);
         const float cx = std::round(inner.x + inner.w - arrowPadding -
                                     arrowWidth * 0.5f - arrowOffset);
-        const float cy = inner.y + getRowHeight() * 0.5f;
+        const float cy =
+            inner.y + (expanded ? getRowHeight() * 0.5f : inner.h * 0.5f);
         SDL_Vertex verts[3];
         constexpr SDL_FColor color{220 / 255.f, 220 / 255.f, 220 / 255.f, 1.0f};
         verts[0].position = {cx - arrowWidth * 0.5f, cy - arrowHeight * 0.5f};

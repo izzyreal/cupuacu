@@ -7,6 +7,32 @@
 #include <stdexcept>
 #include <vector>
 
+namespace
+{
+    void applyEncodingSettings(SNDFILE *snd,
+                               const cupuacu::file::AudioExportSettings &settings)
+    {
+        if (snd == nullptr)
+        {
+            return;
+        }
+
+        if (settings.bitrateMode.has_value())
+        {
+            int bitrateMode = *settings.bitrateMode;
+            sf_command(snd, SFC_SET_BITRATE_MODE, &bitrateMode,
+                       sizeof(bitrateMode));
+        }
+
+        if (settings.compressionLevel.has_value())
+        {
+            double compressionLevel = *settings.compressionLevel;
+            sf_command(snd, SFC_SET_COMPRESSION_LEVEL, &compressionLevel,
+                       sizeof(compressionLevel));
+        }
+    }
+} // namespace
+
 void cupuacu::file::AudioFileWriter::writeFile(
     cupuacu::State *state, const std::filesystem::path &outputPath,
     const AudioExportSettings &settings)
@@ -55,6 +81,8 @@ void cupuacu::file::AudioFileWriter::writeFile(
     {
         throw std::ios_base::failure("Failed to open output audio file");
     }
+
+    applyEncodingSettings(snd, settings);
 
     const sf_count_t frames = document.getFrameCount();
     std::vector<float> interleaved(static_cast<std::size_t>(frames) *

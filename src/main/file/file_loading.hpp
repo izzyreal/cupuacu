@@ -24,33 +24,8 @@ namespace cupuacu::file
                                      session.currentFile);
         }
 
-        int subtype = sfinfo.format & SF_FORMAT_SUBMASK;
-        SampleFormat sampleFormat;
-
-        switch (subtype)
-        {
-            case SF_FORMAT_PCM_S8:
-                sampleFormat = SampleFormat::PCM_S8;
-                break;
-            case SF_FORMAT_PCM_16:
-                sampleFormat = SampleFormat::PCM_S16;
-                break;
-            case SF_FORMAT_PCM_24:
-                sampleFormat = SampleFormat::PCM_S24;
-                break;
-            case SF_FORMAT_PCM_32:
-                sampleFormat = SampleFormat::PCM_S32;
-                break;
-            case SF_FORMAT_FLOAT:
-                sampleFormat = SampleFormat::FLOAT32;
-                break;
-            case SF_FORMAT_DOUBLE:
-                sampleFormat = SampleFormat::FLOAT64;
-                break;
-            default:
-                sampleFormat = SampleFormat::Unknown;
-                break;
-        }
+        const SampleFormat sampleFormat =
+            sampleFormatForSndfileFormat(sfinfo.format);
 
         int channels = sfinfo.channels;
         sf_count_t frames = sfinfo.frames;

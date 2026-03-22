@@ -36,10 +36,14 @@ namespace cupuacu::gui
         Label *containerLabel = nullptr;
         Label *codecLabel = nullptr;
         Label *encodingLabel = nullptr;
+        Label *bitrateModeLabel = nullptr;
+        Label *qualityLabel = nullptr;
         Label *detailsLabel = nullptr;
         DropdownMenu *containerDropdown = nullptr;
         DropdownMenu *codecDropdown = nullptr;
         DropdownMenu *encodingDropdown = nullptr;
+        DropdownMenu *bitrateModeDropdown = nullptr;
+        DropdownMenu *qualityDropdown = nullptr;
         TextButton *cancelButton = nullptr;
         TextButton *nextButton = nullptr;
 
@@ -49,6 +53,9 @@ namespace cupuacu::gui
         void refreshContainerItems();
         void refreshCodecItems();
         void refreshEncodingItems();
+        void refreshBitrateModeItems();
+        void refreshQualityItems();
+        void refreshAdvancedControlVisibility();
         void refreshDetailsLabel();
         std::vector<const file::AudioExportFormatOption *>
         currentContainerFormats() const;

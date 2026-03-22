@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <initializer_list>
 #include <optional>
 #include <string_view>
@@ -16,7 +17,10 @@ namespace
     using cupuacu::file::AudioExportContainer;
     using cupuacu::file::AudioExportEncoding;
     using cupuacu::file::AudioExportFormatOption;
+    using cupuacu::file::AudioExportNamedDoubleOption;
+    using cupuacu::file::AudioExportNamedIntOption;
     using cupuacu::file::AudioExportSettings;
+    using cupuacu::file::AudioOpenFormatOption;
 
     struct CandidateEncoding
     {
@@ -82,6 +86,22 @@ namespace
          {{"Default quality", SF_FORMAT_MPEG_LAYER_III, "mp3"}}},
     };
 
+    struct CandidateOpenFormat
+    {
+        int majorFormat;
+        const char *label;
+        std::initializer_list<const char *> extensions;
+    };
+
+    constexpr CandidateOpenFormat kCandidateOpenFormats[] = {
+        {SF_FORMAT_WAV, "WAV audio", {"wav"}},
+        {SF_FORMAT_AIFF, "AIFF audio", {"aiff", "aif", "aifc"}},
+        {SF_FORMAT_CAF, "CAF audio", {"caf"}},
+        {SF_FORMAT_FLAC, "FLAC audio", {"flac"}},
+        {SF_FORMAT_OGG, "OGG audio", {"ogg", "oga"}},
+        {SF_FORMAT_MPEG, "MP3 audio", {"mp3"}},
+    };
+
     bool isFormatWritable(const int combinedFormat)
     {
         SF_INFO info{};
@@ -105,6 +125,10 @@ namespace
         settings.codecLabel = option.codecLabel;
         settings.encodingLabel = encoding.label;
         settings.extension = encoding.extension;
+        settings.compressionLevel =
+            cupuacu::file::defaultCompressionLevelForCodec(option.codec);
+        settings.bitrateMode =
+            cupuacu::file::defaultBitrateModeForCodec(option.codec);
         return settings.isValid() ? std::optional<AudioExportSettings>(settings)
                                   : std::nullopt;
     }
@@ -204,6 +228,36 @@ namespace
         }
         return nullptr;
     }
+
+    bool hasMajorFormat(const std::vector<int> &availableMajorFormats,
+                        const int majorFormat)
+    {
+        return std::find(availableMajorFormats.begin(),
+                         availableMajorFormats.end(),
+                         majorFormat) != availableMajorFormats.end();
+    }
+
+    std::vector<int> probeAvailableMajorFormats()
+    {
+        std::vector<int> result;
+        int majorCount = 0;
+        sf_command(nullptr, SFC_GET_FORMAT_MAJOR_COUNT, &majorCount,
+                   sizeof(majorCount));
+        result.reserve(static_cast<std::size_t>(std::max(majorCount, 0)));
+
+        for (int index = 0; index < majorCount; ++index)
+        {
+            SF_FORMAT_INFO info{};
+            info.format = index;
+            if (sf_command(nullptr, SFC_GET_FORMAT_MAJOR, &info, sizeof(info)) ==
+                0)
+            {
+                result.push_back(info.format);
+            }
+        }
+
+        return result;
+    }
 } // namespace
 
 std::vector<AudioExportFormatOption> cupuacu::file::probeAvailableExportFormats()
@@ -235,6 +289,187 @@ std::vector<AudioExportFormatOption> cupuacu::file::probeAvailableExportFormats(
     }
 
     return result;
+}
+
+std::vector<AudioOpenFormatOption> cupuacu::file::probeAvailableOpenFormats()
+{
+    const auto availableMajorFormats = probeAvailableMajorFormats();
+    std::vector<AudioOpenFormatOption> result;
+
+    for (const auto &candidate : kCandidateOpenFormats)
+    {
+        if (!hasMajorFormat(availableMajorFormats, candidate.majorFormat))
+        {
+            continue;
+        }
+
+        AudioOpenFormatOption option{};
+        option.majorFormat = candidate.majorFormat;
+        option.label = candidate.label;
+        option.extensions.assign(candidate.extensions.begin(),
+                                 candidate.extensions.end());
+        result.push_back(std::move(option));
+    }
+
+    return result;
+}
+
+std::vector<AudioExportNamedDoubleOption>
+cupuacu::file::compressionLevelOptionsForCodec(const AudioExportCodec codec)
+{
+    switch (codec)
+    {
+        case AudioExportCodec::VORBIS:
+            return {{"Low", 0.25},
+                    {"Medium", 0.5},
+                    {"High", 0.7},
+                    {"Very high", 0.9}};
+        case AudioExportCodec::MP3:
+            return {{"Smaller file", 0.2},
+                    {"Balanced", 0.5},
+                    {"Higher quality", 0.75},
+                    {"Best quality", 0.95}};
+        default:
+            return {};
+    }
+}
+
+std::vector<AudioExportNamedIntOption>
+cupuacu::file::bitrateModeOptionsForCodec(const AudioExportCodec codec)
+{
+    switch (codec)
+    {
+        case AudioExportCodec::MP3:
+            return {{"Constant bitrate", SF_BITRATE_MODE_CONSTANT},
+                    {"Average bitrate", SF_BITRATE_MODE_AVERAGE},
+                    {"Variable bitrate", SF_BITRATE_MODE_VARIABLE}};
+        default:
+            return {};
+    }
+}
+
+std::optional<double>
+cupuacu::file::defaultCompressionLevelForCodec(const AudioExportCodec codec)
+{
+    switch (codec)
+    {
+        case AudioExportCodec::VORBIS:
+            return 0.7;
+        case AudioExportCodec::MP3:
+            return 0.75;
+        default:
+            return std::nullopt;
+    }
+}
+
+std::optional<int>
+cupuacu::file::defaultBitrateModeForCodec(const AudioExportCodec codec)
+{
+    switch (codec)
+    {
+        case AudioExportCodec::MP3:
+            return SF_BITRATE_MODE_VARIABLE;
+        default:
+            return std::nullopt;
+    }
+}
+
+std::string
+cupuacu::file::describeExportSettings(const AudioExportSettings &settings)
+{
+    std::string description = "Export to ." + settings.extension + " using " +
+                              settings.containerLabel + " / " +
+                              settings.codecLabel + " / " +
+                              settings.encodingLabel;
+
+    if (settings.codec == AudioExportCodec::VORBIS &&
+        settings.compressionLevel.has_value())
+    {
+        const int percent = static_cast<int>(
+            std::lround(*settings.compressionLevel * 100.0));
+        description += " / quality " + std::to_string(percent) + "%";
+    }
+    else if (settings.codec == AudioExportCodec::MP3)
+    {
+        if (settings.bitrateMode.has_value())
+        {
+            switch (*settings.bitrateMode)
+            {
+                case SF_BITRATE_MODE_CONSTANT:
+                    description += " / CBR";
+                    break;
+                case SF_BITRATE_MODE_AVERAGE:
+                    description += " / ABR";
+                    break;
+                case SF_BITRATE_MODE_VARIABLE:
+                    description += " / VBR";
+                    break;
+                default:
+                    break;
+            }
+        }
+        if (settings.compressionLevel.has_value())
+        {
+            const int percent = static_cast<int>(
+                std::lround(*settings.compressionLevel * 100.0));
+            description += " / quality " + std::to_string(percent) + "%";
+        }
+    }
+
+    return description;
+}
+
+cupuacu::SampleFormat
+cupuacu::file::sampleFormatForSndfileFormat(const int sndfileFormat)
+{
+    const int subtype = sndfileFormat & SF_FORMAT_SUBMASK;
+
+    switch (subtype)
+    {
+        case SF_FORMAT_PCM_S8:
+            return cupuacu::SampleFormat::PCM_S8;
+        case SF_FORMAT_PCM_16:
+        case SF_FORMAT_ALAC_16:
+            return cupuacu::SampleFormat::PCM_S16;
+        case SF_FORMAT_PCM_24:
+        case SF_FORMAT_ALAC_20:
+        case SF_FORMAT_ALAC_24:
+            return cupuacu::SampleFormat::PCM_S24;
+        case SF_FORMAT_PCM_32:
+        case SF_FORMAT_ALAC_32:
+            return cupuacu::SampleFormat::PCM_S32;
+        case SF_FORMAT_FLOAT:
+            return cupuacu::SampleFormat::FLOAT32;
+        case SF_FORMAT_DOUBLE:
+            return cupuacu::SampleFormat::FLOAT64;
+        case SF_FORMAT_ULAW:
+        case SF_FORMAT_ALAW:
+        case SF_FORMAT_IMA_ADPCM:
+        case SF_FORMAT_MS_ADPCM:
+        case SF_FORMAT_GSM610:
+        case SF_FORMAT_VOX_ADPCM:
+        case SF_FORMAT_NMS_ADPCM_16:
+        case SF_FORMAT_NMS_ADPCM_24:
+        case SF_FORMAT_NMS_ADPCM_32:
+        case SF_FORMAT_G721_32:
+        case SF_FORMAT_G723_24:
+        case SF_FORMAT_G723_40:
+        case SF_FORMAT_DWVW_12:
+        case SF_FORMAT_DWVW_16:
+        case SF_FORMAT_DWVW_24:
+        case SF_FORMAT_DWVW_N:
+        case SF_FORMAT_DPCM_8:
+        case SF_FORMAT_DPCM_16:
+        case SF_FORMAT_VORBIS:
+        case SF_FORMAT_OPUS:
+        case SF_FORMAT_MPEG_LAYER_I:
+        case SF_FORMAT_MPEG_LAYER_II:
+        case SF_FORMAT_MPEG_LAYER_III:
+            return cupuacu::SampleFormat::FLOAT32;
+        case SF_FORMAT_PCM_U8:
+        default:
+            return cupuacu::SampleFormat::Unknown;
+    }
 }
 
 std::optional<AudioExportSettings>
