@@ -12,13 +12,10 @@ TEST_CASE("Integration runtime exposes the expected SDL drivers", "[integration]
         videoDriver = SDL_getenv("SDL_VIDEODRIVER");
     }
 
-    const char *audioDriver = SDL_getenv("SDL_AUDIODRIVER");
     const char *renderDriver = SDL_getenv("SDL_RENDER_DRIVER");
 
     REQUIRE(videoDriver != nullptr);
     REQUIRE(std::string(videoDriver) == "x11");
-    REQUIRE(audioDriver != nullptr);
-    REQUIRE(std::string(audioDriver) == "dummy");
     REQUIRE(renderDriver != nullptr);
     REQUIRE(std::string(renderDriver) == "software");
 }

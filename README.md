@@ -79,7 +79,7 @@ meant to run only in a pinned Linux/Xvfb environment:
 ```sh
 cmake -G Ninja -B build-integration-linux -DCUPUACU_BUILD_INTEGRATION_TESTS=ON
 cmake --build build-integration-linux --target cupuacu-tests-integration -j2
-DISPLAY=:99 SDL_VIDEODRIVER=x11 SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software \
+DISPLAY=:99 SDL_VIDEODRIVER=x11 SDL_RENDER_DRIVER=software \
   ./build-integration-linux/cupuacu-tests-integration
 ```
 

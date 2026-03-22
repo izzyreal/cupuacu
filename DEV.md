@@ -117,7 +117,6 @@ Integration tests should run only in one explicitly supported environment:
 - Linux
 - Xvfb
 - `SDL_VIDEODRIVER=x11`
-- `SDL_AUDIODRIVER=dummy`
 - `SDL_RENDER_DRIVER=software`
 - pinned fonts and X11 packages from the Docker image
 
@@ -135,7 +134,7 @@ cmake --build build-integration-linux --target cupuacu-tests-integration -j2
 Run it under the blessed runtime contract:
 
 ```sh
-DISPLAY=:99 SDL_VIDEODRIVER=x11 SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software \
+DISPLAY=:99 SDL_VIDEODRIVER=x11 SDL_RENDER_DRIVER=software \
   ./build-integration-linux/cupuacu-tests-integration
 ```
 
