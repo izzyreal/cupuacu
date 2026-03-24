@@ -23,11 +23,7 @@ namespace
 
     constexpr Uint32 getTooltipHighDensityWindowFlag()
     {
-#if defined(__linux__)
-        return 0;
-#else
         return SDL_WINDOW_HIGH_PIXEL_DENSITY;
-#endif
     }
 
     bool rectsEqual(const SDL_Rect &a, const SDL_Rect &b)

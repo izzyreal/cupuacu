@@ -31,8 +31,11 @@ namespace cupuacu::gui
         switch (event.type)
         {
             case SDL_EVENT_WINDOW_RESIZED:
+            case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
             case SDL_EVENT_WINDOW_MAXIMIZED:
             case SDL_EVENT_WINDOW_EXPOSED:
+            case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
+            case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
             case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
                 return event.window.windowID;
             case SDL_EVENT_MOUSE_MOTION:

@@ -27,6 +27,9 @@ namespace cupuacu::gui
                 plan.markMaximized = true;
                 return plan;
             case SDL_EVENT_WINDOW_RESIZED:
+            case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+            case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
+            case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
                 plan.handled = true;
                 plan.handleResize = true;
                 return plan;

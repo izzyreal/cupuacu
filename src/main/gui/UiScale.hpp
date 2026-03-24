@@ -24,6 +24,15 @@ namespace cupuacu::gui
         getDisplayScaleFactor() = std::max(1.0f, scale);
     }
 
+    inline float resolveAutomaticUiScale(const float displayScale)
+    {
+#if defined(__linux__)
+        return std::max(0.25f, std::max(1.0f, displayScale) * 0.5f);
+#else
+        return std::max(1.0f, displayScale);
+#endif
+    }
+
     inline float getUiScale(const State *state)
     {
         return state ? std::max(0.25f, state->uiScale) : 1.0f;
@@ -63,25 +72,4 @@ namespace cupuacu::gui
             std::clamp(scaleUi(state, static_cast<float>(pointSize)), 1, 255));
     }
 
-    inline float resolveInitialUiScale()
-    {
-        const char *value = SDL_getenv("CUPUACU_UI_SCALE");
-        if (!value || value[0] == '\0')
-        {
-#if defined(__linux__)
-            return 0.5f;
-#else
-            return 1.0f;
-#endif
-        }
-
-        char *end = nullptr;
-        const float parsed = std::strtof(value, &end);
-        if (end == value || !std::isfinite(parsed))
-        {
-            return 1.0f;
-        }
-
-        return std::max(0.25f, parsed);
-    }
 } // namespace cupuacu::gui

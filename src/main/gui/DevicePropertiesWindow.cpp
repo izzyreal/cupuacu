@@ -19,11 +19,7 @@ namespace
 
     constexpr Uint32 getHighDensityWindowFlag()
     {
-#if defined(__linux__)
-        return 0;
-#else
         return SDL_WINDOW_HIGH_PIXEL_DENSITY;
-#endif
     }
 
     int findIndex(const std::vector<int> &indices, const int value)
@@ -442,8 +438,10 @@ void DevicePropertiesWindow::layoutComponents() const
     background->setBounds(0, 0, canvasWi, canvasHi);
 
     const int padding = std::max(1, 8 / state->pixelScale);
+    const uint8_t labelFontPointSize =
+        scaleFontPointSize(state, state->menuFontSize);
     const auto [labelTextW, labelTextH] =
-        measureText("Output Device", state->menuFontSize);
+        measureText("Output Device", labelFontPointSize);
     const int labelWidth =
         std::max(1, (int)std::ceil(labelTextW / state->pixelScale)) + padding;
     const int rowHeight =

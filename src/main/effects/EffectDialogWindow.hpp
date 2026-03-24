@@ -718,6 +718,8 @@ namespace cupuacu::effects
             const int padding = std::max(4, cupuacu::gui::scaleUi(state, 12.0f));
             const int labelFontSize = state ? state->menuFontSize : 30;
             int measuredLabelWidth = 0;
+            const uint8_t effectiveLabelFontSize =
+                cupuacu::gui::scaleFontPointSize(state, labelFontSize);
             for (const auto &control : controls)
             {
                 const auto &spec = definition.parameters[control.specIndex];
@@ -726,7 +728,7 @@ namespace cupuacu::effects
                     continue;
                 }
                 const auto [textWidth, textHeight] =
-                    cupuacu::gui::measureText(spec.label, labelFontSize);
+                    cupuacu::gui::measureText(spec.label, effectiveLabelFontSize);
                 measuredLabelWidth = std::max(measuredLabelWidth, textWidth);
                 measuredLabelWidth = std::max(measuredLabelWidth, textHeight);
             }

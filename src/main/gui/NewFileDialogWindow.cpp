@@ -18,11 +18,7 @@ namespace
 
     constexpr Uint32 getHighDensityWindowFlag()
     {
-#if defined(__linux__)
-        return 0;
-#else
         return SDL_WINDOW_HIGH_PIXEL_DENSITY;
-#endif
     }
 } // namespace
 
@@ -172,12 +168,14 @@ namespace cupuacu::gui
         const int width = static_cast<int>(canvasW);
         const int height = static_cast<int>(canvasH);
         const int padding = scaleUi(state, 20.0f);
+        const uint8_t labelFontPointSize =
+            scaleFontPointSize(state, state->menuFontSize);
         const auto [sampleRateTextWidth, _sampleRateTextHeight] =
-            measureText("Sample rate", state->menuFontSize);
+            measureText("Sample rate", labelFontPointSize);
         const auto [bitDepthTextWidth, _bitDepthTextHeight] =
-            measureText("Bit depth", state->menuFontSize);
+            measureText("Bit depth", labelFontPointSize);
         const auto [channelCountTextWidth, _channelCountTextHeight] =
-            measureText("Channels", state->menuFontSize);
+            measureText("Channels", labelFontPointSize);
         const int labelWidth = std::max(
             {sampleRateTextWidth, bitDepthTextWidth, channelCountTextWidth}) +
                                scaleUi(state, 20.0f);

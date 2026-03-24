@@ -38,11 +38,7 @@ namespace
 {
     constexpr Uint32 getHighDensityWindowFlag()
     {
-#if defined(__linux__)
-        return 0;
-#else
         return SDL_WINDOW_HIGH_PIXEL_DENSITY;
-#endif
     }
 }
 
@@ -54,7 +50,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     cupuacu::State *state = new cupuacu::State();
     auto &session = state->getActiveDocumentSession();
-    state->uiScale = cupuacu::gui::resolveInitialUiScale();
 
     state->audioDevices = std::make_shared<cupuacu::audio::AudioDevices>();
     if (const auto persistedSelection =

@@ -140,7 +140,8 @@ void Menu::showSubMenus()
         }
 
         const auto subMenuName = subMenu->getMenuName();
-        auto [tw, th] = measureText(subMenuName, state->menuFontSize);
+        auto [tw, th] = measureText(
+            subMenuName, scaleFontPointSize(state, state->menuFontSize));
         textWidths.push_back(tw);
     }
 

@@ -33,13 +33,11 @@ namespace
             return 1.0f;
         }
 
-#if defined(_WIN32)
         const float windowScale = SDL_GetWindowDisplayScale(window);
         if (windowScale > 0.0f)
         {
             return windowScale;
         }
-#endif
 
         if (canvas)
         {
@@ -70,11 +68,20 @@ namespace
         return fallbackScale;
     }
 
-    void applyWindowScale(SDL_Window *window, SDL_Texture *canvas)
+    void applyWindowScale(cupuacu::State *state, SDL_Window *window,
+                          SDL_Texture *canvas)
     {
         const float displayScale = getEffectiveWindowDisplayScale(window, canvas);
         setDisplayScaleFactor(displayScale);
         setFontDisplayScale(displayScale);
+#if defined(__linux__)
+        if (state != nullptr)
+        {
+            state->uiScale = resolveAutomaticUiScale(displayScale);
+        }
+#else
+        (void)state;
+#endif
     }
 
     void logWindowScaleDiagnostics(SDL_Window *window, SDL_Texture *canvas,
@@ -318,7 +325,7 @@ Window::Window(State *stateToUse, const std::string &title, const int width,
 
     windowId = SDL_GetWindowID(window);
     resizeCanvasIfNeeded();
-    applyWindowScale(window, canvas);
+    applyWindowScale(state, window, canvas);
     tooltipController = std::make_unique<TooltipController>(state, this);
 }
 
@@ -534,7 +541,7 @@ void Window::handleResize()
     }
 
     resizeCanvasIfNeeded();
-    applyWindowScale(window, canvas);
+    applyWindowScale(state, window, canvas);
     if (onResize)
     {
         onResize();
@@ -545,7 +552,7 @@ void Window::refreshForScaleOrResize()
 {
     hideTooltip();
     resizeCanvasIfNeeded();
-    applyWindowScale(window, canvas);
+    applyWindowScale(state, window, canvas);
     logWindowScaleDiagnostics(window, canvas, state->pixelScale);
     if (onResize)
     {
@@ -880,7 +887,7 @@ void Window::renderFrame()
         return;
     }
 
-    applyWindowScale(window, canvas);
+    applyWindowScale(state, window, canvas);
 
     dirtyRects.clear();
     SDL_Rect fullBounds{0, 0, 0, 0};
@@ -920,7 +927,7 @@ void Window::renderFrameIfDirty()
         return;
     }
 
-    applyWindowScale(window, canvas);
+    applyWindowScale(state, window, canvas);
 
     // Overlay must repaint whenever anything below changes so popups stay on
     // top even when underlying content (e.g. waveforms) is animating.

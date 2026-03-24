@@ -21,11 +21,7 @@ namespace
 
     constexpr Uint32 getHighDensityWindowFlag()
     {
-#if defined(__linux__)
-        return 0;
-#else
         return SDL_WINDOW_HIGH_PIXEL_DENSITY;
-#endif
     }
 } // namespace
 
@@ -231,18 +227,20 @@ namespace cupuacu::gui
         const int width = static_cast<int>(canvasW);
         const int height = static_cast<int>(canvasH);
         const int padding = scaleUi(state, 20.0f);
+        const uint8_t labelFontPointSize =
+            scaleFontPointSize(state, state->menuFontSize);
         const auto [containerTextWidth, _containerTextHeight] =
-            measureText("Container", state->menuFontSize);
+            measureText("Container", labelFontPointSize);
         const auto [codecTextWidth, _codecTextHeight] =
-            measureText("Codec", state->menuFontSize);
+            measureText("Codec", labelFontPointSize);
         const auto [encodingTextWidth, _encodingTextHeight] =
-            measureText("Encoding", state->menuFontSize);
+            measureText("Encoding", labelFontPointSize);
         const auto [bitrateTextWidth, _bitrateTextHeight] =
-            measureText("Bitrate mode", state->menuFontSize);
+            measureText("Bitrate mode", labelFontPointSize);
         const auto [bitrateValueTextWidth, _bitrateValueTextHeight] =
-            measureText("Bitrate", state->menuFontSize);
+            measureText("Bitrate", labelFontPointSize);
         const auto [qualityTextWidth, _qualityTextHeight] =
-            measureText("Quality", state->menuFontSize);
+            measureText("Quality", labelFontPointSize);
         const int labelWidth =
             std::max({containerTextWidth, codecTextWidth, encodingTextWidth,
                       bitrateTextWidth, bitrateValueTextWidth,

@@ -19,11 +19,7 @@ namespace
 
     constexpr Uint32 getHighDensityWindowFlag()
     {
-#if defined(__linux__)
-        return 0;
-#else
         return SDL_WINDOW_HIGH_PIXEL_DENSITY;
-#endif
     }
 } // namespace
 

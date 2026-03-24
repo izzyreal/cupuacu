@@ -62,6 +62,7 @@ namespace cupuacu::gui
         void moveCaretTo(std::size_t index, bool extendSelection);
         void resetCursorBlink();
         void deleteSelectionIfActive();
+        uint8_t getEffectiveFontSize() const;
         int getTextPadding() const;
         int getTextY(const SDL_Rect &bounds, int borderThickness) const;
         int measureTextWidth(std::string_view value) const;
