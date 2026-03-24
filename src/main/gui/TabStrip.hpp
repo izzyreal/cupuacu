@@ -307,6 +307,8 @@ namespace cupuacu::gui
 
         void drawCloseIcon(SDL_Renderer *renderer, const SDL_Rect &closeRect) const
         {
+            const int safePixelScale =
+                std::max(1, static_cast<int>(state ? state->pixelScale : 1));
             const int centerX = closeRect.x + closeRect.w / 2;
             const int centerY = closeRect.y + closeRect.h / 2;
             const float hoverDiameter =
@@ -318,17 +320,17 @@ namespace cupuacu::gui
             if (closeHovered ||
                 (pressTarget == PressTarget::Close && pointerInsideWhilePressed))
             {
+                const float hoverExpansion = static_cast<float>(
+                    std::max(1, (2 + safePixelScale - 1) / safePixelScale));
                 const SDL_FRect hoverCircle{
                     static_cast<float>(centerX) - hoverDiameter / 2.0f,
                     static_cast<float>(centerY) - hoverDiameter / 2.0f,
-                    hoverDiameter,
-                    hoverDiameter};
+                    hoverDiameter + hoverExpansion,
+                    hoverDiameter + hoverExpansion};
                 drawRoundedRect(renderer, hoverCircle, hoverCircle.w / 2.0f,
                                 kTabCloseHoverFill);
             }
 
-            const int safePixelScale =
-                std::max(1, static_cast<int>(state ? state->pixelScale : 1));
             const int closeSize = std::min(closeRect.w, closeRect.h);
             int iconSize = std::max(
                 5, static_cast<int>(std::round(static_cast<float>(closeSize) *
