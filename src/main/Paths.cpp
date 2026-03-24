@@ -1,6 +1,6 @@
 #include "Paths.hpp"
 
-#include <platform_folders.h>
+#include <sago/platform_folders.h>
 
 #ifdef __APPLE__
 #include <TargetConditionals.h>
