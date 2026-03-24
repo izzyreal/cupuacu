@@ -307,18 +307,8 @@ namespace cupuacu::gui
 
         void drawCloseIcon(SDL_Renderer *renderer, const SDL_Rect &closeRect) const
         {
-            // Use the center of the covered pixel area so the icon rasterizes
-            // symmetrically for both odd and even close-button sizes.
-            const float centerX = snapToPixelGrid(
-                state, closeRect.x + (closeRect.w - 1) / 2.0f);
-            const float centerY = snapToPixelGrid(
-                state, closeRect.y + (closeRect.h - 1) / 2.0f);
-            const float opticalOffsetX = 0.25f;
-            const float opticalOffsetY = 0.35f;
-            const float iconCenterX =
-                snapToPixelGrid(state, centerX + opticalOffsetX);
-            const float iconCenterY =
-                snapToPixelGrid(state, centerY + opticalOffsetY);
+            const int centerX = closeRect.x + closeRect.w / 2;
+            const int centerY = closeRect.y + closeRect.h / 2;
             const float hoverDiameter =
                 snapToPixelGrid(state, std::max(
                                            1.0f, static_cast<float>(
@@ -329,74 +319,41 @@ namespace cupuacu::gui
                 (pressTarget == PressTarget::Close && pointerInsideWhilePressed))
             {
                 const SDL_FRect hoverCircle{
-                    centerX - hoverDiameter / 2.0f,
-                    centerY - hoverDiameter / 2.0f,
+                    static_cast<float>(centerX) - hoverDiameter / 2.0f,
+                    static_cast<float>(centerY) - hoverDiameter / 2.0f,
                     hoverDiameter,
                     hoverDiameter};
                 drawRoundedRect(renderer, hoverCircle, hoverCircle.w / 2.0f,
                                 kTabCloseHoverFill);
             }
 
-            const float iconSize =
-                snapToPixelGrid(state, std::max(
-                                           1.0f, static_cast<float>(
-                                                     std::round(hoverDiameter *
-                                                                0.72f))));
-            const float thickness = snapToPixelGrid(
-                state, std::max(1.0f, scaleUiF(state, 2.0f)));
-            const float inset = snapToPixelGrid(
-                state, std::max(scaleUiF(state, 1.5f), iconSize * 0.22f));
-            const float halfSpan = snapToPixelGrid(
-                state, std::max(0.0f, iconSize / 2.0f - inset));
-
-            drawThickLine(renderer, iconCenterX - halfSpan,
-                          iconCenterY - halfSpan, iconCenterX + halfSpan,
-                          iconCenterY + halfSpan, thickness,
-                          Colors::white);
-            drawThickLine(renderer, iconCenterX - halfSpan,
-                          iconCenterY + halfSpan, iconCenterX + halfSpan,
-                          iconCenterY - halfSpan, thickness,
-                          Colors::white);
-            Helpers::fillRect(
-                renderer,
-                SDL_FRect{iconCenterX - thickness / 2.0f,
-                          iconCenterY - thickness / 2.0f, thickness,
-                          thickness},
-                Colors::white);
-        }
-
-        static void drawThickLine(SDL_Renderer *renderer, const float x1,
-                                  const float y1, const float x2,
-                                  const float y2, const float thickness,
-                                  const SDL_Color &color)
-        {
-            const float dx = x2 - x1;
-            const float dy = y2 - y1;
-            const float length = std::sqrt(dx * dx + dy * dy);
-            if (length <= 0.0f)
+            const int safePixelScale =
+                std::max(1, static_cast<int>(state ? state->pixelScale : 1));
+            const int closeSize = std::min(closeRect.w, closeRect.h);
+            int iconSize = std::max(
+                5, static_cast<int>(std::round(static_cast<float>(closeSize) *
+                                               0.42f)));
+            if ((iconSize % 2) == 0)
             {
-                return;
+                --iconSize;
             }
 
-            const float halfThickness = thickness / 2.0f;
-            const float px = -dy / length * halfThickness;
-            const float py = dx / length * halfThickness;
-            const SDL_FColor fcolor{color.r / 255.0f, color.g / 255.0f,
-                                    color.b / 255.0f, color.a / 255.0f};
+            const int stroke = safePixelScale == 1 ? 2 : 1;
+            const int originX = centerX - iconSize / 2;
+            const int originY = centerY - iconSize / 2;
 
-            SDL_Vertex vertices[4]{};
-            vertices[0].position = SDL_FPoint{x1 + px, y1 + py};
-            vertices[1].position = SDL_FPoint{x1 - px, y1 - py};
-            vertices[2].position = SDL_FPoint{x2 - px, y2 - py};
-            vertices[3].position = SDL_FPoint{x2 + px, y2 + py};
-            for (auto &vertex : vertices)
+            for (int i = 0; i < iconSize; ++i)
             {
-                vertex.color = fcolor;
-                vertex.tex_coord = SDL_FPoint{0.0f, 0.0f};
+                Helpers::fillRect(
+                    renderer,
+                    SDL_Rect{originX + i, originY + i, stroke, stroke},
+                    Colors::white);
+                Helpers::fillRect(
+                    renderer,
+                    SDL_Rect{originX + iconSize - 1 - i, originY + i, stroke,
+                             stroke},
+                    Colors::white);
             }
-
-            constexpr int indices[6]{0, 1, 2, 0, 2, 3};
-            SDL_RenderGeometry(renderer, nullptr, vertices, 4, indices, 6);
         }
     };
 
