@@ -50,7 +50,6 @@ namespace
             return 1.0f;
         }
 
-#if defined(_WIN32)
         const SDL_DisplayID displayId = SDL_GetDisplayForWindow(window);
         if (displayId)
         {
@@ -66,41 +65,13 @@ namespace
         {
             return windowScale;
         }
-#endif
-
-        if (canvas)
-        {
-            SDL_Point logicalSize{0, 0};
-            if (SDL_GetWindowSize(window, &logicalSize.x, &logicalSize.y) &&
-                logicalSize.x > 0 && logicalSize.y > 0)
-            {
-                float canvasW = 0.0f, canvasH = 0.0f;
-                SDL_GetTextureSize(canvas, &canvasW, &canvasH);
-                if (canvasW > 0.0f && canvasH > 0.0f)
-                {
-                    const float scaleX = canvasW / logicalSize.x;
-                    const float scaleY = canvasH / logicalSize.y;
-                    const float scale = std::min(scaleX, scaleY);
-                    if (scale > 0.0f)
-                    {
-                        return scale;
-                    }
-                }
-            }
-        }
-
-        const float fallbackScale = SDL_GetWindowDisplayScale(window);
-        if (fallbackScale <= 0.0f)
-        {
-            return 1.0f;
-        }
-        return fallbackScale;
+        return 1.0f;
     }
 
     void applyWindowScale(SDL_Window *window, SDL_Texture *canvas)
     {
         const float displayScale = getEffectiveWindowDisplayScale(window, canvas);
-        setDisplayScaleFactor(displayScale);
+        setPlatformScaleFactor(displayScale);
         setFontDisplayScale(displayScale);
     }
 
@@ -126,6 +97,49 @@ namespace
 
         SDL_SetRenderScale(renderer, canvasW / logicalSize.x,
                            canvasH / logicalSize.y);
+    }
+
+    bool isNearlyIntegerScale(const float scale)
+    {
+        if (scale <= 0.0f)
+        {
+            return false;
+        }
+
+        return std::fabs(scale - std::round(scale)) < 0.02f;
+    }
+
+    void applyCanvasPresentationScaleMode(SDL_Window *window, SDL_Texture *canvas)
+    {
+        if (!window || !canvas)
+        {
+            return;
+        }
+
+        SDL_Point pixelSize{0, 0};
+        if (!SDL_GetWindowSizeInPixels(window, &pixelSize.x, &pixelSize.y) ||
+            pixelSize.x <= 0 || pixelSize.y <= 0)
+        {
+            SDL_SetTextureScaleMode(canvas, SDL_SCALEMODE_NEAREST);
+            return;
+        }
+
+        float canvasW = 0.0f;
+        float canvasH = 0.0f;
+        SDL_GetTextureSize(canvas, &canvasW, &canvasH);
+        if (canvasW <= 0.0f || canvasH <= 0.0f)
+        {
+            SDL_SetTextureScaleMode(canvas, SDL_SCALEMODE_NEAREST);
+            return;
+        }
+
+        const float scaleX = pixelSize.x / canvasW;
+        const float scaleY = pixelSize.y / canvasH;
+        const SDL_ScaleMode scaleMode =
+            isNearlyIntegerScale(scaleX) && isNearlyIntegerScale(scaleY)
+                ? SDL_SCALEMODE_NEAREST
+                : SDL_SCALEMODE_LINEAR;
+        SDL_SetTextureScaleMode(canvas, scaleMode);
     }
 
     void logWindowScaleDiagnostics(SDL_Window *window, SDL_Texture *canvas,
@@ -444,10 +458,7 @@ bool Window::setCanvasSize(const int width, const int height)
         return false;
     }
 
-    SDL_SetTextureScaleMode(canvas, SDL_SCALEMODE_NEAREST);
-#if defined(_WIN32)
-    SDL_SetTextureScaleMode(canvas, SDL_SCALEMODE_LINEAR);
-#endif
+    applyCanvasPresentationScaleMode(window, canvas);
     SDL_SetTextureBlendMode(canvas, SDL_BLENDMODE_BLEND);
     logWindowScaleDiagnostics(window, canvas, state->pixelScale);
     return true;
@@ -524,10 +535,7 @@ void Window::resizeCanvasIfNeeded()
     canvas =
         SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
                           SDL_TEXTUREACCESS_TARGET, required.x, required.y);
-    SDL_SetTextureScaleMode(canvas, SDL_SCALEMODE_NEAREST);
-#if defined(_WIN32)
-    SDL_SetTextureScaleMode(canvas, SDL_SCALEMODE_LINEAR);
-#endif
+    applyCanvasPresentationScaleMode(window, canvas);
     logWindowScaleDiagnostics(window, canvas, state->pixelScale);
 }
 
@@ -571,6 +579,7 @@ void Window::handleResize()
 
     resizeCanvasIfNeeded();
     applyWindowScale(window, canvas);
+    applyCanvasPresentationScaleMode(window, canvas);
     if (onResize)
     {
         onResize();
@@ -582,6 +591,7 @@ void Window::refreshForScaleOrResize()
     hideTooltip();
     resizeCanvasIfNeeded();
     applyWindowScale(window, canvas);
+    applyCanvasPresentationScaleMode(window, canvas);
     logWindowScaleDiagnostics(window, canvas, state->pixelScale);
     if (onResize)
     {
@@ -945,6 +955,7 @@ void Window::renderFrame()
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
         SDL_RenderClear(renderer);
     }
+    applyCanvasPresentationScaleMode(window, canvas);
     SDL_RenderTexture(renderer, canvas, nullptr, nullptr);
     SDL_RenderPresent(renderer);
     dirtyRects.clear();
@@ -981,6 +992,7 @@ void Window::renderFrameIfDirty()
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
         SDL_RenderClear(renderer);
     }
+    applyCanvasPresentationScaleMode(window, canvas);
     SDL_RenderTexture(renderer, canvas, nullptr, nullptr);
     SDL_RenderPresent(renderer);
     dirtyRects.clear();

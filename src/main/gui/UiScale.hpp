@@ -9,15 +9,15 @@
 
 namespace cupuacu::gui
 {
-    inline float &getDisplayScaleFactor()
+    inline float &getPlatformScaleFactor()
     {
-        static float displayScaleFactor = 1.0f;
-        return displayScaleFactor;
+        static float platformScaleFactor = 1.0f;
+        return platformScaleFactor;
     }
 
-    inline void setDisplayScaleFactor(const float scale)
+    inline void setPlatformScaleFactor(const float scale)
     {
-        getDisplayScaleFactor() = std::max(1.0f, scale);
+        getPlatformScaleFactor() = std::max(1.0f, scale);
     }
 
     inline float getUiScale(const State *state)
@@ -25,9 +25,9 @@ namespace cupuacu::gui
         return state ? std::max(0.25f, state->uiScale) : 1.0f;
     }
 
-    inline float getCanvasSpaceScale(const State *state)
+    inline float getEffectiveUiScale(const State *state)
     {
-        return getUiScale(state) * getDisplayScaleFactor();
+        return getUiScale(state) * getPlatformScaleFactor();
     }
 
     inline int scaleUi(const State *state, const float base,
@@ -35,13 +35,13 @@ namespace cupuacu::gui
     {
         return std::max(
             minimum,
-            static_cast<int>(std::lround(base * getCanvasSpaceScale(state))));
+            static_cast<int>(std::lround(base * getEffectiveUiScale(state))));
     }
 
     inline float scaleUiF(const State *state, const float base,
                           const float minimum = 1.0f)
     {
-        return std::max(minimum, base * getCanvasSpaceScale(state));
+        return std::max(minimum, base * getEffectiveUiScale(state));
     }
 
     inline uint8_t scaleFontPointSize(const State *state, const int pointSize)
@@ -58,7 +58,7 @@ namespace cupuacu::gui
 #if defined(__linux__)
             return 0.5f;
 #else
-            return 1.0f;
+            return 0.675f;
 #endif
         }
 

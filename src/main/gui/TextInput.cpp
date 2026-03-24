@@ -337,7 +337,7 @@ void TextInput::onDraw(SDL_Renderer *renderer)
         static_cast<float>(textY),
         static_cast<float>(std::max(0, bounds.w - padding * 2)),
         static_cast<float>(contentHeight)};
-    renderText(renderer, text, static_cast<uint8_t>(fontSize), textBounds, false);
+    renderText(renderer, text, getEffectiveFontSize(), textBounds, false);
 
     if (focused && cursorVisible)
     {
@@ -346,7 +346,7 @@ void TextInput::onDraw(SDL_Renderer *renderer)
             measureTextWidth(std::string_view(text).substr(0, cursorIndex));
         const int caretThickness = std::max(1, scaleUi(state, 2.0f));
         const auto [_, textHeight] =
-            measureText(text.empty() ? "Ag" : text, static_cast<uint8_t>(fontSize));
+            measureText(text.empty() ? "Ag" : text, getEffectiveFontSize());
         const int caretHeight =
             std::max(1, std::min(contentHeight, static_cast<int>(std::ceil(textHeight))));
         Helpers::fillRect(
@@ -427,6 +427,11 @@ void TextInput::deleteSelectionIfActive()
     collapseSelectionTo(start);
 }
 
+uint8_t TextInput::getEffectiveFontSize() const
+{
+    return scaleFontPointSize(state, fontSize);
+}
+
 int TextInput::getTextPadding() const
 {
     return scaleUi(state, 8.0f);
@@ -435,7 +440,7 @@ int TextInput::getTextPadding() const
 int TextInput::getTextY(const SDL_Rect &bounds, const int borderThickness) const
 {
     const auto [_, textHeight] =
-        measureText(text.empty() ? "Ag" : text, static_cast<uint8_t>(fontSize));
+        measureText(text.empty() ? "Ag" : text, getEffectiveFontSize());
     const int contentHeight = std::max(0, bounds.h - borderThickness * 2);
     return borderThickness +
            std::max(0, (contentHeight - static_cast<int>(std::ceil(textHeight))) / 2);
@@ -443,7 +448,7 @@ int TextInput::getTextY(const SDL_Rect &bounds, const int borderThickness) const
 
 int TextInput::measureTextWidth(const std::string_view value) const
 {
-    return measureText(std::string(value), static_cast<uint8_t>(fontSize)).first;
+    return measureText(std::string(value), getEffectiveFontSize()).first;
 }
 
 std::size_t TextInput::findCursorIndexForX(const int localX) const

@@ -17,6 +17,103 @@ using namespace cupuacu::gui;
 
 namespace
 {
+    bool isMenuDebugOverlayEnabled()
+    {
+        static const bool enabled = []
+        {
+            const char *value = SDL_getenv("CUPUACU_DEBUG_MENU_BOUNDS");
+            return value && value[0] != '\0' && value[0] != '0';
+        }();
+        return enabled;
+    }
+
+    void drawMenuPopupShell(SDL_Renderer *renderer, const SDL_FRect &rect,
+                            const float radius, const uint8_t pixelScale,
+                            const SDL_Color &fill, const SDL_Color &border)
+    {
+        const SDL_FRect snappedRect =
+            snapRoundedRectToPixelGrid(rect, pixelScale);
+        const float snappedRadius =
+            snapRoundedRectRadiusToPixelGrid(radius, pixelScale);
+
+        drawRoundedRectPixelPerfect(renderer, snappedRect, snappedRadius, fill,
+                                    pixelScale);
+
+        const int x = toRoundedRectGridUnits(snappedRect.x, pixelScale);
+        const int y = toRoundedRectGridUnits(snappedRect.y, pixelScale);
+        const int width = std::max(
+            0, toRoundedRectGridUnits(snappedRect.w, pixelScale));
+        const int height = std::max(
+            0, toRoundedRectGridUnits(snappedRect.h, pixelScale));
+        const int radiusUnits = std::clamp(
+            toRoundedRectGridUnits(snappedRadius, pixelScale), 0,
+            std::min(width, height) / 2);
+
+        if (width <= 0 || height <= 0)
+        {
+            return;
+        }
+
+        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b,
+                               border.a);
+
+        for (int row = 0; row < height; ++row)
+        {
+            int left = 0;
+            int spanWidth = 0;
+            if (!getRoundedRectRowSpan(x, width, height, radiusUnits, true, true,
+                                       row, left, spanWidth))
+            {
+                continue;
+            }
+
+            const int canvasY = y + row;
+            if (row == 0 || row == height - 1)
+            {
+                fillRoundedRectGridSegment(renderer, left, spanWidth, canvasY,
+                                           pixelScale);
+                continue;
+            }
+
+            fillRoundedRectGridSegment(renderer, left, 1, canvasY, pixelScale);
+            fillRoundedRectGridSegment(renderer, left + spanWidth - 1, 1,
+                                       canvasY, pixelScale);
+        }
+    }
+
+    class MenuPopupShell : public Component
+    {
+    public:
+        explicit MenuPopupShell(cupuacu::State *stateToUse)
+            : Component(stateToUse, "MenuPopupShell")
+        {
+            disableParentClipping();
+            setInterceptMouseEnabled(false);
+        }
+
+        void onDraw(SDL_Renderer *renderer) override
+        {
+            const uint8_t pixelScale = state ? state->pixelScale : 1;
+            const SDL_FRect rect =
+                snapRoundedRectToPixelGrid(getLocalBoundsF(), pixelScale);
+            const float radius = snapRoundedRectRadiusToPixelGrid(
+                scaleUiF(state, 14.0f), pixelScale);
+            constexpr SDL_Color fill = {50, 50, 50, 255};
+            constexpr SDL_Color outline = {180, 180, 180, 255};
+            drawMenuPopupShell(renderer, rect, radius, pixelScale, fill,
+                               outline);
+
+            if (isMenuDebugOverlayEnabled())
+            {
+                SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+                Helpers::fillRect(renderer, rect, SDL_Color{255, 0, 255, 70});
+                drawMenuPopupShell(renderer, rect, radius, pixelScale,
+                                   SDL_Color{0, 0, 0, 0},
+                                   SDL_Color{255, 255, 255, 220});
+            }
+        }
+    };
+
     void requestFullWindowRedraw(cupuacu::gui::Menu *menu)
     {
         if (!menu)
@@ -46,6 +143,8 @@ Menu::Menu(State *state, const std::string &menuNameToUse,
     label = emplaceChild<Label>(state);
     label->setInterceptMouseEnabled(false);
     label->setFontSize(state->menuFontSize);
+    popupShell = emplaceChild<MenuPopupShell>(state);
+    popupShell->setVisible(false);
 }
 
 Menu::Menu(State *state,
@@ -58,6 +157,8 @@ Menu::Menu(State *state,
     label = emplaceChild<Label>(state);
     label->setInterceptMouseEnabled(false);
     label->setFontSize(state->menuFontSize);
+    popupShell = emplaceChild<MenuPopupShell>(state);
+    popupShell->setVisible(false);
 }
 
 void Menu::setIsAvailable(const std::function<bool()> &isAvailableToUse)
@@ -140,7 +241,8 @@ void Menu::showSubMenus()
         }
 
         const auto subMenuName = subMenu->getMenuName();
-        auto [tw, th] = measureText(subMenuName, state->menuFontSize);
+        auto [tw, th] = measureText(
+            subMenuName, scaleFontPointSize(state, state->menuFontSize));
         textWidths.push_back(tw);
     }
 
@@ -148,6 +250,12 @@ void Menu::showSubMenus()
         firstLevel, getWidth(), getHeight(), itemHeight,
         nestedHorizontalOverlap, subMenuHorizontalMargin, textWidths,
         shouldShow);
+
+    int shellX = 0;
+    int shellY = 0;
+    int shellWidth = 0;
+    int shellHeight = 0;
+    bool hasVisibleShell = false;
 
     for (std::size_t i = 0; i < subMenus.size(); ++i)
     {
@@ -159,6 +267,38 @@ void Menu::showSubMenus()
             continue;
         }
         subMenu->setBounds(item.x, item.y, item.width, item.height);
+
+        if (!hasVisibleShell)
+        {
+            shellX = item.x;
+            shellY = item.y;
+            shellWidth = item.width;
+            shellHeight = item.height;
+            hasVisibleShell = true;
+        }
+        else
+        {
+            const int shellRight = std::max(shellX + shellWidth,
+                                            item.x + item.width);
+            const int shellBottom = std::max(shellY + shellHeight,
+                                             item.y + item.height);
+            shellX = std::min(shellX, item.x);
+            shellY = std::min(shellY, item.y);
+            shellWidth = shellRight - shellX;
+            shellHeight = shellBottom - shellY;
+        }
+    }
+
+    if (popupShell)
+    {
+        popupShell->setVisible(hasVisibleShell);
+        if (hasVisibleShell)
+        {
+            const int borderInset = std::max(1, scaleUi(state, 1.0f));
+            popupShell->setBounds(shellX - borderInset, shellY - borderInset,
+                                  shellWidth + borderInset * 2,
+                                  shellHeight + borderInset * 2);
+        }
     }
 
     if (!firstLevel)
@@ -172,6 +312,11 @@ void Menu::showSubMenus()
 
 void Menu::hideSubMenus()
 {
+    if (popupShell)
+    {
+        popupShell->setVisible(false);
+    }
+
     for (const auto &subMenu : subMenus)
     {
         subMenu->hideSubMenus();
@@ -184,8 +329,10 @@ void Menu::hideSubMenus()
 
 void Menu::onDraw(SDL_Renderer *renderer)
 {
-    const auto radius = scaleUiF(state, 14.0f);
-    const auto rect = getLocalBoundsF();
+    const auto radius = snapRoundedRectRadiusToPixelGrid(
+        scaleUiF(state, 14.0f), state ? state->pixelScale : 1);
+    const auto rect = snapRoundedRectToPixelGrid(
+        getLocalBoundsF(), state ? state->pixelScale : 1);
     const bool available = isEffectivelyAvailable();
 
     label->setOpacity(available ? 255 : 128);
@@ -202,14 +349,12 @@ void Menu::onDraw(SDL_Renderer *renderer)
         if (currentlyOpen)
         {
             constexpr SDL_Color col1 = {70, 70, 70, 255};
-            drawRoundedRect(renderer, rect, radius, col1);
+            drawRoundedRectBordered(renderer, rect, radius, Colors::border,
+                                    col1, state ? state->pixelScale : 1);
         }
 
         return;
     }
-
-    constexpr SDL_Color col1 = {50, 50, 50, 255};
-    constexpr SDL_Color outline = {180, 180, 180, 255};
 
     const auto parentMenu = dynamic_cast<Menu *>(getParent());
     Menu *firstVisibleSibling = nullptr;
@@ -236,33 +381,47 @@ void Menu::onDraw(SDL_Renderer *renderer)
     rectShrunk.y += shrink;
     rectShrunk.w -= shrink * 2;
     rectShrunk.h -= shrink * 2;
-
-    if (isFirst && isLast)
-    {
-        drawRoundedRect(renderer, rect, radius, col1);
-        drawRoundedRectOutline(renderer, rect, radius, outline);
-    }
-    else if (isFirst)
-    {
-        drawTopRoundedRect(renderer, rect, radius, col1);
-        drawTopRoundedRectOutline(renderer, rect, radius, outline);
-    }
-    else if (isLast)
-    {
-        drawBottomRoundedRect(renderer, rect, radius, col1);
-        drawBottomRoundedRectOutline(renderer, rect, radius, outline);
-    }
-    else
-    {
-        SDL_SetRenderDrawColor(renderer, col1.r, col1.g, col1.b, col1.a);
-        SDL_RenderFillRect(renderer, &rect);
-        drawVerticalEdges(renderer, rect, outline);
-    }
+    rectShrunk = snapRoundedRectToPixelGrid(
+        rectShrunk, state ? state->pixelScale : 1);
 
     if (isMouseOver() && available)
     {
         constexpr SDL_Color col2 = {60, 60, 200, 255};
-        drawRoundedRect(renderer, rectShrunk, radius, col2);
+        if (isFirst && isLast)
+        {
+            drawRoundedRectPixelPerfect(renderer, rectShrunk, radius, col2,
+                                        state ? state->pixelScale : 1);
+        }
+        else if (isFirst)
+        {
+            drawTopRoundedRectPixelPerfect(renderer, rectShrunk, radius, col2,
+                                           state ? state->pixelScale : 1);
+        }
+        else if (isLast)
+        {
+            drawBottomRoundedRectPixelPerfect(
+                renderer, rectShrunk, radius, col2,
+                state ? state->pixelScale : 1);
+        }
+        else
+        {
+            SDL_RenderFillRect(renderer, &rectShrunk);
+        }
+    }
+
+    if (isMenuDebugOverlayEnabled())
+    {
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+        const SDL_Color debugColor =
+            isFirst ? SDL_Color{255, 80, 80, 140}
+                    : (isLast ? SDL_Color{80, 120, 255, 140}
+                              : SDL_Color{80, 255, 120, 140});
+        Helpers::fillRect(renderer, rect, debugColor);
+        if (isMouseOver() && available)
+        {
+            Helpers::fillRect(renderer, rectShrunk,
+                              SDL_Color{255, 255, 0, 120});
+        }
     }
 }
 

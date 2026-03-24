@@ -32,6 +32,45 @@
 
 using namespace cupuacu::gui;
 
+namespace
+{
+    int computeMenuBarLogoWidth(const MenuBar *menuBar)
+    {
+        if (!menuBar)
+        {
+            return 0;
+        }
+
+        const int logoW = menuBar->getLogoWidth();
+        const int logoH = menuBar->getLogoHeight();
+        const int barHeight = menuBar->getHeight();
+        if (logoW <= 0 || logoH <= 0 || barHeight <= 0)
+        {
+            return 0;
+        }
+
+        return std::max(0, static_cast<int>(std::lround(
+                               static_cast<float>(logoW) * barHeight / logoH)));
+    }
+
+    int computeMenuBarLogoReservation(const MenuBar *menuBar,
+                                      const cupuacu::State *state)
+    {
+        if (!menuBar)
+        {
+            return 0;
+        }
+
+        const int logoWidth = computeMenuBarLogoWidth(menuBar);
+        if (logoWidth <= 0)
+        {
+            return 0;
+        }
+
+        return logoWidth + scaleUi(state, 8.0f);
+    }
+}
+
 MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
 {
     background = emplaceChild<OpaqueRect>(state, Colors::background);
@@ -384,16 +423,26 @@ void MenuBar::onDraw(SDL_Renderer *renderer)
         }
     }
 
+    const float reservedWidth =
+        static_cast<float>(computeMenuBarLogoReservation(this, state));
+    if (reservedWidth > 0.0f)
+    {
+        Helpers::fillRect(renderer,
+                          SDL_FRect{0.0f, 0.0f, reservedWidth,
+                                    static_cast<float>(getHeight())},
+                          Colors::background);
+    }
+
+    if (!logoTexture)
+    {
+        return;
+    }
+
     SDL_FRect dst;
     dst.x = 0.0f;
     dst.y = 0.0f;
-    dst.w = float(logoW);
+    dst.w = static_cast<float>(computeMenuBarLogoWidth(this));
     dst.h = float(getHeight());
-
-    const float scale = float(getHeight()) / float(logoH);
-    dst.w = logoW * scale;
-
-    Helpers::fillRect(renderer, dst, Colors::background);
     SDL_RenderTexture(renderer, logoTexture, nullptr, &dst);
 }
 
@@ -417,7 +466,7 @@ void MenuBar::hideSubMenus()
 
 void MenuBar::resized()
 {
-    const float scale = getCanvasSpaceScale(state) * 4.0f;
+    const float scale = getEffectiveUiScale(state) * 4.0f;
 
     const int fileW = int(40 * scale);
     const int editW = int(40 * scale); // wide enough for Undo/Redo text
@@ -428,12 +477,7 @@ void MenuBar::resized()
         int(60 * scale); // wide enough for Device Properties text
     const int h = getHeight();
 
-    int logoSpace = 0;
-    if (!logoData.empty())
-    {
-        const float aspect = logoH ? (float)logoW / (float)logoH : 1.0f;
-        logoSpace = int(h * aspect);
-    }
+    const int logoSpace = computeMenuBarLogoReservation(this, state);
 
     fileMenu->setBounds(logoSpace, 0, fileW, h);
     editMenu->setBounds(logoSpace + fileW, 0, editW, h);

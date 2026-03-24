@@ -439,8 +439,8 @@ void DevicePropertiesWindow::layoutComponents() const
     background->setBounds(0, 0, canvasWi, canvasHi);
 
     const int padding = 8;
-    const auto [labelTextW, labelTextH] =
-        measureText("Output Device", state->menuFontSize);
+    const auto [labelTextW, labelTextH] = measureText(
+        "Output Device", scaleFontPointSize(state, state->menuFontSize));
     const int labelWidth =
         std::max(1, (int)std::ceil(labelTextW)) + padding;
     const int rowHeight =

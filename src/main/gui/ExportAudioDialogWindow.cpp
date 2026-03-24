@@ -231,18 +231,20 @@ namespace cupuacu::gui
         const int width = static_cast<int>(canvasW);
         const int height = static_cast<int>(canvasH);
         const int padding = scaleUi(state, 20.0f);
+        const uint8_t labelFontSize =
+            scaleFontPointSize(state, state->menuFontSize);
         const auto [containerTextWidth, _containerTextHeight] =
-            measureText("Container", state->menuFontSize);
+            measureText("Container", labelFontSize);
         const auto [codecTextWidth, _codecTextHeight] =
-            measureText("Codec", state->menuFontSize);
+            measureText("Codec", labelFontSize);
         const auto [encodingTextWidth, _encodingTextHeight] =
-            measureText("Encoding", state->menuFontSize);
+            measureText("Encoding", labelFontSize);
         const auto [bitrateTextWidth, _bitrateTextHeight] =
-            measureText("Bitrate mode", state->menuFontSize);
+            measureText("Bitrate mode", labelFontSize);
         const auto [bitrateValueTextWidth, _bitrateValueTextHeight] =
-            measureText("Bitrate", state->menuFontSize);
+            measureText("Bitrate", labelFontSize);
         const auto [qualityTextWidth, _qualityTextHeight] =
-            measureText("Quality", state->menuFontSize);
+            measureText("Quality", labelFontSize);
         const int labelWidth =
             std::max({containerTextWidth, codecTextWidth, encodingTextWidth,
                       bitrateTextWidth, bitrateValueTextWidth,

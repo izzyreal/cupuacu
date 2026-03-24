@@ -110,7 +110,10 @@ namespace cupuacu::gui
             SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
             const SDL_FRect bounds = getLocalBoundsF();
-            const float radius = scaleUiF(state, 8.0f);
+            const SDL_FRect snappedBounds = snapRoundedRectToPixelGrid(
+                bounds, state ? state->pixelScale : 1);
+            const float radius = snapRoundedRectRadiusToPixelGrid(
+                scaleUiF(state, 8.0f), state ? state->pixelScale : 1);
             SDL_Color fill = kTabBaseFill;
 
             if (pressTarget != PressTarget::None &&
@@ -127,8 +130,9 @@ namespace cupuacu::gui
                 fill = kTabHoverFill;
             }
 
-            drawRoundedRect(renderer, bounds, radius, fill);
-            drawRoundedRectOutline(renderer, bounds, radius, Colors::border);
+            drawRoundedRectBordered(renderer, snappedBounds, radius,
+                                    Colors::border, fill,
+                                    state ? state->pixelScale : 1);
             drawCloseIcon(renderer, getCloseBounds());
 
             SDL_SetRenderDrawBlendMode(renderer, previousBlendMode);

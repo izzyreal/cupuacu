@@ -75,7 +75,7 @@ void Label::onDraw(SDL_Renderer *renderer)
         return;
     }
 
-    const float marginScaled = margin * getCanvasSpaceScale(state);
+    const float marginScaled = margin * getEffectiveUiScale(state);
     const SDL_FRect contentRect = planLabelContentRect(
         getLocalBoundsF(), marginScaled, centerVertically, cachedH);
     const SDL_FRect destRect = planLabelDestRect(

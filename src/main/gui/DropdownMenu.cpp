@@ -79,22 +79,22 @@ namespace
 
         void onDraw(SDL_Renderer *renderer) override
         {
-            const SDL_FRect outer = getLocalBoundsF();
-            const float radius = scaleUiF(state, 12.0f);
+            const uint8_t pixelScale = state ? state->pixelScale : 1;
+            const SDL_FRect outer =
+                snapRoundedRectToPixelGrid(getLocalBoundsF(), pixelScale);
+            const float radius = snapRoundedRectRadiusToPixelGrid(
+                scaleUiF(state, 12.0f), pixelScale);
 
             constexpr SDL_Color border = Colors::border;
             constexpr SDL_Color baseBg = {55, 55, 55, 255};
             constexpr SDL_Color hoverBg = {70, 70, 70, 255};
 
-            drawRoundedRect(renderer, outer, radius, border);
+            drawRoundedRectBordered(renderer, outer, radius, border, baseBg,
+                                    pixelScale);
 
             SDL_FRect inner = outer;
-            inner.x += 1.0f;
-            inner.y += 1.0f;
-            inner.w -= 2.0f;
-            inner.h -= 2.0f;
-            drawRoundedRect(renderer, inner, std::max(0.0f, radius - 1.0f),
-                            baseBg);
+            float innerRadius = radius;
+            insetRoundedRect(inner, innerRadius, 1.0f, pixelScale);
 
             const int rowHeight = getRowHeight();
             if (hoveredIndex >= 0 && hoveredIndex < static_cast<int>(items.size()))
@@ -102,6 +102,7 @@ namespace
                 SDL_FRect hoverRect = inner;
                 hoverRect.y = inner.y + hoveredIndex * rowHeight;
                 hoverRect.h = rowHeight;
+                hoverRect = snapRoundedRectToPixelGrid(hoverRect, pixelScale);
                 float hoverRadius = 0.0f;
                 if (hoveredIndex == 0 ||
                     hoveredIndex == static_cast<int>(items.size()) - 1)
@@ -511,20 +512,21 @@ void DropdownMenu::resized()
 
 void DropdownMenu::onDraw(SDL_Renderer *renderer)
 {
-    const SDL_FRect outer = getLocalBoundsF();
-    const float radius = scaleUiF(state, 12.0f);
+    const uint8_t pixelScale = state ? state->pixelScale : 1;
+    const SDL_FRect outer =
+        snapRoundedRectToPixelGrid(getLocalBoundsF(), pixelScale);
+    const float radius = snapRoundedRectRadiusToPixelGrid(
+        scaleUiF(state, 12.0f), pixelScale);
 
     constexpr SDL_Color border = Colors::border;
     constexpr SDL_Color baseBg = {55, 55, 55, 255};
 
-    drawRoundedRect(renderer, outer, radius, border);
+    drawRoundedRectBordered(renderer, outer, radius, border, baseBg,
+                            pixelScale);
 
     SDL_FRect inner = outer;
-    inner.x += 1.0f;
-    inner.y += 1.0f;
-    inner.w -= 2.0f;
-    inner.h -= 2.0f;
-    drawRoundedRect(renderer, inner, std::max(0.0f, radius - 1.0f), baseBg);
+    float innerRadius = radius;
+    insetRoundedRect(inner, innerRadius, 1.0f, pixelScale);
 
     if (itemLabels.size() > 1 && !expanded)
     {

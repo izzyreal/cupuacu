@@ -716,7 +716,8 @@ namespace cupuacu::effects
             const int canvasWi = static_cast<int>(canvasW);
             const int canvasHi = static_cast<int>(canvasH);
             const int padding = std::max(4, cupuacu::gui::scaleUi(state, 12.0f));
-            const int labelFontSize = state ? state->menuFontSize : 30;
+            const uint8_t labelFontSize = cupuacu::gui::scaleFontPointSize(
+                state, state ? state->menuFontSize : 30);
             int measuredLabelWidth = 0;
             for (const auto &control : controls)
             {

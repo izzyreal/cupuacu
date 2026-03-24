@@ -31,6 +31,7 @@ namespace cupuacu::gui
         };
 
         Label *label = nullptr;
+        Component *popupShell = nullptr;
 
         bool isFirstLevel() const;
 

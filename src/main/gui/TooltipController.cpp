@@ -240,9 +240,13 @@ namespace cupuacu::gui
             SDL_RenderClear(renderer);
 
             const SDL_FRect body{0.0f, 0.0f, canvasWidth, canvasHeight};
-            const float radius = scaleUiF(state, 10.0f);
-            drawRoundedRect(renderer, body, radius, kTooltipFill);
-            drawRoundedRectOutline(renderer, body, radius, kTooltipOutline);
+            const uint8_t pixelScale = state ? state->pixelScale : 1;
+            const SDL_FRect snappedBody =
+                snapRoundedRectToPixelGrid(body, pixelScale);
+            const float radius = snapRoundedRectRadiusToPixelGrid(
+                scaleUiF(state, 10.0f), pixelScale);
+            drawRoundedRectBordered(renderer, snappedBody, radius,
+                                    kTooltipOutline, kTooltipFill, pixelScale);
 
             const SDL_Rect clipRect{renderPaddingPx, renderPaddingPx,
                                     std::max(0, static_cast<int>(canvasWidth) -
