@@ -81,6 +81,9 @@ AddDependency(Catch2 "Catch2" "${CMAKE_SOURCE_DIR}/deps/Catch2" "https://github.
 AddDependency(readerwriterqueue "readerwriterqueue" "${CMAKE_SOURCE_DIR}/deps/readerwriterqueue" "https://github.com/cameron314/readerwriterqueue.git" "master")
 AddDependency(portaudio "portaudio" "${CMAKE_SOURCE_DIR}/deps/portaudio" "https://github.com/PortAudio/portaudio.git" "master")
 AddDependency(PlatformFolders "PlatformFolders" "${CMAKE_SOURCE_DIR}/deps/PlatformFolders" "https://github.com/sago007/PlatformFolders.git" "master")
+target_include_directories(platform_folders INTERFACE
+    $<BUILD_INTERFACE:${PlatformFolders_SOURCE_DIR}>
+)
 fetchcontent_declare_cached_url(
     json
     "json"
