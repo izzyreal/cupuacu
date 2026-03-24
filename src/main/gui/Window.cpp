@@ -19,12 +19,6 @@ using namespace cupuacu::gui;
 
 namespace
 {
-    bool shouldLogWindowScaleDiagnostics()
-    {
-        const char *value = SDL_getenv("CUPUACU_DEBUG_WINDOW_SCALE");
-        return value && value[0] != '\0' && SDL_strcmp(value, "0") != 0;
-    }
-
     float getEffectiveWindowDisplayScale(SDL_Window *window,
                                          SDL_Texture *canvas)
     {
@@ -82,37 +76,6 @@ namespace
 #else
         (void)state;
 #endif
-    }
-
-    void logWindowScaleDiagnostics(SDL_Window *window, SDL_Texture *canvas,
-                                   const Uint8 pixelScale)
-    {
-        if (!shouldLogWindowScaleDiagnostics() || !window)
-        {
-            return;
-        }
-
-        SDL_Point logicalSize{0, 0};
-        SDL_Point pixelSize{0, 0};
-        SDL_GetWindowSize(window, &logicalSize.x, &logicalSize.y);
-        SDL_GetWindowSizeInPixels(window, &pixelSize.x, &pixelSize.y);
-        const SDL_DisplayID displayId = SDL_GetDisplayForWindow(window);
-        const float displayContentScale =
-            displayId ? SDL_GetDisplayContentScale(displayId) : 0.0f;
-
-        float canvasW = 0.0f;
-        float canvasH = 0.0f;
-        if (canvas)
-        {
-            SDL_GetTextureSize(canvas, &canvasW, &canvasH);
-        }
-
-        SDL_Log(
-            "CUPUACU_DEBUG_WINDOW_SCALE: logical=%dx%d pixels=%dx%d displayId=%" SDL_PRIu32 " displayScale=%.3f displayContentScale=%.3f canvas=%.1fx%.1f pixelScale=%u effectiveFontScale=%.3f",
-            logicalSize.x, logicalSize.y, pixelSize.x, pixelSize.y,
-            displayId, SDL_GetWindowDisplayScale(window), displayContentScale,
-            canvasW, canvasH, pixelScale,
-            getEffectiveWindowDisplayScale(window, canvas));
     }
 
     SDL_Surface *createWindowIconSurface()
@@ -402,7 +365,6 @@ bool Window::setCanvasSize(const int width, const int height)
 
     SDL_SetTextureScaleMode(canvas, SDL_SCALEMODE_NEAREST);
     SDL_SetTextureBlendMode(canvas, SDL_BLENDMODE_BLEND);
-    logWindowScaleDiagnostics(window, canvas, state->pixelScale);
     return true;
 }
 
@@ -499,7 +461,6 @@ void Window::resizeCanvasIfNeeded()
         SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
                           SDL_TEXTUREACCESS_TARGET, required.x, required.y);
     SDL_SetTextureScaleMode(canvas, SDL_SCALEMODE_NEAREST);
-    logWindowScaleDiagnostics(window, canvas, state->pixelScale);
 }
 
 void Window::handleResize()
@@ -553,7 +514,6 @@ void Window::refreshForScaleOrResize()
     hideTooltip();
     resizeCanvasIfNeeded();
     applyWindowScale(state, window, canvas);
-    logWindowScaleDiagnostics(window, canvas, state->pixelScale);
     if (onResize)
     {
         onResize();
