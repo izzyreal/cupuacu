@@ -109,7 +109,7 @@ namespace cupuacu::gui
             SDL_GetRenderDrawBlendMode(renderer, &previousBlendMode);
             SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
-            const SDL_FRect bounds = getLocalBoundsF();
+            const SDL_FRect outer = getLocalBoundsF();
             const float radius = scaleUiF(state, 8.0f);
             SDL_Color fill = kTabBaseFill;
 
@@ -127,8 +127,15 @@ namespace cupuacu::gui
                 fill = kTabHoverFill;
             }
 
-            drawRoundedRect(renderer, bounds, radius, fill);
-            drawRoundedRectOutline(renderer, bounds, radius, Colors::border);
+            drawRoundedRect(renderer, outer, radius, Colors::border);
+
+            SDL_FRect inner = outer;
+            inner.x += 1.0f;
+            inner.y += 1.0f;
+            inner.w -= 2.0f;
+            inner.h -= 2.0f;
+            drawRoundedRect(renderer, inner, std::max(0.0f, radius - 1.0f),
+                            fill);
             drawCloseIcon(renderer, getCloseBounds());
 
             SDL_SetRenderDrawBlendMode(renderer, previousBlendMode);
