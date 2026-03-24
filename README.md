@@ -1,6 +1,6 @@
 **WIP, currently doesn't do anything useful. Keep an eye out on the releases.**
 
-<img width="2696" height="1632" alt="image" src="https://github.com/user-attachments/assets/898fe0de-509f-4ae8-a10c-99cf8bfbbaac" />
+<img width="2784" height="1720" alt="image" src="https://github.com/user-attachments/assets/28f9b7eb-51ca-4dda-a162-be2f74c17b77" />
 
 # Cupuacu -- A minimalist cross-platform audio editor inspired by Syntrillium Cool Edit
 
