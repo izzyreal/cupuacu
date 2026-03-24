@@ -32,6 +32,35 @@
 
 using namespace cupuacu::gui;
 
+namespace
+{
+    std::pair<int, int> loadLogoDimensions(const std::string &logoData)
+    {
+        if (logoData.empty())
+        {
+            return {0, 0};
+        }
+
+        SDL_IOStream *io = SDL_IOFromConstMem(
+            logoData.data(), static_cast<int>(logoData.size()));
+        if (!io)
+        {
+            return {0, 0};
+        }
+
+        SDL_Surface *surf = SDL_LoadBMP_IO(io, true);
+        if (!surf)
+        {
+            return {0, 0};
+        }
+
+        const int w = surf->w;
+        const int h = surf->h;
+        SDL_DestroySurface(surf);
+        return {w, h};
+    }
+}
+
 MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
 {
     background = emplaceChild<OpaqueRect>(state, Colors::background);
@@ -258,6 +287,9 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
         });
 
     logoData = get_resource_data("cupuacu-logo1.bmp");
+    const auto [loadedLogoW, loadedLogoH] = loadLogoDimensions(logoData);
+    logoW = loadedLogoW;
+    logoH = loadedLogoH;
 
     auto trimMenu = editMenu->addSubMenu(
         state, trimText,

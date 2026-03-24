@@ -20,7 +20,7 @@ namespace cupuacu::gui
         Menu *optionsMenu;
         bool openSubMenuOnMouseOver = false;
         std::string logoData;
-        SDL_Texture *logoTexture;
+        SDL_Texture *logoTexture = nullptr;
         int logoW = 0, logoH = 0;
 
     public:
