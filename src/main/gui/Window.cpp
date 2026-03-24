@@ -394,9 +394,6 @@ bool Window::setCanvasSize(const int width, const int height)
     }
 
     SDL_SetTextureScaleMode(canvas, SDL_SCALEMODE_NEAREST);
-#if defined(_WIN32)
-    SDL_SetTextureScaleMode(canvas, SDL_SCALEMODE_LINEAR);
-#endif
     SDL_SetTextureBlendMode(canvas, SDL_BLENDMODE_BLEND);
     logWindowScaleDiagnostics(window, canvas, state->pixelScale);
     return true;
@@ -444,6 +441,12 @@ SDL_Point Window::computeRequiredCanvasDimensions() const
     if (SDL_GetWindowSize(window, &logicalSize.x, &logicalSize.y) &&
         logicalSize.x > 0 && logicalSize.y > 0)
     {
+#if defined(_WIN32)
+        // On Windows, SDL window coordinates already track physical pixels.
+        // Applying displayScale again over-allocates the canvas and forces a
+        // full-frame downscale during present.
+        (void)logicalSize;
+#else
         const float displayScale =
             getEffectiveWindowDisplayScale(window, nullptr);
         pixelSize.x = std::max(
@@ -452,6 +455,7 @@ SDL_Point Window::computeRequiredCanvasDimensions() const
         pixelSize.y = std::max(
             pixelSize.y,
             static_cast<int>(std::lround(logicalSize.y * displayScale)));
+#endif
     }
 
     return planWindowCanvasDimensions(pixelSize.x, pixelSize.y,
@@ -488,9 +492,6 @@ void Window::resizeCanvasIfNeeded()
         SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
                           SDL_TEXTUREACCESS_TARGET, required.x, required.y);
     SDL_SetTextureScaleMode(canvas, SDL_SCALEMODE_NEAREST);
-#if defined(_WIN32)
-    SDL_SetTextureScaleMode(canvas, SDL_SCALEMODE_LINEAR);
-#endif
     logWindowScaleDiagnostics(window, canvas, state->pixelScale);
 }
 

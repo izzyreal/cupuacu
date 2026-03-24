@@ -23,12 +23,8 @@ namespace cupuacu::gui
 
     inline int getFontDpi()
     {
-#if defined(_WIN32)
-        return 72;
-#else
         const float safeScale = std::max(1.0f, getFontDisplayScale());
         return std::max(1, static_cast<int>(std::lround(72.0f * safeScale)));
-#endif
     }
 
     inline void setFontDisplayScale(const float scale)
