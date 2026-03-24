@@ -333,6 +333,10 @@ namespace cupuacu::gui
             int iconSize = std::max(
                 5, static_cast<int>(std::round(static_cast<float>(closeSize) *
                                                0.42f)));
+            if (safePixelScale >= 4)
+            {
+                iconSize = 3;
+            }
             if ((iconSize % 2) == 0)
             {
                 --iconSize;
