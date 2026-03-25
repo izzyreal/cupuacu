@@ -307,7 +307,13 @@ bool WaveformsUnderlay::applyPendingHorizontalWheelScroll()
 uint16_t WaveformsUnderlay::channelHeight() const
 {
     const int64_t numChannels = state->waveforms.size();
-    return numChannels > 0 ? getHeight() / numChannels : getHeight();
+    if (numChannels <= 0)
+    {
+        return static_cast<uint16_t>(std::max(0, getHeight()));
+    }
+
+    const int height = std::max(0, getHeight());
+    return static_cast<uint16_t>(std::max<int>(1, height / numChannels));
 }
 
 uint8_t WaveformsUnderlay::channelAt(const uint16_t y) const

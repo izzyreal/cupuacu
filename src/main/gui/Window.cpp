@@ -401,15 +401,30 @@ SDL_Point Window::computeRequiredCanvasDimensions() const
     }
 
     SDL_Point pixelSize{0, 0};
-    if (!SDL_GetWindowSizeInPixels(window, &pixelSize.x, &pixelSize.y))
+    if (!SDL_GetWindowSizeInPixels(window, &pixelSize.x, &pixelSize.y) ||
+        pixelSize.x <= 0 || pixelSize.y <= 0)
     {
-        return {0, 0};
+        pixelSize = {0, 0};
     }
 
     SDL_Point logicalSize{0, 0};
     if (SDL_GetWindowSize(window, &logicalSize.x, &logicalSize.y) &&
         logicalSize.x > 0 && logicalSize.y > 0)
     {
+        if (pixelSize.x <= 0 || pixelSize.y <= 0)
+        {
+#if defined(_WIN32)
+            pixelSize = logicalSize;
+#else
+            const float displayScale =
+                getEffectiveWindowDisplayScale(window, nullptr);
+            pixelSize.x = static_cast<int>(
+                std::lround(logicalSize.x * std::max(displayScale, 1.0f)));
+            pixelSize.y = static_cast<int>(
+                std::lround(logicalSize.y * std::max(displayScale, 1.0f)));
+#endif
+        }
+
 #if defined(_WIN32)
         // On Windows, SDL window coordinates already track physical pixels.
         // Applying displayScale again over-allocates the canvas and forces a
@@ -425,6 +440,11 @@ SDL_Point Window::computeRequiredCanvasDimensions() const
             pixelSize.y,
             static_cast<int>(std::lround(logicalSize.y * displayScale)));
 #endif
+    }
+
+    if (pixelSize.x <= 0 || pixelSize.y <= 0)
+    {
+        return {0, 0};
     }
 
     return planWindowCanvasDimensions(pixelSize.x, pixelSize.y,

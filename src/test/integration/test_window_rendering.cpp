@@ -98,6 +98,34 @@ TEST_CASE("Window rendering integration recreates canvas when pixel scale change
     REQUIRE(resizedCanvasH == 90.0f);
 }
 
+TEST_CASE("Window rendering integration keeps hidden window canvas dimensions non-zero",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "window-render-hidden-canvas", 320, 180, SDL_WINDOW_HIDDEN);
+
+    auto root =
+        std::make_unique<cupuacu::test::integration::RootComponent>(&state);
+    root->setBounds(0, 0, 320, 180);
+    window->setRootComponent(std::move(root));
+    window->refreshForScaleOrResize();
+
+    REQUIRE(window->getCanvas() != nullptr);
+
+    float canvasW = 0.0f;
+    float canvasH = 0.0f;
+    SDL_GetTextureSize(window->getCanvas(), &canvasW, &canvasH);
+    REQUIRE(canvasW > 0.0f);
+    REQUIRE(canvasH > 0.0f);
+
+    const auto rootBounds = window->getRootComponent()->getBounds();
+    REQUIRE(rootBounds.w > 0);
+    REQUIRE(rootBounds.h > 0);
+}
+
 TEST_CASE("Window rendering integration redraws only dirty frames",
           "[integration]")
 {
