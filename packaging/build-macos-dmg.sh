@@ -56,28 +56,33 @@ fi
 
 chflags hidden "$MOUNT_DIR/.background" || true
 
-osascript <<EOF
+if ! osascript <<EOF
 set mountDir to POSIX file "$MOUNT_DIR" as alias
 tell application "Finder"
-    tell folder mountDir
-        open
-        set current view of container window to icon view
-        set toolbar visible of container window to false
-        set statusbar visible of container window to false
-        set the bounds of container window to {120, 120, 900, 560}
-        set viewOptions to the icon view options of container window
-        set arrangement of viewOptions to not arranged
-        set icon size of viewOptions to 128
-        set text size of viewOptions to 14
-        set background picture of viewOptions to file ".background:background.png"
-        set position of item "Cupuacu.app" of container window to {190, 250}
-        set position of item "Applications" of container window to {560, 250}
-        update without registering applications
-        delay 2
-        close
-    end tell
+    with timeout of 120 seconds
+        tell folder mountDir
+            open
+            set current view of container window to icon view
+            set toolbar visible of container window to false
+            set statusbar visible of container window to false
+            set the bounds of container window to {120, 120, 900, 560}
+            set viewOptions to the icon view options of container window
+            set arrangement of viewOptions to not arranged
+            set icon size of viewOptions to 128
+            set text size of viewOptions to 14
+            set background picture of viewOptions to file ".background:background.png"
+            set position of item "Cupuacu.app" of container window to {190, 250}
+            set position of item "Applications" of container window to {560, 250}
+            update without registering applications
+            delay 2
+            close
+        end tell
+    end timeout
 end tell
 EOF
+then
+    echo "warning: Finder customization failed; continuing with default DMG layout" >&2
+fi
 
 sync
 hdiutil detach "$DEVICE" -quiet
