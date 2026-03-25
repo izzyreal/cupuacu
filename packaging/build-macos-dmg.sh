@@ -25,6 +25,7 @@ VOLUME_NAME="Cupuacu"
 WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/cupuacu-dmg.XXXXXX")
 STAGING_DIR="$WORK_DIR/staging"
 RW_DMG="$WORK_DIR/Cupuacu-${VERSION}.dmg"
+MOUNT_DIR="$WORK_DIR/mount"
 FINAL_DMG=$(cd "$(dirname "$OUTPUT_DMG")" && pwd)/$(basename "$OUTPUT_DMG")
 
 cleanup() {
@@ -39,15 +40,16 @@ mkdir -p "$STAGING_DIR/.background"
 cp -R "$APP_BUNDLE" "$STAGING_DIR/Cupuacu.app"
 ln -s /Applications "$STAGING_DIR/Applications"
 cp "$BACKGROUND_SRC" "$STAGING_DIR/.background/background.png"
+mkdir -p "$MOUNT_DIR"
 
 hdiutil create -quiet -srcfolder "$STAGING_DIR" -volname "$VOLUME_NAME" \
     -fs HFS+ -format UDRW "$RW_DMG"
 
-ATTACH_OUTPUT=$(hdiutil attach -quiet -readwrite -noverify -noautoopen "$RW_DMG")
+ATTACH_OUTPUT=$(hdiutil attach -readwrite -noverify -noautoopen \
+    -mountpoint "$MOUNT_DIR" "$RW_DMG")
 DEVICE=$(printf '%s\n' "$ATTACH_OUTPUT" | awk '/^\/dev\// {print $1; exit}')
-MOUNT_DIR=$(printf '%s\n' "$ATTACH_OUTPUT" | awk '/\/Volumes\// {print $3; exit}')
 
-if [ -z "$DEVICE" ] || [ -z "$MOUNT_DIR" ]; then
+if [ -z "$DEVICE" ] || [ ! -d "$MOUNT_DIR" ]; then
     echo "failed to attach dmg" >&2
     exit 1
 fi
@@ -83,4 +85,3 @@ MOUNT_DIR=""
 mkdir -p "$(dirname "$FINAL_DMG")"
 rm -f "$FINAL_DMG"
 hdiutil convert "$RW_DMG" -quiet -format UDZO -imagekey zlib-level=9 -o "$FINAL_DMG"
-
