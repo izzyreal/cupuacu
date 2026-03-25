@@ -12,6 +12,7 @@
 #include "gui/Label.hpp"
 #include "gui/Menu.hpp"
 #include "gui/MenuBar.hpp"
+#include "gui/UiScale.hpp"
 #include "gui/Window.hpp"
 #include "persistence/AudioDevicePropertiesPersistence.hpp"
 
@@ -1091,7 +1092,9 @@ TEST_CASE("Recent submenu integration overlays file menu with slight horizontal 
     REQUIRE(recentMenu->isOpen());
     REQUIRE(recentEntry->isVisible());
     REQUIRE(recentEntry->getYPos() == 0);
-    REQUIRE(recentEntry->getXPos() == recentMenu->getWidth() - 10);
+    REQUIRE(recentEntry->getXPos() ==
+            recentMenu->getWidth() -
+                cupuacu::gui::scaleUi(&state, 10.0f));
 }
 
 TEST_CASE("Recent submenu integration closes when hovering another active top-level menu",
