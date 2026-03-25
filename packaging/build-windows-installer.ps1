@@ -18,8 +18,8 @@ function Resolve-Wix {
     }
 
     $candidates = @(
-        "C:\Program Files\WiX Toolset v4\bin\wix.exe",
-        "C:\Program Files (x86)\WiX Toolset v4\bin\wix.exe",
+        "C:\Program Files\WiX Toolset v6\bin\wix.exe",
+        "C:\Program Files (x86)\WiX Toolset v6\bin\wix.exe",
         "C:\ProgramData\chocolatey\bin\wix.exe",
         "$env:USERPROFILE\.dotnet\tools\wix.exe"
     )

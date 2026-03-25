@@ -197,7 +197,7 @@ pipelines:
             git: "*"
             cmake: "*"
             ccache: "*"
-            wix: "*"
+            wix: ">=6.0.0"
         timeout_seconds: 1800
         artifacts:
           - dist/**
