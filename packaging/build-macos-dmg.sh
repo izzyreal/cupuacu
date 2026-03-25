@@ -10,6 +10,8 @@ APP_BUNDLE=$1
 VERSION=$2
 OUTPUT_DMG=$3
 BACKGROUND_SRC=${4:-resources/app-icons/macos/Cupuacu.iconset/icon_512x512@2x.png}
+BACKGROUND_SCALE_PERCENT=${DMG_BACKGROUND_SCALE_PERCENT:-50}
+BACKGROUND_OPACITY=${DMG_BACKGROUND_OPACITY:-0.5}
 
 if [ ! -d "$APP_BUNDLE" ]; then
     echo "app bundle not found: $APP_BUNDLE" >&2
@@ -26,7 +28,107 @@ WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/cupuacu-dmg.XXXXXX")
 STAGING_DIR="$WORK_DIR/staging"
 RW_DMG="$WORK_DIR/Cupuacu-${VERSION}.dmg"
 MOUNT_DIR="$WORK_DIR/mount"
+BACKGROUND_OUT="$WORK_DIR/background.png"
 FINAL_DMG=$(cd "$(dirname "$OUTPUT_DMG")" && pwd)/$(basename "$OUTPUT_DMG")
+
+create_background_image() {
+    if ! command -v swift >/dev/null 2>&1; then
+        cp "$BACKGROUND_SRC" "$BACKGROUND_OUT"
+        return
+    fi
+
+    if ! swift - "$BACKGROUND_SRC" "$BACKGROUND_OUT" \
+        "$BACKGROUND_SCALE_PERCENT" "$BACKGROUND_OPACITY" <<'EOF'
+import AppKit
+import Foundation
+
+let args = CommandLine.arguments
+guard args.count == 5 else {
+    fputs("unexpected swift arguments\n", stderr)
+    exit(1)
+}
+
+let sourceURL = URL(fileURLWithPath: args[1])
+let outputURL = URL(fileURLWithPath: args[2])
+guard let scalePercent = Double(args[3]),
+      scalePercent > 0.0,
+      let opacityValue = Double(args[4]) else {
+    fputs("invalid background scale/opacity\n", stderr)
+    exit(1)
+}
+
+let opacity = max(0.0, min(1.0, opacityValue))
+
+guard let sourceData = try? Data(contentsOf: sourceURL),
+      let sourceRep = NSBitmapImageRep(data: sourceData),
+      let sourceImage = NSImage(contentsOf: sourceURL) else {
+    fputs("failed to load background image\n", stderr)
+    exit(1)
+}
+
+let canvasWidth = sourceRep.pixelsWide
+let canvasHeight = sourceRep.pixelsHigh
+let scaledWidth = max(1, Int(round(Double(canvasWidth) * scalePercent / 100.0)))
+let scaledHeight = max(1, Int(round(Double(canvasHeight) * scalePercent / 100.0)))
+
+guard let outputRep = NSBitmapImageRep(
+    bitmapDataPlanes: nil,
+    pixelsWide: canvasWidth,
+    pixelsHigh: canvasHeight,
+    bitsPerSample: 8,
+    samplesPerPixel: 4,
+    hasAlpha: true,
+    isPlanar: false,
+    colorSpaceName: .deviceRGB,
+    bytesPerRow: 0,
+    bitsPerPixel: 0
+) else {
+    fputs("failed to allocate output bitmap\n", stderr)
+    exit(1)
+}
+
+guard let context = NSGraphicsContext(bitmapImageRep: outputRep) else {
+    fputs("failed to create drawing context\n", stderr)
+    exit(1)
+}
+
+let drawRect = NSRect(
+    x: (canvasWidth - scaledWidth) / 2,
+    y: (canvasHeight - scaledHeight) / 2,
+    width: scaledWidth,
+    height: scaledHeight
+)
+
+NSGraphicsContext.saveGraphicsState()
+NSGraphicsContext.current = context
+NSColor.clear.setFill()
+NSRect(x: 0, y: 0, width: canvasWidth, height: canvasHeight).fill()
+sourceImage.draw(
+    in: drawRect,
+    from: NSRect(x: 0, y: 0, width: sourceImage.size.width, height: sourceImage.size.height),
+    operation: .sourceOver,
+    fraction: opacity
+)
+context.flushGraphics()
+NSGraphicsContext.restoreGraphicsState()
+
+guard let pngData = outputRep.representation(using: .png, properties: [:]) else {
+    fputs("failed to encode background image\n", stderr)
+    exit(1)
+}
+
+do {
+    try pngData.write(to: outputURL)
+} catch {
+    fputs("failed to write background image\n", stderr)
+    exit(1)
+}
+EOF
+    then
+        echo "warning: background preprocessing failed; using original image" >&2
+        cp "$BACKGROUND_SRC" "$BACKGROUND_OUT"
+    fi
+}
 
 cleanup() {
     if [ "${MOUNT_DIR:-}" ] && [ -d "${MOUNT_DIR:-}" ]; then
@@ -36,10 +138,12 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+create_background_image
+
 mkdir -p "$STAGING_DIR/.background"
 cp -R "$APP_BUNDLE" "$STAGING_DIR/Cupuacu.app"
 ln -s /Applications "$STAGING_DIR/Applications"
-cp "$BACKGROUND_SRC" "$STAGING_DIR/.background/background.png"
+cp "$BACKGROUND_OUT" "$STAGING_DIR/.background/background.png"
 mkdir -p "$MOUNT_DIR"
 
 hdiutil create -quiet -srcfolder "$STAGING_DIR" -volname "$VOLUME_NAME" \
