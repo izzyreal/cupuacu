@@ -57,8 +57,9 @@ fi
 chflags hidden "$MOUNT_DIR/.background" || true
 
 osascript <<EOF
+set mountDir to POSIX file "$MOUNT_DIR" as alias
 tell application "Finder"
-    tell disk "$VOLUME_NAME"
+    tell folder mountDir
         open
         set current view of container window to icon view
         set toolbar visible of container window to false
