@@ -70,6 +70,10 @@ let canvasWidth = sourceRep.pixelsWide
 let canvasHeight = sourceRep.pixelsHigh
 let scaledWidth = max(1, Int(round(Double(canvasWidth) * scalePercent / 100.0)))
 let scaledHeight = max(1, Int(round(Double(canvasHeight) * scalePercent / 100.0)))
+let horizontalMargin = max(0, canvasWidth - scaledWidth)
+let verticalMargin = max(0, canvasHeight - scaledHeight)
+let shiftLeft = Int(round(Double(horizontalMargin) * 0.2))
+let shiftUp = Int(round(Double(verticalMargin) * -0.5))
 
 guard let outputRep = NSBitmapImageRep(
     bitmapDataPlanes: nil,
@@ -93,8 +97,8 @@ guard let context = NSGraphicsContext(bitmapImageRep: outputRep) else {
 }
 
 let drawRect = NSRect(
-    x: (canvasWidth - scaledWidth) / 2,
-    y: (canvasHeight - scaledHeight) / 2,
+    x: max(0, horizontalMargin / 2 - shiftLeft),
+    y: max(0, verticalMargin / 2 - shiftUp),
     width: scaledWidth,
     height: scaledHeight
 )
@@ -175,8 +179,8 @@ tell application "Finder"
             set icon size of viewOptions to 128
             set text size of viewOptions to 14
             set background picture of viewOptions to file ".background:background.png"
-            set position of item "Cupuacu.app" of container window to {190, 250}
-            set position of item "Applications" of container window to {560, 250}
+            set position of item "Cupuacu.app" of container window to {190, 190}
+            set position of item "Applications" of container window to {560, 190}
             update without registering applications
             delay 2
             close
