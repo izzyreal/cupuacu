@@ -1,0 +1,56 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+      Name="Cupuacu"
+      Manufacturer="izmar"
+      Version="$(var.Version)"
+      UpgradeCode="2F26EA66-7D8C-48AA-9738-23EE5A38031A"
+      InstallerVersion="500"
+      Scope="perMachine"
+      Language="1033">
+    <SummaryInformation Description="Cupuacu installer" Manufacturer="izmar" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Cupuacu is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="AppIcon.ico" SourceFile="$(var.AppIcon)" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Cupuacu" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="Cupuacu" />
+    </StandardDirectory>
+
+    <Feature Id="MainFeature" Title="Cupuacu" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <ComponentGroup Id="ProductComponents">
+      <Component Id="cmpCupuacuExe" Directory="INSTALLFOLDER" Guid="*">
+        <File Id="filCupuacuExe" Source="$(var.AppExe)" KeyPath="yes" />
+      </Component>
+
+      <Component Id="cmpStartMenuShortcut" Directory="ApplicationProgramsFolder" Guid="*">
+        <Shortcut
+            Id="StartMenuShortcut"
+            Name="Cupuacu"
+            Description="Launch Cupuacu"
+            Target="[INSTALLFOLDER]Cupuacu.exe"
+            WorkingDirectory="INSTALLFOLDER"
+            Icon="AppIcon.ico"
+            IconIndex="0" />
+        <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
+        <RegistryValue
+            Root="HKLM"
+            Key="Software\izmar\Cupuacu"
+            Name="Installed"
+            Type="integer"
+            Value="1"
+            KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

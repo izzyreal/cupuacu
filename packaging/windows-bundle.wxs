@@ -1,0 +1,20 @@
+<Wix
+    xmlns="http://wixtoolset.org/schemas/v4/wxs"
+    xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal">
+  <Bundle
+      Name="Cupuacu"
+      Version="$(var.Version)"
+      Manufacturer="izmar"
+      UpgradeCode="AFFBFD22-0445-492B-86CB-8E5A0F73F447"
+      IconSourceFile="$(var.AppIcon)">
+    <BootstrapperApplication>
+      <bal:WixStandardBootstrapperApplication
+          Theme="standard"
+          LicenseUrl="" />
+    </BootstrapperApplication>
+
+    <Chain>
+      <MsiPackage SourceFile="$(var.MsiPath)" />
+    </Chain>
+  </Bundle>
+</Wix>

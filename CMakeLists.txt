@@ -7,7 +7,9 @@ include(cmake/ClangFormat.cmake)
 include(cmake/ThreadSanitizer.cmake)
 include(cmake/FetchContentCache.cmake)
 
-project(Cupuacu)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" CUPUACU_PROJECT_VERSION_RAW)
+string(STRIP "${CUPUACU_PROJECT_VERSION_RAW}" CUPUACU_PROJECT_VERSION)
+project(Cupuacu VERSION "${CUPUACU_PROJECT_VERSION}")
 
 option(CUPUACU_BUILD_CCACHE_ENABLED "Enable compiler cache integration via find_package(ccache)" OFF)
 if(CUPUACU_BUILD_CCACHE_ENABLED)
@@ -312,8 +314,8 @@ if(APPLE)
         MACOSX_BUNDLE_ICON_FILE "Cupuacu.icns"
         MACOSX_BUNDLE_BUNDLE_NAME "Cupuacu"
         MACOSX_BUNDLE_GUI_IDENTIFIER "nl.izmar.cupuacu"
-        MACOSX_BUNDLE_BUNDLE_VERSION "0.1"
-        MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1")
+        MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
 endif()
 
 if(WIN32)

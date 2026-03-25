@@ -44,8 +44,16 @@ pipelines:
               format: junit-xml
               report: build/linux-amd64/result-junit.xml
           - run: if command -v ccache >/dev/null 2>&1; then ccache --show-stats; else echo "ccache not found"; fi
-          - run: cp build/linux-amd64/Cupuacu dist/cupuacu-linux-amd64
-          - run: cp build/linux-amd64/cupuacu-tests dist/cupuacu-tests-linux-amd64
+          - run: |
+              VERSION="$(cat VERSION)"
+              PKG_DIR="build/linux-amd64/package"
+              rm -rf "$PKG_DIR"
+              mkdir -p "$PKG_DIR"
+              cp build/linux-amd64/Cupuacu "$PKG_DIR/Cupuacu"
+              (
+                cd "$PKG_DIR"
+                cmake -E tar cf "$PWD/../../../dist/Cupuacu-amd64-v${VERSION}.zip" --format=zip Cupuacu
+              )
 
       - id: linux-arm64
         runs_on:
@@ -73,7 +81,16 @@ pipelines:
           - run: CONTAINER_SUFFIX="${CIWI_JOB_EXECUTION_ID:-$$}" && CONTAINER_NAME="cupuacu-linux-arm64-build-$CONTAINER_SUFFIX" && cleanup() { docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true; docker buildx rm cupuacu-linux-arm64-builder >/dev/null 2>&1 || true; } && trap cleanup EXIT INT TERM && docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true && docker run --name "$CONTAINER_NAME" --platform linux/arm64 --user "$(id -u):$(id -g)" -v "$PWD:/work" -v "$CIWI_FETCHCONTENT_SOURCES_DIR:/ciwi-fetchcontent" -v "$CCACHE_DIR:/ccache" -w /work cupuacu-linux-arm64-cross bash -lc 'export CCACHE_DIR=/ccache && export CCACHE_COMPILERCHECK=content && cmake -S . -B build/linux-arm64 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCUPUACU_BUILD_CCACHE_ENABLED=ON -DFETCHCONTENT_CACHE_ROOT=/ciwi-fetchcontent && cmake --build build/linux-arm64 --config Release --target Cupuacu'
           - run: docker run --rm --platform linux/arm64 --user "$(id -u):$(id -g)" -v "$CCACHE_DIR:/ccache" cupuacu-linux-arm64-cross bash -lc 'export CCACHE_DIR=/ccache && ccache --show-stats'
           - run: docker buildx rm cupuacu-linux-arm64-builder >/dev/null 2>&1 || true
-          - run: cp build/linux-arm64/Cupuacu dist/cupuacu-linux-arm64
+          - run: |
+              VERSION="$(cat VERSION)"
+              PKG_DIR="build/linux-arm64/package"
+              rm -rf "$PKG_DIR"
+              mkdir -p "$PKG_DIR"
+              cp build/linux-arm64/Cupuacu "$PKG_DIR/Cupuacu"
+              (
+                cd "$PKG_DIR"
+                cmake -E tar cf "$PWD/../../../dist/Cupuacu-arm64-v${VERSION}.zip" --format=zip Cupuacu
+              )
 
       - id: linux-amd64-integration
         runs_on:
@@ -167,9 +184,7 @@ pipelines:
               command: ./build/macos-universal/cupuacu-tests --reporter JUnit --out build/macos-universal/result-junit.xml
               format: junit-xml
               report: build/macos-universal/result-junit.xml
-          - run: ditto build/macos-universal/Cupuacu.app dist/cupuacu-macos-universal.app
-          - run: ditto -c -k --sequesterRsrc --keepParent dist/cupuacu-macos-universal.app dist/cupuacu-macos-universal.zip
-          - run: cp build/macos-universal/cupuacu-tests dist/cupuacu-tests-macos-universal
+          - run: VERSION="$(cat VERSION)" && sh packaging/build-macos-dmg.sh build/macos-universal/Cupuacu.app "$VERSION" "dist/Cupuacu-v${VERSION}.dmg"
 
       - id: windows-amd64
         runs_on:
@@ -182,6 +197,7 @@ pipelines:
             git: "*"
             cmake: "*"
             ccache: "*"
+            wix: "*"
         timeout_seconds: 1800
         artifacts:
           - dist/**
@@ -200,8 +216,7 @@ pipelines:
               command: build\windows-amd64\Release\cupuacu-tests.exe --reporter JUnit --out build\windows-amd64\result-junit.xml
               format: junit-xml
               report: build/windows-amd64/result-junit.xml
-          - run: copy /Y build\windows-amd64\Release\Cupuacu.exe dist\cupuacu-windows-amd64.exe
-          - run: copy /Y build\windows-amd64\Release\cupuacu-tests.exe dist\cupuacu-tests-windows-amd64.exe
+          - run: for /f %%i in (VERSION) do powershell -ExecutionPolicy Bypass -File packaging\build-windows-installer.ps1 -Version "%%i" -InputExe "build\windows-amd64\Release\Cupuacu.exe" -OutputExe "dist\Cupuacu-Setup-x86_64-v%%i.exe"
 
   - id: release
     trigger: manual
@@ -248,18 +263,18 @@ pipelines:
               GITHUB_TOKEN: "{{ secret.github-secret }}"
             skip_dry_run: true
           - run: test -f VERSION
-          - run: test -f dist/cupuacu-linux-amd64
-          - run: test -f dist/cupuacu-linux-arm64
-          - run: test -d dist/cupuacu-macos-universal.app
-          - run: test -f dist/cupuacu-macos-universal.zip
-          - run: test -f dist/cupuacu-windows-amd64.exe
+          - run: VERSION="$(cat VERSION)" && test -f "dist/Cupuacu-amd64-v${VERSION}.zip"
+          - run: VERSION="$(cat VERSION)" && test -f "dist/Cupuacu-arm64-v${VERSION}.zip"
+          - run: VERSION="$(cat VERSION)" && test -f "dist/Cupuacu-v${VERSION}.dmg"
+          - run: VERSION="$(cat VERSION)" && test -f "dist/Cupuacu-Setup-x86_64-v${VERSION}.exe"
           - run: |
+              VERSION="$(cat VERSION)"
               shasum -a 256 \
-                dist/cupuacu-linux-amd64 \
-                dist/cupuacu-linux-arm64 \
-                dist/cupuacu-macos-universal.zip \
-                dist/cupuacu-windows-amd64.exe \
-                > dist/cupuacu-checksums.txt
+                "dist/Cupuacu-amd64-v${VERSION}.zip" \
+                "dist/Cupuacu-arm64-v${VERSION}.zip" \
+                "dist/Cupuacu-v${VERSION}.dmg" \
+                "dist/Cupuacu-Setup-x86_64-v${VERSION}.exe" \
+                > "dist/Cupuacu-sha256-v${VERSION}.txt"
           - run: |
               TAG="${CIWI_PIPELINE_TAG}"
               git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/izzyreal/cupuacu.git"
@@ -283,6 +298,7 @@ pipelines:
             skip_dry_run: true
           - run: |
               TAG="${CIWI_PIPELINE_TAG}"
+              VERSION="$(cat VERSION)"
               if ! gh release view "$TAG" --repo izzyreal/cupuacu >/dev/null 2>&1; then
                 gh release create "$TAG" \
                   --repo izzyreal/cupuacu \
@@ -290,11 +306,11 @@ pipelines:
                   --notes "Release $TAG"
               fi
               gh release upload "$TAG" \
-                dist/cupuacu-linux-amd64 \
-                dist/cupuacu-linux-arm64 \
-                dist/cupuacu-macos-universal.zip \
-                dist/cupuacu-windows-amd64.exe \
-                dist/cupuacu-checksums.txt \
+                "dist/Cupuacu-amd64-v${VERSION}.zip" \
+                "dist/Cupuacu-arm64-v${VERSION}.zip" \
+                "dist/Cupuacu-v${VERSION}.dmg" \
+                "dist/Cupuacu-Setup-x86_64-v${VERSION}.exe" \
+                "dist/Cupuacu-sha256-v${VERSION}.txt" \
                 --repo izzyreal/cupuacu \
                 --clobber
             skip_dry_run: true
