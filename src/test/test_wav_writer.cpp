@@ -211,7 +211,7 @@ TEST_CASE("Overwrite keeps untouched 16-bit PCM WAV byte-identical", "[file]")
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = wavPath.string();
     cupuacu::file::loadSampleData(&state);
-    cupuacu::actions::overwrite(&state);
+    REQUIRE(cupuacu::actions::overwrite(&state));
 
     REQUIRE(readBytes(wavPath) == originalBytes);
 }
@@ -230,7 +230,7 @@ TEST_CASE("Overwrite preserves non-audio WAV chunks around data", "[file]")
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = wavPath.string();
     cupuacu::file::loadSampleData(&state);
-    cupuacu::actions::overwrite(&state);
+    REQUIRE(cupuacu::actions::overwrite(&state));
 
     REQUIRE(readBytes(wavPath) == originalBytes);
 }
@@ -251,7 +251,7 @@ TEST_CASE("Overwrite clips edited samples into valid PCM16 range", "[file]")
     document.setSample(0, 1, -1.25f);
     document.setSample(0, 2, 0.5f);
 
-    cupuacu::actions::overwrite(&state);
+    REQUIRE(cupuacu::actions::overwrite(&state));
 
     int sampleRate = 0;
     int channels = 0;
@@ -280,7 +280,7 @@ TEST_CASE("Save as writes a new WAV file and updates active file state", "[file]
     session.document.setSample(0, 2, 0.0f, false);
     session.document.setSample(1, 2, 0.25f, false);
 
-    cupuacu::actions::saveAs(&state, outputPath.string());
+    REQUIRE(cupuacu::actions::saveAs(&state, outputPath.string()));
 
     REQUIRE(std::filesystem::exists(outputPath));
     REQUIRE(session.currentFile == outputPath.string());
@@ -329,13 +329,83 @@ TEST_CASE("Save as normalizes the output extension to the selected format",
         .extension = "wav",
     };
 
-    cupuacu::actions::saveAs(&state, requestedPath.string(), settings);
+    REQUIRE(cupuacu::actions::saveAs(&state, requestedPath.string(), settings));
 
     REQUIRE_FALSE(std::filesystem::exists(requestedPath));
     REQUIRE(std::filesystem::exists(normalizedPath));
     REQUIRE(session.currentFile == normalizedPath.string());
     REQUIRE(session.currentFileExportSettings.has_value());
     REQUIRE(session.currentFileExportSettings->majorFormat == SF_FORMAT_WAV);
+}
+
+TEST_CASE("Save as reports failure without mutating session state", "[file]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-save-as-failure"));
+    const auto blockedParent = cleanup.path() / "blocked";
+    const auto requestedPath = blockedParent / "saved.wav";
+
+    std::ofstream blocker(blockedParent, std::ios::binary | std::ios::trunc);
+    REQUIRE(blocker.good());
+    blocker.close();
+
+    cupuacu::test::StateWithTestPaths state{cleanup.path()};
+    auto &session = state.getActiveDocumentSession();
+    session.document.initialize(cupuacu::SampleFormat::PCM_S16, 22050, 1, 1);
+    session.document.setSample(0, 0, 0.25f, false);
+    session.currentFile = "existing.wav";
+
+    std::string reportedTitle;
+    std::string reportedMessage;
+    state.errorReporter =
+        [&](const std::string &title, const std::string &message)
+    {
+        reportedTitle = title;
+        reportedMessage = message;
+    };
+
+    REQUIRE_FALSE(cupuacu::actions::saveAs(&state, requestedPath.string()));
+    REQUIRE(session.currentFile == "existing.wav");
+    REQUIRE_FALSE(session.currentFileExportSettings.has_value());
+    REQUIRE(state.recentFiles.empty());
+    REQUIRE(reportedTitle == "Save failed");
+    REQUIRE(reportedMessage.find(requestedPath.string()) != std::string::npos);
+    REQUIRE_FALSE(std::filesystem::exists(requestedPath));
+}
+
+TEST_CASE("Overwrite reports failure instead of throwing on invalid target",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-overwrite-failure"));
+    const auto invalidTarget = cleanup.path() / "not-a-file";
+    std::filesystem::create_directories(invalidTarget);
+
+    cupuacu::test::StateWithTestPaths state{cleanup.path()};
+    auto &session = state.getActiveDocumentSession();
+    session.currentFile = invalidTarget.string();
+    session.currentFileExportSettings = cupuacu::file::AudioExportSettings{
+        .container = cupuacu::file::AudioExportContainer::WAV,
+        .codec = cupuacu::file::AudioExportCodec::PCM,
+        .majorFormat = SF_FORMAT_WAV,
+        .subtype = SF_FORMAT_PCM_16,
+        .containerLabel = "WAV",
+        .codecLabel = "PCM",
+        .encodingLabel = "16-bit PCM",
+        .extension = "wav",
+    };
+    session.document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 2);
+    session.document.setSample(0, 0, 0.0f, false);
+    session.document.setSample(0, 1, 0.5f, false);
+
+    std::string reportedMessage;
+    state.errorReporter =
+        [&](const std::string &, const std::string &message)
+    {
+        reportedMessage = message;
+    };
+
+    REQUIRE_FALSE(cupuacu::actions::overwrite(&state));
+    REQUIRE(reportedMessage.find(invalidTarget.string()) != std::string::npos);
+    REQUIRE(std::filesystem::is_directory(invalidTarget));
 }
 
 TEST_CASE("Default export settings preserve ALAC depth preferences", "[file]")

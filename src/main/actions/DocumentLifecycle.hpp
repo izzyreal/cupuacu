@@ -17,6 +17,7 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <exception>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -24,6 +25,86 @@
 namespace cupuacu::actions
 {
     constexpr const char *kUntitledDocumentTitle = "Untitled";
+
+    namespace detail
+    {
+        inline SDL_Window *getDocumentIoParentWindow(cupuacu::State *state)
+        {
+            if (!state)
+            {
+                return nullptr;
+            }
+            if (state->modalWindow && state->modalWindow->isOpen())
+            {
+                return state->modalWindow->getSdlWindow();
+            }
+            if (state->mainDocumentSessionWindow &&
+                state->mainDocumentSessionWindow->getWindow() &&
+                state->mainDocumentSessionWindow->getWindow()->isOpen())
+            {
+                return state->mainDocumentSessionWindow->getWindow()->getSdlWindow();
+            }
+            return nullptr;
+        }
+
+        inline void reportDocumentIoFailure(cupuacu::State *state,
+                                            const char *operation,
+                                            const std::string &path,
+                                            const std::string &reason,
+                                            const bool showUi)
+        {
+            std::string message = std::string(operation) + " failed";
+            if (!path.empty())
+            {
+                message += " for:\n" + path;
+            }
+            if (!reason.empty())
+            {
+                message += "\n\n" + reason;
+            }
+
+            SDL_Log("%s", message.c_str());
+            if (state && state->errorReporter)
+            {
+                state->errorReporter(
+                    std::string(operation) + " failed", message);
+                return;
+            }
+            if (!showUi || SDL_WasInit(SDL_INIT_VIDEO) == 0)
+            {
+                return;
+            }
+
+            const std::string title = std::string(operation) + " failed";
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title.c_str(),
+                                     message.c_str(),
+                                     getDocumentIoParentWindow(state));
+        }
+
+        template <typename Fn>
+        inline bool runDocumentIoOperation(cupuacu::State *state,
+                                           const char *operation,
+                                           const std::string &path,
+                                           const bool showUi, Fn &&fn)
+        {
+            try
+            {
+                fn();
+                return true;
+            }
+            catch (const std::exception &e)
+            {
+                reportDocumentIoFailure(state, operation, path, e.what(), showUi);
+                return false;
+            }
+            catch (...)
+            {
+                reportDocumentIoFailure(state, operation, path,
+                                        "An unknown error occurred.", showUi);
+                return false;
+            }
+        }
+    } // namespace detail
 
     struct StartupDocumentRestorePlan
     {
@@ -342,18 +423,39 @@ namespace cupuacu::actions
     inline bool loadFileIntoSession(cupuacu::State *state,
                                     const std::string &absoluteFilePath,
                                     const bool updateRecentFiles = true,
-                                    const bool shouldPersistState = true)
+                                    const bool shouldPersistState = true,
+                                    const bool showUiOnFailure = true)
     {
         if (!state || absoluteFilePath.empty())
         {
             return false;
         }
 
-        prepareForDocumentTransition(state);
-        state->getActiveDocumentSession().setCurrentFile(absoluteFilePath);
-        cupuacu::file::loadSampleData(state);
-        refreshDocumentUi(state);
-        setMainWindowTitle(state, absoluteFilePath);
+        const int activeTabIndex = state->activeTabIndex;
+        const auto previousTab = state->tabs[static_cast<size_t>(activeTabIndex)];
+
+        const bool loaded = detail::runDocumentIoOperation(
+            state, "Open", absoluteFilePath, showUiOnFailure,
+            [&]
+            {
+                prepareForDocumentTransition(state);
+                state->getActiveDocumentSession().setCurrentFile(absoluteFilePath);
+                cupuacu::file::loadSampleData(state);
+                refreshDocumentUi(state);
+                setMainWindowTitle(state, absoluteFilePath);
+            });
+        if (!loaded)
+        {
+            state->tabs[static_cast<size_t>(activeTabIndex)] = previousTab;
+            bindMainWindowToActiveDocument(state);
+            refreshDocumentUi(state);
+            setMainWindowTitle(
+                state,
+                state->getActiveDocumentSession().currentFile.empty()
+                    ? kUntitledDocumentTitle
+                    : state->getActiveDocumentSession().currentFile);
+            return false;
+        }
 
         if (updateRecentFiles)
         {
@@ -370,15 +472,45 @@ namespace cupuacu::actions
     inline bool loadFileIntoNewTab(cupuacu::State *state,
                                    const std::string &absoluteFilePath,
                                    const bool updateRecentFiles = true,
-                                   const bool shouldPersistState = true)
+                                   const bool shouldPersistState = true,
+                                   const bool showUiOnFailure = true)
     {
+        if (!state)
+        {
+            return false;
+        }
+
+        const auto originalTabCount = state->tabs.size();
+        const int originalActiveTabIndex = state->activeTabIndex;
+
         if (!prepareTabForOpenedDocument(state))
         {
             return false;
         }
 
-        return loadFileIntoSession(state, absoluteFilePath, updateRecentFiles,
-                                   shouldPersistState);
+        const bool loaded = loadFileIntoSession(
+            state, absoluteFilePath, updateRecentFiles, shouldPersistState,
+            showUiOnFailure);
+        if (loaded)
+        {
+            return true;
+        }
+
+        if (state->tabs.size() > originalTabCount)
+        {
+            state->tabs.erase(state->tabs.begin() +
+                              static_cast<std::ptrdiff_t>(originalTabCount));
+        }
+        state->activeTabIndex = std::clamp(
+            originalActiveTabIndex, 0, static_cast<int>(state->tabs.size()) - 1);
+        bindMainWindowToActiveDocument(state);
+        refreshDocumentUi(state);
+        setMainWindowTitle(
+            state,
+            state->getActiveDocumentSession().currentFile.empty()
+                ? kUntitledDocumentTitle
+                : state->getActiveDocumentSession().currentFile);
+        return false;
     }
 
     inline StartupDocumentRestorePlan planStartupDocumentRestore(
@@ -447,17 +579,35 @@ namespace cupuacu::actions
 
         if (!plan.openFiles.empty())
         {
-            loadFileIntoSession(state, plan.openFiles.front(), false, false);
-
-            for (size_t index = 1; index < plan.openFiles.size(); ++index)
+            int restoredActiveOpenFileIndex = -1;
+            for (size_t index = 0; index < plan.openFiles.size(); ++index)
             {
-                loadFileIntoNewTab(state, plan.openFiles[index], false, false);
+                const bool loaded =
+                    (index == 0)
+                        ? loadFileIntoSession(state, plan.openFiles[index], false,
+                                              false, false)
+                        : loadFileIntoNewTab(state, plan.openFiles[index], false,
+                                             false, false);
+                if (!loaded)
+                {
+                    state->recentFiles.erase(
+                        std::remove(state->recentFiles.begin(),
+                                    state->recentFiles.end(), plan.openFiles[index]),
+                        state->recentFiles.end());
+                    continue;
+                }
+
+                if (static_cast<int>(index) == plan.activeOpenFileIndex)
+                {
+                    restoredActiveOpenFileIndex =
+                        static_cast<int>(state->tabs.size()) - 1;
+                }
             }
 
-            if (plan.activeOpenFileIndex >= 0 &&
-                plan.activeOpenFileIndex < static_cast<int>(state->tabs.size()))
+            if (restoredActiveOpenFileIndex >= 0 &&
+                restoredActiveOpenFileIndex < static_cast<int>(state->tabs.size()))
             {
-                state->activeTabIndex = plan.activeOpenFileIndex;
+                state->activeTabIndex = restoredActiveOpenFileIndex;
                 bindMainWindowToActiveDocument(state);
                 refreshDocumentUi(state);
                 setMainWindowTitle(
@@ -468,14 +618,17 @@ namespace cupuacu::actions
             {
                 persistSessionState(state);
             }
-            return;
+            if (!state->getActiveDocumentSession().currentFile.empty())
+            {
+                return;
+            }
         }
 
-        if (plan.shouldPersistState)
+        state->getActiveDocumentSession().clearCurrentFile();
+        if (plan.shouldPersistState || !plan.openFiles.empty())
         {
             persistSessionState(state);
         }
-        state->getActiveDocumentSession().clearCurrentFile();
     }
 
     inline void showNewFileDialog(cupuacu::State *state)

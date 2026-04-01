@@ -1,11 +1,13 @@
 #include "AudioFileWriter.hpp"
 
 #include "AudioExport.hpp"
+#include "FileIo.hpp"
 #include "SndfilePath.hpp"
 
 #include <sndfile.h>
 
 #include <algorithm>
+#include <cerrno>
 #include <filesystem>
 #include <ios>
 #include <stdexcept>
@@ -100,17 +102,6 @@ void cupuacu::file::AudioFileWriter::writeFile(
         throw std::invalid_argument("Document format cannot be exported");
     }
 
-    std::error_code ec;
-    const auto parentPath = outputPath.parent_path();
-    if (!parentPath.empty())
-    {
-        std::filesystem::create_directories(parentPath, ec);
-        if (ec)
-        {
-            throw std::ios_base::failure("Failed to create output directory");
-        }
-    }
-
     SF_INFO sfinfo{};
     sfinfo.channels = channels;
     sfinfo.samplerate = sampleRate;
@@ -120,34 +111,48 @@ void cupuacu::file::AudioFileWriter::writeFile(
         throw std::invalid_argument("Export format is not supported by libsndfile");
     }
 
-    SNDFILE *snd = openSndfile(outputPath, SFM_WRITE, &sfinfo);
-    if (!snd)
-    {
-        throw std::ios_base::failure("Failed to open output audio file");
-    }
-
-    applyEncodingSettings(snd, sampleRate, settings);
-
-    const sf_count_t frames = document.getFrameCount();
-    std::vector<float> interleaved(static_cast<std::size_t>(frames) *
-                                   static_cast<std::size_t>(channels));
-    for (sf_count_t frame = 0; frame < frames; ++frame)
-    {
-        for (int channel = 0; channel < channels; ++channel)
+    writeFileAtomically(
+        outputPath,
+        [&](const std::filesystem::path &temporaryPath)
         {
-            interleaved[static_cast<std::size_t>(frame) *
-                            static_cast<std::size_t>(channels) +
-                        static_cast<std::size_t>(channel)] =
-                document.getSample(channel, frame);
-        }
-    }
+            SNDFILE *snd = openSndfile(temporaryPath, SFM_WRITE, &sfinfo);
+            if (!snd)
+            {
+                std::string detail = sf_strerror(nullptr);
+                if (detail.empty() || detail == "No Error.")
+                {
+                    detail = cupuacu::file::detail::describeErrno(errno);
+                }
+                throw cupuacu::file::detail::makeIoFailure(
+                    "Failed to open output audio file", detail);
+            }
 
-    const sf_count_t written = sf_writef_float(snd, interleaved.data(), frames);
-    sf_write_sync(snd);
-    sf_close(snd);
+            applyEncodingSettings(snd, sampleRate, settings);
 
-    if (written != frames)
-    {
-        throw std::ios_base::failure("Failed to write all audio frames");
-    }
+            const sf_count_t frames = document.getFrameCount();
+            std::vector<float> interleaved(static_cast<std::size_t>(frames) *
+                                           static_cast<std::size_t>(channels));
+            for (sf_count_t frame = 0; frame < frames; ++frame)
+            {
+                for (int channel = 0; channel < channels; ++channel)
+                {
+                    interleaved[static_cast<std::size_t>(frame) *
+                                    static_cast<std::size_t>(channels) +
+                                static_cast<std::size_t>(channel)] =
+                        document.getSample(channel, frame);
+                }
+            }
+
+            const sf_count_t written =
+                sf_writef_float(snd, interleaved.data(), frames);
+            const std::string writeDetail = sf_strerror(snd);
+            sf_write_sync(snd);
+            sf_close(snd);
+
+            if (written != frames)
+            {
+                throw cupuacu::file::detail::makeIoFailure(
+                    "Failed to write all audio frames", writeDetail);
+            }
+        });
 }

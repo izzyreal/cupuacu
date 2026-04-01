@@ -1,11 +1,13 @@
 #pragma once
 
 #include "../State.hpp"
+#include "FileIo.hpp"
 #include "SampleQuantization.hpp"
 #include "SndfilePath.hpp"
 
 #include <sndfile.h>
 
+#include <cerrno>
 #include <ios>
 #include <filesystem>
 #include <istream>
@@ -48,7 +50,8 @@ namespace cupuacu::file
             std::ifstream result(p, std::ios::binary);
             if (!result.is_open())
             {
-                throw std::ios_base::failure("Failed to open input file");
+                throw detail::makeIoFailure("Failed to open input file",
+                                            detail::describeErrno(errno));
             }
             return result;
         }
@@ -141,7 +144,8 @@ namespace cupuacu::file
             std::ofstream result(p, std::ios::binary | std::ios::trunc);
             if (!result.is_open())
             {
-                throw std::ios_base::failure("Failed to open output file");
+                throw detail::makeIoFailure("Failed to open output file",
+                                            detail::describeErrno(errno));
             }
             return result;
         }
@@ -435,13 +439,7 @@ namespace cupuacu::file
                 throw std::invalid_argument("Document format cannot be saved as WAV");
             }
 
-            std::error_code ec;
-            std::filesystem::create_directories(outputPath.parent_path(), ec);
-            if (ec)
-            {
-                throw std::ios_base::failure(
-                    "Failed to create output directory");
-            }
+            ensureParentDirectoryExists(outputPath);
 
             SF_INFO sfinfo{};
             sfinfo.channels = channels;
@@ -451,7 +449,13 @@ namespace cupuacu::file
             SNDFILE *snd = openSndfile(outputPath, SFM_WRITE, &sfinfo);
             if (!snd)
             {
-                throw std::ios_base::failure("Failed to open output WAV file");
+                std::string detailMessage = sf_strerror(nullptr);
+                if (detailMessage.empty() || detailMessage == "No Error.")
+                {
+                    detailMessage = detail::describeErrno(errno);
+                }
+                throw detail::makeIoFailure("Failed to open output WAV file",
+                                            detailMessage);
             }
 
             const sf_count_t frames = document.getFrameCount();
@@ -470,12 +474,14 @@ namespace cupuacu::file
 
             const sf_count_t written =
                 sf_writef_float(snd, interleaved.data(), frames);
+            const std::string writeDetail = sf_strerror(snd);
             sf_write_sync(snd);
             sf_close(snd);
 
             if (written != frames)
             {
-                throw std::ios_base::failure("Failed to write all WAV frames");
+                throw detail::makeIoFailure("Failed to write all WAV frames",
+                                            writeDetail);
             }
         }
 
@@ -483,37 +489,29 @@ namespace cupuacu::file
         {
             std::filesystem::path input(
                 state->getActiveDocumentSession().currentFile);
-            std::filesystem::path output = input;
-            output += ".cupuacu.tmp";
-
-            if (std::filesystem::exists(output))
-            {
-                std::filesystem::remove(output);
-            }
-
-            {
-                auto ifs = openInputFileStream(input);
-                if (!is16BitPcmWavFile(ifs))
+            writeFileAtomically(
+                input,
+                [&](const std::filesystem::path &output)
                 {
-                    throw std::invalid_argument("Not a 16-bit PCM WAV file");
-                }
+                    auto ifs = openInputFileStream(input);
+                    if (!is16BitPcmWavFile(ifs))
+                    {
+                        throw std::invalid_argument("Not a 16-bit PCM WAV file");
+                    }
 
-                auto ofs = openOutputFileStream(output);
+                    auto ofs = openOutputFileStream(output);
 
-                copyBytesBeforeDataChunk(ifs, ofs);
-                writeDataChunk(state, ifs, ofs);
-                copyBytesAfterDataChunk(ifs, ofs);
+                    copyBytesBeforeDataChunk(ifs, ofs);
+                    writeDataChunk(state, ifs, ofs);
+                    copyBytesAfterDataChunk(ifs, ofs);
 
-                ofs.flush();
-                ofs.close();
-                ifs.close();
-            }
+                    ofs.flush();
+                    ofs.close();
+                    ifs.close();
 
-            [[maybe_unused]] const bool identical =
-                isCopyBinaryIdentical(input, output);
-
-            std::filesystem::remove(input);
-            std::filesystem::rename(output, input);
+                    [[maybe_unused]] const bool identical =
+                        isCopyBinaryIdentical(input, output);
+                });
         }
     };
 } // namespace cupuacu::file

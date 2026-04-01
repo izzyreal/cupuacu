@@ -2,10 +2,12 @@
 
 #include "../State.hpp"
 #include "AudioExport.hpp"
+#include "FileIo.hpp"
 #include "SndfilePath.hpp"
 
 #include <sndfile.hh>
 
+#include <cerrno>
 #include <stdexcept>
 #include <vector>
 
@@ -23,8 +25,13 @@ namespace cupuacu::file
                         &sfinfo);
         if (!snd)
         {
+            std::string detail = sf_strerror(nullptr);
+            if (detail.empty() || detail == "No Error.")
+            {
+                detail = detail::describeErrno(errno);
+            }
             throw std::runtime_error("Failed to open file: " +
-                                     session.currentFile);
+                                     session.currentFile + ": " + detail);
         }
 
         const SampleFormat sampleFormat =
@@ -44,9 +51,10 @@ namespace cupuacu::file
         sf_count_t framesRead = sf_readf_float(snd, interleaved.data(), frames);
         if (framesRead <= 0)
         {
+            const std::string detail = sf_strerror(snd);
             sf_close(snd);
             throw std::runtime_error("Failed to read samples from file: " +
-                                     session.currentFile);
+                                     session.currentFile + ": " + detail);
         }
 
         for (sf_count_t i = 0; i < framesRead; ++i)

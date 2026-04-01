@@ -11,6 +11,7 @@
 #include "gui/DocumentSessionWindow.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <vector>
 #include <string>
 #include <memory>
@@ -89,6 +90,8 @@ namespace cupuacu
                         void (*)(effects::DynamicsDialog *)>
             dynamicsDialog{nullptr, destroyDynamicsDialog};
         std::optional<file::AudioExportSettings> pendingSaveAsExportSettings;
+        std::function<void(const std::string &, const std::string &)>
+            errorReporter;
         gui::Window *modalWindow = nullptr;
 
         ~State();

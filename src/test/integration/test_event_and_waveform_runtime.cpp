@@ -570,6 +570,39 @@ TEST_CASE("Startup document restore integration reopens multiple file-backed tab
     REQUIRE(state.getActiveDocumentSession().currentFile == secondPath.string());
 }
 
+TEST_CASE("Startup document restore integration skips unreadable existing paths",
+          "[integration]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-startup-restore-unreadable"));
+    const auto validPath = cleanup.path() / "valid.wav";
+    const auto unreadablePath = cleanup.path() / "not-a-file";
+    writeTestWav(validPath, 44100, 1, {0.1f, 0.2f, 0.3f});
+    std::filesystem::create_directories(unreadablePath);
+
+    cupuacu::test::StateWithTestPaths state{};
+    createBuiltSessionUi(&state, 8);
+
+    cupuacu::persistence::PersistedSessionState persistedState{};
+    persistedState.openFiles = {unreadablePath.string(), validPath.string()};
+    persistedState.activeOpenFileIndex = 1;
+
+    std::string reportedMessage;
+    state.errorReporter =
+        [&](const std::string &, const std::string &message)
+    {
+        reportedMessage = message;
+    };
+
+    cupuacu::actions::restoreStartupDocument(
+        &state, {unreadablePath.string(), validPath.string()}, persistedState);
+
+    REQUIRE(state.tabs.size() == 1);
+    REQUIRE(state.getActiveDocumentSession().currentFile == validPath.string());
+    REQUIRE(state.recentFiles == std::vector<std::string>{validPath.string()});
+    REQUIRE(reportedMessage.find(unreadablePath.string()) != std::string::npos);
+}
+
 TEST_CASE("Event handling integration ignores unfocused key and text input",
           "[integration]")
 {

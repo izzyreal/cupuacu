@@ -4,6 +4,7 @@
 
 #include "State.hpp"
 #include "TestPaths.hpp"
+#include "actions/DocumentLifecycle.hpp"
 #include "file/SndfilePath.hpp"
 #include "file/file_loading.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
@@ -249,4 +250,71 @@ TEST_CASE("Loading a missing file throws a descriptive error", "[session]")
 
     REQUIRE_THROWS_WITH(cupuacu::file::loadSampleData(&state),
                         Catch::Matchers::StartsWith("Failed to open file: "));
+}
+
+TEST_CASE("Opening a file failure preserves the existing session", "[session]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-open-preserve"));
+    const auto goodPath = cleanup.path() / "good.wav";
+    const auto unreadablePath = cleanup.path() / "not-audio";
+
+    writeTestWav(goodPath, 44100, 1, {0.1f, 0.2f, 0.3f});
+    std::filesystem::create_directories(unreadablePath);
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto &session = state.getActiveDocumentSession();
+    session.currentFile = goodPath.string();
+    cupuacu::file::loadSampleData(&state);
+    session.selection.setValue1(1.0);
+    session.selection.setValue2(2.0);
+    session.cursor = 1;
+
+    std::string reportedTitle;
+    std::string reportedMessage;
+    state.errorReporter =
+        [&](const std::string &title, const std::string &message)
+    {
+        reportedTitle = title;
+        reportedMessage = message;
+    };
+
+    REQUIRE_FALSE(cupuacu::actions::loadFileIntoSession(
+        &state, unreadablePath.string(), true, true, false));
+    REQUIRE(reportedTitle == "Open failed");
+    REQUIRE(reportedMessage.find(unreadablePath.string()) != std::string::npos);
+    REQUIRE(session.currentFile == goodPath.string());
+    REQUIRE(session.document.getSampleRate() == 44100);
+    REQUIRE(session.document.getChannelCount() == 1);
+    REQUIRE(session.document.getFrameCount() == 3);
+}
+
+TEST_CASE("Startup restore skips unreadable existing paths", "[session]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-startup-restore-unreadable"));
+    const auto validPath = cleanup.path() / "valid.wav";
+    const auto unreadablePath = cleanup.path() / "not-audio";
+    writeTestWav(validPath, 48000, 2, {0.1f, -0.1f, 0.2f, -0.2f});
+    std::filesystem::create_directories(unreadablePath);
+
+    cupuacu::test::StateWithTestPaths state{};
+    cupuacu::persistence::PersistedSessionState persistedState{};
+    persistedState.openFiles = {unreadablePath.string(), validPath.string()};
+    persistedState.activeOpenFileIndex = 1;
+
+    std::string reportedMessage;
+    state.errorReporter =
+        [&](const std::string &, const std::string &message)
+    {
+        reportedMessage = message;
+    };
+
+    cupuacu::actions::restoreStartupDocument(
+        &state, {unreadablePath.string(), validPath.string()}, persistedState);
+
+    REQUIRE(state.tabs.size() == 1);
+    REQUIRE(state.getActiveDocumentSession().currentFile == validPath.string());
+    REQUIRE(state.getActiveDocumentSession().document.getSampleRate() == 48000);
+    REQUIRE(state.recentFiles == std::vector<std::string>{validPath.string()});
+    REQUIRE(reportedMessage.find(unreadablePath.string()) != std::string::npos);
 }
