@@ -72,6 +72,29 @@ void TextInput::setOnEditingFinished(
     onEditingFinished = std::move(callback);
 }
 
+void TextInput::setOnEditingCanceled(std::function<void()> callback)
+{
+    onEditingCanceled = std::move(callback);
+}
+
+void TextInput::setSubmitOnFocusLost(const bool shouldSubmitOnFocusLost)
+{
+    submitOnFocusLost = shouldSubmitOnFocusLost;
+}
+
+void TextInput::setConsumeEnterKey(const bool shouldConsumeEnterKey)
+{
+    consumeEnterKey = shouldConsumeEnterKey;
+}
+
+void TextInput::selectAll()
+{
+    selectionAnchorIndex = 0;
+    cursorIndex = text.size();
+    resetCursorBlink();
+    setDirty();
+}
+
 void TextInput::focusGained()
 {
     focused = true;
@@ -92,10 +115,31 @@ void TextInput::focusLost()
     {
         SDL_StopTextInput(window->getSdlWindow());
     }
-    if (onEditingFinished)
+
+    if (cancelRequested)
     {
-        onEditingFinished(text);
+        cancelRequested = false;
+        submitRequested = false;
+        if (onEditingCanceled)
+        {
+            onEditingCanceled();
+        }
     }
+    else if (submitRequested || submitOnFocusLost)
+    {
+        submitRequested = false;
+        if (onEditingFinished)
+        {
+            onEditingFinished(text);
+        }
+    }
+    else if (onEditingCanceled)
+    {
+        onEditingCanceled();
+    }
+
+    submitRequested = false;
+    cancelRequested = false;
     setDirty();
 }
 
@@ -219,19 +263,13 @@ bool TextInput::keyDown(const SDL_KeyboardEvent &event)
         event.scancode == SDL_SCANCODE_RETURN2 ||
         event.scancode == SDL_SCANCODE_KP_ENTER)
     {
-        if (onEditingFinished)
-        {
-            onEditingFinished(text);
-        }
-        return false;
+        finishEditing();
+        return consumeEnterKey;
     }
 
     if (event.scancode == SDL_SCANCODE_ESCAPE)
     {
-        if (window)
-        {
-            window->setFocusedComponent(nullptr);
-        }
+        cancelEditing();
         return true;
     }
 
@@ -470,4 +508,48 @@ std::size_t TextInput::findCursorIndexForX(const int localX) const
     }
 
     return bestIndex;
+}
+
+void TextInput::finishEditing()
+{
+    submitRequested = true;
+    cancelRequested = false;
+
+    if (window)
+    {
+        window->setFocusedComponent(nullptr);
+        return;
+    }
+
+    focused = false;
+    cursorVisible = false;
+    mouseSelecting = false;
+    if (onEditingFinished)
+    {
+        onEditingFinished(text);
+    }
+    submitRequested = false;
+    setDirty();
+}
+
+void TextInput::cancelEditing()
+{
+    cancelRequested = true;
+    submitRequested = false;
+
+    if (window)
+    {
+        window->setFocusedComponent(nullptr);
+        return;
+    }
+
+    focused = false;
+    cursorVisible = false;
+    mouseSelecting = false;
+    if (onEditingCanceled)
+    {
+        onEditingCanceled();
+    }
+    cancelRequested = false;
+    setDirty();
 }

@@ -25,6 +25,10 @@ namespace cupuacu::gui
         void setOnTextChanged(std::function<void(const std::string &)> callback);
         void setOnEditingFinished(
             std::function<void(const std::string &)> callback);
+        void setOnEditingCanceled(std::function<void()> callback);
+        void setSubmitOnFocusLost(bool shouldSubmitOnFocusLost);
+        void setConsumeEnterKey(bool shouldConsumeEnterKey);
+        void selectAll();
 
         bool acceptsKeyboardFocus() const override
         {
@@ -47,11 +51,16 @@ namespace cupuacu::gui
         bool focused = false;
         bool cursorVisible = false;
         bool mouseSelecting = false;
+        bool submitRequested = false;
+        bool cancelRequested = false;
+        bool submitOnFocusLost = true;
+        bool consumeEnterKey = false;
         std::size_t cursorIndex = 0;
         std::size_t selectionAnchorIndex = 0;
         Uint64 lastCursorBlinkTicks = 0;
         std::function<void(const std::string &)> onTextChanged;
         std::function<void(const std::string &)> onEditingFinished;
+        std::function<void()> onEditingCanceled;
 
         bool isCharacterAllowed(char c) const;
         void notifyTextChanged();
@@ -67,5 +76,7 @@ namespace cupuacu::gui
         int getTextY(const SDL_Rect &bounds, int borderThickness) const;
         int measureTextWidth(std::string_view value) const;
         std::size_t findCursorIndexForX(int localX) const;
+        void finishEditing();
+        void cancelEditing();
     };
 } // namespace cupuacu::gui
