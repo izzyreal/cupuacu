@@ -302,10 +302,12 @@ TEST_CASE("Startup restore skips unreadable existing paths", "[session]")
     persistedState.openFiles = {unreadablePath.string(), validPath.string()};
     persistedState.activeOpenFileIndex = 1;
 
+    std::string reportedTitle;
     std::string reportedMessage;
     state.errorReporter =
-        [&](const std::string &, const std::string &message)
+        [&](const std::string &title, const std::string &message)
     {
+        reportedTitle = title;
         reportedMessage = message;
     };
 
@@ -316,5 +318,6 @@ TEST_CASE("Startup restore skips unreadable existing paths", "[session]")
     REQUIRE(state.getActiveDocumentSession().currentFile == validPath.string());
     REQUIRE(state.getActiveDocumentSession().document.getSampleRate() == 48000);
     REQUIRE(state.recentFiles == std::vector<std::string>{validPath.string()});
+    REQUIRE(reportedTitle == "Some files could not be reopened");
     REQUIRE(reportedMessage.find(unreadablePath.string()) != std::string::npos);
 }

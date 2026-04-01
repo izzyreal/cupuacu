@@ -5,6 +5,7 @@
 #include <SDL3_ttf/SDL_ttf.h>
 
 #include "State.hpp"
+#include "Logger.hpp"
 #include "gui/EventHandling.hpp"
 #include "gui/Gui.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
@@ -50,6 +51,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     cupuacu::State *state = new cupuacu::State();
     auto &session = state->getActiveDocumentSession();
+    cupuacu::logging::initialize(state->paths.get());
+    cupuacu::logging::info("Cupuacu starting");
 
     state->audioDevices = std::make_shared<cupuacu::audio::AudioDevices>();
     if (const auto persistedSelection =
@@ -78,12 +81,14 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
         SDL_Log("SDL_Init(SDL_INIT_VIDEO) failed: %s", SDL_GetError());
+        cupuacu::logging::error("SDL video initialization failed");
         return SDL_APP_FAILURE;
     }
 
     if (!TTF_Init())
     {
         SDL_Log("TTF_Init failed: %s", SDL_GetError());
+        cupuacu::logging::error("SDL_ttf initialization failed");
         return SDL_APP_FAILURE;
     }
 
@@ -119,6 +124,13 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     cupuacu::actions::resetZoom(state);
 
     mainWindow->renderFrame();
+    if (state->pendingStartupWarning.has_value())
+    {
+        const auto [title, message] = *state->pendingStartupWarning;
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_WARNING, title.c_str(),
+                                 message.c_str(), mainWindow->getSdlWindow());
+        state->pendingStartupWarning.reset();
+    }
     return SDL_APP_CONTINUE;
 }
 
@@ -191,4 +203,6 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
     state->mainDocumentSessionWindow.reset();
     state->windows.clear();
     SDL_Quit();
+    cupuacu::logging::info("Cupuacu shutting down");
+    cupuacu::logging::shutdown();
 }

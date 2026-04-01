@@ -92,6 +92,8 @@ namespace cupuacu
         std::optional<file::AudioExportSettings> pendingSaveAsExportSettings;
         std::function<void(const std::string &, const std::string &)>
             errorReporter;
+        std::optional<std::pair<std::string, std::string>>
+            pendingStartupWarning;
         gui::Window *modalWindow = nullptr;
 
         ~State();

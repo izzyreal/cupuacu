@@ -28,6 +28,12 @@ namespace cupuacu::actions
 
     namespace detail
     {
+        struct DocumentRestoreFailure
+        {
+            std::string path;
+            std::string reason;
+        };
+
         inline SDL_Window *getDocumentIoParentWindow(cupuacu::State *state)
         {
             if (!state)
@@ -47,11 +53,9 @@ namespace cupuacu::actions
             return nullptr;
         }
 
-        inline void reportDocumentIoFailure(cupuacu::State *state,
-                                            const char *operation,
-                                            const std::string &path,
-                                            const std::string &reason,
-                                            const bool showUi)
+        inline std::string formatDocumentIoFailureMessage(const char *operation,
+                                                          const std::string &path,
+                                                          const std::string &reason)
         {
             std::string message = std::string(operation) + " failed";
             if (!path.empty())
@@ -62,8 +66,19 @@ namespace cupuacu::actions
             {
                 message += "\n\n" + reason;
             }
+            return message;
+        }
 
-            SDL_Log("%s", message.c_str());
+        inline void reportDocumentIoFailure(cupuacu::State *state,
+                                            const char *operation,
+                                            const std::string &path,
+                                            const std::string &reason,
+                                            const bool showUi)
+        {
+            const std::string message =
+                formatDocumentIoFailureMessage(operation, path, reason);
+
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s", message.c_str());
             if (state && state->errorReporter)
             {
                 state->errorReporter(
@@ -85,7 +100,9 @@ namespace cupuacu::actions
         inline bool runDocumentIoOperation(cupuacu::State *state,
                                            const char *operation,
                                            const std::string &path,
-                                           const bool showUi, Fn &&fn)
+                                           const bool showUi,
+                                           const bool reportFailure,
+                                           std::string *failureReason, Fn &&fn)
         {
             try
             {
@@ -94,14 +111,107 @@ namespace cupuacu::actions
             }
             catch (const std::exception &e)
             {
-                reportDocumentIoFailure(state, operation, path, e.what(), showUi);
+                if (failureReason != nullptr)
+                {
+                    *failureReason = e.what();
+                }
+                if (reportFailure)
+                {
+                    reportDocumentIoFailure(state, operation, path, e.what(), showUi);
+                }
                 return false;
             }
             catch (...)
             {
-                reportDocumentIoFailure(state, operation, path,
-                                        "An unknown error occurred.", showUi);
+                constexpr const char *unknownError = "An unknown error occurred.";
+                if (failureReason != nullptr)
+                {
+                    *failureReason = unknownError;
+                }
+                if (reportFailure)
+                {
+                    reportDocumentIoFailure(state, operation, path,
+                                            unknownError, showUi);
+                }
                 return false;
+            }
+        }
+
+        inline std::string buildRestoreSummaryMessage(
+            const std::vector<DocumentRestoreFailure> &failures)
+        {
+            std::string message = "Cupuacu could not reopen some previously open files.";
+            if (failures.empty())
+            {
+                return message;
+            }
+
+            message += "\n\n";
+            const std::size_t maxVisibleFailures = 5;
+            const std::size_t visibleFailures =
+                std::min(failures.size(), maxVisibleFailures);
+            for (std::size_t index = 0; index < visibleFailures; ++index)
+            {
+                message += failures[index].path;
+                if (!failures[index].reason.empty())
+                {
+                    message += "\n" + failures[index].reason;
+                }
+                if (index + 1 < visibleFailures)
+                {
+                    message += "\n\n";
+                }
+            }
+
+            if (failures.size() > visibleFailures)
+            {
+                message += "\n\n";
+                message += std::to_string(failures.size() - visibleFailures);
+                message += " more file(s) could not be reopened. See the log file for details.";
+            }
+
+            return message;
+        }
+
+        inline std::string condensedRestoreReason(const std::string &path,
+                                                  const std::string &reason)
+        {
+            const std::string openPrefix = "Failed to open file: " + path + ": ";
+            if (reason.rfind(openPrefix, 0) == 0)
+            {
+                return reason.substr(openPrefix.size());
+            }
+
+            const std::string readPrefix =
+                "Failed to read samples from file: " + path + ": ";
+            if (reason.rfind(readPrefix, 0) == 0)
+            {
+                return reason.substr(readPrefix.size());
+            }
+
+            return reason;
+        }
+
+        inline void reportStartupRestoreFailures(
+            cupuacu::State *state,
+            const std::vector<DocumentRestoreFailure> &failures)
+        {
+            if (failures.empty())
+            {
+                return;
+            }
+
+            const std::string title = "Some files could not be reopened";
+            const std::string message = buildRestoreSummaryMessage(failures);
+            if (state && state->errorReporter)
+            {
+                state->errorReporter(title, message);
+                return;
+            }
+            if (state)
+            {
+                state->pendingStartupWarning = std::make_pair(title, message);
+                return;
             }
         }
     } // namespace detail
@@ -424,7 +534,9 @@ namespace cupuacu::actions
                                     const std::string &absoluteFilePath,
                                     const bool updateRecentFiles = true,
                                     const bool shouldPersistState = true,
-                                    const bool showUiOnFailure = true)
+                                    const bool showUiOnFailure = true,
+                                    const bool reportFailure = true,
+                                    std::string *failureReason = nullptr)
     {
         if (!state || absoluteFilePath.empty())
         {
@@ -435,7 +547,8 @@ namespace cupuacu::actions
         const auto previousTab = state->tabs[static_cast<size_t>(activeTabIndex)];
 
         const bool loaded = detail::runDocumentIoOperation(
-            state, "Open", absoluteFilePath, showUiOnFailure,
+            state, "Open", absoluteFilePath, showUiOnFailure, reportFailure,
+            failureReason,
             [&]
             {
                 prepareForDocumentTransition(state);
@@ -473,7 +586,9 @@ namespace cupuacu::actions
                                    const std::string &absoluteFilePath,
                                    const bool updateRecentFiles = true,
                                    const bool shouldPersistState = true,
-                                   const bool showUiOnFailure = true)
+                                   const bool showUiOnFailure = true,
+                                   const bool reportFailure = true,
+                                   std::string *failureReason = nullptr)
     {
         if (!state)
         {
@@ -490,7 +605,7 @@ namespace cupuacu::actions
 
         const bool loaded = loadFileIntoSession(
             state, absoluteFilePath, updateRecentFiles, shouldPersistState,
-            showUiOnFailure);
+            showUiOnFailure, reportFailure, failureReason);
         if (loaded)
         {
             return true;
@@ -580,16 +695,25 @@ namespace cupuacu::actions
         if (!plan.openFiles.empty())
         {
             int restoredActiveOpenFileIndex = -1;
+            std::vector<detail::DocumentRestoreFailure> restoreFailures;
             for (size_t index = 0; index < plan.openFiles.size(); ++index)
             {
+                std::string failureReason;
                 const bool loaded =
                     (index == 0)
                         ? loadFileIntoSession(state, plan.openFiles[index], false,
-                                              false, false)
+                                              false, false, false, &failureReason)
                         : loadFileIntoNewTab(state, plan.openFiles[index], false,
-                                             false, false);
+                                             false, false, false, &failureReason);
                 if (!loaded)
                 {
+                    detail::reportDocumentIoFailure(state, "Open",
+                                                    plan.openFiles[index],
+                                                    failureReason, false);
+                    restoreFailures.push_back(
+                        {plan.openFiles[index],
+                         detail::condensedRestoreReason(plan.openFiles[index],
+                                                        failureReason)});
                     state->recentFiles.erase(
                         std::remove(state->recentFiles.begin(),
                                     state->recentFiles.end(), plan.openFiles[index]),
@@ -618,6 +742,7 @@ namespace cupuacu::actions
             {
                 persistSessionState(state);
             }
+            detail::reportStartupRestoreFailures(state, restoreFailures);
             if (!state->getActiveDocumentSession().currentFile.empty())
             {
                 return;

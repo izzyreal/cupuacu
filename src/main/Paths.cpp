@@ -37,6 +37,16 @@ std::filesystem::path Paths::appConfigHome() const
     return path;
 }
 
+std::filesystem::path Paths::appLogHome() const
+{
+#if defined(__APPLE__)
+    return std::filesystem::path(sago::internal::getHome()) / "Library" / "Logs" /
+           "Cupuacu";
+#else
+    return std::filesystem::path(sago::getStateDir()) / "Cupuacu" / "Logs";
+#endif
+}
+
 std::filesystem::path Paths::configPath() const
 {
     auto path = appConfigHome() / "config";
@@ -67,6 +77,11 @@ std::filesystem::path Paths::sessionStatePath() const
     return path;
 }
 
+std::filesystem::path Paths::logPath() const
+{
+    return appLogHome() / "cupuacu.log";
+}
+
 Paths::Documents *Paths::getDocuments() const
 {
     return documents.get();
@@ -74,8 +89,7 @@ Paths::Documents *Paths::getDocuments() const
 
 std::filesystem::path Paths::Documents::logFilePath() const
 {
-    auto logFilePath = appDocumentsPath() / "cupuacu.log";
-    return logFilePath;
+    return paths->logPath();
 }
 
 std::filesystem::path Paths::Documents::tempPath() const

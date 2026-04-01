@@ -278,6 +278,21 @@ These files are stored in Cupuacu's config directory. The current paths are:
   - `%AppData%\Cupuacu\config\session_state.json`
   - `%AppData%\Cupuacu\config\audio_device_properties.json`
 
+### Log File
+
+Cupuacu also writes a rotating log file for diagnostic information such as startup problems, file open failures, and save/export failures.
+
+The current log file paths are:
+
+- macOS:
+  - `~/Library/Logs/Cupuacu/cupuacu.log`
+- Linux:
+  - `~/.local/state/Cupuacu/Logs/cupuacu.log`
+- Windows:
+  - `%LocalAppData%\Cupuacu\Logs\cupuacu.log`
+
+Older rotated log files use the same directory and file name prefix.
+
 ### recently_opened_files.json
 
 This file stores the recent-files list used by `File -> Recent`.

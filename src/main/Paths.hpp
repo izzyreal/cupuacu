@@ -9,6 +9,7 @@ namespace cupuacu
     {
     protected:
         virtual std::filesystem::path appConfigHome() const;
+        virtual std::filesystem::path appLogHome() const;
         virtual std::filesystem::path appDocumentsPath() const;
 
     public:
@@ -38,6 +39,8 @@ namespace cupuacu
         std::filesystem::path recentlyOpenedFilesPath() const;
 
         std::filesystem::path sessionStatePath() const;
+
+        std::filesystem::path logPath() const;
 
         Documents *getDocuments() const;
 

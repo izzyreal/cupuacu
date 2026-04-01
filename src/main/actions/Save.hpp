@@ -49,7 +49,7 @@ namespace cupuacu::actions
                 message += "\n\n" + reason;
             }
 
-            SDL_Log("%s", message.c_str());
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s", message.c_str());
             if (state && state->errorReporter)
             {
                 state->errorReporter("Save failed", message);

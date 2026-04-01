@@ -83,6 +83,7 @@ AddDependency(Catch2 "Catch2" "${CMAKE_SOURCE_DIR}/deps/Catch2" "https://github.
 AddDependency(readerwriterqueue "readerwriterqueue" "${CMAKE_SOURCE_DIR}/deps/readerwriterqueue" "https://github.com/cameron314/readerwriterqueue.git" "master")
 AddDependency(portaudio "portaudio" "${CMAKE_SOURCE_DIR}/deps/portaudio" "https://github.com/PortAudio/portaudio.git" "master")
 AddDependency(PlatformFolders "PlatformFolders" "${CMAKE_SOURCE_DIR}/deps/PlatformFolders" "https://github.com/sago007/PlatformFolders.git" "master")
+AddDependency(spdlog "spdlog" "${CMAKE_SOURCE_DIR}/deps/spdlog" "https://github.com/gabime/spdlog.git" "v1.15.3")
 target_include_directories(platform_folders INTERFACE
     $<BUILD_INTERFACE:${PlatformFolders_SOURCE_DIR}>
 )
@@ -99,6 +100,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/Document.cpp
     src/main/State.cpp
     src/main/Paths.cpp
+    src/main/Logger.cpp
     src/main/file/AudioExport.cpp
     src/main/file/AudioFileWriter.cpp
     src/main/persistence/AudioDevicePropertiesPersistence.cpp
@@ -218,6 +220,7 @@ target_link_libraries(cupuacu_deps INTERFACE
     SndFile::sndfile
     portaudio
     platform_folders
+    spdlog::spdlog
     nlohmann_json::nlohmann_json
 )
 
