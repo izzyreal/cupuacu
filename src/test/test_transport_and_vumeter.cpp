@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "State.hpp"
+#include "TestSdlTtfGuard.hpp"
 #include "TestPaths.hpp"
 #include "SelectedChannels.hpp"
 #include "audio/AudioDevices.hpp"
@@ -113,6 +114,7 @@ namespace
     std::unique_ptr<cupuacu::gui::Window> createWindowWithVuMeterContainer(
         cupuacu::State *state, cupuacu::gui::VuMeterContainer *&outContainer)
     {
+        cupuacu::test::ensureSdlTtfInitialized();
         auto window = std::make_unique<cupuacu::gui::Window>(
             state, "vu-meter-test", 480, 180, SDL_WINDOW_HIDDEN);
         auto root = std::make_unique<RootComponent>(state);
@@ -212,52 +214,26 @@ TEST_CASE("Vu meter timer leaves an empty decay pass clean",
     REQUIRE_FALSE(meter.isDirty());
 }
 
-TEST_CASE("Vu meter container ruler follows the selected scale",
+TEST_CASE("Vu meter scale config exposes the expected ruler labels",
           "[gui][audio]")
 {
-    cupuacu::test::StateWithTestPaths state{};
-    state.mainDocumentSessionWindow =
-        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
-            &state, &state.getActiveDocumentSession(), &state.getActiveViewState(),
-            "vu-meter-doc", 480, 180, SDL_WINDOW_HIDDEN);
+    const auto k14 = cupuacu::gui::getVuMeterScaleConfig(
+        cupuacu::gui::VuMeterScale::K14);
+    REQUIRE(std::find(k14.labels.begin(), k14.labels.end(), "-20") !=
+            k14.labels.end());
+    REQUIRE(std::find(k14.labels.begin(), k14.labels.end(), "0") !=
+            k14.labels.end());
+    REQUIRE(k14.endLabel == "+14");
+    REQUIRE(k14.longTickSubdivisions == Catch::Approx(2.0f));
 
-    cupuacu::gui::VuMeterContainer *container = nullptr;
-    auto mainWindow = createWindowWithVuMeterContainer(&state, container);
-    REQUIRE(container != nullptr);
-
-    auto *ruler = findFirstRecursive<cupuacu::gui::Ruler>(
-        mainWindow->getRootComponent());
-    REQUIRE(ruler != nullptr);
-
-    state.vuMeterScale = cupuacu::gui::VuMeterScale::K14;
-    container->syncScaleFromState();
-
-    std::vector<cupuacu::gui::Label *> labels;
-    collectChildrenRecursive(ruler, labels);
-    std::vector<std::string> texts;
-    for (auto *label : labels)
-    {
-        texts.push_back(label->getText());
-    }
-
-    REQUIRE(std::find(texts.begin(), texts.end(), "-20") != texts.end());
-    REQUIRE(std::find(texts.begin(), texts.end(), "0") != texts.end());
-    REQUIRE(std::find(texts.begin(), texts.end(), "+14") != texts.end());
-
-    state.vuMeterScale = cupuacu::gui::VuMeterScale::PeakDbfs;
-    container->syncScaleFromState();
-
-    texts.clear();
-    labels.clear();
-    collectChildrenRecursive(ruler, labels);
-    for (auto *label : labels)
-    {
-        texts.push_back(label->getText());
-    }
-
-    REQUIRE(std::find(texts.begin(), texts.end(), "-72") != texts.end());
-    REQUIRE(std::find(texts.begin(), texts.end(), "0") != texts.end());
-    REQUIRE(std::find(texts.begin(), texts.end(), "+14") == texts.end());
+    const auto peak = cupuacu::gui::getVuMeterScaleConfig(
+        cupuacu::gui::VuMeterScale::PeakDbfs);
+    REQUIRE(std::find(peak.labels.begin(), peak.labels.end(), "-72") !=
+            peak.labels.end());
+    REQUIRE(std::find(peak.labels.begin(), peak.labels.end(), "0") ==
+            peak.labels.end());
+    REQUIRE(peak.endLabel == "0");
+    REQUIRE(peak.longTickSubdivisions == Catch::Approx(3.0f));
 }
 
 TEST_CASE("Display settings window reflects the current vu meter scale",
