@@ -1,7 +1,7 @@
 #include "AudioCallbackCore.hpp"
+#include "MeterAccumulator.hpp"
 
 #include <algorithm>
-#include <cmath>
 
 void cupuacu::audio::callback_core::writeSilenceToOutput(
     float *out, const unsigned long frames)
@@ -24,8 +24,8 @@ bool cupuacu::audio::callback_core::fillOutputBuffer(
     uint64_t &playbackStartPos, uint64_t &playbackEndPos,
     const bool playbackLoopEnabled, bool &playbackHasPendingSwitch,
     uint64_t &playbackPendingStartPos, uint64_t &playbackPendingEndPos,
-    bool &isPlaying, float *out,
-    const unsigned long framesPerBuffer, float &peakLeft, float &peakRight,
+    bool &isPlaying, float *out, const unsigned long framesPerBuffer,
+    StereoMeterLevels &meterLevels,
     const cupuacu::audio::AudioProcessor *processor,
     const uint64_t effectStartPos, const uint64_t effectEndPos,
     const cupuacu::SelectedChannels processorChannels)
@@ -60,6 +60,7 @@ bool cupuacu::audio::callback_core::fillOutputBuffer(
     bool capturedBufferStart = false;
     int64_t bufferStartFrame = 0;
     unsigned long playedFrameCount = 0;
+    cupuacu::audio::StereoMeterAccumulator meterAccumulator;
     for (unsigned long i = 0; i < framesPerBuffer; ++i)
     {
         if (!isPlaying || playbackPosition < 0)
@@ -105,8 +106,7 @@ bool cupuacu::audio::callback_core::fillOutputBuffer(
         *out++ = outL;
         *out++ = outR;
 
-        peakLeft = std::max(peakLeft, std::abs(outL));
-        peakRight = std::max(peakRight, std::abs(outR));
+        meterAccumulator.addFrame(outL, outR);
         ++playbackPosition;
         ++playedFrameCount;
         playedAnyFrame = true;
@@ -122,14 +122,19 @@ bool cupuacu::audio::callback_core::fillOutputBuffer(
                             .targetChannels = processorChannels});
     }
 
+    if (playedFrameCount > 0)
+    {
+        meterAccumulator.mergeInto(meterLevels);
+    }
+
     return playedAnyFrame;
 }
 
 void cupuacu::audio::callback_core::recordInputIntoChunks(
     const float *input, const unsigned long framesPerBuffer,
     const uint8_t recordingChannels, int64_t &recordingPosition,
-    void *chunkSinkUser, const ChunkPushFn chunkPushFn, float &peakLeft,
-    float &peakRight)
+    void *chunkSinkUser, const ChunkPushFn chunkPushFn,
+    StereoMeterLevels &meterLevels)
 {
     if (!input || recordingChannels == 0 || recordingChannels > 2 || !chunkPushFn)
     {
@@ -137,6 +142,8 @@ void cupuacu::audio::callback_core::recordInputIntoChunks(
     }
 
     unsigned long frameOffset = 0;
+    uint64_t recordedFrameCount = 0;
+    cupuacu::audio::StereoMeterAccumulator meterAccumulator;
     while (frameOffset < framesPerBuffer)
     {
         cupuacu::audio::RecordedChunk chunk{};
@@ -159,12 +166,17 @@ void cupuacu::audio::callback_core::recordInputIntoChunks(
             chunk.interleavedSamples[targetBase] = inL;
             chunk.interleavedSamples[targetBase + 1] = inR;
 
-            peakLeft = std::max(peakLeft, std::abs(inL));
-            peakRight = std::max(peakRight, std::abs(inR));
+            meterAccumulator.addFrame(inL, inR);
         }
 
         chunkPushFn(chunkSinkUser, chunk);
         recordingPosition += static_cast<int64_t>(chunk.frameCount);
         frameOffset += chunk.frameCount;
+        recordedFrameCount += chunk.frameCount;
+    }
+
+    if (recordedFrameCount > 0)
+    {
+        meterAccumulator.mergeInto(meterLevels);
     }
 }

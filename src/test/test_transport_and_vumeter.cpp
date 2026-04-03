@@ -1,3 +1,4 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include "State.hpp"
@@ -5,13 +6,22 @@
 #include "SelectedChannels.hpp"
 #include "audio/AudioDevices.hpp"
 #include "audio/AudioMessage.hpp"
+#include "gui/DocumentSessionWindow.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
+#include "gui/DisplaySettingsWindow.hpp"
+#include "gui/Label.hpp"
+#include "gui/Ruler.hpp"
 #include "gui/TextButton.hpp"
 #include "gui/TransportButtonsContainer.hpp"
+#include "gui/VuMeterContainer.hpp"
 #include "gui/VuMeter.hpp"
+#include "gui/VuMeterModel.hpp"
+#include "gui/Window.hpp"
 
+#include <algorithm>
 #include <memory>
 #include <string_view>
+#include <vector>
 
 namespace
 {
@@ -45,6 +55,72 @@ namespace
             cupuacu::gui::DOWN, x, y, static_cast<float>(x),
             static_cast<float>(y), 0.0f, 0.0f,
             cupuacu::gui::MouseButtonState{true, false, false}, 1};
+    }
+
+    class RootComponent : public cupuacu::gui::Component
+    {
+    public:
+        explicit RootComponent(cupuacu::State *state)
+            : Component(state, "Root")
+        {
+        }
+    };
+
+    template <typename T>
+    T *findFirstRecursive(cupuacu::gui::Component *root)
+    {
+        if (!root)
+        {
+            return nullptr;
+        }
+
+        if (auto *typed = dynamic_cast<T *>(root))
+        {
+            return typed;
+        }
+
+        for (const auto &child : root->getChildren())
+        {
+            if (auto *found = findFirstRecursive<T>(child.get()))
+            {
+                return found;
+            }
+        }
+
+        return nullptr;
+    }
+
+    template <typename T>
+    void collectChildrenRecursive(cupuacu::gui::Component *root,
+                                  std::vector<T *> &out)
+    {
+        if (!root)
+        {
+            return;
+        }
+
+        if (auto *typed = dynamic_cast<T *>(root))
+        {
+            out.push_back(typed);
+        }
+
+        for (const auto &child : root->getChildren())
+        {
+            collectChildrenRecursive<T>(child.get(), out);
+        }
+    }
+
+    std::unique_ptr<cupuacu::gui::Window> createWindowWithVuMeterContainer(
+        cupuacu::State *state, cupuacu::gui::VuMeterContainer *&outContainer)
+    {
+        auto window = std::make_unique<cupuacu::gui::Window>(
+            state, "vu-meter-test", 480, 180, SDL_WINDOW_HIDDEN);
+        auto root = std::make_unique<RootComponent>(state);
+        root->setBounds(0, 0, 480, 180);
+        outContainer = root->emplaceChild<cupuacu::gui::VuMeterContainer>(state);
+        outContainer->setBounds(0, 0, 480, 120);
+        window->setRootComponent(std::move(root));
+        return window;
     }
 } // namespace
 
@@ -116,8 +192,8 @@ TEST_CASE("Vu meter timer reacts to pushed peaks and decay without SDL rendering
     REQUIRE_FALSE(meter.isDirty());
 
     meter.setNumChannels(2);
-    meter.pushPeakForChannel(0.8f, 1);
-    meter.pushPeakForChannel(0.5f, 9);
+    meter.pushMeterFrameForChannel({.peak = 0.8f, .rms = 0.5f}, 1);
+    meter.pushMeterFrameForChannel({.peak = 0.5f, .rms = 0.25f}, 9);
     meter.setPeaksPushed();
     meter.timerCallback();
     REQUIRE(meter.isDirty());
@@ -134,4 +210,162 @@ TEST_CASE("Vu meter timer leaves an empty decay pass clean",
     meter.timerCallback();
 
     REQUIRE_FALSE(meter.isDirty());
+}
+
+TEST_CASE("Vu meter container ruler follows the selected scale",
+          "[gui][audio]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &state.getActiveDocumentSession(), &state.getActiveViewState(),
+            "vu-meter-doc", 480, 180, SDL_WINDOW_HIDDEN);
+
+    cupuacu::gui::VuMeterContainer *container = nullptr;
+    auto mainWindow = createWindowWithVuMeterContainer(&state, container);
+    REQUIRE(container != nullptr);
+
+    auto *ruler = findFirstRecursive<cupuacu::gui::Ruler>(
+        mainWindow->getRootComponent());
+    REQUIRE(ruler != nullptr);
+
+    state.vuMeterScale = cupuacu::gui::VuMeterScale::K14;
+    container->syncScaleFromState();
+
+    std::vector<cupuacu::gui::Label *> labels;
+    collectChildrenRecursive(ruler, labels);
+    std::vector<std::string> texts;
+    for (auto *label : labels)
+    {
+        texts.push_back(label->getText());
+    }
+
+    REQUIRE(std::find(texts.begin(), texts.end(), "-20") != texts.end());
+    REQUIRE(std::find(texts.begin(), texts.end(), "0") != texts.end());
+    REQUIRE(std::find(texts.begin(), texts.end(), "+14") != texts.end());
+
+    state.vuMeterScale = cupuacu::gui::VuMeterScale::PeakDbfs;
+    container->syncScaleFromState();
+
+    texts.clear();
+    labels.clear();
+    collectChildrenRecursive(ruler, labels);
+    for (auto *label : labels)
+    {
+        texts.push_back(label->getText());
+    }
+
+    REQUIRE(std::find(texts.begin(), texts.end(), "-72") != texts.end());
+    REQUIRE(std::find(texts.begin(), texts.end(), "0") != texts.end());
+    REQUIRE(std::find(texts.begin(), texts.end(), "+14") == texts.end());
+}
+
+TEST_CASE("Display settings window reflects the current vu meter scale",
+          "[gui][audio]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    state.vuMeterScale = cupuacu::gui::VuMeterScale::K20;
+    state.pixelScale = 4;
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &state.getActiveDocumentSession(), &state.getActiveViewState(),
+            "display-settings-doc", 480, 180, SDL_WINDOW_HIDDEN);
+
+    cupuacu::gui::VuMeterContainer *container = nullptr;
+    auto mainWindow = createWindowWithVuMeterContainer(&state, container);
+    (void)mainWindow;
+
+    cupuacu::gui::DisplaySettingsWindow window(&state);
+    REQUIRE(window.isOpen());
+
+    std::vector<cupuacu::gui::DropdownMenu *> dropdowns;
+    collectChildrenRecursive(window.getWindow()->getRootComponent(), dropdowns);
+    REQUIRE(dropdowns.size() == 2);
+    REQUIRE(dropdowns[0]->getSelectedIndex() ==
+            cupuacu::gui::vuMeterScaleToIndex(cupuacu::gui::VuMeterScale::K20));
+    REQUIRE(dropdowns[1]->getSelectedIndex() == 2);
+}
+
+TEST_CASE("Display settings window layout refreshes when pixel scale changes",
+          "[gui][audio]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &state.getActiveDocumentSession(), &state.getActiveViewState(),
+            "display-settings-scale-doc", 480, 180, SDL_WINDOW_HIDDEN);
+
+    cupuacu::gui::DisplaySettingsWindow window(&state);
+    REQUIRE(window.isOpen());
+
+    std::vector<cupuacu::gui::DropdownMenu *> dropdowns;
+    collectChildrenRecursive(window.getWindow()->getRootComponent(), dropdowns);
+    REQUIRE(dropdowns.size() == 2);
+
+    const int originalHeight = dropdowns[0]->getHeight();
+    const int originalY = dropdowns[1]->getYPos();
+
+    state.pixelScale = 2;
+    window.getWindow()->refreshForScaleOrResize();
+
+    REQUIRE(dropdowns[0]->getHeight() != originalHeight);
+    REQUIRE(dropdowns[1]->getYPos() != originalY);
+}
+
+TEST_CASE("Vu meter model uses RMS for K scales and peak for Peak dBFS",
+          "[gui][audio]")
+{
+    cupuacu::gui::VuMeterModel model{};
+    model.setNumChannels(1);
+
+    model.setScale(cupuacu::gui::VuMeterScale::PeakDbfs);
+    const auto peakDisplay = model.advanceChannel(
+        0, {.peak = 1.0f, .rms = 0.25f}, false);
+
+    model.setScale(cupuacu::gui::VuMeterScale::K20);
+    const auto kDisplay = model.advanceChannel(
+        0, {.peak = 1.0f, .rms = 0.25f}, false);
+
+    REQUIRE(peakDisplay.level > kDisplay.level);
+    REQUIRE(peakDisplay.hold ==
+            Catch::Approx(cupuacu::gui::normalizePeakForVuMeter(
+                1.0f, cupuacu::gui::VuMeterScale::PeakDbfs)));
+    REQUIRE(kDisplay.hold ==
+            Catch::Approx(cupuacu::gui::normalizePeakForVuMeter(
+                0.25f, cupuacu::gui::VuMeterScale::K20)));
+}
+
+TEST_CASE("Vu meter model resets cached state when scale changes",
+          "[gui][audio]")
+{
+    cupuacu::gui::VuMeterModel model{};
+    model.setNumChannels(1);
+    model.setScale(cupuacu::gui::VuMeterScale::PeakDbfs);
+
+    const auto first = model.advanceChannel(0, {.peak = 1.0f, .rms = 1.0f}, false);
+    REQUIRE(first.level > 0.0f);
+
+    model.setScale(cupuacu::gui::VuMeterScale::K14);
+    const auto afterScaleChange =
+        model.advanceChannel(0, {.peak = 0.0f, .rms = 0.0f}, false);
+
+    REQUIRE(afterScaleChange.level == Catch::Approx(0.0f));
+    REQUIRE(afterScaleChange.hold == Catch::Approx(0.0f));
+}
+
+TEST_CASE("Vu meter model hold decays after the hold period",
+          "[gui][audio]")
+{
+    cupuacu::gui::VuMeterModel model{};
+    model.setNumChannels(1);
+    model.setScale(cupuacu::gui::VuMeterScale::PeakDbfs);
+
+    const auto initial = model.advanceChannel(0, {.peak = 1.0f, .rms = 1.0f}, false);
+    float lastHold = initial.hold;
+    for (int i = 0; i < 31; ++i)
+    {
+        lastHold = model.advanceChannel(0, {.peak = 0.0f, .rms = 0.0f}, false).hold;
+    }
+
+    REQUIRE(lastHold < initial.hold);
 }

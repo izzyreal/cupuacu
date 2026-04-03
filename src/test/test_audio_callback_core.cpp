@@ -3,9 +3,12 @@
 
 #include "Document.hpp"
 #include "audio/AudioCallbackCore.hpp"
+#include "audio/MeterAccumulator.hpp"
 #include "audio/AudioProcessor.hpp"
+#include "audio/RecordedChunk.hpp"
 #include "effects/AmplifyFadeEffect.hpp"
 
+#include <readerwriterqueue.h>
 #include <vector>
 
 namespace
@@ -42,15 +45,14 @@ TEST_CASE("AudioCallbackCore fillOutputBuffer handles invalid negative playback 
     uint64_t playbackPendingStartPos = 0;
     uint64_t playbackPendingEndPos = 0;
     bool isPlaying = true;
-    float peakLeft = 0.0f;
-    float peakRight = 0.0f;
+    cupuacu::audio::callback_core::StereoMeterLevels meterLevels{};
     std::vector<float> out(8, 1.0f);
 
     const bool playedAnyFrame = cupuacu::audio::callback_core::fillOutputBuffer(
         &doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
         playbackStartPos, playbackEndPos, false, playbackHasPendingSwitch,
         playbackPendingStartPos, playbackPendingEndPos, isPlaying, out.data(), 4,
-        peakLeft, peakRight);
+        meterLevels);
 
     REQUIRE_FALSE(playedAnyFrame);
     REQUIRE(playbackPosition == -1);
@@ -82,15 +84,14 @@ TEST_CASE("AudioCallbackCore writes silence after non-loop stop in buffer",
     uint64_t playbackPendingStartPos = 0;
     uint64_t playbackPendingEndPos = 0;
     bool isPlaying = true;
-    float peakLeft = 0.0f;
-    float peakRight = 0.0f;
+    cupuacu::audio::callback_core::StereoMeterLevels meterLevels{};
     std::vector<float> out(8, 1.0f); // 4 stereo frames
 
     const bool playedAnyFrame = cupuacu::audio::callback_core::fillOutputBuffer(
         &doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
         playbackStartPos, playbackEndPos, false, playbackHasPendingSwitch,
         playbackPendingStartPos, playbackPendingEndPos, isPlaying, out.data(), 4,
-        peakLeft, peakRight);
+        meterLevels);
 
     REQUIRE(playedAnyFrame);
     REQUIRE_FALSE(isPlaying);
@@ -127,8 +128,7 @@ TEST_CASE("AudioCallbackCore preview processor transforms only played frames",
     uint64_t playbackPendingStartPos = 0;
     uint64_t playbackPendingEndPos = 0;
     bool isPlaying = true;
-    float peakLeft = 0.0f;
-    float peakRight = 0.0f;
+    cupuacu::audio::callback_core::StereoMeterLevels meterLevels{};
     std::vector<float> out(8, 0.0f);
     HalfGainProcessor processor{};
 
@@ -136,7 +136,7 @@ TEST_CASE("AudioCallbackCore preview processor transforms only played frames",
         &doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
         playbackStartPos, playbackEndPos, false, playbackHasPendingSwitch,
         playbackPendingStartPos, playbackPendingEndPos, isPlaying, out.data(), 4,
-        peakLeft, peakRight, &processor, playbackStartPos, playbackEndPos,
+        meterLevels, &processor, playbackStartPos, playbackEndPos,
         cupuacu::SelectedChannels::BOTH);
 
     REQUIRE(playedAnyFrame);
@@ -173,15 +173,14 @@ TEST_CASE("Amplify/Fade preview processor picks up updated settings between buff
     uint64_t playbackPendingStartPos = 0;
     uint64_t playbackPendingEndPos = 0;
     bool isPlaying = true;
-    float peakLeft = 0.0f;
-    float peakRight = 0.0f;
+    cupuacu::audio::callback_core::StereoMeterLevels meterLevels{};
     std::vector<float> out(4, 0.0f);
 
     const bool playedAnyFrame = cupuacu::audio::callback_core::fillOutputBuffer(
         &doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
         playbackStartPos, playbackEndPos, false, playbackHasPendingSwitch,
         playbackPendingStartPos, playbackPendingEndPos, isPlaying, out.data(), 2,
-        peakLeft, peakRight, processor.get(), playbackStartPos, playbackEndPos,
+        meterLevels, processor.get(), playbackStartPos, playbackEndPos,
         cupuacu::SelectedChannels::BOTH);
 
     REQUIRE(playedAnyFrame);
@@ -198,8 +197,7 @@ TEST_CASE("Amplify/Fade preview processor picks up updated settings between buff
     playbackPendingStartPos = 0;
     playbackPendingEndPos = 0;
     isPlaying = true;
-    peakLeft = 0.0f;
-    peakRight = 0.0f;
+    meterLevels = {};
     out.assign(4, 0.0f);
 
     const bool playedUpdatedFrame =
@@ -207,10 +205,86 @@ TEST_CASE("Amplify/Fade preview processor picks up updated settings between buff
             &doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
             playbackStartPos, playbackEndPos, false, playbackHasPendingSwitch,
             playbackPendingStartPos, playbackPendingEndPos, isPlaying,
-            out.data(), 2, peakLeft, peakRight, processor.get(),
+            out.data(), 2, meterLevels, processor.get(),
             playbackStartPos, playbackEndPos, cupuacu::SelectedChannels::BOTH);
 
     REQUIRE(playedUpdatedFrame);
     REQUIRE(out[0] == Catch::Approx(0.5f));
     REQUIRE(out[1] == Catch::Approx(0.5f));
+}
+
+TEST_CASE("AudioCallbackCore computes RMS levels for playback output",
+          "[audio]")
+{
+    cupuacu::Document doc{};
+    doc.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 2);
+    doc.setSample(0, 0, 1.0f, false);
+    doc.setSample(0, 1, -1.0f, false);
+    doc.setSample(1, 0, 0.5f, false);
+    doc.setSample(1, 1, -0.5f, false);
+
+    int64_t playbackPosition = 0;
+    uint64_t playbackStartPos = 0;
+    uint64_t playbackEndPos = 2;
+    bool playbackHasPendingSwitch = false;
+    uint64_t playbackPendingStartPos = 0;
+    uint64_t playbackPendingEndPos = 0;
+    bool isPlaying = true;
+    cupuacu::audio::callback_core::StereoMeterLevels meterLevels{};
+    std::vector<float> out(4, 0.0f);
+
+    const bool playedAnyFrame = cupuacu::audio::callback_core::fillOutputBuffer(
+        &doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
+        playbackStartPos, playbackEndPos, false, playbackHasPendingSwitch,
+        playbackPendingStartPos, playbackPendingEndPos, isPlaying, out.data(), 2,
+        meterLevels);
+
+    REQUIRE(playedAnyFrame);
+    REQUIRE(meterLevels.peakLeft == Catch::Approx(1.0f));
+    REQUIRE(meterLevels.peakRight == Catch::Approx(0.5f));
+    REQUIRE(meterLevels.rmsLeft == Catch::Approx(1.0f));
+    REQUIRE(meterLevels.rmsRight == Catch::Approx(0.5f));
+}
+
+TEST_CASE("AudioCallbackCore computes RMS levels for recorded input",
+          "[audio]")
+{
+    const float input[] = {1.0f, 0.5f, -1.0f, -0.5f};
+    int64_t recordingPosition = 0;
+    cupuacu::audio::callback_core::StereoMeterLevels meterLevels{};
+
+    moodycamel::ReaderWriterQueue<cupuacu::audio::RecordedChunk> queue(8);
+    const auto enqueueChunk =
+        [](void *userdata, const cupuacu::audio::RecordedChunk &chunk) -> bool
+    {
+        auto *typedQueue = static_cast<
+            moodycamel::ReaderWriterQueue<cupuacu::audio::RecordedChunk> *>(
+            userdata);
+        return typedQueue->try_enqueue(chunk);
+    };
+
+    cupuacu::audio::callback_core::recordInputIntoChunks(
+        input, 2, 2, recordingPosition, &queue, enqueueChunk, meterLevels);
+
+    REQUIRE(recordingPosition == 2);
+    REQUIRE(meterLevels.peakLeft == Catch::Approx(1.0f));
+    REQUIRE(meterLevels.peakRight == Catch::Approx(0.5f));
+    REQUIRE(meterLevels.rmsLeft == Catch::Approx(1.0f));
+    REQUIRE(meterLevels.rmsRight == Catch::Approx(0.5f));
+}
+
+TEST_CASE("StereoMeterAccumulator computes peak and RMS per channel",
+          "[audio]")
+{
+    cupuacu::audio::StereoMeterAccumulator accumulator{};
+    accumulator.addFrame(1.0f, 0.5f);
+    accumulator.addFrame(-1.0f, -0.5f);
+
+    cupuacu::audio::callback_core::StereoMeterLevels meterLevels{};
+    accumulator.mergeInto(meterLevels);
+
+    REQUIRE(meterLevels.peakLeft == Catch::Approx(1.0f));
+    REQUIRE(meterLevels.peakRight == Catch::Approx(0.5f));
+    REQUIRE(meterLevels.rmsLeft == Catch::Approx(1.0f));
+    REQUIRE(meterLevels.rmsRight == Catch::Approx(0.5f));
 }

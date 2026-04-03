@@ -4,6 +4,7 @@
 #include "effects/DynamicsEffect.hpp"
 
 #include "gui/Waveform.hpp"
+#include "gui/DisplaySettingsWindow.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/ExportAudioDialogWindow.hpp"
 #include "gui/GenerateSilenceDialogWindow.hpp"
@@ -34,6 +35,11 @@ void cupuacu::destroyAmplifyFadeDialog(effects::AmplifyFadeDialog *dialog)
 }
 
 void cupuacu::destroyDynamicsDialog(effects::DynamicsDialog *dialog)
+{
+    delete dialog;
+}
+
+void cupuacu::destroyDisplaySettingsWindow(gui::DisplaySettingsWindow *dialog)
 {
     delete dialog;
 }

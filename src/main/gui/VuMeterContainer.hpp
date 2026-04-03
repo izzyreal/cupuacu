@@ -4,8 +4,9 @@
 #include "UiScale.hpp"
 #include "VuMeter.hpp"
 #include "Ruler.hpp"
-#include <vector>
-#include <string>
+#include "VuMeterScale.hpp"
+
+#include <optional>
 
 namespace cupuacu::gui
 {
@@ -16,20 +17,32 @@ namespace cupuacu::gui
             : Component(state, "VuMeterContainer")
         {
             vuMeter = emplaceChild<VuMeter>(state);
-
-            std::vector<std::string> dbLabels{"dB"};
-
-            for (int db = -72; db < 0; db += 3)
-            {
-                dbLabels.push_back(std::to_string(db));
-            }
-
             ruler = emplaceChild<Ruler>(state, getComponentName());
-            ruler->setMandatoryEndLabel("0");
-            ruler->setLabels(dbLabels);
-            ruler->setLongTickSubdivisions(3.f);
             ruler->setCenterFirstLabel(false);
             ruler->setNoTicksAfterLastLabel(true);
+            syncScaleFromState();
+        }
+
+        void syncScaleFromState()
+        {
+            if (!state)
+            {
+                return;
+            }
+
+            const auto scale = state->vuMeterScale;
+            if (lastScale.has_value() && scale == *lastScale)
+            {
+                return;
+            }
+
+            lastScale = scale;
+            const auto config = getVuMeterScaleConfig(scale);
+            ruler->setMandatoryEndLabel(config.endLabel);
+            ruler->setLabels(config.labels);
+            ruler->setLongTickSubdivisions(config.longTickSubdivisions);
+            setDirty();
+            resized();
         }
 
         void resized() override
@@ -50,8 +63,19 @@ namespace cupuacu::gui
                 bounds.x + margin, (int)(bounds.y + meterHeight),
                 bounds.w - 2 * margin, (int)(labelAreaHeight + tickAreaHeight)};
 
-            ruler->setLongTickSpacingPx(rulerBounds.w / 25.f);
+            const auto config =
+                getVuMeterScaleConfig(state ? state->vuMeterScale
+                                            : VuMeterScale::PeakDbfs);
+            ruler->setLongTickSpacingPx(
+                config.intervalCount > 0
+                    ? rulerBounds.w / static_cast<float>(config.intervalCount)
+                    : static_cast<float>(rulerBounds.w));
             ruler->setBounds(rulerBounds);
+        }
+
+        void timerCallback() override
+        {
+            syncScaleFromState();
         }
 
         void onDraw(SDL_Renderer *renderer) override
@@ -62,5 +86,6 @@ namespace cupuacu::gui
     private:
         VuMeter *vuMeter;
         Ruler *ruler;
+        std::optional<VuMeterScale> lastScale;
     };
 } // namespace cupuacu::gui

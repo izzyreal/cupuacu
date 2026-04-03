@@ -104,6 +104,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/file/AudioExport.cpp
     src/main/file/AudioFileWriter.cpp
     src/main/persistence/AudioDevicePropertiesPersistence.cpp
+    src/main/persistence/DisplayPropertiesPersistence.cpp
     src/main/persistence/RecentFilesPersistence.cpp
     src/main/persistence/SessionStatePersistence.cpp
     src/main/audio/AudioDevices.cpp
@@ -119,6 +120,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/gui/Label.cpp
     src/main/gui/DropdownMenu.cpp
     src/main/gui/DevicePropertiesWindow.cpp
+    src/main/gui/DisplaySettingsWindow.cpp
     src/main/gui/NewFileDialogWindow.cpp
     src/main/gui/GenerateSilenceDialogWindow.cpp
     src/main/gui/ExportAudioDialogWindow.cpp
@@ -148,6 +150,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_session_loading.cpp
     src/test/test_wav_writer.cpp
     src/test/test_audio_device_properties_persistence.cpp
+    src/test/test_display_properties_persistence.cpp
     src/test/test_recent_files_persistence.cpp
     src/test/test_document_tabs.cpp
     src/test/test_sample_quantization.cpp

@@ -437,16 +437,15 @@ void DevicePropertiesWindow::layoutComponents() const
     window->getRootComponent()->setSize(canvasWi, canvasHi);
     background->setBounds(0, 0, canvasWi, canvasHi);
 
-    const int padding = std::max(1, 8 / state->pixelScale);
+    const int padding = scaleUi(state, 8.0f);
     const uint8_t labelFontPointSize =
         scaleFontPointSize(state, state->menuFontSize);
     const auto [labelTextW, labelTextH] =
         measureText("Output Device", labelFontPointSize);
     const int labelWidth =
-        std::max(1, (int)std::ceil(labelTextW / state->pixelScale)) + padding;
+        std::max(1, static_cast<int>(std::ceil(labelTextW))) + padding;
     const int rowHeight =
-        std::max(1, (int)std::ceil(labelTextH / state->pixelScale)) +
-        padding * 2;
+        std::max(1, static_cast<int>(std::ceil(labelTextH))) + padding * 2;
 
     const int dropdownX = padding + labelWidth + padding;
     const int dropdownW = canvasWi - dropdownX - padding;

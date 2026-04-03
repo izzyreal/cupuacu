@@ -9,6 +9,7 @@
 #include "gui/EventHandling.hpp"
 #include "gui/Gui.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
+#include "gui/DisplaySettingsWindow.hpp"
 #include "gui/DocumentSessionWindow.hpp"
 #include "gui/GenerateSilenceDialogWindow.hpp"
 #include "gui/NewFileDialogWindow.hpp"
@@ -24,6 +25,7 @@ const uint16_t initialDimensions[] = {1280, 720};
 
 #include "audio/AudioDevices.hpp"
 #include "persistence/AudioDevicePropertiesPersistence.hpp"
+#include "persistence/DisplayPropertiesPersistence.hpp"
 #include "persistence/RecentFilesPersistence.hpp"
 #include "persistence/SessionStatePersistence.hpp"
 
@@ -55,6 +57,14 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     cupuacu::logging::info("Cupuacu starting");
 
     state->audioDevices = std::make_shared<cupuacu::audio::AudioDevices>();
+    if (const auto persistedDisplayProperties =
+            cupuacu::persistence::DisplayPropertiesPersistence::load(
+                state->paths->displayPropertiesPath());
+        persistedDisplayProperties.has_value())
+    {
+        state->pixelScale = persistedDisplayProperties->pixelScale;
+        state->vuMeterScale = persistedDisplayProperties->vuMeterScale;
+    }
     if (const auto persistedSelection =
             cupuacu::persistence::AudioDevicePropertiesPersistence::load(
                 state->paths->audioDevicePropertiesPath());
@@ -162,6 +172,11 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     {
         state->devicePropertiesWindow.reset();
     }
+    if (state->displaySettingsWindow &&
+        !state->displaySettingsWindow->isOpen())
+    {
+        state->displaySettingsWindow.reset();
+    }
     if (state->newFileDialogWindow && !state->newFileDialogWindow->isOpen())
     {
         state->newFileDialogWindow.reset();
@@ -197,9 +212,13 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
     TTF_Quit();
     cupuacu::State *state = (cupuacu::State *)appstate;
     cupuacu::actions::persistSessionState(state);
+    cupuacu::persistence::DisplayPropertiesPersistence::save(
+        state->paths->displayPropertiesPath(),
+        {.pixelScale = state->pixelScale, .vuMeterScale = state->vuMeterScale});
     state->generateSilenceDialogWindow.reset();
     state->newFileDialogWindow.reset();
     state->devicePropertiesWindow.reset();
+    state->displaySettingsWindow.reset();
     state->mainDocumentSessionWindow.reset();
     state->windows.clear();
     SDL_Quit();

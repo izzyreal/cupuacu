@@ -7,6 +7,7 @@
 #include "actions/Undoable.hpp"
 #include "file/SndfilePath.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
+#include "gui/DisplaySettingsWindow.hpp"
 #include "gui/DropdownMenu.hpp"
 #include "gui/EventHandling.hpp"
 #include "gui/Label.hpp"
@@ -479,7 +480,7 @@ TEST_CASE("Options menu integration opens device properties window once",
     auto *optionsMenu = topLevelMenus[5];
 
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
-    REQUIRE(optionEntries.size() == 1);
+    REQUIRE(optionEntries.size() == 2);
     auto *devicePropertiesEntry = optionEntries[0];
 
     REQUIRE(state.devicePropertiesWindow == nullptr);
@@ -515,6 +516,63 @@ TEST_CASE("Options menu integration opens device properties window once",
     REQUIRE(state.windows.size() == initialWindowCount + 1);
 
     state.devicePropertiesWindow.reset();
+    REQUIRE(state.windows.size() == initialWindowCount);
+}
+
+TEST_CASE("Options menu integration opens display settings window once",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto sessionUi =
+        cupuacu::test::integration::createSessionUi(&state, 512, false);
+    REQUIRE(state.mainDocumentSessionWindow != nullptr);
+
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "options-display-settings", 480, 240, SDL_WINDOW_HIDDEN);
+
+    auto root =
+        std::make_unique<cupuacu::test::integration::RootComponent>(&state);
+    auto *menuBar = root->emplaceChild<cupuacu::gui::MenuBar>(&state);
+    root->setBounds(0, 0, 480, 240);
+    menuBar->setBounds(0, 0, 480, 40);
+    window->setRootComponent(std::move(root));
+    window->setMenuBar(menuBar);
+
+    auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
+    REQUIRE(topLevelMenus.size() == 6);
+    auto *optionsMenu = topLevelMenus[5];
+
+    auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
+    REQUIRE(optionEntries.size() == 2);
+    auto *displayEntry = optionEntries[1];
+
+    REQUIRE(state.displaySettingsWindow == nullptr);
+    const auto initialWindowCount = state.windows.size();
+
+    optionsMenu->mouseDown(cupuacu::test::integration::leftMouseDown());
+    REQUIRE(optionsMenu->isOpen());
+
+    displayEntry->mouseDown(cupuacu::test::integration::leftMouseDown());
+    REQUIRE(state.displaySettingsWindow != nullptr);
+    REQUIRE(state.displaySettingsWindow->isOpen());
+    REQUIRE(state.windows.size() == initialWindowCount + 1);
+
+    std::vector<cupuacu::gui::DropdownMenu *> dropdowns;
+    collectChildrenRecursive(
+        state.displaySettingsWindow->getWindow()->getRootComponent(), dropdowns);
+    REQUIRE(dropdowns.size() == 2);
+    REQUIRE(dropdowns[0]->getSelectedIndex() >= 0);
+    REQUIRE(dropdowns[1]->getSelectedIndex() >= 0);
+
+    auto *openedWindow = state.displaySettingsWindow.get();
+    optionsMenu->mouseDown(cupuacu::test::integration::leftMouseDown());
+    displayEntry->mouseDown(cupuacu::test::integration::leftMouseDown());
+    REQUIRE(state.displaySettingsWindow.get() == openedWindow);
+    REQUIRE(state.windows.size() == initialWindowCount + 1);
+
+    state.displaySettingsWindow.reset();
     REQUIRE(state.windows.size() == initialWindowCount);
 }
 
@@ -687,7 +745,7 @@ TEST_CASE("Device properties integration persists normalized selection when reop
     REQUIRE(topLevelMenus.size() == 6);
     auto *optionsMenu = topLevelMenus[5];
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
-    REQUIRE(optionEntries.size() == 1);
+    REQUIRE(optionEntries.size() == 2);
 
     REQUIRE(state.devicePropertiesWindow == nullptr);
     REQUIRE(optionsMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
@@ -742,7 +800,7 @@ TEST_CASE("Options menu integration replaces a closed device properties window i
     REQUIRE(topLevelMenus.size() == 6);
     auto *optionsMenu = topLevelMenus[5];
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
-    REQUIRE(optionEntries.size() == 1);
+    REQUIRE(optionEntries.size() == 2);
 
     REQUIRE(optionsMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
     REQUIRE(optionEntries[0]->mouseDown(
@@ -791,7 +849,7 @@ TEST_CASE("Device properties integration refreshes layout when pixel scale chang
     REQUIRE(topLevelMenus.size() == 6);
     auto *optionsMenu = topLevelMenus[5];
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
-    REQUIRE(optionEntries.size() == 1);
+    REQUIRE(optionEntries.size() == 2);
 
     REQUIRE(optionsMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
     REQUIRE(optionEntries[0]->mouseDown(

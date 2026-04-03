@@ -97,7 +97,7 @@ void AudioDevices::writeSilenceToOutput(float *out, const unsigned long frames)
 
 bool AudioDevices::fillOutputBuffer(PaData &data, float *out,
                                     const unsigned long framesPerBuffer,
-                                    float &peakLeft, float &peakRight)
+                                    callback_core::StereoMeterLevels &meterLevels)
 {
     AudioDeviceState *state = &data.device->activeState;
     const bool playedAnyFrame = callback_core::fillOutputBuffer(
@@ -105,7 +105,7 @@ bool AudioDevices::fillOutputBuffer(PaData &data, float *out,
         state->playbackPosition, data.playbackStartPos, data.playbackEndPos,
         data.playbackLoopEnabled, data.playbackHasPendingSwitch,
         data.playbackPendingStartPos, data.playbackPendingEndPos,
-        state->isPlaying, out, framesPerBuffer, peakLeft, peakRight,
+        state->isPlaying, out, framesPerBuffer, meterLevels,
         data.previewProcessor.get(), data.playbackStartPos, data.playbackEndPos,
         data.selectedChannels);
     if (!state->isPlaying)
@@ -118,7 +118,7 @@ bool AudioDevices::fillOutputBuffer(PaData &data, float *out,
 
 void AudioDevices::recordInputIntoQueue(PaData &data, const float *input,
                                         const unsigned long framesPerBuffer,
-                                        float &peakLeft, float &peakRight)
+                                        callback_core::StereoMeterLevels &meterLevels)
 {
     AudioDeviceState *state = &data.device->activeState;
     if (!state->isRecording || !data.recordingDocument || !input)
@@ -163,7 +163,7 @@ void AudioDevices::recordInputIntoQueue(PaData &data, const float *input,
         input, framesToRecord, static_cast<uint8_t>(recordingChannels),
         state->recordingPosition,
         static_cast<void *>(&data.device->recordedChunkQueue),
-        enqueueRecordedChunk, peakLeft, peakRight);
+        enqueueRecordedChunk, meterLevels);
 
     if (data.recordingBoundedToEnd &&
         state->recordingPosition >= static_cast<int64_t>(data.recordingEndPos))
@@ -173,8 +173,8 @@ void AudioDevices::recordInputIntoQueue(PaData &data, const float *input,
     }
 }
 
-void AudioDevices::pushPeaksToVuMeter(PaData &data, const float peakLeft,
-                                      const float peakRight,
+void AudioDevices::pushPeaksToVuMeter(
+    PaData &data, const callback_core::StereoMeterLevels &meterLevels,
                                       const bool isPlaying,
                                       const bool isRecording)
 {
@@ -185,8 +185,10 @@ void AudioDevices::pushPeaksToVuMeter(PaData &data, const float peakLeft,
 
     if (isPlaying || isRecording)
     {
-        data.vuMeter->pushPeakForChannel(peakLeft, 0);
-        data.vuMeter->pushPeakForChannel(peakRight, 1);
+        data.vuMeter->pushMeterFrameForChannel(
+            {.peak = meterLevels.peakLeft, .rms = meterLevels.rmsLeft}, 0);
+        data.vuMeter->pushMeterFrameForChannel(
+            {.peak = meterLevels.peakRight, .rms = meterLevels.rmsRight}, 1);
         data.vuMeter->setPeaksPushed();
         return;
     }
@@ -216,16 +218,14 @@ int AudioDevices::processCallbackCycle(const float *inputBuffer, void *outputBuf
 {
     drainQueue();
 
-    float peakLeft = 0.0f;
-    float peakRight = 0.0f;
+    callback_core::StereoMeterLevels meterLevels{};
 
     const bool isPlaying =
         fillOutputBuffer(paData, static_cast<float *>(outputBuffer),
-                         framesPerBuffer, peakLeft, peakRight);
-    recordInputIntoQueue(paData, inputBuffer, framesPerBuffer, peakLeft,
-                         peakRight);
+                         framesPerBuffer, meterLevels);
+    recordInputIntoQueue(paData, inputBuffer, framesPerBuffer, meterLevels);
 
-    pushPeaksToVuMeter(paData, peakLeft, peakRight, isPlaying,
+    pushPeaksToVuMeter(paData, meterLevels, isPlaying,
                        activeState.isRecording);
 
     publishState();

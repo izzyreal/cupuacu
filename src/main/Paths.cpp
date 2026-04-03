@@ -65,6 +65,12 @@ std::filesystem::path Paths::audioDevicePropertiesPath() const
     return path;
 }
 
+std::filesystem::path Paths::displayPropertiesPath() const
+{
+    auto path = configPath() / "display_properties.json";
+    return path;
+}
+
 std::filesystem::path Paths::recentlyOpenedFilesPath() const
 {
     auto path = configPath() / "recently_opened_files.json";

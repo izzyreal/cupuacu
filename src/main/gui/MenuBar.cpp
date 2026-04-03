@@ -13,6 +13,7 @@
 #include "gui/MenuBarPlanning.hpp"
 #include "gui/Window.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
+#include "gui/DisplaySettingsWindow.hpp"
 #include "gui/GenerateSilenceDialogWindow.hpp"
 #include "gui/NewFileDialogWindow.hpp"
 #include "gui/Colors.hpp"
@@ -393,6 +394,21 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
                 state->devicePropertiesWindow->raise();
             }
         });
+    optionsMenu->addSubMenu(
+        state, "Display",
+        [&]
+        {
+            if (!state->displaySettingsWindow ||
+                !state->displaySettingsWindow->isOpen())
+            {
+                state->displaySettingsWindow.reset(
+                    new DisplaySettingsWindow(state));
+            }
+            else
+            {
+                state->displaySettingsWindow->raise();
+            }
+        });
 }
 
 void MenuBar::onDraw(SDL_Renderer *renderer)
@@ -457,7 +473,7 @@ void MenuBar::resized()
     const int generateW = int(66 * scale);
     const int effectsW = int(56 * scale);
     const int optionsW =
-        int(60 * scale); // wide enough for Device Properties text
+        int(60 * scale); // wide enough for Device Properties and Display text
     const int h = getHeight();
 
     int logoSpace = 0;

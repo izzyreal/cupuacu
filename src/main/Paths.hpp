@@ -36,6 +36,8 @@ namespace cupuacu
 
         std::filesystem::path audioDevicePropertiesPath() const;
 
+        std::filesystem::path displayPropertiesPath() const;
+
         std::filesystem::path recentlyOpenedFilesPath() const;
 
         std::filesystem::path sessionStatePath() const;

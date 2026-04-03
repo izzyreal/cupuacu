@@ -22,7 +22,12 @@ namespace cupuacu::gui
 
         void setMandatoryEndLabel(const std::string &mandatoryEndLabelToUse)
         {
+            if (mandatoryEndLabel == mandatoryEndLabelToUse)
+            {
+                return;
+            }
             mandatoryEndLabel = mandatoryEndLabelToUse;
+            resized();
             setDirty();
         }
 
@@ -57,11 +62,19 @@ namespace cupuacu::gui
                 label->setCenterHorizontally(true);
                 labels.push_back(label);
             }
+
+            resized();
+            setDirty();
         }
 
         void setLongTickSubdivisions(const float subdivisions)
         {
+            if (longTickSubdivisions == subdivisions)
+            {
+                return;
+            }
             longTickSubdivisions = subdivisions;
+            resized();
             setDirty();
         }
 
@@ -199,6 +212,10 @@ namespace cupuacu::gui
         void onDraw(SDL_Renderer *renderer) override
         {
             const SDL_Rect bounds = getLocalBounds();
+            if (labels.empty())
+            {
+                return;
+            }
 
             const int tickHeightLong = scaleUi(state, 14.0f);
             const int tickHeightShort = scaleUi(state, 3.0f);
@@ -256,7 +273,12 @@ namespace cupuacu::gui
 
         void setLongTickSpacingPx(const float spacing)
         {
+            if (longTickSpacingPx == spacing)
+            {
+                return;
+            }
             longTickSpacingPx = spacing;
+            resized();
             setDirty();
         }
 

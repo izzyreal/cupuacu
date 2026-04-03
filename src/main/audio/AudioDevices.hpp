@@ -5,6 +5,7 @@
 #include "audio/AudioDeviceView.hpp"
 #include "audio/AudioMessage.hpp"
 #include "audio/AudioProcessor.hpp"
+#include "audio/AudioCallbackCore.hpp"
 #include "audio/RecordedChunk.hpp"
 
 #include <cstdint>
@@ -110,12 +111,13 @@ namespace cupuacu::audio
         static void writeSilenceToOutput(float *out, unsigned long frames);
         static bool fillOutputBuffer(PaData &data, float *out,
                                      unsigned long framesPerBuffer,
-                                     float &peakLeft, float &peakRight);
+                                     callback_core::StereoMeterLevels &meterLevels);
         static void recordInputIntoQueue(PaData &data, const float *input,
                                          unsigned long framesPerBuffer,
-                                         float &peakLeft, float &peakRight);
-        static void pushPeaksToVuMeter(PaData &data, float peakLeft,
-                                       float peakRight, bool isPlaying,
+                                         callback_core::StereoMeterLevels &meterLevels);
+        static void pushPeaksToVuMeter(PaData &data,
+                                       const callback_core::StereoMeterLevels &meterLevels,
+                                       bool isPlaying,
                                        bool isRecording);
 
         void closeDeviceLocked();

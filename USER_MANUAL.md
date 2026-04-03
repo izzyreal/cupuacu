@@ -257,11 +257,12 @@ Changes are persisted automatically when you select a different device configura
 
 ## Persisted Settings
 
-Cupuacu persists three JSON settings files:
+Cupuacu persists four JSON settings files:
 
 - `recently_opened_files.json`
 - `session_state.json`
 - `audio_device_properties.json`
+- `display_properties.json`
 
 These files are stored in Cupuacu's config directory. The current paths are:
 
@@ -269,14 +270,17 @@ These files are stored in Cupuacu's config directory. The current paths are:
   - `~/Library/Application Support/Cupuacu/config/recently_opened_files.json`
   - `~/Library/Application Support/Cupuacu/config/session_state.json`
   - `~/Library/Application Support/Cupuacu/config/audio_device_properties.json`
+  - `~/Library/Application Support/Cupuacu/config/display_properties.json`
 - Linux:
   - `~/.config/Cupuacu/config/recently_opened_files.json`
   - `~/.config/Cupuacu/config/session_state.json`
   - `~/.config/Cupuacu/config/audio_device_properties.json`
+  - `~/.config/Cupuacu/config/display_properties.json`
 - Windows:
   - `%AppData%\Cupuacu\config\recently_opened_files.json`
   - `%AppData%\Cupuacu\config\session_state.json`
   - `%AppData%\Cupuacu\config\audio_device_properties.json`
+  - `%AppData%\Cupuacu\config\display_properties.json`
 
 ### Log File
 
@@ -320,3 +324,12 @@ In practical terms, it remembers:
 - the selected host API / device type
 - the selected output device
 - the selected input device
+
+### display_properties.json
+
+This file stores the display configuration used by the `Options -> Display` window.
+
+In practical terms, it remembers:
+
+- the selected VU meter scale
+- the selected pixel scale

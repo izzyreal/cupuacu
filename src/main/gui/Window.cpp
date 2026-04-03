@@ -543,6 +543,13 @@ void Window::refreshForScaleOrResize()
 void Window::close()
 {
     hideTooltip();
+    rootComponent.reset();
+    contentLayer = nullptr;
+    overlayLayer = nullptr;
+    menuBar = nullptr;
+    capturingComponent = nullptr;
+    componentUnderMouse = nullptr;
+    focusedComponent = nullptr;
     if (canvas)
     {
         SDL_DestroyTexture(canvas);
