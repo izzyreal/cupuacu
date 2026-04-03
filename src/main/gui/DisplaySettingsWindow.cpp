@@ -18,39 +18,6 @@ namespace
     constexpr int kWindowWidth = 500;
     constexpr int kWindowHeight = 240;
 
-    std::vector<std::string> pixelScaleOptionLabels()
-    {
-        return {"1", "2", "4"};
-    }
-
-    int pixelScaleToIndex(const uint8_t pixelScale)
-    {
-        switch (pixelScale)
-        {
-        case 2:
-            return 1;
-        case 4:
-            return 2;
-        case 1:
-        default:
-            return 0;
-        }
-    }
-
-    uint8_t pixelScaleFromIndex(const int index)
-    {
-        switch (index)
-        {
-        case 1:
-            return 2;
-        case 2:
-            return 4;
-        case 0:
-        default:
-            return 1;
-        }
-    }
-
     constexpr Uint32 getHighDensityWindowFlag()
     {
         return SDL_WINDOW_HIGH_PIXEL_DENSITY;
@@ -106,8 +73,8 @@ DisplaySettingsWindow::DisplaySettingsWindow(State *stateToUse)
     vuMeterScaleDropdown->setItems(vuMeterScaleOptionLabels());
     vuMeterScaleDropdown->setSelectedIndex(vuMeterScaleToIndex(state->vuMeterScale));
     pixelScaleDropdown->setExpanded(false);
-    pixelScaleDropdown->setItems(pixelScaleOptionLabels());
-    pixelScaleDropdown->setSelectedIndex(pixelScaleToIndex(state->pixelScale));
+    pixelScaleDropdown->setItems(displayPixelScaleOptionLabels());
+    pixelScaleDropdown->setSelectedIndex(displayPixelScaleToIndex(state->pixelScale));
     vuMeterScaleDropdown->setOnSelectionChanged(
         [this](const int index)
         {
@@ -129,7 +96,7 @@ DisplaySettingsWindow::DisplaySettingsWindow(State *stateToUse)
                 return;
             }
 
-            applyPixelScale(pixelScaleFromIndex(index));
+            applyPixelScale(displayPixelScaleFromIndex(index));
             persistDisplayProperties();
             renderOnce();
         });
@@ -261,7 +228,7 @@ void DisplaySettingsWindow::syncPixelScaleSelection()
         return;
     }
 
-    pixelScaleDropdown->setSelectedIndex(pixelScaleToIndex(state->pixelScale));
+    pixelScaleDropdown->setSelectedIndex(displayPixelScaleToIndex(state->pixelScale));
 }
 
 void DisplaySettingsWindow::persistDisplayProperties() const
@@ -291,8 +258,8 @@ void DisplaySettingsWindow::applyPixelScale(const uint8_t newPixelScale)
 
     if (oldPixelScale > 0)
     {
-        viewState.samplesPerPixel *=
-            static_cast<double>(newPixelScale) / static_cast<double>(oldPixelScale);
+        viewState.samplesPerPixel = adjustSamplesPerPixelForDisplayPixelScaleChange(
+            viewState.samplesPerPixel, oldPixelScale, newPixelScale);
     }
 
     auto *mainWindow = state->mainDocumentSessionWindow->getWindow();

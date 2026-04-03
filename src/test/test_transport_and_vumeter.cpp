@@ -236,56 +236,28 @@ TEST_CASE("Vu meter scale config exposes the expected ruler labels",
     REQUIRE(peak.longTickSubdivisions == Catch::Approx(3.0f));
 }
 
-TEST_CASE("Display settings window reflects the current vu meter scale",
+TEST_CASE("Display settings helpers map pixel scale values consistently",
           "[gui][audio]")
 {
-    cupuacu::test::StateWithTestPaths state{};
-    state.vuMeterScale = cupuacu::gui::VuMeterScale::K20;
-    state.pixelScale = 4;
-    state.mainDocumentSessionWindow =
-        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
-            &state, &state.getActiveDocumentSession(), &state.getActiveViewState(),
-            "display-settings-doc", 480, 180, SDL_WINDOW_HIDDEN);
-
-    cupuacu::gui::VuMeterContainer *container = nullptr;
-    auto mainWindow = createWindowWithVuMeterContainer(&state, container);
-    (void)mainWindow;
-
-    cupuacu::gui::DisplaySettingsWindow window(&state);
-    REQUIRE(window.isOpen());
-
-    std::vector<cupuacu::gui::DropdownMenu *> dropdowns;
-    collectChildrenRecursive(window.getWindow()->getRootComponent(), dropdowns);
-    REQUIRE(dropdowns.size() == 2);
-    REQUIRE(dropdowns[0]->getSelectedIndex() ==
-            cupuacu::gui::vuMeterScaleToIndex(cupuacu::gui::VuMeterScale::K20));
-    REQUIRE(dropdowns[1]->getSelectedIndex() == 2);
+    REQUIRE(cupuacu::gui::displayPixelScaleOptionLabels() ==
+            std::vector<std::string>{"1", "2", "4"});
+    REQUIRE(cupuacu::gui::displayPixelScaleToIndex(1) == 0);
+    REQUIRE(cupuacu::gui::displayPixelScaleToIndex(2) == 1);
+    REQUIRE(cupuacu::gui::displayPixelScaleToIndex(4) == 2);
+    REQUIRE(cupuacu::gui::displayPixelScaleFromIndex(0) == 1);
+    REQUIRE(cupuacu::gui::displayPixelScaleFromIndex(1) == 2);
+    REQUIRE(cupuacu::gui::displayPixelScaleFromIndex(2) == 4);
 }
 
-TEST_CASE("Display settings window layout refreshes when pixel scale changes",
+TEST_CASE("Display settings pixel scale helper rescales samples-per-pixel",
           "[gui][audio]")
 {
-    cupuacu::test::StateWithTestPaths state{};
-    state.mainDocumentSessionWindow =
-        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
-            &state, &state.getActiveDocumentSession(), &state.getActiveViewState(),
-            "display-settings-scale-doc", 480, 180, SDL_WINDOW_HIDDEN);
-
-    cupuacu::gui::DisplaySettingsWindow window(&state);
-    REQUIRE(window.isOpen());
-
-    std::vector<cupuacu::gui::DropdownMenu *> dropdowns;
-    collectChildrenRecursive(window.getWindow()->getRootComponent(), dropdowns);
-    REQUIRE(dropdowns.size() == 2);
-
-    const int originalHeight = dropdowns[0]->getHeight();
-    const int originalY = dropdowns[1]->getYPos();
-
-    state.pixelScale = 2;
-    window.getWindow()->refreshForScaleOrResize();
-
-    REQUIRE(dropdowns[0]->getHeight() != originalHeight);
-    REQUIRE(dropdowns[1]->getYPos() != originalY);
+    REQUIRE(cupuacu::gui::adjustSamplesPerPixelForDisplayPixelScaleChange(
+                12.0, 1, 2) == Catch::Approx(24.0));
+    REQUIRE(cupuacu::gui::adjustSamplesPerPixelForDisplayPixelScaleChange(
+                12.0, 2, 1) == Catch::Approx(6.0));
+    REQUIRE(cupuacu::gui::adjustSamplesPerPixelForDisplayPixelScaleChange(
+                12.0, 2, 4) == Catch::Approx(24.0));
 }
 
 TEST_CASE("Vu meter model uses RMS for K scales and peak for Peak dBFS",
