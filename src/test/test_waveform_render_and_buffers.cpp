@@ -11,6 +11,7 @@
 #include "gui/LabeledField.hpp"
 #include "gui/Waveform.hpp"
 #include "gui/WaveformBlockRenderPlanning.hpp"
+#include "gui/WaveformOverviewPlanning.hpp"
 #include "gui/ScrollBar.hpp"
 #include "gui/WaveformSmoothRenderPlanning.hpp"
 
@@ -73,154 +74,9 @@ namespace
                    const int widthToUse,
                    const uint8_t pixelScale)
     {
-        const auto &sampleData =
-            document.getAudioBuffer()->getImmutableChannelData(channelIndex);
-        const int64_t frameCount = document.getFrameCount();
-        const auto &waveformCache = document.getWaveformCache(channelIndex);
-        const double cacheBypassThreshold =
-            static_cast<double>(cupuacu::gui::WaveformCache::BASE_BLOCK_SIZE) *
-            static_cast<double>(std::max<uint8_t>(1, pixelScale));
-        const bool bypassCache = samplesPerPixel < cacheBypassThreshold;
-        const int cacheLevel =
-            bypassCache ? 0 : waveformCache.getLevelIndex(samplesPerPixel);
-        const int64_t samplesPerPeak =
-            bypassCache ? 0
-                        : cupuacu::gui::WaveformCache::samplesPerPeakForLevel(
-                              cacheLevel);
-        const std::vector<cupuacu::gui::Peak> *peaks =
-            bypassCache ? nullptr : &waveformCache.getLevel(samplesPerPixel);
-
-        auto accumulateRawPeakRange =
-            [&](const int64_t startSample, const int64_t endSampleExclusive,
-                cupuacu::gui::Peak &ioPeak, bool &ioHasPeak) -> void
-        {
-            if (startSample >= endSampleExclusive)
-            {
-                return;
-            }
-
-            float minv = sampleData[startSample];
-            float maxv = sampleData[startSample];
-            for (int64_t i = startSample + 1; i < endSampleExclusive; ++i)
-            {
-                const float v = sampleData[i];
-                minv = std::min(minv, v);
-                maxv = std::max(maxv, v);
-            }
-
-            if (!ioHasPeak)
-            {
-                ioPeak = {minv, maxv};
-                ioHasPeak = true;
-                return;
-            }
-
-            ioPeak.min = std::min(ioPeak.min, minv);
-            ioPeak.max = std::max(ioPeak.max, maxv);
-        };
-
-        auto lookupPeak = [&](const int x, cupuacu::gui::Peak &out) -> bool
-        {
-            double aD = 0.0;
-            double bD = 0.0;
-            cupuacu::gui::Waveform::getBlockRenderSampleWindowForPixel(
-                x, sampleOffset, samplesPerPixel, aD, bD);
-
-            if (bD <= 0.0 || aD >= static_cast<double>(frameCount))
-            {
-                return false;
-            }
-
-            int64_t a = static_cast<int64_t>(std::floor(aD));
-            int64_t b = static_cast<int64_t>(std::floor(bD));
-            a = std::clamp<int64_t>(a, 0, frameCount - 1);
-            b = std::clamp<int64_t>(b, a + 1, frameCount);
-
-            if (bypassCache)
-            {
-                float minv = sampleData[a];
-                float maxv = sampleData[a];
-                for (int64_t i = a + 1; i < b; ++i)
-                {
-                    const float v = sampleData[i];
-                    minv = std::min(minv, v);
-                    maxv = std::max(maxv, v);
-                }
-                out = {minv, maxv};
-                return true;
-            }
-
-            if (!peaks || peaks->empty())
-            {
-                return false;
-            }
-
-            cupuacu::gui::Peak peak{};
-            bool hasPeak = false;
-            const int64_t firstFullBlockStart =
-                ((a + samplesPerPeak - 1) / samplesPerPeak) * samplesPerPeak;
-            const int64_t lastFullBlockEnd =
-                (b / samplesPerPeak) * samplesPerPeak;
-
-            accumulateRawPeakRange(a, std::min(b, firstFullBlockStart), peak,
-                                   hasPeak);
-
-            if (firstFullBlockStart < lastFullBlockEnd)
-            {
-                const int64_t requestedI0 =
-                    firstFullBlockStart / samplesPerPeak;
-                const int64_t requestedI1Exclusive =
-                    lastFullBlockEnd / samplesPerPeak;
-                const int64_t cachedI0 = std::clamp<int64_t>(
-                    requestedI0, 0, static_cast<int64_t>(peaks->size()));
-                const int64_t cachedI1Exclusive = std::clamp<int64_t>(
-                    requestedI1Exclusive, 0,
-                    static_cast<int64_t>(peaks->size()));
-
-                const int64_t cachedFullBlockStart =
-                    cachedI0 * samplesPerPeak;
-                const int64_t cachedFullBlockEnd =
-                    cachedI1Exclusive * samplesPerPeak;
-
-                accumulateRawPeakRange(firstFullBlockStart,
-                                       std::min(lastFullBlockEnd,
-                                                cachedFullBlockStart),
-                                       peak, hasPeak);
-
-                for (int64_t i = cachedI0; i < cachedI1Exclusive; ++i)
-                {
-                    if (!hasPeak)
-                    {
-                        peak = (*peaks)[i];
-                        hasPeak = true;
-                        continue;
-                    }
-
-                    peak.min = std::min(peak.min, (*peaks)[i].min);
-                    peak.max = std::max(peak.max, (*peaks)[i].max);
-                }
-
-                accumulateRawPeakRange(std::max(firstFullBlockStart,
-                                                cachedFullBlockEnd),
-                                       lastFullBlockEnd, peak, hasPeak);
-            }
-
-            accumulateRawPeakRange(std::max(a, lastFullBlockEnd), b, peak,
-                                   hasPeak);
-            if (!hasPeak)
-            {
-                return false;
-            }
-
-            out = peak;
-            return true;
-        };
-
-        return cupuacu::gui::planBlockWaveformPeakColumns(
-            widthToUse,
-            cupuacu::gui::Waveform::getBlockRenderPhasePixels(sampleOffset,
-                                                              samplesPerPixel),
-            lookupPeak);
+        return cupuacu::gui::planWaveformOverviewPeakColumns(
+            document, channelIndex, sampleOffset, samplesPerPixel, widthToUse,
+            pixelScale);
     }
 } // namespace
 
@@ -250,6 +106,16 @@ TEST_CASE("Waveform smooth render planning derives interpolation input safely",
     REQUIRE(input.sampleY.back() == Catch::Approx(0.6f));
     REQUIRE(input.queryX.front() == Catch::Approx(0.0));
     REQUIRE(input.queryX.back() == Catch::Approx(3.0));
+}
+
+TEST_CASE("Waveform overview planning maps frame spans to fill rects",
+          "[gui]")
+{
+    const auto rect = cupuacu::gui::planFrameSpanRect(20, 40, 0, 2.0, 100, 24);
+    REQUIRE(rect.has_value());
+    REQUIRE(rect->x >= 0);
+    REQUIRE(rect->w > 0);
+    REQUIRE(rect->h == 24);
 }
 
 TEST_CASE("Waveform smooth spline evaluation and segment quads handle edge cases",

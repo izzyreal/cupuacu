@@ -6,6 +6,7 @@
 #include "actions/DocumentTabs.hpp"
 #include "effects/AmplifyFadeEffect.hpp"
 #include "effects/DynamicsEffect.hpp"
+#include "effects/RemoveSilenceEffect.hpp"
 #include "effects/ReverseEffect.hpp"
 
 #include "gui/OpaqueRect.hpp"
@@ -371,6 +372,21 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
             else
             {
                 state->dynamicsDialog->raise();
+            }
+        });
+    effectsMenu->addSubMenu(
+        state, "Remove silence",
+        [&]
+        {
+            if (!state->removeSilenceDialog ||
+                !state->removeSilenceDialog->isOpen())
+            {
+                state->removeSilenceDialog.reset(
+                    new effects::RemoveSilenceDialog(state));
+            }
+            else
+            {
+                state->removeSilenceDialog->raise();
             }
         });
     effectsMenu->setIsAvailable(

@@ -2,6 +2,7 @@
 
 #include "audio/AudioDevices.hpp"
 #include "WaveformBlockRenderPlanning.hpp"
+#include "WaveformOverviewPlanning.hpp"
 #include "WaveformSamplePointPlanning.hpp"
 #include "WaveformSmoothRenderPlanning.hpp"
 #include "WaveformsUnderlay.hpp"
@@ -893,42 +894,6 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
         }
     }
 
-    const int cacheLevel =
-        bypassCache ? 0 : waveformCache.getLevelIndex(samplesPerPixel);
-    const int64_t samplesPerPeak =
-        bypassCache ? 0 : waveformCache.samplesPerPeakForLevel(cacheLevel);
-    const std::vector<Peak> *peaks =
-        bypassCache ? nullptr : &waveformCache.getLevel(samplesPerPixel);
-    auto accumulateRawPeakRange = [&](const int64_t startSample,
-                                      const int64_t endSampleExclusive,
-                                      Peak &ioPeak,
-                                      bool &ioHasPeak) -> void
-    {
-        if (startSample >= endSampleExclusive)
-        {
-            return;
-        }
-
-        float minv = sampleData[startSample];
-        float maxv = sampleData[startSample];
-        for (int64_t i = startSample + 1; i < endSampleExclusive; ++i)
-        {
-            const float v = sampleData[i];
-            minv = std::min(minv, v);
-            maxv = std::max(maxv, v);
-        }
-
-        if (!ioHasPeak)
-        {
-            ioPeak = {minv, maxv};
-            ioHasPeak = true;
-            return;
-        }
-
-        ioPeak.min = std::min(ioPeak.min, minv);
-        ioPeak.max = std::max(ioPeak.max, maxv);
-    };
-
     auto getPeakForPixel = [&](const int x, const int drawXi,
                                Peak &out) -> bool
     {
@@ -946,182 +911,9 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
             return false;
         }
 
-        int64_t a = (int64_t)std::floor(aD);
-        int64_t b = (int64_t)std::floor(bD);
-        a = std::clamp<int64_t>(a, 0, frameCount - 1);
-        b = std::clamp<int64_t>(b, a + 1, frameCount);
-
-        if (bypassCache)
-        {
-            float minv = sampleData[a];
-            float maxv = sampleData[a];
-            for (int64_t i = a + 1; i < b; ++i)
-            {
-                float v = sampleData[i];
-                minv = std::min(minv, v);
-                maxv = std::max(maxv, v);
-            }
-            out = {minv, maxv};
-            return true;
-        }
-
-        if (!peaks || peaks->empty())
-        {
-            return false;
-        }
-
-        Peak peak{};
-        bool hasPeak = false;
-
-        const int64_t firstFullBlockStart =
-            ((a + samplesPerPeak - 1) / samplesPerPeak) * samplesPerPeak;
-        const int64_t lastFullBlockEnd =
-            (b / samplesPerPeak) * samplesPerPeak;
-
-        accumulateRawPeakRange(a, std::min(b, firstFullBlockStart), peak,
-                               hasPeak);
-
-        if (firstFullBlockStart < lastFullBlockEnd)
-        {
-            const int64_t requestedI0 = firstFullBlockStart / samplesPerPeak;
-            const int64_t requestedI1Exclusive =
-                lastFullBlockEnd / samplesPerPeak;
-            const int64_t cachedI0 = std::clamp<int64_t>(
-                requestedI0, 0, static_cast<int64_t>(peaks->size()));
-            const int64_t cachedI1Exclusive = std::clamp<int64_t>(
-                requestedI1Exclusive, 0,
-                static_cast<int64_t>(peaks->size()));
-
-            const int64_t cachedFullBlockStart =
-                cachedI0 * samplesPerPeak;
-            const int64_t cachedFullBlockEnd =
-                cachedI1Exclusive * samplesPerPeak;
-
-            accumulateRawPeakRange(firstFullBlockStart,
-                                   std::min(lastFullBlockEnd,
-                                            cachedFullBlockStart),
-                                   peak, hasPeak);
-
-            for (int64_t i = cachedI0; i < cachedI1Exclusive; ++i)
-            {
-                if (!hasPeak)
-                {
-                    peak = (*peaks)[i];
-                    hasPeak = true;
-                    continue;
-                }
-
-                peak.min = std::min(peak.min, (*peaks)[i].min);
-                peak.max = std::max(peak.max, (*peaks)[i].max);
-            }
-
-            accumulateRawPeakRange(std::max(firstFullBlockStart,
-                                            cachedFullBlockEnd),
-                                   lastFullBlockEnd, peak, hasPeak);
-        }
-
-        accumulateRawPeakRange(std::max(a, lastFullBlockEnd), b, peak, hasPeak);
-
-        if (!hasPeak)
-        {
-            return false;
-        }
-
-        out = peak;
-
-        return true;
-    };
-
-    auto getPeakForSampleWindow = [&](const double aD, const double bD,
-                                      Peak &out) -> bool
-    {
-        if (bD <= 0.0 || aD >= static_cast<double>(frameCount))
-        {
-            return false;
-        }
-
-        int64_t a = static_cast<int64_t>(std::floor(aD));
-        int64_t b = static_cast<int64_t>(std::floor(bD));
-        a = std::clamp<int64_t>(a, 0, frameCount - 1);
-        b = std::clamp<int64_t>(b, a + 1, frameCount);
-
-        if (bypassCache)
-        {
-            float minv = sampleData[a];
-            float maxv = sampleData[a];
-            for (int64_t i = a + 1; i < b; ++i)
-            {
-                const float v = sampleData[i];
-                minv = std::min(minv, v);
-                maxv = std::max(maxv, v);
-            }
-            out = {minv, maxv};
-            return true;
-        }
-
-        if (!peaks || peaks->empty())
-        {
-            return false;
-        }
-
-        Peak peak{};
-        bool hasPeak = false;
-
-        const int64_t firstFullBlockStart =
-            ((a + samplesPerPeak - 1) / samplesPerPeak) * samplesPerPeak;
-        const int64_t lastFullBlockEnd =
-            (b / samplesPerPeak) * samplesPerPeak;
-
-        accumulateRawPeakRange(a, std::min(b, firstFullBlockStart), peak,
-                               hasPeak);
-
-        if (firstFullBlockStart < lastFullBlockEnd)
-        {
-            const int64_t requestedI0 = firstFullBlockStart / samplesPerPeak;
-            const int64_t requestedI1Exclusive =
-                lastFullBlockEnd / samplesPerPeak;
-            const int64_t cachedI0 = std::clamp<int64_t>(
-                requestedI0, 0, static_cast<int64_t>(peaks->size()));
-            const int64_t cachedI1Exclusive = std::clamp<int64_t>(
-                requestedI1Exclusive, 0,
-                static_cast<int64_t>(peaks->size()));
-
-            const int64_t cachedFullBlockStart =
-                cachedI0 * samplesPerPeak;
-            const int64_t cachedFullBlockEnd =
-                cachedI1Exclusive * samplesPerPeak;
-
-            accumulateRawPeakRange(firstFullBlockStart,
-                                   std::min(lastFullBlockEnd,
-                                            cachedFullBlockStart),
-                                   peak, hasPeak);
-
-            for (int64_t i = cachedI0; i < cachedI1Exclusive; ++i)
-            {
-                if (!hasPeak)
-                {
-                    peak = (*peaks)[i];
-                    hasPeak = true;
-                    continue;
-                }
-
-                peak.min = std::min(peak.min, (*peaks)[i].min);
-                peak.max = std::max(peak.max, (*peaks)[i].max);
-            }
-
-            accumulateRawPeakRange(std::max(firstFullBlockStart,
-                                            cachedFullBlockEnd),
-                                   lastFullBlockEnd, peak, hasPeak);
-        }
-
-        accumulateRawPeakRange(std::max(a, lastFullBlockEnd), b, peak, hasPeak);
-        if (!hasPeak)
-        {
-            return false;
-        }
-
-        out = peak;
-        return true;
+        return computeWaveformPeakForSampleWindow(
+            doc, channelIndex, sampleOffset, samplesPerPixel, state->pixelScale, aD,
+            bD, out);
     };
 
     int prevX = 0;

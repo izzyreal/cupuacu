@@ -2,6 +2,7 @@
 
 #include "effects/AmplifyFadeEffect.hpp"
 #include "effects/DynamicsEffect.hpp"
+#include "effects/RemoveSilenceEffect.hpp"
 
 #include "gui/Waveform.hpp"
 #include "gui/DisplaySettingsWindow.hpp"
@@ -35,6 +36,11 @@ void cupuacu::destroyAmplifyFadeDialog(effects::AmplifyFadeDialog *dialog)
 }
 
 void cupuacu::destroyDynamicsDialog(effects::DynamicsDialog *dialog)
+{
+    delete dialog;
+}
+
+void cupuacu::destroyRemoveSilenceDialog(effects::RemoveSilenceDialog *dialog)
 {
     delete dialog;
 }

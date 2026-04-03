@@ -16,9 +16,19 @@ namespace cupuacu::effects
         int ratioIndex = 1;
     };
 
+    struct RemoveSilenceSettings
+    {
+        int modeIndex = 0;
+        int thresholdUnitIndex = 0;
+        double thresholdDb = -48.0;
+        double thresholdSampleValue = 0.0;
+        double minimumSilenceLengthMs = 10.0;
+    };
+
     struct EffectSettings
     {
         AmplifyFadeSettings amplifyFade{};
         DynamicsSettings dynamics{};
+        RemoveSilenceSettings removeSilence{};
     };
 } // namespace cupuacu::effects

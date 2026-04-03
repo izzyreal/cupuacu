@@ -3,6 +3,7 @@
 #include "../State.hpp"
 #include "Gui.hpp"
 #include "Component.hpp"
+#include "DropdownMenu.hpp"
 #include "MenuBar.hpp"
 #include "Window.hpp"
 #include "MouseEvent.hpp"
@@ -280,6 +281,22 @@ namespace cupuacu::gui
         if (eventWindow == state->modalWindow)
         {
             return false;
+        }
+
+        if (eventWindow && eventWindow->getRootComponent())
+        {
+            if (const auto *dropdownOwner =
+                    dynamic_cast<const DropdownOwnerComponent *>(
+                        eventWindow->getRootComponent()))
+            {
+                if (auto *owningDropdown = dropdownOwner->getOwningDropdown())
+                {
+                    if (owningDropdown->getWindow() == state->modalWindow)
+                    {
+                        return false;
+                    }
+                }
+            }
         }
 
         switch (event->type)

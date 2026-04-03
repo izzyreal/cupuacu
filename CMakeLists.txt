@@ -126,6 +126,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/gui/ExportAudioDialogWindow.cpp
     src/main/effects/AmplifyFadeEffect.cpp
     src/main/effects/DynamicsEffect.cpp
+    src/main/effects/RemoveSilenceEffect.cpp
     src/main/gui/ScrollBar.cpp
     src/main/gui/Slider.cpp
     src/main/gui/TextInput.cpp
@@ -170,6 +171,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_menu_planning.cpp
     src/test/test_waveform_interaction_planning.cpp
     src/test/test_transport_and_vumeter.cpp
+    src/test/test_remove_silence_effect.cpp
     src/test/test_tooltip_planning.cpp
     src/test/test_waveform_render_and_buffers.cpp
 )

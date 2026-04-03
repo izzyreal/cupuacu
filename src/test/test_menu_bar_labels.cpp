@@ -303,12 +303,14 @@ TEST_CASE("MenuBar disables document-dependent menus when no file is open",
     REQUIRE(state.generateSilenceDialogWindow == nullptr);
 
     auto effectEntries = menuChildren(effectsMenu);
-    REQUIRE(effectEntries.size() == 3);
+    REQUIRE(effectEntries.size() == 4);
     REQUIRE(effectEntries[0]->mouseDown(leftMouseDown()));
     REQUIRE(effectEntries[1]->mouseDown(leftMouseDown()));
     REQUIRE(effectEntries[2]->mouseDown(leftMouseDown()));
+    REQUIRE(effectEntries[3]->mouseDown(leftMouseDown()));
     REQUIRE(state.amplifyFadeDialog == nullptr);
     REQUIRE(state.dynamicsDialog == nullptr);
+    REQUIRE(state.removeSilenceDialog == nullptr);
 
     auto fileEntries = menuChildren(fileMenu);
     REQUIRE(fileEntries.size() == 7);

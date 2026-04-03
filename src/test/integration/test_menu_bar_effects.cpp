@@ -6,6 +6,7 @@
 
 #include "effects/AmplifyFadeEffect.hpp"
 #include "effects/DynamicsEffect.hpp"
+#include "effects/RemoveSilenceEffect.hpp"
 #include "effects/ReverseEffect.hpp"
 #include "State.hpp"
 #include "SelectedChannels.hpp"
@@ -34,6 +35,7 @@ namespace
         cupuacu::gui::Menu *reverseMenu = nullptr;
         cupuacu::gui::Menu *amplifyFadeMenu = nullptr;
         cupuacu::gui::Menu *dynamicsMenu = nullptr;
+        cupuacu::gui::Menu *removeSilenceMenu = nullptr;
     };
 
     EffectsMenuHarness createEffectsMenuHarness(cupuacu::State *state)
@@ -66,10 +68,11 @@ namespace
         auto *effectsMenu = topLevelMenus[4];
         auto effectSubMenus =
             cupuacu::test::integration::menuChildren(effectsMenu);
-        REQUIRE(effectSubMenus.size() == 3);
+        REQUIRE(effectSubMenus.size() == 4);
         harness.reverseMenu = effectSubMenus[0];
         harness.amplifyFadeMenu = effectSubMenus[1];
         harness.dynamicsMenu = effectSubMenus[2];
+        harness.removeSilenceMenu = effectSubMenus[3];
         return harness;
     }
 
@@ -106,6 +109,21 @@ namespace
         }
     }
 
+    SDL_Event makeMouseButtonEvent(const Uint32 type,
+                                   cupuacu::gui::Window *window, const float x,
+                                   const float y, const bool leftDown)
+    {
+        SDL_Event event{};
+        event.type = type;
+        event.button.windowID = window != nullptr ? window->getId() : 0;
+        event.button.x = x;
+        event.button.y = y;
+        event.button.button = SDL_BUTTON_LEFT;
+        event.button.down = leftDown;
+        event.button.clicks = 1;
+        return event;
+    }
+
     void initializeActiveDocument(cupuacu::State *state)
     {
         state->getActiveDocumentSession().document.initialize(
@@ -113,7 +131,7 @@ namespace
     }
 } // namespace
 
-TEST_CASE("Effects menu integration opens AmplifyFade and Dynamics dialogs",
+TEST_CASE("Effects menu integration opens AmplifyFade Dynamics and Remove silence dialogs",
           "[integration]")
 {
     cupuacu::test::ensureSdlTtfInitialized();
@@ -134,6 +152,86 @@ TEST_CASE("Effects menu integration opens AmplifyFade and Dynamics dialogs",
         cupuacu::test::integration::leftMouseDown()));
     REQUIRE(state.dynamicsDialog != nullptr);
     REQUIRE(state.dynamicsDialog->isOpen());
+
+    REQUIRE(state.removeSilenceDialog == nullptr);
+    REQUIRE(harness.removeSilenceMenu->mouseDown(
+        cupuacu::test::integration::leftMouseDown()));
+    REQUIRE(state.removeSilenceDialog != nullptr);
+    REQUIRE(state.removeSilenceDialog->isOpen());
+}
+
+TEST_CASE("Remove silence mode dropdown selects from popup while modal is open",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::test::StateWithTestPaths state{};
+    initializeActiveDocument(&state);
+    auto harness = createEffectsMenuHarness(&state);
+    REQUIRE(harness.removeSilenceMenu->mouseDown(
+        cupuacu::test::integration::leftMouseDown()));
+    REQUIRE(state.removeSilenceDialog != nullptr);
+    REQUIRE(state.removeSilenceDialog->isOpen());
+
+    auto *dialogWindow = state.removeSilenceDialog->getWindow();
+    REQUIRE(dialogWindow != nullptr);
+    auto *root = dialogWindow->getRootComponent();
+    REQUIRE(root != nullptr);
+
+    std::vector<cupuacu::gui::DropdownMenu *> dropdowns;
+    for (const auto &child : root->getChildren())
+    {
+        if (auto *dropdown = dynamic_cast<cupuacu::gui::DropdownMenu *>(child.get()))
+        {
+            dropdowns.push_back(dropdown);
+        }
+    }
+
+    REQUIRE(dropdowns.size() >= 2);
+    auto *modeDropdown = dropdowns[0];
+    REQUIRE(modeDropdown->getSelectedIndex() == 0);
+
+    const SDL_Rect bounds = modeDropdown->getBounds();
+    SDL_Event down = makeMouseButtonEvent(
+        SDL_EVENT_MOUSE_BUTTON_DOWN, dialogWindow, bounds.x + 12.0f,
+        bounds.y + bounds.h * 0.5f, true);
+    SDL_Event up = makeMouseButtonEvent(
+        SDL_EVENT_MOUSE_BUTTON_UP, dialogWindow, bounds.x + 12.0f,
+        bounds.y + bounds.h * 0.5f, true);
+    REQUIRE(cupuacu::gui::handleAppEvent(&state, &down) == SDL_APP_CONTINUE);
+    REQUIRE(cupuacu::gui::handleAppEvent(&state, &up) == SDL_APP_CONTINUE);
+    REQUIRE(modeDropdown->isExpanded());
+
+    cupuacu::gui::Window *popupWindow = nullptr;
+    for (auto *candidate : state.windows)
+    {
+        if (candidate != dialogWindow && candidate != state.mainDocumentSessionWindow->getWindow())
+        {
+            if (candidate->getRootComponent() != nullptr &&
+                dynamic_cast<cupuacu::gui::DropdownOwnerComponent *>(
+                    candidate->getRootComponent()) != nullptr)
+            {
+                popupWindow = candidate;
+                break;
+            }
+        }
+    }
+
+    REQUIRE(popupWindow != nullptr);
+    const int popupSelectX = 40;
+    const int popupSelectY = modeDropdown->getPopupRowHeight() + 10;
+    down = makeMouseButtonEvent(SDL_EVENT_MOUSE_BUTTON_DOWN, popupWindow,
+                                static_cast<float>(popupSelectX),
+                                static_cast<float>(popupSelectY), true);
+    up = makeMouseButtonEvent(SDL_EVENT_MOUSE_BUTTON_UP, popupWindow,
+                              static_cast<float>(popupSelectX),
+                              static_cast<float>(popupSelectY), true);
+    REQUIRE(cupuacu::gui::handleAppEvent(&state, &down) == SDL_APP_CONTINUE);
+    REQUIRE(cupuacu::gui::handleAppEvent(&state, &up) == SDL_APP_CONTINUE);
+
+    REQUIRE_FALSE(modeDropdown->isExpanded());
+    REQUIRE(modeDropdown->getSelectedIndex() == 1);
+    REQUIRE(state.effectSettings.removeSilence.modeIndex == 1);
 }
 
 TEST_CASE("Reverse menu integration applies immediately without opening a dialog",

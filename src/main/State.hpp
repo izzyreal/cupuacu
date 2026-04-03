@@ -47,10 +47,12 @@ namespace cupuacu
     {
         class AmplifyFadeDialog;
         class DynamicsDialog;
+        class RemoveSilenceDialog;
     } // namespace effects
 
     void destroyAmplifyFadeDialog(effects::AmplifyFadeDialog *);
     void destroyDynamicsDialog(effects::DynamicsDialog *);
+    void destroyRemoveSilenceDialog(effects::RemoveSilenceDialog *);
     void destroyDisplaySettingsWindow(gui::DisplaySettingsWindow *);
     void destroyNewFileDialogWindow(gui::NewFileDialogWindow *);
     void destroyGenerateSilenceDialogWindow(gui::GenerateSilenceDialogWindow *);
@@ -96,6 +98,9 @@ namespace cupuacu
         std::unique_ptr<effects::DynamicsDialog,
                         void (*)(effects::DynamicsDialog *)>
             dynamicsDialog{nullptr, destroyDynamicsDialog};
+        std::unique_ptr<effects::RemoveSilenceDialog,
+                        void (*)(effects::RemoveSilenceDialog *)>
+            removeSilenceDialog{nullptr, destroyRemoveSilenceDialog};
         std::optional<file::AudioExportSettings> pendingSaveAsExportSettings;
         std::function<void(const std::string &, const std::string &)>
             errorReporter;
