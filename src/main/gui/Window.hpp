@@ -185,6 +185,7 @@ namespace cupuacu::gui
         std::function<void()> onClose;
         bool closeRequested = false;
         int dispatchDepth = 0;
+        bool suppressMouseUpAfterDropdownDismiss = false;
 
         void close();
         bool isEventForWindow(const SDL_Event &event) const;

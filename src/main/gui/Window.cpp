@@ -811,6 +811,14 @@ bool Window::handleEvent(const SDL_Event &event)
 bool Window::handleMouseEvent(const MouseEvent &mouseEvent)
 {
     ++dispatchDepth;
+
+    if (mouseEvent.type == UP && suppressMouseUpAfterDropdownDismiss)
+    {
+        suppressMouseUpAfterDropdownDismiss = false;
+        --dispatchDepth;
+        return true;
+    }
+
     const bool hasCapturingComponent = capturingComponent != nullptr;
     const bool captureContainsPoint =
         hasCapturingComponent &&
@@ -837,6 +845,12 @@ bool Window::handleMouseEvent(const MouseEvent &mouseEvent)
         if (collapseExpandedDropdowns(this, state, clickedDropdown))
         {
             updateComponentUnderMouse(mouseEvent.mouseXi, mouseEvent.mouseYi);
+            if (clickedDropdown == nullptr)
+            {
+                suppressMouseUpAfterDropdownDismiss = true;
+                --dispatchDepth;
+                return true;
+            }
         }
     }
 
