@@ -628,6 +628,8 @@ TEST_CASE("StatusBar inline position edit submits on enter and cancels on escape
         cupuacu::gui::MouseButtonState{true, false, false},
         2}));
     REQUIRE(posField->isEditing());
+    editor = findFirstRecursive<cupuacu::gui::TextInput>(posField);
+    REQUIRE(editor != nullptr);
     REQUIRE(editor->textInput("34"));
 
     SDL_KeyboardEvent escape{};

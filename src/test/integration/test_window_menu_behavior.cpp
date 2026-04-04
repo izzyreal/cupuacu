@@ -1005,7 +1005,8 @@ TEST_CASE("Dropdown integration outside click closes the popup without activatin
     REQUIRE(window->handleMouseEvent(leftMouseUpAt(250, 35)));
     REQUIRE_FALSE(dropdown->isExpanded());
     REQUIRE(dropdown->getSelectedIndex() == 1);
-    REQUIRE_FALSE(popupWindow->isOpen());
+    REQUIRE(state.windows.size() == 1);
+    REQUIRE(state.windows[0] == window.get());
     REQUIRE(target->mouseDownCount == 0);
     REQUIRE(target->mouseUpCount == 0);
 
