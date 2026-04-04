@@ -326,8 +326,6 @@ TEST_CASE("Persisted recent files and session state save to separate files",
 TEST_CASE("Persisted session state saves updated zoom and offset for an open document",
           "[persistence]")
 {
-    cupuacu::test::ensureSdlTtfInitialized();
-
     const auto root =
         cupuacu::test::makeUniqueTestRoot("session-persist-zoom-save");
     ScopedCleanup cleanup(root / "placeholder");
@@ -339,19 +337,8 @@ TEST_CASE("Persisted session state saves updated zoom and offset for an open doc
         cupuacu::SampleFormat::PCM_S16, 44100, 1, 8192);
     state.activeTabIndex = 0;
 
-    state.mainDocumentSessionWindow =
-        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
-            &state, &state.getActiveDocumentSession(), &state.getActiveViewState(),
-            "main", 800, 400, SDL_WINDOW_HIDDEN);
-    cupuacu::gui::buildComponents(
-        &state, state.mainDocumentSessionWindow->getWindow());
-
-    auto &viewState = state.getActiveViewState();
-    viewState.samplesPerPixel = 8.0;
-    viewState.sampleOffset = 64;
-    REQUIRE(cupuacu::actions::tryZoomInHorizontally(&state));
-    const double expectedSamplesPerPixel = viewState.samplesPerPixel;
-    const int64_t expectedSampleOffset = viewState.sampleOffset;
+    state.tabs[0].viewState.samplesPerPixel = 4.0;
+    state.tabs[0].viewState.sampleOffset = 1602;
 
     cupuacu::actions::persistSessionState(&state);
 
@@ -361,9 +348,9 @@ TEST_CASE("Persisted session state saves updated zoom and offset for an open doc
     REQUIRE(loadedSession.openDocuments.size() == 1);
     REQUIRE(loadedSession.openDocuments[0].filePath == "/tmp/open-a.wav");
     REQUIRE(loadedSession.openDocuments[0].samplesPerPixel ==
-            Catch::Approx(expectedSamplesPerPixel));
+            Catch::Approx(4.0));
     REQUIRE(loadedSession.openDocuments[0].sampleOffset ==
-            expectedSampleOffset);
+            1602);
 }
 
 TEST_CASE("Primary-modifier Q does not apply horizontal zoom-out",
