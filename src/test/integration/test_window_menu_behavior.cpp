@@ -989,6 +989,18 @@ TEST_CASE("Dropdown integration outside click closes the popup without activatin
     REQUIRE(dropdown->isExpanded());
     REQUIRE(dropdown->getSelectedIndex() == 1);
 
+    cupuacu::gui::Window *popupWindow = nullptr;
+    for (auto *candidate : state.windows)
+    {
+        if (candidate != window.get())
+        {
+            popupWindow = candidate;
+            break;
+        }
+    }
+    REQUIRE(popupWindow != nullptr);
+    REQUIRE(popupWindow->isOpen());
+
     REQUIRE(window->handleMouseEvent(leftMouseDownAt(250, 35)));
     REQUIRE(window->handleMouseEvent(leftMouseUpAt(250, 35)));
     REQUIRE_FALSE(dropdown->isExpanded());
