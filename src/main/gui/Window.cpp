@@ -701,6 +701,8 @@ bool Window::handleEvent(const SDL_Event &event)
         return false;
     }
 
+    ++dispatchDepth;
+
     if (event.type == SDL_EVENT_KEY_DOWN)
     {
         const bool isMainDocumentWindow =
@@ -711,6 +713,7 @@ bool Window::handleEvent(const SDL_Event &event)
             focusedComponent != nullptr && focusedComponent->keyDown(event.key);
         if (handledByFocusedComponent)
         {
+            --dispatchDepth;
             return true;
         }
 
@@ -741,21 +744,28 @@ bool Window::handleEvent(const SDL_Event &event)
                 }
                 close();
             }
+            --dispatchDepth;
             return true;
         }
 
-        return onUnhandledKeyDown ? onUnhandledKeyDown(event.key) : false;
+        const bool handled =
+            onUnhandledKeyDown ? onUnhandledKeyDown(event.key) : false;
+        --dispatchDepth;
+        return handled;
     }
 
     if (event.type == SDL_EVENT_TEXT_INPUT)
     {
-        return focusedComponent != nullptr &&
-               focusedComponent->textInput(event.text.text);
+        const bool handled = focusedComponent != nullptr &&
+                             focusedComponent->textInput(event.text.text);
+        --dispatchDepth;
+        return handled;
     }
 
     const auto plan = planWindowEventHandling(event.type, rootComponent != nullptr);
     if (!plan.handled)
     {
+        --dispatchDepth;
         return true;
     }
 
@@ -794,11 +804,13 @@ bool Window::handleEvent(const SDL_Event &event)
         close();
     }
 
+    --dispatchDepth;
     return true;
 }
 
 bool Window::handleMouseEvent(const MouseEvent &mouseEvent)
 {
+    ++dispatchDepth;
     const bool hasCapturingComponent = capturingComponent != nullptr;
     const bool captureContainsPoint =
         hasCapturingComponent &&
@@ -810,6 +822,7 @@ bool Window::handleMouseEvent(const MouseEvent &mouseEvent)
 
     if (!plan.handled)
     {
+        --dispatchDepth;
         return false;
     }
 
@@ -864,6 +877,7 @@ bool Window::handleMouseEvent(const MouseEvent &mouseEvent)
         close();
     }
 
+    --dispatchDepth;
     return true;
 }
 

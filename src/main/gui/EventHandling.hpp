@@ -390,7 +390,7 @@ namespace cupuacu::gui
                 {
                     if (mainWindow && eventWindow == mainWindow)
                     {
-                        cupuacu::actions::closeActiveTab(state);
+                        return SDL_APP_SUCCESS;
                     }
                     else
                     {

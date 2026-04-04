@@ -511,7 +511,7 @@ TEST_CASE("Event handling integration returns success for quit and keeps app ope
         REQUIRE(state.mainDocumentSessionWindow->getWindow()->isOpen());
     }
 
-    SECTION("main document close request closes the active file instead of exiting")
+    SECTION("main document close request exits the app")
     {
         cupuacu::test::StateWithTestPaths state{};
         createBuiltSessionUi(&state, 256);
@@ -527,12 +527,12 @@ TEST_CASE("Event handling integration returns success for quit and keeps app ope
         event.type = SDL_EVENT_WINDOW_CLOSE_REQUESTED;
         event.window.windowID = mainWindow->getId();
 
-        REQUIRE(cupuacu::gui::handleAppEvent(&state, &event) == SDL_APP_CONTINUE);
+        REQUIRE(cupuacu::gui::handleAppEvent(&state, &event) == SDL_APP_SUCCESS);
         REQUIRE(mainWindow->isOpen());
-        REQUIRE(state.getActiveDocumentSession().currentFile.empty());
-        REQUIRE(state.getActiveDocumentSession().document.getChannelCount() == 0);
-        REQUIRE_FALSE(state.getActiveDocumentSession().selection.isActive());
-        REQUIRE(state.getActiveDocumentSession().cursor == 0);
+        REQUIRE(state.getActiveDocumentSession().currentFile == "/tmp/current.wav");
+        REQUIRE(state.getActiveDocumentSession().document.getChannelCount() == 2);
+        REQUIRE(state.getActiveDocumentSession().selection.isActive());
+        REQUIRE(state.getActiveDocumentSession().cursor == 12);
     }
 }
 

@@ -181,6 +181,21 @@ namespace
         int pressedIndex = -1;
         std::function<void(int)> onSelected;
     };
+
+    void removePopupWindowFromState(cupuacu::State *state, Window *popupWindow)
+    {
+        if (!state || !popupWindow)
+        {
+            return;
+        }
+
+        const auto it =
+            std::find(state->windows.begin(), state->windows.end(), popupWindow);
+        if (it != state->windows.end())
+        {
+            state->windows.erase(it);
+        }
+    }
 } // namespace
 
 DropdownMenu::DropdownMenu(State *stateToUse)
@@ -261,22 +276,20 @@ void DropdownMenu::destroyPopupWindow()
         return;
     }
 
-    if (state)
+    if (!popupWindow->isOpen())
     {
-        const auto it =
-            std::find(state->windows.begin(), state->windows.end(), popupWindow.get());
-        if (it != state->windows.end())
-        {
-            state->windows.erase(it);
-        }
+        removePopupWindowFromState(state, popupWindow.get());
+        popupWindow.reset();
+        return;
     }
 
-    if (popupWindow->isOpen())
+    if (popupWindow->isDispatching())
     {
         popupWindow->requestClose();
         return;
     }
 
+    removePopupWindowFromState(state, popupWindow.get());
     popupWindow.reset();
 }
 
@@ -352,6 +365,8 @@ void DropdownMenu::ensurePopupWindow()
         [this](const int index) { handlePopupSelection(index); });
     root->setBounds(0, 0, popupCanvasBounds.w, popupCanvasBounds.h);
     popupWindow->setRootComponent(std::move(root));
+    popupWindow->setOnClose([this, popup = popupWindow.get()]()
+                            { removePopupWindowFromState(state, popup); });
     if (state)
     {
         state->windows.push_back(popupWindow.get());

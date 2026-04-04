@@ -1,13 +1,25 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace cupuacu::persistence
 {
+    struct PersistedOpenDocumentState
+    {
+        std::string filePath;
+        std::optional<double> samplesPerPixel;
+        std::optional<int64_t> sampleOffset;
+        std::optional<int64_t> selectionStart;
+        std::optional<int64_t> selectionEndExclusive;
+    };
+
     struct PersistedSessionState
     {
+        std::vector<PersistedOpenDocumentState> openDocuments;
         std::vector<std::string> openFiles;
         int activeOpenFileIndex = -1;
     };

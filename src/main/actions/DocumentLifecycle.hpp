@@ -219,6 +219,8 @@ namespace cupuacu::actions
     struct StartupDocumentRestorePlan
     {
         std::vector<std::string> recentFiles;
+        std::vector<cupuacu::persistence::PersistedOpenDocumentState>
+            openDocuments;
         std::vector<std::string> openFiles;
         int activeOpenFileIndex = -1;
         bool shouldPersistState = false;
@@ -291,6 +293,18 @@ namespace cupuacu::actions
                 continue;
             }
 
+            cupuacu::persistence::PersistedOpenDocumentState documentState{};
+            documentState.filePath = tab.session.currentFile;
+            documentState.samplesPerPixel = tab.viewState.samplesPerPixel;
+            documentState.sampleOffset = tab.viewState.sampleOffset;
+            if (tab.session.selection.isActive())
+            {
+                documentState.selectionStart = tab.session.selection.getStartInt();
+                documentState.selectionEndExclusive =
+                    tab.session.selection.getEndExclusiveInt();
+            }
+
+            persisted.openDocuments.push_back(documentState);
             persisted.openFiles.push_back(tab.session.currentFile);
             if (i == state->activeTabIndex)
             {
@@ -457,6 +471,20 @@ namespace cupuacu::actions
         resetWaveformState(state);
         resetSampleValueUnderMouseCursor(state);
         resetZoom(state);
+        gui::Waveform::updateAllSamplePoints(state);
+        gui::Waveform::setAllWaveformsDirty(state);
+        gui::requestMainViewRefresh(state);
+    }
+
+    inline void refreshBoundDocumentUi(cupuacu::State *state)
+    {
+        if (!state)
+        {
+            return;
+        }
+
+        gui::rebuildMainWaveforms(state);
+        resetSampleValueUnderMouseCursor(state);
         gui::Waveform::updateAllSamplePoints(state);
         gui::Waveform::setAllWaveformsDirty(state);
         gui::requestMainViewRefresh(state);
@@ -644,12 +672,34 @@ namespace cupuacu::actions
             }
         }
 
-        plan.openFiles.reserve(persistedSessionState.openFiles.size());
-        for (const auto &path : persistedSessionState.openFiles)
+        if (!persistedSessionState.openDocuments.empty())
         {
-            if (!path.empty() && std::filesystem::exists(path))
+            plan.openDocuments.reserve(persistedSessionState.openDocuments.size());
+            plan.openFiles.reserve(persistedSessionState.openDocuments.size());
+            for (const auto &documentState : persistedSessionState.openDocuments)
             {
-                plan.openFiles.push_back(path);
+                if (!documentState.filePath.empty() &&
+                    std::filesystem::exists(documentState.filePath))
+                {
+                    plan.openDocuments.push_back(documentState);
+                    plan.openFiles.push_back(documentState.filePath);
+                }
+            }
+        }
+        else
+        {
+            plan.openDocuments.reserve(persistedSessionState.openFiles.size());
+            plan.openFiles.reserve(persistedSessionState.openFiles.size());
+            for (const auto &path : persistedSessionState.openFiles)
+            {
+                if (!path.empty() && std::filesystem::exists(path))
+                {
+                    plan.openDocuments.push_back(
+                        cupuacu::persistence::PersistedOpenDocumentState{
+                            .filePath = path,
+                        });
+                    plan.openFiles.push_back(path);
+                }
             }
         }
 
@@ -678,6 +728,60 @@ namespace cupuacu::actions
         return plan;
     }
 
+    inline void applyPersistedOpenDocumentState(
+        cupuacu::State *state,
+        const cupuacu::persistence::PersistedOpenDocumentState &documentState)
+    {
+        if (!state)
+        {
+            return;
+        }
+
+        auto &session = state->getActiveDocumentSession();
+        auto &viewState = state->getActiveViewState();
+        const int64_t frameCount = session.document.getFrameCount();
+
+        session.selection.reset();
+        session.syncSelectionAndCursorToDocumentLength();
+        if (documentState.selectionStart.has_value() &&
+            documentState.selectionEndExclusive.has_value())
+        {
+            const int64_t start = std::clamp(*documentState.selectionStart,
+                                             int64_t{0}, frameCount);
+            const int64_t endExclusive = std::clamp(
+                *documentState.selectionEndExclusive, int64_t{0}, frameCount);
+            if (endExclusive > start)
+            {
+                session.selection.setValue1(start);
+                session.selection.setValue2(endExclusive);
+            }
+        }
+
+        if (documentState.samplesPerPixel.has_value() &&
+            *documentState.samplesPerPixel > 0.0)
+        {
+            viewState.samplesPerPixel = *documentState.samplesPerPixel;
+            const int64_t sampleOffset =
+                std::max<int64_t>(0, documentState.sampleOffset.value_or(0));
+            if (state->mainDocumentSessionWindow)
+            {
+                updateSampleOffset(state, sampleOffset);
+            }
+            else
+            {
+                viewState.sampleOffset = sampleOffset;
+            }
+        }
+        else if (state->mainDocumentSessionWindow)
+        {
+            resetZoom(state);
+        }
+
+        gui::Waveform::updateAllSamplePoints(state);
+        gui::Waveform::setAllWaveformsDirty(state);
+        gui::requestMainViewRefresh(state);
+    }
+
     inline void restoreStartupDocument(
         cupuacu::State *state,
         const std::vector<std::string> &persistedRecentFiles,
@@ -701,25 +805,30 @@ namespace cupuacu::actions
                 std::string failureReason;
                 const bool loaded =
                     (index == 0)
-                        ? loadFileIntoSession(state, plan.openFiles[index], false,
-                                              false, false, false, &failureReason)
-                        : loadFileIntoNewTab(state, plan.openFiles[index], false,
-                                             false, false, false, &failureReason);
+                        ? loadFileIntoSession(
+                              state, plan.openDocuments[index].filePath, false,
+                              false, false, false, &failureReason)
+                        : loadFileIntoNewTab(
+                              state, plan.openDocuments[index].filePath, false,
+                              false, false, false, &failureReason);
                 if (!loaded)
                 {
                     detail::reportDocumentIoFailure(state, "Open",
-                                                    plan.openFiles[index],
+                                                    plan.openDocuments[index].filePath,
                                                     failureReason, false);
                     restoreFailures.push_back(
-                        {plan.openFiles[index],
-                         detail::condensedRestoreReason(plan.openFiles[index],
+                        {plan.openDocuments[index].filePath,
+                         detail::condensedRestoreReason(plan.openDocuments[index].filePath,
                                                         failureReason)});
                     state->recentFiles.erase(
                         std::remove(state->recentFiles.begin(),
-                                    state->recentFiles.end(), plan.openFiles[index]),
+                                    state->recentFiles.end(),
+                                    plan.openDocuments[index].filePath),
                         state->recentFiles.end());
                     continue;
                 }
+
+                applyPersistedOpenDocumentState(state, plan.openDocuments[index]);
 
                 if (static_cast<int>(index) == plan.activeOpenFileIndex)
                 {
@@ -733,7 +842,7 @@ namespace cupuacu::actions
             {
                 state->activeTabIndex = restoredActiveOpenFileIndex;
                 bindMainWindowToActiveDocument(state);
-                refreshDocumentUi(state);
+                refreshBoundDocumentUi(state);
                 setMainWindowTitle(
                     state, state->getActiveDocumentSession().currentFile);
             }

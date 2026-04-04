@@ -962,6 +962,47 @@ TEST_CASE("Dropdown integration selection does not consume the next owner-window
     REQUIRE(target->mouseUpCount == 1);
 }
 
+TEST_CASE("Dropdown integration outside click closes the popup without activating underlying controls",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "dropdown-outside-close", 360, 240, SDL_WINDOW_HIDDEN);
+    state.windows.push_back(window.get());
+
+    auto root =
+        std::make_unique<cupuacu::test::integration::RootComponent>(&state);
+    root->setBounds(0, 0, 360, 240);
+    auto *dropdown = root->emplaceChild<cupuacu::gui::DropdownMenu>(&state);
+    auto *target = root->emplaceChild<TestComponent>(&state, "Target");
+    dropdown->setBounds(20, 20, 180, 30);
+    dropdown->setItems({"Alpha", "Beta", "Gamma"});
+    dropdown->setCollapsedHeight(30);
+    dropdown->setSelectedIndex(1);
+    target->setBounds(220, 20, 100, 40);
+    window->setRootComponent(std::move(root));
+
+    REQUIRE(window->handleMouseEvent(leftMouseDownAt(40, 35)));
+    REQUIRE(window->handleMouseEvent(leftMouseUpAt(40, 35)));
+    REQUIRE(dropdown->isExpanded());
+    REQUIRE(dropdown->getSelectedIndex() == 1);
+
+    REQUIRE(window->handleMouseEvent(leftMouseDownAt(250, 35)));
+    REQUIRE(window->handleMouseEvent(leftMouseUpAt(250, 35)));
+    REQUIRE_FALSE(dropdown->isExpanded());
+    REQUIRE(dropdown->getSelectedIndex() == 1);
+    REQUIRE_FALSE(popupWindow->isOpen());
+    REQUIRE(target->mouseDownCount == 0);
+    REQUIRE(target->mouseUpCount == 0);
+
+    REQUIRE(window->handleMouseEvent(leftMouseDownAt(250, 35)));
+    REQUIRE(window->handleMouseEvent(leftMouseUpAt(250, 35)));
+    REQUIRE(target->mouseDownCount == 1);
+    REQUIRE(target->mouseUpCount == 1);
+}
+
 TEST_CASE("Main window integration opens Export Audio on primary-modifier Shift-S",
           "[integration]")
 {

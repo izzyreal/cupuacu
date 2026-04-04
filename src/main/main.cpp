@@ -126,12 +126,15 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     cupuacu::gui::initCursors();
 
+    cupuacu::gui::buildComponents(state, mainWindow);
+
     cupuacu::actions::restoreStartupDocument(
         state, persistedRecentFiles, persistedSessionState);
 
-    cupuacu::gui::buildComponents(state, mainWindow);
-
-    cupuacu::actions::resetZoom(state);
+    if (state->getActiveDocumentSession().currentFile.empty())
+    {
+        cupuacu::actions::resetZoom(state);
+    }
 
     mainWindow->renderFrame();
     if (state->pendingStartupWarning.has_value())

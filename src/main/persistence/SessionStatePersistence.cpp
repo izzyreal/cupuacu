@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -11,7 +12,7 @@ namespace cupuacu::persistence
 {
     namespace
     {
-        constexpr int kFormatVersion = 1;
+        constexpr int kFormatVersion = 2;
 
         std::vector<std::string> filterFiles(const std::vector<std::string> &files)
         {
@@ -47,6 +48,78 @@ namespace cupuacu::persistence
 
             return filterFiles(files);
         }
+
+        bool loadOptionalInt64(const nlohmann::json &json, const char *key,
+                               std::optional<int64_t> &value)
+        {
+            if (!json.contains(key))
+            {
+                return true;
+            }
+            if (!json.at(key).is_number_integer())
+            {
+                return false;
+            }
+            value = json.at(key).get<int64_t>();
+            return true;
+        }
+
+        bool loadOptionalDouble(const nlohmann::json &json, const char *key,
+                                std::optional<double> &value)
+        {
+            if (!json.contains(key))
+            {
+                return true;
+            }
+            if (!json.at(key).is_number())
+            {
+                return false;
+            }
+            value = json.at(key).get<double>();
+            return true;
+        }
+
+        std::optional<std::vector<PersistedOpenDocumentState>> loadOpenDocuments(
+            const nlohmann::json &json)
+        {
+            if (!json.contains("openDocuments") ||
+                !json.at("openDocuments").is_array())
+            {
+                return std::nullopt;
+            }
+
+            std::vector<PersistedOpenDocumentState> result;
+            for (const auto &entry : json.at("openDocuments"))
+            {
+                if (!entry.is_object() || !entry.contains("filePath") ||
+                    !entry.at("filePath").is_string())
+                {
+                    return std::nullopt;
+                }
+
+                PersistedOpenDocumentState documentState{};
+                documentState.filePath = entry.at("filePath").get<std::string>();
+                if (documentState.filePath.empty())
+                {
+                    continue;
+                }
+                if (!loadOptionalDouble(entry, "samplesPerPixel",
+                                        documentState.samplesPerPixel) ||
+                    !loadOptionalInt64(entry, "sampleOffset",
+                                       documentState.sampleOffset) ||
+                    !loadOptionalInt64(entry, "selectionStart",
+                                       documentState.selectionStart) ||
+                    !loadOptionalInt64(entry, "selectionEndExclusive",
+                                       documentState.selectionEndExclusive))
+                {
+                    return std::nullopt;
+                }
+
+                result.push_back(std::move(documentState));
+            }
+
+            return result;
+        }
     } // namespace
 
     PersistedSessionState SessionStatePersistence::load(
@@ -74,18 +147,49 @@ namespace cupuacu::persistence
             return {};
         }
 
-        if (!json.is_object() || json.value("version", 0) != kFormatVersion)
+        if (!json.is_object())
         {
             return {};
         }
 
-        const auto openFiles = loadStringArray(json, "openFiles");
-        if (!openFiles.has_value())
+        const int version = json.value("version", 0);
+        if (version != 1 && version != kFormatVersion)
         {
             return {};
         }
 
-        state.openFiles = *openFiles;
+        if (version >= kFormatVersion)
+        {
+            const auto openDocuments = loadOpenDocuments(json);
+            if (!openDocuments.has_value())
+            {
+                return {};
+            }
+            state.openDocuments = *openDocuments;
+            state.openFiles.reserve(state.openDocuments.size());
+            for (const auto &documentState : state.openDocuments)
+            {
+                state.openFiles.push_back(documentState.filePath);
+            }
+        }
+        else
+        {
+            const auto openFiles = loadStringArray(json, "openFiles");
+            if (!openFiles.has_value())
+            {
+                return {};
+            }
+
+            state.openFiles = *openFiles;
+            state.openDocuments.reserve(state.openFiles.size());
+            for (const auto &pathString : state.openFiles)
+            {
+                state.openDocuments.push_back(PersistedOpenDocumentState{
+                    .filePath = pathString,
+                });
+            }
+        }
+
         if (json.contains("activeOpenFileIndex") &&
             json.at("activeOpenFileIndex").is_number_integer())
         {
@@ -103,7 +207,32 @@ namespace cupuacu::persistence
             return false;
         }
 
-        const auto openFiles = filterFiles(state.openFiles);
+        std::vector<PersistedOpenDocumentState> openDocuments;
+        openDocuments.reserve(state.openDocuments.size());
+        for (const auto &documentState : state.openDocuments)
+        {
+            if (!documentState.filePath.empty())
+            {
+                openDocuments.push_back(documentState);
+            }
+        }
+
+        if (openDocuments.empty())
+        {
+            for (const auto &pathString : filterFiles(state.openFiles))
+            {
+                openDocuments.push_back(PersistedOpenDocumentState{
+                    .filePath = pathString,
+                });
+            }
+        }
+
+        std::vector<std::string> openFiles;
+        openFiles.reserve(openDocuments.size());
+        for (const auto &documentState : openDocuments)
+        {
+            openFiles.push_back(documentState.filePath);
+        }
         const int activeOpenFileIndex =
             openFiles.empty()
                 ? -1
@@ -123,9 +252,35 @@ namespace cupuacu::persistence
             return false;
         }
 
+        nlohmann::json openDocumentsJson = nlohmann::json::array();
+        for (const auto &documentState : openDocuments)
+        {
+            nlohmann::json entry{
+                {"filePath", documentState.filePath},
+            };
+            if (documentState.samplesPerPixel.has_value())
+            {
+                entry["samplesPerPixel"] = *documentState.samplesPerPixel;
+            }
+            if (documentState.sampleOffset.has_value())
+            {
+                entry["sampleOffset"] = *documentState.sampleOffset;
+            }
+            if (documentState.selectionStart.has_value())
+            {
+                entry["selectionStart"] = *documentState.selectionStart;
+            }
+            if (documentState.selectionEndExclusive.has_value())
+            {
+                entry["selectionEndExclusive"] =
+                    *documentState.selectionEndExclusive;
+            }
+            openDocumentsJson.push_back(std::move(entry));
+        }
+
         const nlohmann::json json{
             {"version", kFormatVersion},
-            {"openFiles", openFiles},
+            {"openDocuments", openDocumentsJson},
             {"activeOpenFileIndex", activeOpenFileIndex},
         };
 

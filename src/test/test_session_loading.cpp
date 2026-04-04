@@ -3,12 +3,15 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #include "State.hpp"
+#include "TestSdlTtfGuard.hpp"
 #include "TestSdlLogSilencer.hpp"
 #include "TestPaths.hpp"
 #include "actions/DocumentLifecycle.hpp"
 #include "file/SndfilePath.hpp"
 #include "file/file_loading.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
+#include "gui/DocumentSessionWindow.hpp"
+#include "gui/Gui.hpp"
 #include "gui/Window.hpp"
 
 #include <sndfile.h>
@@ -323,4 +326,80 @@ TEST_CASE("Startup restore skips unreadable existing paths", "[session]")
     REQUIRE(state.recentFiles == std::vector<std::string>{validPath.string()});
     REQUIRE(reportedTitle == "Some files could not be reopened");
     REQUIRE(reportedMessage.find(unreadablePath.string()) != std::string::npos);
+}
+
+TEST_CASE("Startup restore reapplies persisted zoom offset and selection",
+          "[session]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-startup-restore-view"));
+    const auto validPath = cleanup.path() / "view.wav";
+    writeTestWav(validPath, 32000, 1, {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f});
+
+    cupuacu::test::StateWithTestPaths state{};
+    cupuacu::persistence::PersistedSessionState persistedState{};
+    persistedState.openDocuments = {
+        {
+            .filePath = validPath.string(),
+            .samplesPerPixel = 2.75,
+            .sampleOffset = 2,
+            .selectionStart = 1,
+            .selectionEndExclusive = 5,
+        },
+    };
+    persistedState.openFiles = {validPath.string()};
+    persistedState.activeOpenFileIndex = 0;
+
+    cupuacu::actions::restoreStartupDocument(
+        &state, {validPath.string()}, persistedState);
+
+    const auto &session = state.getActiveDocumentSession();
+    const auto &viewState = state.getActiveViewState();
+    REQUIRE(session.currentFile == validPath.string());
+    REQUIRE(viewState.samplesPerPixel == Catch::Approx(2.75));
+    REQUIRE(viewState.sampleOffset == 2);
+    REQUIRE(session.selection.isActive());
+    REQUIRE(session.selection.getStartInt() == 1);
+    REQUIRE(session.selection.getEndExclusiveInt() == 5);
+}
+
+TEST_CASE("Startup restore with built main window preserves persisted view state",
+          "[session]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-startup-restore-built-view"));
+    const auto validPath = cleanup.path() / "view.wav";
+    std::vector<float> samples(6000, 0.0f);
+    for (size_t i = 0; i < samples.size(); ++i)
+    {
+        samples[i] = static_cast<float>(i % 17) / 17.0f;
+    }
+    writeTestWav(validPath, 32000, 1, samples);
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &state.getActiveDocumentSession(), &state.getActiveViewState(),
+            "main", 800, 400, SDL_WINDOW_HIDDEN);
+    cupuacu::gui::buildComponents(
+        &state, state.mainDocumentSessionWindow->getWindow());
+
+    cupuacu::persistence::PersistedSessionState persistedState{};
+    persistedState.openDocuments = {
+        {
+            .filePath = validPath.string(),
+            .samplesPerPixel = 2.75,
+            .sampleOffset = 200,
+        },
+    };
+    persistedState.openFiles = {validPath.string()};
+    persistedState.activeOpenFileIndex = 0;
+
+    cupuacu::actions::restoreStartupDocument(
+        &state, {validPath.string()}, persistedState);
+
+    const auto &viewState = state.getActiveViewState();
+    REQUIRE(viewState.samplesPerPixel == Catch::Approx(2.75));
+    REQUIRE(viewState.sampleOffset == 200);
 }

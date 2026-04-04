@@ -282,6 +282,80 @@ TEST_CASE("DropdownMenu collapsed height tracks row height after margin changes"
     REQUIRE(dropdown.getHeight() >= dropdown.getRowHeight());
 }
 
+TEST_CASE("DropdownMenu outside click closes the popup window immediately",
+          "[gui]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.menuFontSize = 32;
+
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "dropdown-popup-close", 320, 200, SDL_WINDOW_HIDDEN);
+    state.windows.push_back(window.get());
+
+    auto root = std::make_unique<RootComponent>(&state);
+    root->setBounds(0, 0, 320, 200);
+    auto *dropdown = root->emplaceChild<cupuacu::gui::DropdownMenu>(&state);
+    dropdown->setBounds(20, 20, 180, 30);
+    dropdown->setItems({"Alpha", "Beta", "Gamma"});
+    dropdown->setCollapsedHeight(30);
+    window->setRootComponent(std::move(root));
+
+    REQUIRE(window->handleMouseEvent(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN,
+        40,
+        35,
+        40.0f,
+        35.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE(window->handleMouseEvent(cupuacu::gui::MouseEvent{
+        cupuacu::gui::UP,
+        40,
+        35,
+        40.0f,
+        35.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE(dropdown->isExpanded());
+    REQUIRE(state.windows.size() == 2);
+
+    auto *popupWindow = state.windows.back();
+    REQUIRE(popupWindow != nullptr);
+    REQUIRE(popupWindow != window.get());
+    REQUIRE(popupWindow->isOpen());
+
+    REQUIRE(window->handleMouseEvent(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN,
+        260,
+        120,
+        260.0f,
+        120.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    REQUIRE(window->handleMouseEvent(cupuacu::gui::MouseEvent{
+        cupuacu::gui::UP,
+        260,
+        120,
+        260.0f,
+        120.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+
+    REQUIRE_FALSE(dropdown->isExpanded());
+    REQUIRE_FALSE(popupWindow->isOpen());
+    REQUIRE(state.windows.size() == 1);
+}
+
 TEST_CASE("Button momentary and toggle semantics fire callbacks only when enabled",
           "[gui]")
 {

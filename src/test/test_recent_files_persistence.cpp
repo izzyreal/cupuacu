@@ -1,8 +1,14 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include "TestSdlTtfGuard.hpp"
 #include "TestPaths.hpp"
 #include "actions/DocumentLifecycle.hpp"
+#include "actions/Zoom.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
+#include "gui/DocumentSessionWindow.hpp"
+#include "gui/Gui.hpp"
+#include "gui/keyboard_handling.hpp"
 #include "persistence/RecentFilesPersistence.hpp"
 #include "persistence/SessionStatePersistence.hpp"
 
@@ -107,12 +113,35 @@ TEST_CASE("Session state persistence round-trips open files and active index",
     ScopedCleanup cleanup(path);
 
     cupuacu::persistence::PersistedSessionState state{};
+    state.openDocuments = {
+        {
+            .filePath = "/tmp/open-a.wav",
+            .samplesPerPixel = 2.5,
+            .sampleOffset = 17,
+            .selectionStart = 3,
+            .selectionEndExclusive = 11,
+        },
+        {
+            .filePath = "/tmp/open-b.wav",
+            .samplesPerPixel = 4.0,
+            .sampleOffset = 29,
+        },
+    };
     state.openFiles = {"/tmp/open-a.wav", "/tmp/open-b.wav"};
     state.activeOpenFileIndex = 1;
 
     REQUIRE(cupuacu::persistence::SessionStatePersistence::save(path, state));
 
     const auto loaded = cupuacu::persistence::SessionStatePersistence::load(path);
+    REQUIRE(loaded.openDocuments.size() == 2);
+    REQUIRE(loaded.openDocuments[0].filePath == "/tmp/open-a.wav");
+    REQUIRE(loaded.openDocuments[0].samplesPerPixel == Catch::Approx(2.5));
+    REQUIRE(loaded.openDocuments[0].sampleOffset == 17);
+    REQUIRE(loaded.openDocuments[0].selectionStart == 3);
+    REQUIRE(loaded.openDocuments[0].selectionEndExclusive == 11);
+    REQUIRE(loaded.openDocuments[1].filePath == "/tmp/open-b.wav");
+    REQUIRE(loaded.openDocuments[1].samplesPerPixel == Catch::Approx(4.0));
+    REQUIRE(loaded.openDocuments[1].sampleOffset == 29);
     REQUIRE(loaded.openFiles ==
             std::vector<std::string>{"/tmp/open-a.wav", "/tmp/open-b.wav"});
     REQUIRE(loaded.activeOpenFileIndex == 1);
@@ -128,11 +157,35 @@ TEST_CASE("Session state persistence rejects malformed payloads", "[persistence]
     {
         std::ofstream out(path);
         REQUIRE(out.good());
-        out << R"({"version":1,"openFiles":[1,2,3],"activeOpenFileIndex":0})";
+        out << R"({"version":2,"openDocuments":[{"filePath":123}],"activeOpenFileIndex":0})";
     }
 
     REQUIRE(cupuacu::persistence::SessionStatePersistence::load(path)
                 .openFiles.empty());
+}
+
+TEST_CASE("Session state persistence loads legacy version 1 open files",
+          "[persistence]")
+{
+    const auto root = cupuacu::test::makeUniqueTestRoot("session-state-legacy");
+    const auto path = root / "session_state.json";
+    ScopedCleanup cleanup(path);
+
+    std::filesystem::create_directories(path.parent_path());
+    {
+        std::ofstream out(path);
+        REQUIRE(out.good());
+        out << R"({"version":1,"openFiles":["/tmp/legacy-a.wav","/tmp/legacy-b.wav"],"activeOpenFileIndex":1})";
+    }
+
+    const auto loaded = cupuacu::persistence::SessionStatePersistence::load(path);
+    REQUIRE(loaded.openFiles ==
+            std::vector<std::string>{"/tmp/legacy-a.wav",
+                                     "/tmp/legacy-b.wav"});
+    REQUIRE(loaded.openDocuments.size() == 2);
+    REQUIRE(loaded.openDocuments[0].filePath == "/tmp/legacy-a.wav");
+    REQUIRE_FALSE(loaded.openDocuments[0].samplesPerPixel.has_value());
+    REQUIRE(loaded.activeOpenFileIndex == 1);
 }
 
 TEST_CASE("Startup document restore plan restores multiple open files and active tab",
@@ -216,11 +269,28 @@ TEST_CASE("Persisted open session state captures open file tabs and the active f
     state.recentFiles = {"/tmp/recent-a.wav", "/tmp/recent-b.wav"};
     state.tabs.resize(3);
     state.tabs[0].session.currentFile = "/tmp/open-a.wav";
+    state.tabs[0].viewState.samplesPerPixel = 3.5;
+    state.tabs[0].viewState.sampleOffset = 21;
+    state.tabs[0].session.selection.setHighest(64.0);
+    state.tabs[0].session.selection.setValue1(5.0);
+    state.tabs[0].session.selection.setValue2(14.0);
     state.tabs[1].session.currentFile.clear();
     state.tabs[2].session.currentFile = "/tmp/open-b.wav";
+    state.tabs[2].viewState.samplesPerPixel = 1.25;
+    state.tabs[2].viewState.sampleOffset = 7;
     state.activeTabIndex = 2;
 
     const auto persisted = cupuacu::actions::buildPersistedOpenSessionState(&state);
+    REQUIRE(persisted.openDocuments.size() == 2);
+    REQUIRE(persisted.openDocuments[0].filePath == "/tmp/open-a.wav");
+    REQUIRE(persisted.openDocuments[0].samplesPerPixel == Catch::Approx(3.5));
+    REQUIRE(persisted.openDocuments[0].sampleOffset == 21);
+    REQUIRE(persisted.openDocuments[0].selectionStart == 5);
+    REQUIRE(persisted.openDocuments[0].selectionEndExclusive == 14);
+    REQUIRE(persisted.openDocuments[1].filePath == "/tmp/open-b.wav");
+    REQUIRE(persisted.openDocuments[1].samplesPerPixel == Catch::Approx(1.25));
+    REQUIRE(persisted.openDocuments[1].sampleOffset == 7);
+    REQUIRE_FALSE(persisted.openDocuments[1].selectionStart.has_value());
     REQUIRE(persisted.openFiles ==
             std::vector<std::string>{"/tmp/open-a.wav", "/tmp/open-b.wav"});
     REQUIRE(persisted.activeOpenFileIndex == 1);
@@ -251,6 +321,86 @@ TEST_CASE("Persisted recent files and session state save to separate files",
     REQUIRE(loadedSession.openFiles ==
             std::vector<std::string>{"/tmp/open-a.wav", "/tmp/open-b.wav"});
     REQUIRE(loadedSession.activeOpenFileIndex == 1);
+}
+
+TEST_CASE("Persisted session state saves updated zoom and offset for an open document",
+          "[persistence]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    const auto root =
+        cupuacu::test::makeUniqueTestRoot("session-persist-zoom-save");
+    ScopedCleanup cleanup(root / "placeholder");
+
+    cupuacu::test::StateWithTestPaths state{root};
+    state.tabs.resize(1);
+    state.tabs[0].session.currentFile = "/tmp/open-a.wav";
+    state.tabs[0].session.document.initialize(
+        cupuacu::SampleFormat::PCM_S16, 44100, 1, 8192);
+    state.activeTabIndex = 0;
+
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &state.getActiveDocumentSession(), &state.getActiveViewState(),
+            "main", 800, 400, SDL_WINDOW_HIDDEN);
+    cupuacu::gui::buildComponents(
+        &state, state.mainDocumentSessionWindow->getWindow());
+
+    auto &viewState = state.getActiveViewState();
+    viewState.samplesPerPixel = 8.0;
+    viewState.sampleOffset = 64;
+    REQUIRE(cupuacu::actions::tryZoomInHorizontally(&state));
+    const double expectedSamplesPerPixel = viewState.samplesPerPixel;
+    const int64_t expectedSampleOffset = viewState.sampleOffset;
+
+    cupuacu::actions::persistSessionState(&state);
+
+    const auto loadedSession =
+        cupuacu::persistence::SessionStatePersistence::load(
+            state.paths->sessionStatePath());
+    REQUIRE(loadedSession.openDocuments.size() == 1);
+    REQUIRE(loadedSession.openDocuments[0].filePath == "/tmp/open-a.wav");
+    REQUIRE(loadedSession.openDocuments[0].samplesPerPixel ==
+            Catch::Approx(expectedSamplesPerPixel));
+    REQUIRE(loadedSession.openDocuments[0].sampleOffset ==
+            expectedSampleOffset);
+}
+
+TEST_CASE("Primary-modifier Q does not apply horizontal zoom-out",
+          "[persistence]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.tabs.resize(1);
+    state.tabs[0].session.document.initialize(
+        cupuacu::SampleFormat::PCM_S16, 44100, 1, 8192);
+    state.activeTabIndex = 0;
+
+    state.mainDocumentSessionWindow =
+        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+            &state, &state.getActiveDocumentSession(), &state.getActiveViewState(),
+            "main", 800, 400, SDL_WINDOW_HIDDEN);
+    cupuacu::gui::buildComponents(
+        &state, state.mainDocumentSessionWindow->getWindow());
+
+    auto &viewState = state.getActiveViewState();
+    viewState.samplesPerPixel = 4.0;
+    viewState.sampleOffset = 64;
+
+    SDL_Event event{};
+    event.type = SDL_EVENT_KEY_DOWN;
+    event.key.scancode = SDL_SCANCODE_Q;
+#if __APPLE__
+    event.key.mod = SDL_KMOD_GUI;
+#else
+    event.key.mod = SDL_KMOD_CTRL;
+#endif
+
+    cupuacu::gui::handleKeyDown(&event, &state);
+
+    REQUIRE(viewState.samplesPerPixel == Catch::Approx(4.0));
+    REQUIRE(viewState.sampleOffset == 64);
 }
 
 TEST_CASE("Document lifecycle helpers can skip persistence when requested",

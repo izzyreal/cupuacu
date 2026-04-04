@@ -142,6 +142,10 @@ namespace cupuacu::gui
         {
             closeRequested = true;
         }
+        bool isDispatching() const
+        {
+            return dispatchDepth > 0;
+        }
         void updateHoverFromCurrentMousePosition();
         void renderFrame();
         void renderFrameIfDirty();
@@ -180,6 +184,7 @@ namespace cupuacu::gui
         std::function<void()> cancelAction;
         std::function<void()> onClose;
         bool closeRequested = false;
+        int dispatchDepth = 0;
 
         void close();
         bool isEventForWindow(const SDL_Event &event) const;

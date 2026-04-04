@@ -61,7 +61,8 @@ namespace cupuacu::gui
 
         if (event->key.scancode == SDL_SCANCODE_Q)
         {
-            if (actions::tryZoomOutHorizontally(state))
+            if (!primaryModifierHeld &&
+                actions::tryZoomOutHorizontally(state))
             {
                 updateWaveforms(state);
             }
