@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "IntegrationTestHelpers.hpp"
+#include "../TestSdlLogSilencer.hpp"
 #include "../TestPaths.hpp"
 
 #include "State.hpp"
@@ -90,6 +91,30 @@ namespace
             std::make_unique<cupuacu::gui::DocumentSessionWindow>(
                 state, &session, &state->getActiveViewState(), "built-session", width, height,
                 SDL_WINDOW_HIDDEN);
+        cupuacu::gui::buildComponents(state,
+                                      state->mainDocumentSessionWindow->getWindow());
+
+        return {};
+    }
+
+    BuiltSessionUi createBuiltEmptySessionUi(cupuacu::State *state,
+                                             const int width = 800,
+                                             const int height = 400)
+    {
+        cupuacu::test::ensureSdlTtfInitialized();
+        cupuacu::test::ensureTestPaths(*state, "event-and-waveform-runtime");
+
+        auto &session = state->getActiveDocumentSession();
+        session.clearCurrentFile();
+        session.document.initialize(cupuacu::SampleFormat::Unknown, 0, 0, 0);
+        session.selection.reset();
+        session.cursor = 0;
+        session.syncSelectionAndCursorToDocumentLength();
+
+        state->mainDocumentSessionWindow =
+            std::make_unique<cupuacu::gui::DocumentSessionWindow>(
+                state, &session, &state->getActiveViewState(), "built-session",
+                width, height, SDL_WINDOW_HIDDEN);
         cupuacu::gui::buildComponents(state,
                                       state->mainDocumentSessionWindow->getWindow());
 
@@ -573,6 +598,7 @@ TEST_CASE("Startup document restore integration reopens multiple file-backed tab
 TEST_CASE("Startup document restore integration skips unreadable existing paths",
           "[integration]")
 {
+    cupuacu::test::ScopedSdlLogSilencer silenceLogs;
     ScopedDirCleanup cleanup(
         makeUniqueTempDir("cupuacu-startup-restore-unreadable"));
     const auto validPath = cleanup.path() / "valid.wav";
@@ -581,7 +607,7 @@ TEST_CASE("Startup document restore integration skips unreadable existing paths"
     std::filesystem::create_directories(unreadablePath);
 
     cupuacu::test::StateWithTestPaths state{};
-    createBuiltSessionUi(&state, 8);
+    createBuiltEmptySessionUi(&state);
 
     cupuacu::persistence::PersistedSessionState persistedState{};
     persistedState.openFiles = {unreadablePath.string(), validPath.string()};

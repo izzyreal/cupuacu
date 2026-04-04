@@ -3,6 +3,7 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #include "State.hpp"
+#include "TestSdlLogSilencer.hpp"
 #include "TestPaths.hpp"
 #include "actions/DocumentLifecycle.hpp"
 #include "file/SndfilePath.hpp"
@@ -254,6 +255,7 @@ TEST_CASE("Loading a missing file throws a descriptive error", "[session]")
 
 TEST_CASE("Opening a file failure preserves the existing session", "[session]")
 {
+    cupuacu::test::ScopedSdlLogSilencer silenceLogs;
     ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-open-preserve"));
     const auto goodPath = cleanup.path() / "good.wav";
     const auto unreadablePath = cleanup.path() / "not-audio";
@@ -290,6 +292,7 @@ TEST_CASE("Opening a file failure preserves the existing session", "[session]")
 
 TEST_CASE("Startup restore skips unreadable existing paths", "[session]")
 {
+    cupuacu::test::ScopedSdlLogSilencer silenceLogs;
     ScopedDirCleanup cleanup(
         makeUniqueTempDir("cupuacu-test-startup-restore-unreadable"));
     const auto validPath = cleanup.path() / "valid.wav";

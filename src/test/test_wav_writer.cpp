@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "State.hpp"
+#include "TestSdlLogSilencer.hpp"
 #include "TestPaths.hpp"
 #include "actions/Save.hpp"
 #include "file/AudioExport.hpp"
@@ -340,6 +341,7 @@ TEST_CASE("Save as normalizes the output extension to the selected format",
 
 TEST_CASE("Save as reports failure without mutating session state", "[file]")
 {
+    cupuacu::test::ScopedSdlLogSilencer silenceLogs;
     ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-save-as-failure"));
     const auto blockedParent = cleanup.path() / "blocked";
     const auto requestedPath = blockedParent / "saved.wav";
@@ -375,6 +377,7 @@ TEST_CASE("Save as reports failure without mutating session state", "[file]")
 TEST_CASE("Overwrite reports failure instead of throwing on invalid target",
           "[file]")
 {
+    cupuacu::test::ScopedSdlLogSilencer silenceLogs;
     ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-overwrite-failure"));
     const auto invalidTarget = cleanup.path() / "not-a-file";
     std::filesystem::create_directories(invalidTarget);
