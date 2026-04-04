@@ -196,6 +196,7 @@ TEST_CASE("DropdownMenu toggles popup state while keeping collapsed labels in pl
     dropdown.setBounds(0, 0, 160, 30);
     dropdown.setItems({"Alpha", "Beta", "Gamma"});
     dropdown.setCollapsedHeight(30);
+    const int collapsedHeight = dropdown.getHeight();
 
     auto labels = labelChildren(&dropdown);
     REQUIRE(labels.size() == 3);
@@ -216,7 +217,7 @@ TEST_CASE("DropdownMenu toggles popup state while keeping collapsed labels in pl
         1}));
 
     REQUIRE(dropdown.isExpanded());
-    REQUIRE(dropdown.getHeight() == 30);
+    REQUIRE(dropdown.getHeight() == collapsedHeight);
     REQUIRE(labels[0]->isVisible());
     REQUIRE_FALSE(labels[1]->isVisible());
     REQUIRE_FALSE(labels[2]->isVisible());
@@ -234,6 +235,7 @@ TEST_CASE("DropdownMenu toggles popup state while keeping collapsed labels in pl
 
     REQUIRE_FALSE(dropdown.isExpanded());
     REQUIRE(dropdown.getSelectedIndex() == 0);
+    REQUIRE(dropdown.getHeight() == collapsedHeight);
 }
 
 TEST_CASE("DropdownMenu expansion keeps the collapsed control bounds unchanged",
