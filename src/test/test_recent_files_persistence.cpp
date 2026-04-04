@@ -356,8 +356,6 @@ TEST_CASE("Persisted session state saves updated zoom and offset for an open doc
 TEST_CASE("Primary-modifier Q does not apply horizontal zoom-out",
           "[persistence]")
 {
-    cupuacu::test::ensureSdlTtfInitialized();
-
     cupuacu::test::StateWithTestPaths state{};
     state.tabs.resize(1);
     state.tabs[0].session.document.initialize(
@@ -368,8 +366,6 @@ TEST_CASE("Primary-modifier Q does not apply horizontal zoom-out",
         std::make_unique<cupuacu::gui::DocumentSessionWindow>(
             &state, &state.getActiveDocumentSession(), &state.getActiveViewState(),
             "main", 800, 400, SDL_WINDOW_HIDDEN);
-    cupuacu::gui::buildComponents(
-        &state, state.mainDocumentSessionWindow->getWindow());
 
     auto &viewState = state.getActiveViewState();
     viewState.samplesPerPixel = 4.0;
