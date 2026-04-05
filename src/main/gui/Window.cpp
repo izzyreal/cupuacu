@@ -723,6 +723,16 @@ bool Window::handleEvent(const SDL_Event &event)
             defaultAction)
         {
             defaultAction();
+            if (closeRequested)
+            {
+                closeRequested = false;
+                if (onClose)
+                {
+                    onClose();
+                }
+                close();
+            }
+            --dispatchDepth;
             return true;
         }
 
@@ -731,6 +741,16 @@ bool Window::handleEvent(const SDL_Event &event)
             if (cancelAction)
             {
                 cancelAction();
+                if (closeRequested)
+                {
+                    closeRequested = false;
+                    if (onClose)
+                    {
+                        onClose();
+                    }
+                    close();
+                }
+                --dispatchDepth;
                 return true;
             }
 

@@ -598,6 +598,37 @@ TEST_CASE("Secondary window integration handles escape-close callback",
     REQUIRE_FALSE(window->isOpen());
 }
 
+TEST_CASE("Secondary window integration handles escape-close through cancel action immediately",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "secondary-window-escape-cancel-action", 320, 240,
+        SDL_WINDOW_HIDDEN);
+
+    int cancelActionCount = 0;
+    int onCloseCount = 0;
+    window->setCancelAction(
+        [&]()
+        {
+            ++cancelActionCount;
+            window->requestClose();
+        });
+    window->setOnClose([&]() { ++onCloseCount; });
+
+    SDL_Event event{};
+    event.type = SDL_EVENT_KEY_DOWN;
+    event.key.windowID = window->getId();
+    event.key.scancode = SDL_SCANCODE_ESCAPE;
+
+    REQUIRE(window->handleEvent(event));
+    REQUIRE(cancelActionCount == 1);
+    REQUIRE(onCloseCount == 1);
+    REQUIRE_FALSE(window->isOpen());
+}
+
 TEST_CASE("Window integration forwards key and text input to focused component",
           "[integration]")
 {
