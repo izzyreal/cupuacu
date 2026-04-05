@@ -10,7 +10,8 @@ using namespace cupuacu::actions::audio;
 
 SamplePoint::SamplePoint(State *state, const uint8_t channelIndexToUse,
                          const int64_t sampleIndexToUse)
-    : Component(state, "Sample point idx " + std::to_string(sampleIndexToUse)),
+    : ControlPointHandle(state, "Sample point idx " +
+                                    std::to_string(sampleIndexToUse)),
       sampleIndex(sampleIndexToUse), channelIndex(channelIndexToUse)
 {
 }
@@ -23,17 +24,7 @@ uint64_t SamplePoint::getSampleIndex() const
 float SamplePoint::getSampleValue() const
 {
     return state->getActiveDocumentSession().document.getSample(channelIndex,
-                                                           sampleIndex);
-}
-
-void SamplePoint::mouseEnter()
-{
-    setDirty();
-}
-
-void SamplePoint::mouseLeave()
-{
-    setDirty();
+                                                                sampleIndex);
 }
 
 bool SamplePoint::mouseDown(const MouseEvent &e)
@@ -44,6 +35,7 @@ bool SamplePoint::mouseDown(const MouseEvent &e)
     }
 
     isDragging = true;
+    setActive(true);
     dragYPos = getYPos();
 
     undoable = std::make_shared<SetSampleValue>(state, channelIndex,
@@ -68,17 +60,18 @@ bool SamplePoint::mouseUp(const MouseEvent &e)
 
     state->addUndoable(undoable);
     auto &waveformCache =
-        state->getActiveDocumentSession().document.getWaveformCache(channelIndex);
+        state->getActiveDocumentSession().document.getWaveformCache(
+            channelIndex);
     waveformCache.invalidateSample(sampleIndex);
-    waveformCache.rebuildDirty(
-        state->getActiveDocumentSession().document.getAudioBuffer()
-            ->getImmutableChannelData(channelIndex)
-            .data());
+    waveformCache.rebuildDirty(state->getActiveDocumentSession()
+                                   .document.getAudioBuffer()
+                                   ->getImmutableChannelData(channelIndex)
+                                   .data());
 
     undoable.reset();
 
     isDragging = false;
-    setDirty();
+    setActive(false);
 
     return true;
 }
@@ -101,18 +94,10 @@ bool SamplePoint::mouseMove(const MouseEvent &e)
     dragYPos = dragPlan.clampedY;
 
     setYPos(dragYPos);
-    state->getActiveDocumentSession().document.setSample(channelIndex, sampleIndex,
-                                                    dragPlan.sampleValue);
+    state->getActiveDocumentSession().document.setSample(
+        channelIndex, sampleIndex, dragPlan.sampleValue);
     updateSampleValueUnderMouseCursor(state, dragPlan.sampleValue, channelIndex,
                                       sampleIndex);
 
     return true;
-}
-
-void SamplePoint::onDraw(SDL_Renderer *r)
-{
-    SDL_SetRenderDrawColor(r, 0, isMouseOver() || isDragging ? 255 : 185, 0,
-                           255);
-    const SDL_FRect rectToFill{0, 0, (float)getWidth(), (float)getHeight()};
-    SDL_RenderFillRect(r, &rectToFill);
 }

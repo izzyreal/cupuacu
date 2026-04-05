@@ -66,9 +66,11 @@ namespace cupuacu::gui
         auto &cursors = getCursorSet();
         cleanupCursors();
 
-        cursors.defaultCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_DEFAULT);
+        cursors.defaultCursor =
+            SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_DEFAULT);
         cursors.textCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_TEXT);
-        cursors.pointerCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_POINTER);
+        cursors.pointerCursor =
+            SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_POINTER);
         cursors.currentCursor = cursors.defaultCursor;
 
         cursors.selectLCursor = loadCustomCursor("select_l.bmp", 0, 0);
@@ -115,8 +117,7 @@ namespace cupuacu::gui
             return;
         }
         auto &cursors = getCursorSet();
-        const auto &viewState =
-            state->getActiveViewState();
+        const auto &viewState = state->getActiveViewState();
 
         SDL_Cursor *newCursor = cursors.defaultCursor;
         const SDL_Window *focus = SDL_GetKeyboardFocus();
@@ -150,7 +151,7 @@ namespace cupuacu::gui
                 newCursor = cursors.textCursor;
             }
         }
-        else if (dynamic_cast<const SamplePoint *>(
+        else if (dynamic_cast<const ControlPointHandle *>(
                      window->getComponentUnderMouse()) ||
                  dynamic_cast<const TriangleMarker *>(
                      window->getComponentUnderMouse()))
@@ -250,8 +251,8 @@ namespace cupuacu::gui
             case SDL_EVENT_MOUSE_WHEEL:
                 if (const SDL_Window *mouseFocus = SDL_GetMouseFocus())
                 {
-                    return findById(SDL_GetWindowID(
-                        const_cast<SDL_Window *>(mouseFocus)));
+                    return findById(
+                        SDL_GetWindowID(const_cast<SDL_Window *>(mouseFocus)));
                 }
                 break;
             case SDL_EVENT_KEY_DOWN:

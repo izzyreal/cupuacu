@@ -44,6 +44,10 @@ namespace cupuacu::gui
         }
         void setText(const std::string &newText)
         {
+            if (text == newText)
+            {
+                return;
+            }
             text = newText;
             setDirty();
         }

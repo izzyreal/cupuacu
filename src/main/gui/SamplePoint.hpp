@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Component.hpp"
+#include "ControlPointHandle.hpp"
 #include "../State.hpp"
 
 namespace cupuacu::actions::audio
@@ -11,7 +11,7 @@ namespace cupuacu::actions::audio
 namespace cupuacu::gui
 {
 
-    class SamplePoint : public Component
+    class SamplePoint : public ControlPointHandle
     {
     private:
         const int64_t sampleIndex;
@@ -28,11 +28,8 @@ namespace cupuacu::gui
         uint64_t getSampleIndex() const;
         float getSampleValue() const;
 
-        void mouseEnter() override;
-        void mouseLeave() override;
         bool mouseDown(const MouseEvent &) override;
         bool mouseUp(const MouseEvent &) override;
         bool mouseMove(const MouseEvent &) override;
-        void onDraw(SDL_Renderer *) override;
     };
 } // namespace cupuacu::gui

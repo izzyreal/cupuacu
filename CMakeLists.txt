@@ -124,6 +124,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/gui/NewFileDialogWindow.cpp
     src/main/gui/GenerateSilenceDialogWindow.cpp
     src/main/gui/ExportAudioDialogWindow.cpp
+    src/main/effects/AmplifyEnvelopeEffect.cpp
     src/main/effects/AmplifyFadeEffect.cpp
     src/main/effects/DynamicsEffect.cpp
     src/main/effects/RemoveSilenceEffect.cpp
@@ -133,6 +134,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/gui/WaveformsUnderlay.cpp
     src/main/gui/Waveforms.cpp
     src/main/gui/Waveform.cpp
+    src/main/gui/ControlPointHandle.cpp
     src/main/gui/SamplePoint.cpp
     src/main/gui/Menu.cpp
     src/main/gui/MenuBar.cpp
@@ -157,6 +159,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_sample_quantization.cpp
     src/test/test_audio_callback_core.cpp
     src/test/test_action_undoables.cpp
+    src/test/test_amplify_envelope_effect.cpp
     src/test/test_audio_devices_orchestration.cpp
     src/test/test_menu_bar_labels.cpp
     src/test/test_window_mouse_routing.cpp

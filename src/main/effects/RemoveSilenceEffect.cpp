@@ -26,9 +26,10 @@ namespace
     {
         int windowWidth = kFallbackWindowWidth;
         int windowHeight = kFallbackWindowHeight;
-        if (auto *mainWindow = state && state->mainDocumentSessionWindow
-                                   ? state->mainDocumentSessionWindow->getWindow()
-                                   : nullptr;
+        if (auto *mainWindow =
+                state && state->mainDocumentSessionWindow
+                    ? state->mainDocumentSessionWindow->getWindow()
+                    : nullptr;
             mainWindow && mainWindow->getSdlWindow())
         {
             int mainW = 0;
@@ -55,7 +56,8 @@ namespace
             return stream.str();
         }
 
-        const auto format = state->getActiveDocumentSession().document.getSampleFormat();
+        const auto format =
+            state->getActiveDocumentSession().document.getSampleFormat();
         if (removeSilenceThresholdUnitFromIndex(settings.thresholdUnitIndex) ==
             RemoveSilenceThresholdUnit::Db)
         {
@@ -72,7 +74,8 @@ namespace
         return stream.str();
     }
 
-    bool parseThresholdText(cupuacu::State *state, RemoveSilenceSettings &settings,
+    bool parseThresholdText(cupuacu::State *state,
+                            RemoveSilenceSettings &settings,
                             const std::string &text)
     {
         if (!state)
@@ -83,8 +86,10 @@ namespace
         try
         {
             const double value = std::stod(text);
-            const auto format = state->getActiveDocumentSession().document.getSampleFormat();
-            if (removeSilenceThresholdUnitFromIndex(settings.thresholdUnitIndex) ==
+            const auto format =
+                state->getActiveDocumentSession().document.getSampleFormat();
+            if (removeSilenceThresholdUnitFromIndex(
+                    settings.thresholdUnitIndex) ==
                 RemoveSilenceThresholdUnit::Db)
             {
                 settings.thresholdDb = std::clamp(value, -120.0, 0.0);
@@ -102,7 +107,8 @@ namespace
         }
     }
 
-    void applyAutoThreshold(RemoveSilenceSettings &settings, cupuacu::State *state)
+    void applyAutoThreshold(RemoveSilenceSettings &settings,
+                            cupuacu::State *state)
     {
         if (!state)
         {
@@ -121,12 +127,11 @@ namespace
         const double absolute = computeAutoSilenceThresholdAbsolute(
             document, channels, startFrame, frameCount);
         settings.thresholdDb = thresholdDbFromAbsolute(absolute);
-        settings.thresholdSampleValue =
-            thresholdSampleValueFromAbsolute(document.getSampleFormat(), absolute);
+        settings.thresholdSampleValue = thresholdSampleValueFromAbsolute(
+            document.getSampleFormat(), absolute);
     }
 
-    class RemoveSilencePreview
-        : public cupuacu::gui::Component
+    class RemoveSilencePreview : public cupuacu::gui::Component
     {
     public:
         explicit RemoveSilencePreview(cupuacu::State *stateToUse)
@@ -145,7 +150,8 @@ namespace
 
             int64_t startFrame = 0;
             int64_t frameCount = 0;
-            if (!getTargetRange(state, startFrame, frameCount) || frameCount <= 0)
+            if (!getTargetRange(state, startFrame, frameCount) ||
+                frameCount <= 0)
             {
                 return;
             }
@@ -175,14 +181,14 @@ namespace
                         SDL_Rect translated = *rect;
                         translated.x += bounds.x;
                         translated.y += laneY;
-                        Helpers::fillRect(renderer, translated, kPreviewOverlayColor);
+                        Helpers::fillRect(renderer, translated,
+                                          kPreviewOverlayColor);
                     }
                 }
 
-                SDL_SetRenderDrawColor(renderer, kPreviewWaveformColor.r,
-                                       kPreviewWaveformColor.g,
-                                       kPreviewWaveformColor.b,
-                                       kPreviewWaveformColor.a);
+                SDL_SetRenderDrawColor(
+                    renderer, kPreviewWaveformColor.r, kPreviewWaveformColor.g,
+                    kPreviewWaveformColor.b, kPreviewWaveformColor.a);
                 const auto &laneColumns =
                     cachedChannelColumns[static_cast<std::size_t>(laneIndex)];
                 for (const auto &column : laneColumns)
@@ -198,10 +204,9 @@ namespace
                                    static_cast<float>(y2));
                 }
 
-                SDL_SetRenderDrawColor(renderer, kPreviewMidlineColor.r,
-                                       kPreviewMidlineColor.g,
-                                       kPreviewMidlineColor.b,
-                                       kPreviewMidlineColor.a);
+                SDL_SetRenderDrawColor(
+                    renderer, kPreviewMidlineColor.r, kPreviewMidlineColor.g,
+                    kPreviewMidlineColor.b, kPreviewMidlineColor.a);
                 SDL_RenderLine(renderer, static_cast<float>(bounds.x),
                                static_cast<float>(midY),
                                static_cast<float>(bounds.x + bounds.w),
@@ -275,24 +280,27 @@ namespace
             }
 
             cachedKey = key;
-            cachedSamplesPerPixel =
-                std::max(1.0, static_cast<double>(frameCount) / std::max(1, width));
+            cachedSamplesPerPixel = std::max(
+                1.0, static_cast<double>(frameCount) / std::max(1, width));
             cachedRuns = planSilenceRemoval(
                 document, channels, startFrame, frameCount,
-                currentThresholdAbsolute(state, state->effectSettings.removeSilence),
+                currentThresholdAbsolute(state,
+                                         state->effectSettings.removeSilence),
                 removeSilenceModeFromIndex(
                     state->effectSettings.removeSilence.modeIndex),
                 state->effectSettings.removeSilence);
 
             cachedChannelColumns.clear();
             for (std::size_t laneIndex = 0;
-                 laneIndex < std::min<std::size_t>(channels.size(), std::size_t{2});
+                 laneIndex <
+                 std::min<std::size_t>(channels.size(), std::size_t{2});
                  ++laneIndex)
             {
                 cachedChannelColumns.push_back(
                     cupuacu::gui::planWaveformOverviewPeakColumns(
-                        document, static_cast<int>(channels[laneIndex]), startFrame,
-                        cachedSamplesPerPixel, width, state->pixelScale));
+                        document, static_cast<int>(channels[laneIndex]),
+                        startFrame, cachedSamplesPerPixel, width,
+                        state->pixelScale));
             }
         }
     };
@@ -301,8 +309,9 @@ namespace
         : public EffectPreviewPanel<RemoveSilenceSettings>
     {
     public:
-        void build(cupuacu::State *state,
-                   cupuacu::gui::Component *root) override
+        void
+        build(cupuacu::State *state, cupuacu::gui::Component *root,
+              std::function<void(const RemoveSilenceSettings &, bool)>) override
         {
             ownerState = state;
             preview = root->emplaceChild<RemoveSilencePreview>(state);
@@ -322,9 +331,9 @@ namespace
             {
                 return;
             }
-            const int previewHeight =
-                std::max(ownerState ? cupuacu::gui::scaleUi(ownerState, 180.0f) : 180,
-                         bounds.h);
+            const int previewHeight = std::max(
+                ownerState ? cupuacu::gui::scaleUi(ownerState, 180.0f) : 180,
+                bounds.h);
             preview->setBounds(bounds.x, bounds.y, bounds.w, previewHeight);
         }
 
@@ -333,8 +342,7 @@ namespace
         RemoveSilencePreview *preview = nullptr;
     };
 
-    EffectDialogDefinition<RemoveSilenceSettings>
-    makeRemoveSilenceDefinition()
+    EffectDialogDefinition<RemoveSilenceSettings> makeRemoveSilenceDefinition()
     {
         EffectDialogDefinition<RemoveSilenceSettings> definition{};
         definition.title = "Remove silence";
@@ -434,7 +442,8 @@ namespace
 
 RemoveSilenceDialog::RemoveSilenceDialog(cupuacu::State *stateToUse)
 {
-    const auto [windowWidth, windowHeight] = removeSilenceWindowSize(stateToUse);
+    const auto [windowWidth, windowHeight] =
+        removeSilenceWindowSize(stateToUse);
     dialog = std::make_unique<EffectDialogWindow<RemoveSilenceSettings>>(
         stateToUse, makeRemoveSilenceDefinition(), windowWidth, windowHeight);
 }

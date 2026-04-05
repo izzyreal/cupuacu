@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 namespace cupuacu::effects
 {
     struct AmplifyFadeSettings
@@ -25,9 +27,24 @@ namespace cupuacu::effects
         double minimumSilenceLengthMs = 10.0;
     };
 
+    struct AmplifyEnvelopePoint
+    {
+        double position = 0.0;
+        double percent = 100.0;
+    };
+
+    struct AmplifyEnvelopeSettings
+    {
+        std::vector<AmplifyEnvelopePoint> points{
+            AmplifyEnvelopePoint{0.0, 100.0}, AmplifyEnvelopePoint{1.0, 100.0}};
+        bool snapEnabled = false;
+        double fadeLengthMs = 100.0;
+    };
+
     struct EffectSettings
     {
         AmplifyFadeSettings amplifyFade{};
+        AmplifyEnvelopeSettings amplifyEnvelope{};
         DynamicsSettings dynamics{};
         RemoveSilenceSettings removeSilence{};
     };

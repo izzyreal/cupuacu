@@ -45,11 +45,13 @@ namespace cupuacu
 
     namespace effects
     {
+        class AmplifyEnvelopeDialog;
         class AmplifyFadeDialog;
         class DynamicsDialog;
         class RemoveSilenceDialog;
     } // namespace effects
 
+    void destroyAmplifyEnvelopeDialog(effects::AmplifyEnvelopeDialog *);
     void destroyAmplifyFadeDialog(effects::AmplifyFadeDialog *);
     void destroyDynamicsDialog(effects::DynamicsDialog *);
     void destroyRemoveSilenceDialog(effects::RemoveSilenceDialog *);
@@ -95,6 +97,9 @@ namespace cupuacu
         std::unique_ptr<effects::AmplifyFadeDialog,
                         void (*)(effects::AmplifyFadeDialog *)>
             amplifyFadeDialog{nullptr, destroyAmplifyFadeDialog};
+        std::unique_ptr<effects::AmplifyEnvelopeDialog,
+                        void (*)(effects::AmplifyEnvelopeDialog *)>
+            amplifyEnvelopeDialog{nullptr, destroyAmplifyEnvelopeDialog};
         std::unique_ptr<effects::DynamicsDialog,
                         void (*)(effects::DynamicsDialog *)>
             dynamicsDialog{nullptr, destroyDynamicsDialog};
@@ -117,8 +122,8 @@ namespace cupuacu
                 tabs.emplace_back();
                 activeTabIndex = 0;
             }
-            activeTabIndex =
-                std::clamp(activeTabIndex, 0, static_cast<int>(tabs.size()) - 1);
+            activeTabIndex = std::clamp(activeTabIndex, 0,
+                                        static_cast<int>(tabs.size()) - 1);
             return &tabs[activeTabIndex];
         }
 
@@ -195,8 +200,7 @@ static void resetSampleValueUnderMouseCursor(cupuacu::State *state)
 {
     if (state->mainDocumentSessionWindow)
     {
-        state->getActiveViewState()
-            .sampleValueUnderMouseCursor.reset();
+        state->getActiveViewState().sampleValueUnderMouseCursor.reset();
     }
 }
 
@@ -207,9 +211,8 @@ static void updateSampleValueUnderMouseCursor(cupuacu::State *state,
 {
     if (state->mainDocumentSessionWindow)
     {
-        state->getActiveViewState()
-            .sampleValueUnderMouseCursor.emplace(
-                cupuacu::gui::HoveredSampleInfo{sampleValue, channel, frame});
+        state->getActiveViewState().sampleValueUnderMouseCursor.emplace(
+            cupuacu::gui::HoveredSampleInfo{sampleValue, channel, frame});
     }
 }
 
@@ -245,7 +248,6 @@ static bool updateCursorPos(cupuacu::State *state, const int64_t cursorPos)
     auto &session = state->getActiveDocumentSession();
     const int64_t oldCursor = session.cursor;
     session.cursor =
-        std::clamp(cursorPos, int64_t{0},
-                   session.document.getFrameCount());
+        std::clamp(cursorPos, int64_t{0}, session.document.getFrameCount());
     return session.cursor != oldCursor;
 }

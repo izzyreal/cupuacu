@@ -1,5 +1,6 @@
 #include "State.hpp"
 
+#include "effects/AmplifyEnvelopeEffect.hpp"
 #include "effects/AmplifyFadeEffect.hpp"
 #include "effects/DynamicsEffect.hpp"
 #include "effects/RemoveSilenceEffect.hpp"
@@ -25,9 +26,16 @@ int64_t getMaxSampleOffset(const cupuacu::State *state)
         static_cast<double>(state->waveforms.front()->getWidth());
     const int64_t visibleSampleCount = static_cast<int64_t>(
         std::ceil(waveformWidth * viewState.samplesPerPixel));
-    const int64_t frameCount = state->getActiveDocumentSession().document.getFrameCount();
+    const int64_t frameCount =
+        state->getActiveDocumentSession().document.getFrameCount();
     const int64_t maxOffset = frameCount - visibleSampleCount;
     return std::max<int64_t>(0, maxOffset);
+}
+
+void cupuacu::destroyAmplifyEnvelopeDialog(
+    effects::AmplifyEnvelopeDialog *dialog)
+{
+    delete dialog;
 }
 
 void cupuacu::destroyAmplifyFadeDialog(effects::AmplifyFadeDialog *dialog)
@@ -61,7 +69,8 @@ void cupuacu::destroyGenerateSilenceDialogWindow(
     delete dialog;
 }
 
-void cupuacu::destroyExportAudioDialogWindow(gui::ExportAudioDialogWindow *dialog)
+void cupuacu::destroyExportAudioDialogWindow(
+    gui::ExportAudioDialogWindow *dialog)
 {
     delete dialog;
 }

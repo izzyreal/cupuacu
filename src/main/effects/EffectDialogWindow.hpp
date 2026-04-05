@@ -43,19 +43,20 @@ namespace cupuacu::effects
         Action
     };
 
-    template <typename Settings>
-    struct EffectParameterSpec
+    template <typename Settings> struct EffectParameterSpec
     {
         std::string id;
         std::string label;
         EffectParameterKind kind = EffectParameterKind::Percent;
+        bool placeInFooter = false;
         double minValue = 0.0;
         double maxValue = 0.0;
         std::vector<std::string> enumItems;
         std::string buttonText;
         std::function<double(const Settings &)> getPercent;
         std::function<void(Settings &, double)> setPercent;
-        std::function<std::string(cupuacu::State *, const Settings &)> formatNumber;
+        std::function<std::string(cupuacu::State *, const Settings &)>
+            formatNumber;
         std::function<bool(cupuacu::State *, Settings &, const std::string &)>
             parseNumber;
         std::string numberAllowedCharacters;
@@ -65,11 +66,11 @@ namespace cupuacu::effects
         std::function<void(Settings &, bool)> setToggle;
         std::function<void(Settings &, cupuacu::State *)> invokeAction;
 
-        static EffectParameterSpec percent(
-            std::string idToUse, std::string labelToUse, const double minToUse,
-            const double maxToUse,
-            std::function<double(const Settings &)> getter,
-            std::function<void(Settings &, double)> setter)
+        static EffectParameterSpec
+        percent(std::string idToUse, std::string labelToUse,
+                const double minToUse, const double maxToUse,
+                std::function<double(const Settings &)> getter,
+                std::function<void(Settings &, double)> setter)
         {
             EffectParameterSpec spec{};
             spec.id = std::move(idToUse);
@@ -82,11 +83,11 @@ namespace cupuacu::effects
             return spec;
         }
 
-        static EffectParameterSpec enumeration(
-            std::string idToUse, std::string labelToUse,
-            std::vector<std::string> itemsToUse,
-            std::function<int(const Settings &)> getter,
-            std::function<void(Settings &, int)> setter)
+        static EffectParameterSpec
+        enumeration(std::string idToUse, std::string labelToUse,
+                    std::vector<std::string> itemsToUse,
+                    std::function<int(const Settings &)> getter,
+                    std::function<void(Settings &, int)> setter)
         {
             EffectParameterSpec spec{};
             spec.id = std::move(idToUse);
@@ -98,12 +99,14 @@ namespace cupuacu::effects
             return spec;
         }
 
-        static EffectParameterSpec number(
-            std::string idToUse, std::string labelToUse,
-            std::function<std::string(cupuacu::State *, const Settings &)> formatter,
-            std::function<bool(cupuacu::State *, Settings &, const std::string &)>
-                parser,
-            std::string allowedCharactersToUse = "0123456789.-")
+        static EffectParameterSpec
+        number(std::string idToUse, std::string labelToUse,
+               std::function<std::string(cupuacu::State *, const Settings &)>
+                   formatter,
+               std::function<bool(cupuacu::State *, Settings &,
+                                  const std::string &)>
+                   parser,
+               std::string allowedCharactersToUse = "0123456789.-")
         {
             EffectParameterSpec spec{};
             spec.id = std::move(idToUse);
@@ -115,10 +118,11 @@ namespace cupuacu::effects
             return spec;
         }
 
-        static EffectParameterSpec toggle(
-            std::string idToUse, std::string buttonTextToUse,
-            std::function<bool(const Settings &)> getter,
-            std::function<void(Settings &, bool)> setter)
+        static EffectParameterSpec
+        toggle(std::string idToUse, std::string buttonTextToUse,
+               std::function<bool(const Settings &)> getter,
+               std::function<void(Settings &, bool)> setter,
+               const bool placeInFooterToUse = false)
         {
             EffectParameterSpec spec{};
             spec.id = std::move(idToUse);
@@ -126,31 +130,32 @@ namespace cupuacu::effects
             spec.buttonText = std::move(buttonTextToUse);
             spec.getToggle = std::move(getter);
             spec.setToggle = std::move(setter);
+            spec.placeInFooter = placeInFooterToUse;
             return spec;
         }
 
-        static EffectParameterSpec action(
-            std::string idToUse, std::string buttonTextToUse,
-            std::function<void(Settings &, cupuacu::State *)> callback)
+        static EffectParameterSpec
+        action(std::string idToUse, std::string buttonTextToUse,
+               std::function<void(Settings &, cupuacu::State *)> callback,
+               const bool placeInFooterToUse = false)
         {
             EffectParameterSpec spec{};
             spec.id = std::move(idToUse);
             spec.kind = EffectParameterKind::Action;
             spec.buttonText = std::move(buttonTextToUse);
             spec.invokeAction = std::move(callback);
+            spec.placeInFooter = placeInFooterToUse;
             return spec;
         }
     };
 
-    template <typename Settings>
-    struct EffectActionSpec
+    template <typename Settings> struct EffectActionSpec
     {
         std::string label;
         std::function<void(Settings &, cupuacu::State *)> apply;
     };
 
-    template <typename Settings>
-    class EffectPreviewSession
+    template <typename Settings> class EffectPreviewSession
     {
     public:
         virtual ~EffectPreviewSession() = default;
@@ -159,19 +164,18 @@ namespace cupuacu::effects
         virtual void updateSettings(const Settings &settings) = 0;
     };
 
-    template <typename Settings>
-    class EffectPreviewPanel
+    template <typename Settings> class EffectPreviewPanel
     {
     public:
         virtual ~EffectPreviewPanel() = default;
-        virtual void build(cupuacu::State *state,
-                           cupuacu::gui::Component *root) = 0;
+        virtual void build(
+            cupuacu::State *state, cupuacu::gui::Component *root,
+            std::function<void(const Settings &, bool)> onSettingsChanged) = 0;
         virtual void sync(const Settings &settings) = 0;
         virtual void layout(const SDL_Rect &bounds) = 0;
     };
 
-    template <typename Settings>
-    struct EffectDialogDefinition
+    template <typename Settings> struct EffectDialogDefinition
     {
         std::string title;
         std::function<Settings(cupuacu::State *)> loadSettings;
@@ -186,8 +190,7 @@ namespace cupuacu::effects
         std::vector<EffectActionSpec<Settings>> actions;
     };
 
-    template <typename Settings>
-    class EffectDialogWindow
+    template <typename Settings> class EffectDialogWindow
     {
     public:
         EffectDialogWindow(cupuacu::State *stateToUse,
@@ -215,10 +218,10 @@ namespace cupuacu::effects
 
             state->windows.push_back(window.get());
             state->modalWindow = window.get();
-            if (auto *mainWindow = state->mainDocumentSessionWindow
-                                       ? state->mainDocumentSessionWindow
-                                             ->getWindow()
-                                       : nullptr;
+            if (auto *mainWindow =
+                    state->mainDocumentSessionWindow
+                        ? state->mainDocumentSessionWindow->getWindow()
+                        : nullptr;
                 mainWindow && mainWindow->getSdlWindow())
             {
                 SDL_SetWindowParent(window->getSdlWindow(),
@@ -228,8 +231,9 @@ namespace cupuacu::effects
             auto rootComponent = std::make_unique<cupuacu::gui::Component>(
                 state, definition.title + "Root");
             rootComponent->setVisible(true);
-            background = rootComponent->template emplaceChild<cupuacu::gui::OpaqueRect>(
-                state, cupuacu::gui::Colors::background);
+            background =
+                rootComponent->template emplaceChild<cupuacu::gui::OpaqueRect>(
+                    state, cupuacu::gui::Colors::background);
 
             buildParameterControls(rootComponent.get());
             buildActionButtons(rootComponent.get());
@@ -239,26 +243,51 @@ namespace cupuacu::effects
                 previewPanel = definition.createPreviewPanel();
                 if (previewPanel)
                 {
-                    previewPanel->build(state, rootComponent.get());
+                    previewPanel->build(state, rootComponent.get(),
+                                        [this](const Settings &nextSettings,
+                                               const bool shouldRender)
+                                        {
+                                            updateSettings(
+                                                [&, nextSettings]
+                                                {
+                                                    settings = nextSettings;
+                                                },
+                                                shouldRender);
+                                        });
                 }
             }
 
             if (definition.createPreviewSession)
             {
                 previewButton =
-                    rootComponent->template emplaceChild<cupuacu::gui::TextButton>(
-                        state, "Preview");
+                    rootComponent
+                        ->template emplaceChild<cupuacu::gui::TextButton>(
+                            state, "Preview");
                 previewButton->setTriggerOnMouseUp(true);
-                previewButton->setOnPress([this]() { togglePreview(); });
+                previewButton->setOnPress(
+                    [this]()
+                    {
+                        togglePreview();
+                    });
             }
-            cancelButton = rootComponent->template emplaceChild<cupuacu::gui::TextButton>(
-                state, "Cancel");
-            applyButton = rootComponent->template emplaceChild<cupuacu::gui::TextButton>(
-                state, "Apply");
+            cancelButton =
+                rootComponent->template emplaceChild<cupuacu::gui::TextButton>(
+                    state, "Cancel");
+            applyButton =
+                rootComponent->template emplaceChild<cupuacu::gui::TextButton>(
+                    state, "Apply");
             cancelButton->setTriggerOnMouseUp(true);
             applyButton->setTriggerOnMouseUp(true);
-            cancelButton->setOnPress([this]() { closeNow(); });
-            applyButton->setOnPress([this]() { applyAndClose(); });
+            cancelButton->setOnPress(
+                [this]()
+                {
+                    closeNow();
+                });
+            applyButton->setOnPress(
+                [this]()
+                {
+                    applyAndClose();
+                });
 
             window->setOnResize(
                 [this]
@@ -266,8 +295,16 @@ namespace cupuacu::effects
                     layoutComponents();
                     renderIfDirty();
                 });
-            window->setDefaultAction([this]() { applyAndClose(); });
-            window->setCancelAction([this]() { closeNow(); });
+            window->setDefaultAction(
+                [this]()
+                {
+                    applyAndClose();
+                });
+            window->setCancelAction(
+                [this]()
+                {
+                    closeNow();
+                });
             window->setOnClose(
                 [this]
                 {
@@ -299,8 +336,8 @@ namespace cupuacu::effects
         {
             if (window && state)
             {
-                const auto it = std::find(state->windows.begin(), state->windows.end(),
-                                          window.get());
+                const auto it = std::find(state->windows.begin(),
+                                          state->windows.end(), window.get());
                 if (it != state->windows.end())
                 {
                     state->windows.erase(it);
@@ -435,7 +472,8 @@ namespace cupuacu::effects
         {
             const int labelFontSize = static_cast<int>(state->menuFontSize);
             controls.reserve(definition.parameters.size());
-            for (std::size_t index = 0; index < definition.parameters.size(); ++index)
+            for (std::size_t index = 0; index < definition.parameters.size();
+                 ++index)
             {
                 const auto &spec = definition.parameters[index];
                 ParameterControl control{};
@@ -443,194 +481,201 @@ namespace cupuacu::effects
 
                 switch (spec.kind)
                 {
-                case EffectParameterKind::Percent:
-                case EffectParameterKind::Number:
-                    control.label = root->template emplaceChild<cupuacu::gui::Label>(
-                        state, spec.label);
-                    control.input = root->template emplaceChild<cupuacu::gui::TextInput>(
-                        state);
-                    control.label->setFontSize(labelFontSize);
-                    control.input->setFontSize(labelFontSize - 6);
-                    if (spec.kind == EffectParameterKind::Percent)
-                    {
-                        control.slider =
-                            root->template emplaceChild<cupuacu::gui::Slider>(
+                    case EffectParameterKind::Percent:
+                    case EffectParameterKind::Number:
+                        control.label =
+                            root->template emplaceChild<cupuacu::gui::Label>(
+                                state, spec.label);
+                        control.input = root->template emplaceChild<
+                            cupuacu::gui::TextInput>(state);
+                        control.label->setFontSize(labelFontSize);
+                        control.input->setFontSize(labelFontSize - 6);
+                        if (spec.kind == EffectParameterKind::Percent)
+                        {
+                            control.slider = root->template emplaceChild<
+                                cupuacu::gui::Slider>(
                                 state,
                                 [this, index]()
                                 {
-                                    return definition.parameters[index].getPercent(
-                                        settings);
+                                    return definition.parameters[index]
+                                        .getPercent(settings);
                                 },
                                 [this, index]()
                                 {
-                                    return definition.parameters[index].minValue;
+                                    return definition.parameters[index]
+                                        .minValue;
                                 },
                                 [this, index]()
                                 {
-                                    return definition.parameters[index].maxValue;
+                                    return definition.parameters[index]
+                                        .maxValue;
                                 },
                                 [this, index](const double value)
                                 {
                                     updateSettings(
                                         [&, value]
                                         {
-                                            definition.parameters[index].setPercent(
-                                                settings, value);
+                                            definition.parameters[index]
+                                                .setPercent(settings, value);
                                         },
                                         true);
                                 });
-                        control.input->setAllowedCharacters("0123456789.%");
-                        control.input->setOnTextChanged(
-                            [this, index](const std::string &text)
-                            {
-                                if (syncingControls)
+                            control.input->setAllowedCharacters("0123456789.%");
+                            control.input->setOnTextChanged(
+                                [this, index](const std::string &text)
                                 {
-                                    return;
-                                }
-                                double parsed = 0.0;
-                                if (tryParsePercent(text, parsed))
-                                {
-                                    updateSettings(
-                                        [&, parsed]
-                                        {
-                                            definition.parameters[index].setPercent(
-                                                settings, parsed);
-                                        },
-                                        false);
-                                }
-                            });
-                        control.input->setOnEditingFinished(
-                            [this, index](const std::string &text)
-                            {
-                                if (syncingControls)
-                                {
-                                    return;
-                                }
-                                double parsed = 0.0;
-                                if (tryParsePercent(text, parsed))
-                                {
-                                    updateSettings(
-                                        [&, parsed]
-                                        {
-                                            definition.parameters[index].setPercent(
-                                                settings, parsed);
-                                        },
-                                        true);
-                                }
-                                else
-                                {
-                                    syncAllControls();
-                                    renderIfDirty();
-                                }
-                            });
-                    }
-                    else
-                    {
-                        control.input->setAllowedCharacters(
-                            spec.numberAllowedCharacters);
-                        control.input->setSubmitOnFocusLost(true);
-                        control.input->setConsumeEnterKey(true);
-                        control.input->setOnEditingFinished(
-                            [this, index](const std::string &text)
-                            {
-                                if (syncingControls)
-                                {
-                                    return;
-                                }
-                                const bool parsed = definition.parameters[index]
-                                                        .parseNumber(state, settings,
-                                                                     text);
-                                if (parsed)
-                                {
-                                    persistSettings();
-                                    if (previewSession)
+                                    if (syncingControls)
                                     {
-                                        previewSession->updateSettings(settings);
+                                        return;
                                     }
-                                    syncAllControls();
-                                    renderIfDirty();
-                                }
-                                if (!parsed)
+                                    double parsed = 0.0;
+                                    if (tryParsePercent(text, parsed))
+                                    {
+                                        updateSettings(
+                                            [&, parsed]
+                                            {
+                                                definition.parameters[index]
+                                                    .setPercent(settings,
+                                                                parsed);
+                                            },
+                                            false);
+                                    }
+                                });
+                            control.input->setOnEditingFinished(
+                                [this, index](const std::string &text)
+                                {
+                                    if (syncingControls)
+                                    {
+                                        return;
+                                    }
+                                    double parsed = 0.0;
+                                    if (tryParsePercent(text, parsed))
+                                    {
+                                        updateSettings(
+                                            [&, parsed]
+                                            {
+                                                definition.parameters[index]
+                                                    .setPercent(settings,
+                                                                parsed);
+                                            },
+                                            true);
+                                    }
+                                    else
+                                    {
+                                        syncAllControls();
+                                        renderIfDirty();
+                                    }
+                                });
+                        }
+                        else
+                        {
+                            control.input->setAllowedCharacters(
+                                spec.numberAllowedCharacters);
+                            control.input->setSubmitOnFocusLost(true);
+                            control.input->setConsumeEnterKey(true);
+                            control.input->setOnEditingFinished(
+                                [this, index](const std::string &text)
+                                {
+                                    if (syncingControls)
+                                    {
+                                        return;
+                                    }
+                                    const bool parsed =
+                                        definition.parameters[index]
+                                            .parseNumber(state, settings, text);
+                                    if (parsed)
+                                    {
+                                        persistSettings();
+                                        if (previewSession)
+                                        {
+                                            previewSession->updateSettings(
+                                                settings);
+                                        }
+                                        syncAllControls();
+                                        renderIfDirty();
+                                    }
+                                    if (!parsed)
+                                    {
+                                        syncAllControls();
+                                        renderIfDirty();
+                                    }
+                                });
+                            control.input->setOnEditingCanceled(
+                                [this]()
                                 {
                                     syncAllControls();
                                     renderIfDirty();
-                                }
-                            });
-                        control.input->setOnEditingCanceled(
-                            [this]()
+                                });
+                        }
+                        break;
+                    case EffectParameterKind::Enum:
+                        control.label =
+                            root->template emplaceChild<cupuacu::gui::Label>(
+                                state, spec.label);
+                        control.dropdown = root->template emplaceChild<
+                            cupuacu::gui::DropdownMenu>(state);
+                        control.label->setFontSize(labelFontSize);
+                        control.dropdown->setFontSize(labelFontSize);
+                        control.dropdown->setItems(spec.enumItems);
+                        control.dropdown->setOnSelectionChanged(
+                            [this, index](const int selection)
                             {
+                                if (syncingControls)
+                                {
+                                    return;
+                                }
+                                updateSettings(
+                                    [&, selection]
+                                    {
+                                        definition.parameters[index].setEnum(
+                                            settings, selection);
+                                    },
+                                    true);
+                            });
+                        break;
+                    case EffectParameterKind::Toggle:
+                        control.toggleButton = root->template emplaceChild<
+                            cupuacu::gui::TextButton>(
+                            state, spec.buttonText,
+                            cupuacu::gui::ButtonType::Toggle);
+                        control.toggleButton->setOnToggle(
+                            [this, index](const bool enabled)
+                            {
+                                if (syncingControls)
+                                {
+                                    return;
+                                }
+                                updateSettings(
+                                    [&, enabled]
+                                    {
+                                        definition.parameters[index].setToggle(
+                                            settings, enabled);
+                                    },
+                                    true);
+                            });
+                        break;
+                    case EffectParameterKind::Action:
+                        control.toggleButton = root->template emplaceChild<
+                            cupuacu::gui::TextButton>(state, spec.buttonText);
+                        control.toggleButton->setTriggerOnMouseUp(true);
+                        control.toggleButton->setOnPress(
+                            [this, index]()
+                            {
+                                if (syncingControls)
+                                {
+                                    return;
+                                }
+                                definition.parameters[index].invokeAction(
+                                    settings, state);
+                                persistSettings();
+                                if (previewSession)
+                                {
+                                    previewSession->updateSettings(settings);
+                                }
                                 syncAllControls();
                                 renderIfDirty();
                             });
-                    }
-                    break;
-                case EffectParameterKind::Enum:
-                    control.label = root->template emplaceChild<cupuacu::gui::Label>(
-                        state, spec.label);
-                    control.dropdown =
-                        root->template emplaceChild<cupuacu::gui::DropdownMenu>(state);
-                    control.label->setFontSize(labelFontSize);
-                    control.dropdown->setFontSize(labelFontSize);
-                    control.dropdown->setItems(spec.enumItems);
-                    control.dropdown->setOnSelectionChanged(
-                        [this, index](const int selection)
-                        {
-                            if (syncingControls)
-                            {
-                                return;
-                            }
-                            updateSettings(
-                                [&, selection]
-                                {
-                                    definition.parameters[index].setEnum(
-                                        settings, selection);
-                                },
-                                true);
-                        });
-                    break;
-                case EffectParameterKind::Toggle:
-                    control.toggleButton =
-                        root->template emplaceChild<cupuacu::gui::TextButton>(
-                            state, spec.buttonText,
-                            cupuacu::gui::ButtonType::Toggle);
-                    control.toggleButton->setOnToggle(
-                        [this, index](const bool enabled)
-                        {
-                            if (syncingControls)
-                            {
-                                return;
-                            }
-                            updateSettings(
-                                [&, enabled]
-                                {
-                                    definition.parameters[index].setToggle(
-                                        settings, enabled);
-                                },
-                                true);
-                    });
-                    break;
-                case EffectParameterKind::Action:
-                    control.toggleButton =
-                        root->template emplaceChild<cupuacu::gui::TextButton>(
-                            state, spec.buttonText);
-                    control.toggleButton->setTriggerOnMouseUp(true);
-                    control.toggleButton->setOnPress(
-                        [this, index]()
-                        {
-                            if (syncingControls)
-                            {
-                                return;
-                            }
-                            definition.parameters[index].invokeAction(settings, state);
-                            persistSettings();
-                            if (previewSession)
-                            {
-                                previewSession->updateSettings(settings);
-                            }
-                            syncAllControls();
-                            renderIfDirty();
-                        });
-                    break;
+                        break;
                 }
 
                 controls.push_back(control);
@@ -642,8 +687,9 @@ namespace cupuacu::effects
             actionButtons.reserve(definition.actions.size());
             for (const auto &action : definition.actions)
             {
-                auto *button = root->template emplaceChild<cupuacu::gui::TextButton>(
-                    state, action.label);
+                auto *button =
+                    root->template emplaceChild<cupuacu::gui::TextButton>(
+                        state, action.label);
                 button->setOnPress(
                     [this, callback = action.apply]()
                     {
@@ -674,43 +720,45 @@ namespace cupuacu::effects
                 const auto &spec = definition.parameters[control.specIndex];
                 switch (spec.kind)
                 {
-                case EffectParameterKind::Percent:
-                    if (control.input)
-                    {
-                        control.input->setText(
-                            formatPercent(spec.getPercent(settings)));
-                    }
-                    if (control.slider)
-                    {
-                        control.slider->setDirty();
-                    }
-                    break;
-                case EffectParameterKind::Number:
-                    if (control.input)
-                    {
-                        control.input->setText(
-                            spec.formatNumber ? spec.formatNumber(state, settings)
-                                              : std::string{});
-                    }
-                    break;
-                case EffectParameterKind::Enum:
-                    if (control.dropdown)
-                    {
-                        control.dropdown->setSelectedIndex(
-                            spec.getEnum(settings));
-                    }
-                    break;
-                case EffectParameterKind::Toggle:
-                case EffectParameterKind::Action:
-                    if (control.toggleButton)
-                    {
-                        control.toggleButton->setText(spec.buttonText);
-                        if (spec.kind == EffectParameterKind::Toggle)
+                    case EffectParameterKind::Percent:
+                        if (control.input)
                         {
-                            control.toggleButton->setToggled(spec.getToggle(settings));
+                            control.input->setText(
+                                formatPercent(spec.getPercent(settings)));
                         }
-                    }
-                    break;
+                        if (control.slider)
+                        {
+                            control.slider->setDirty();
+                        }
+                        break;
+                    case EffectParameterKind::Number:
+                        if (control.input)
+                        {
+                            control.input->setText(
+                                spec.formatNumber
+                                    ? spec.formatNumber(state, settings)
+                                    : std::string{});
+                        }
+                        break;
+                    case EffectParameterKind::Enum:
+                        if (control.dropdown)
+                        {
+                            control.dropdown->setSelectedIndex(
+                                spec.getEnum(settings));
+                        }
+                        break;
+                    case EffectParameterKind::Toggle:
+                    case EffectParameterKind::Action:
+                        if (control.toggleButton)
+                        {
+                            control.toggleButton->setText(spec.buttonText);
+                            if (spec.kind == EffectParameterKind::Toggle)
+                            {
+                                control.toggleButton->setToggled(
+                                    spec.getToggle(settings));
+                            }
+                        }
+                        break;
                 }
             }
             if (previewPanel)
@@ -783,13 +831,15 @@ namespace cupuacu::effects
 
         void startPreview()
         {
-            if (!state || !state->audioDevices || !definition.createPreviewSession)
+            if (!state || !state->audioDevices ||
+                !definition.createPreviewSession)
             {
                 return;
             }
 
             auto &document = state->getActiveDocumentSession().document;
-            if (document.getFrameCount() <= 0 || document.getChannelCount() <= 0)
+            if (document.getFrameCount() <= 0 ||
+                document.getChannelCount() <= 0)
             {
                 return;
             }
@@ -860,7 +910,8 @@ namespace cupuacu::effects
 
             const int canvasWi = static_cast<int>(canvasW);
             const int canvasHi = static_cast<int>(canvasH);
-            const int padding = std::max(4, cupuacu::gui::scaleUi(state, 12.0f));
+            const int padding =
+                std::max(4, cupuacu::gui::scaleUi(state, 12.0f));
             const int labelFontSize = state ? state->menuFontSize : 30;
             int measuredLabelWidth = 0;
             const uint8_t effectiveLabelFontSize =
@@ -869,22 +920,27 @@ namespace cupuacu::effects
             {
                 const auto &spec = definition.parameters[control.specIndex];
                 if (spec.kind == EffectParameterKind::Toggle ||
-                    spec.kind == EffectParameterKind::Action || spec.label.empty())
+                    spec.kind == EffectParameterKind::Action ||
+                    spec.label.empty())
                 {
                     continue;
                 }
-                const auto [textWidth, textHeight] =
-                    cupuacu::gui::measureText(spec.label, effectiveLabelFontSize);
+                const auto [textWidth, textHeight] = cupuacu::gui::measureText(
+                    spec.label, effectiveLabelFontSize);
                 measuredLabelWidth = std::max(measuredLabelWidth, textWidth);
                 measuredLabelWidth = std::max(measuredLabelWidth, textHeight);
             }
-            const int labelWidth = std::max(
-                std::max(88, cupuacu::gui::scaleUi(state, 104.0f)),
-                measuredLabelWidth + std::max(8, padding / 2));
-            const int inputWidth = std::max(90, cupuacu::gui::scaleUi(state, 110.0f));
-            const int rowHeight = std::max(30, cupuacu::gui::scaleUi(state, 34.0f));
-            const int sliderHeight = std::max(22, cupuacu::gui::scaleUi(state, 24.0f));
-            const int toggleWidth = std::max(72, cupuacu::gui::scaleUi(state, 88.0f));
+            const int labelWidth =
+                std::max(std::max(88, cupuacu::gui::scaleUi(state, 104.0f)),
+                         measuredLabelWidth + std::max(8, padding / 2));
+            const int inputWidth =
+                std::max(90, cupuacu::gui::scaleUi(state, 110.0f));
+            const int rowHeight =
+                std::max(30, cupuacu::gui::scaleUi(state, 34.0f));
+            const int sliderHeight =
+                std::max(22, cupuacu::gui::scaleUi(state, 24.0f));
+            const int toggleWidth =
+                std::max(72, cupuacu::gui::scaleUi(state, 88.0f));
 
             window->getRootComponent()->setSize(canvasWi, canvasHi);
             background->setBounds(0, 0, canvasWi, canvasHi);
@@ -895,56 +951,69 @@ namespace cupuacu::effects
                 const auto &spec = definition.parameters[control.specIndex];
                 switch (spec.kind)
                 {
-                case EffectParameterKind::Percent:
-                {
-                    const int sliderX = padding + labelWidth + inputWidth + padding * 2;
-                    const int sliderWidth =
-                        std::max(80, canvasWi - sliderX - padding);
-                    control.label->setBounds(padding, y, labelWidth, rowHeight);
-                    control.input->setBounds(padding + labelWidth, y, inputWidth,
-                                             rowHeight);
-                    control.slider->setBounds(sliderX, y, sliderWidth,
-                                              sliderHeight);
-                    y += rowHeight + padding;
-                    break;
-                }
-                case EffectParameterKind::Number:
-                {
-                    control.label->setBounds(padding, y, labelWidth, rowHeight);
-                    control.input->setBounds(
-                        padding + labelWidth + padding, y,
-                        canvasWi - (padding + labelWidth + padding) - padding,
-                        rowHeight);
-                    y += rowHeight + padding;
-                    break;
-                }
-                case EffectParameterKind::Enum:
-                {
-                    control.dropdown->setItemMargin(std::max(4, padding / 2));
-                    const int dropdownHeight =
-                        std::max(rowHeight, control.dropdown->getRowHeight());
-                    control.label->setBounds(padding, y, labelWidth, dropdownHeight);
-                    control.dropdown->setBounds(
-                        padding + labelWidth + padding, y,
-                        canvasWi - (padding + labelWidth + padding) - padding,
-                        dropdownHeight);
-                    control.dropdown->setCollapsedHeight(dropdownHeight);
-                    y += dropdownHeight + padding;
-                    break;
-                }
-                case EffectParameterKind::Toggle:
-                    control.toggleButton->setBounds(padding, y, toggleWidth,
-                                                    rowHeight);
-                    y += rowHeight + padding;
-                    break;
-                case EffectParameterKind::Action:
-                    control.toggleButton->setBounds(padding, y,
-                                                    std::max(toggleWidth,
-                                                             cupuacu::gui::scaleUi(
-                                                                 state, 140.0f)),
-                                                    rowHeight);
-                    y += rowHeight + padding;
-                    break;
+                    case EffectParameterKind::Percent:
+                    {
+                        const int sliderX =
+                            padding + labelWidth + inputWidth + padding * 2;
+                        const int sliderWidth =
+                            std::max(80, canvasWi - sliderX - padding);
+                        control.label->setBounds(padding, y, labelWidth,
+                                                 rowHeight);
+                        control.input->setBounds(padding + labelWidth, y,
+                                                 inputWidth, rowHeight);
+                        control.slider->setBounds(sliderX, y, sliderWidth,
+                                                  sliderHeight);
+                        y += rowHeight + padding;
+                        break;
+                    }
+                    case EffectParameterKind::Number:
+                    {
+                        control.label->setBounds(padding, y, labelWidth,
+                                                 rowHeight);
+                        control.input->setBounds(
+                            padding + labelWidth + padding, y,
+                            canvasWi - (padding + labelWidth + padding) -
+                                padding,
+                            rowHeight);
+                        y += rowHeight + padding;
+                        break;
+                    }
+                    case EffectParameterKind::Enum:
+                    {
+                        control.dropdown->setItemMargin(
+                            std::max(4, padding / 2));
+                        const int dropdownHeight = std::max(
+                            rowHeight, control.dropdown->getRowHeight());
+                        control.label->setBounds(padding, y, labelWidth,
+                                                 dropdownHeight);
+                        control.dropdown->setBounds(
+                            padding + labelWidth + padding, y,
+                            canvasWi - (padding + labelWidth + padding) -
+                                padding,
+                            dropdownHeight);
+                        control.dropdown->setCollapsedHeight(dropdownHeight);
+                        y += dropdownHeight + padding;
+                        break;
+                    }
+                    case EffectParameterKind::Toggle:
+                        if (!spec.placeInFooter)
+                        {
+                            control.toggleButton->setBounds(
+                                padding, y, toggleWidth, rowHeight);
+                            y += rowHeight + padding;
+                        }
+                        break;
+                    case EffectParameterKind::Action:
+                        if (!spec.placeInFooter)
+                        {
+                            control.toggleButton->setBounds(
+                                padding, y,
+                                std::max(toggleWidth,
+                                         cupuacu::gui::scaleUi(state, 140.0f)),
+                                rowHeight);
+                            y += rowHeight + padding;
+                        }
+                        break;
                 }
             }
 
@@ -962,6 +1031,7 @@ namespace cupuacu::effects
                         padding + static_cast<int>(i) * (buttonWidth + gap), y,
                         buttonWidth, rowHeight);
                 }
+                y += rowHeight;
             }
 
             const int bottomButtonWidth =
@@ -976,22 +1046,41 @@ namespace cupuacu::effects
 
             if (previewButton)
             {
-                previewButton->setBounds(
-                    canvasWi - padding * 3 - bottomButtonWidth * 3, bottomY,
-                    bottomButtonWidth, rowHeight);
-                cancelButton->setBounds(
-                    canvasWi - padding * 2 - bottomButtonWidth * 2, bottomY,
-                    bottomButtonWidth, rowHeight);
+                previewButton->setBounds(canvasWi - padding * 3 -
+                                             bottomButtonWidth * 3,
+                                         bottomY, bottomButtonWidth, rowHeight);
+                cancelButton->setBounds(canvasWi - padding * 2 -
+                                            bottomButtonWidth * 2,
+                                        bottomY, bottomButtonWidth, rowHeight);
                 applyButton->setBounds(canvasWi - padding - bottomButtonWidth,
                                        bottomY, bottomButtonWidth, rowHeight);
             }
             else
             {
-                cancelButton->setBounds(
-                    canvasWi - padding * 2 - bottomButtonWidth * 2, bottomY,
-                    bottomButtonWidth, rowHeight);
+                cancelButton->setBounds(canvasWi - padding * 2 -
+                                            bottomButtonWidth * 2,
+                                        bottomY, bottomButtonWidth, rowHeight);
                 applyButton->setBounds(canvasWi - padding - bottomButtonWidth,
                                        bottomY, bottomButtonWidth, rowHeight);
+            }
+
+            int footerX = padding;
+            for (const auto &control : controls)
+            {
+                const auto &spec = definition.parameters[control.specIndex];
+                if (!spec.placeInFooter || !control.toggleButton)
+                {
+                    continue;
+                }
+
+                const int footerButtonWidth =
+                    spec.kind == EffectParameterKind::Action
+                        ? std::max(toggleWidth,
+                                   cupuacu::gui::scaleUi(state, 140.0f))
+                        : toggleWidth;
+                control.toggleButton->setBounds(footerX, bottomY,
+                                                footerButtonWidth, rowHeight);
+                footerX += footerButtonWidth + padding;
             }
         }
     };

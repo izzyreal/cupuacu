@@ -25,8 +25,8 @@ namespace cupuacu::gui
         float wheelY = 0.0f;
     };
 
-    inline std::optional<SDL_WindowID> getWindowEventWindowId(
-        const SDL_Event &event)
+    inline std::optional<SDL_WindowID>
+    getWindowEventWindowId(const SDL_Event &event)
     {
         switch (event.type)
         {
@@ -115,14 +115,15 @@ namespace cupuacu::gui
         draft.rely *= scaleY;
     }
 
-    inline MouseEvent finalizeWindowMouseEvent(
-        const WindowMouseEventDraft &draft)
+    inline MouseEvent
+    finalizeWindowMouseEvent(const WindowMouseEventDraft &draft)
     {
         const int32_t xi = static_cast<int32_t>(std::floor(draft.xf));
         const int32_t yi = static_cast<int32_t>(std::floor(draft.yf));
         const MouseButtonState bs{draft.left, draft.middle, draft.right};
-        return MouseEvent{draft.type, xi,       yi,       draft.xf,  draft.yf,
-                          draft.relx, draft.rely, bs,       draft.clicks,
-                          draft.wheelX, draft.wheelY};
+        const SDL_Keymod mod = static_cast<SDL_Keymod>(SDL_GetModState());
+        return MouseEvent{draft.type,   xi,           yi,           draft.xf,
+                          draft.yf,     draft.relx,   draft.rely,   bs,
+                          draft.clicks, draft.wheelX, draft.wheelY, mod};
     }
 } // namespace cupuacu::gui

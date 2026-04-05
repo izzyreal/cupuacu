@@ -35,6 +35,7 @@ namespace cupuacu::gui
         const uint8_t numClicks;
         const float wheelX = 0.0f;
         const float wheelY = 0.0f;
+        const SDL_Keymod mod = SDL_KMOD_NONE;
     };
 
     static MouseEvent withNewCoordinates(const MouseEvent &evt,
@@ -45,6 +46,6 @@ namespace cupuacu::gui
         return MouseEvent{evt.type,      newXi,           newYi,
                           newXf,         newYf,           evt.mouseRelX,
                           evt.mouseRelY, evt.buttonState, evt.numClicks,
-                          evt.wheelX,    evt.wheelY};
+                          evt.wheelX,    evt.wheelY,      evt.mod};
     }
 } // namespace cupuacu::gui

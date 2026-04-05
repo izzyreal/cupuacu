@@ -4,6 +4,7 @@
 #include "ResourceUtil.hpp"
 #include "actions/DocumentLifecycle.hpp"
 #include "actions/DocumentTabs.hpp"
+#include "effects/AmplifyEnvelopeEffect.hpp"
 #include "effects/AmplifyFadeEffect.hpp"
 #include "effects/DynamicsEffect.hpp"
 #include "effects/RemoveSilenceEffect.hpp"
@@ -61,7 +62,7 @@ namespace
         SDL_DestroySurface(surf);
         return {w, h};
     }
-}
+} // namespace
 
 MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
 {
@@ -99,24 +100,22 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
     const std::string pasteText{"Paste (Ctrl + V)"};
 #endif
 
-    fileMenu->addSubMenu(
-        state, newText,
-        [&]
-        {
-            actions::showNewFileDialog(state);
-        });
-    fileMenu->addSubMenu(
-        state, openText,
-        [&]
-        {
-            actions::showOpenFileDialog(state);
-        });
-    auto *saveAsMenu = fileMenu->addSubMenu(
-        state, saveAsText,
-        [&]
-        {
-            actions::showExportAudioDialog(state);
-        });
+    fileMenu->addSubMenu(state, newText,
+                         [&]
+                         {
+                             actions::showNewFileDialog(state);
+                         });
+    fileMenu->addSubMenu(state, openText,
+                         [&]
+                         {
+                             actions::showOpenFileDialog(state);
+                         });
+    auto *saveAsMenu =
+        fileMenu->addSubMenu(state, saveAsText,
+                             [&]
+                             {
+                                 actions::showExportAudioDialog(state);
+                             });
     saveAsMenu->setIsAvailable(
         [&]
         {
@@ -172,66 +171,58 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
             });
     }
 
-    auto *closeMenu = fileMenu->addSubMenu(
-        state, closeText,
-        [&]
-        {
-            actions::closeActiveTab(state);
-        });
+    auto *closeMenu = fileMenu->addSubMenu(state, closeText,
+                                           [&]
+                                           {
+                                               actions::closeActiveTab(state);
+                                           });
     closeMenu->setIsAvailable(
         [&]
         {
             return actions::hasActiveDocument(state);
         });
-    auto *overwriteMenu = fileMenu->addSubMenu(
-        state, overwriteText,
-        [&]
-        {
-            actions::overwrite(state);
-        });
+    auto *overwriteMenu = fileMenu->addSubMenu(state, overwriteText,
+                                               [&]
+                                               {
+                                                   actions::overwrite(state);
+                                               });
     overwriteMenu->setIsAvailable(
         [&]
         {
             return actions::hasActiveDocument(state) &&
                    !state->getActiveDocumentSession().currentFile.empty();
         });
-    fileMenu->addSubMenu(
-        state, exitText,
-        [&]
-        {
-            actions::requestExit(state);
-        });
+    fileMenu->addSubMenu(state, exitText,
+                         [&]
+                         {
+                             actions::requestExit(state);
+                         });
 
-    viewMenu->addSubMenu(
-        state, "Reset zoom (Esc)",
-        [&]
-        {
-            actions::resetZoom(state);
-        });
-    viewMenu->addSubMenu(
-        state, "Zoom out horiz. (Q)",
-        [&]
-        {
-            actions::tryZoomOutHorizontally(state);
-        });
-    viewMenu->addSubMenu(
-        state, "Zoom in horiz. (W)",
-        [&]
-        {
-            actions::tryZoomInHorizontally(state);
-        });
-    viewMenu->addSubMenu(
-        state, "Zoom out vert. (E)",
-        [&]
-        {
-            actions::tryZoomOutVertically(state, 1);
-        });
-    viewMenu->addSubMenu(
-        state, "Zoom in vert. (R)",
-        [&]
-        {
-            actions::zoomInVertically(state, 1);
-        });
+    viewMenu->addSubMenu(state, "Reset zoom (Esc)",
+                         [&]
+                         {
+                             actions::resetZoom(state);
+                         });
+    viewMenu->addSubMenu(state, "Zoom out horiz. (Q)",
+                         [&]
+                         {
+                             actions::tryZoomOutHorizontally(state);
+                         });
+    viewMenu->addSubMenu(state, "Zoom in horiz. (W)",
+                         [&]
+                         {
+                             actions::tryZoomInHorizontally(state);
+                         });
+    viewMenu->addSubMenu(state, "Zoom out vert. (E)",
+                         [&]
+                         {
+                             actions::tryZoomOutVertically(state, 1);
+                         });
+    viewMenu->addSubMenu(state, "Zoom in vert. (R)",
+                         [&]
+                         {
+                             actions::zoomInVertically(state, 1);
+                         });
 
     generateMenu->addSubMenu(
         state, "Silence",
@@ -259,12 +250,11 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
         return buildUndoMenuLabel(state);
     };
 
-    auto undoMenu = editMenu->addSubMenu(
-        state, undoMenuNameGetter,
-        [&]
-        {
-            state->undo();
-        });
+    auto undoMenu = editMenu->addSubMenu(state, undoMenuNameGetter,
+                                         [&]
+                                         {
+                                             state->undo();
+                                         });
     undoMenu->setIsAvailable(
         [&]
         {
@@ -276,12 +266,11 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
         return buildRedoMenuLabel(state);
     };
 
-    auto redoMenu = editMenu->addSubMenu(
-        state, redoMenuNameGetter,
-        [&]
-        {
-            state->redo();
-        });
+    auto redoMenu = editMenu->addSubMenu(state, redoMenuNameGetter,
+                                         [&]
+                                         {
+                                             state->redo();
+                                         });
     redoMenu->setIsAvailable(
         [&]
         {
@@ -293,72 +282,83 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
     logoW = loadedLogoW;
     logoH = loadedLogoH;
 
-    auto trimMenu = editMenu->addSubMenu(
-        state, trimText,
-        [&]
-        {
-            actions::audio::performTrim(state);
-        });
+    auto trimMenu = editMenu->addSubMenu(state, trimText,
+                                         [&]
+                                         {
+                                             actions::audio::performTrim(state);
+                                         });
     trimMenu->setIsAvailable(
         [&]
         {
             return isSelectionEditAvailable(state);
         });
 
-    auto cutMenu = editMenu->addSubMenu(
-        state, cutText,
-        [&]
-        {
-            actions::audio::performCut(state);
-        });
+    auto cutMenu = editMenu->addSubMenu(state, cutText,
+                                        [&]
+                                        {
+                                            actions::audio::performCut(state);
+                                        });
     cutMenu->setIsAvailable(
         [&]
         {
             return isSelectionEditAvailable(state);
         });
 
-    auto copyMenu = editMenu->addSubMenu(
-        state, copyText,
-        [&]
-        {
-            actions::audio::performCopy(state);
-        });
+    auto copyMenu = editMenu->addSubMenu(state, copyText,
+                                         [&]
+                                         {
+                                             actions::audio::performCopy(state);
+                                         });
     copyMenu->setIsAvailable(
         [&]
         {
             return isSelectionEditAvailable(state);
         });
 
-    auto pasteMenu = editMenu->addSubMenu(
-        state, pasteText,
-        [&]
-        {
-            actions::audio::performPaste(state);
-        });
+    auto pasteMenu =
+        editMenu->addSubMenu(state, pasteText,
+                             [&]
+                             {
+                                 actions::audio::performPaste(state);
+                             });
     pasteMenu->setIsAvailable(
         [&]
         {
             return isPasteAvailable(state);
         });
 
+    effectsMenu->addSubMenu(state, "Reverse",
+                            [&]
+                            {
+                                effects::performReverse(state);
+                            });
+    effectsMenu->addSubMenu(state, "Amplify/Fade",
+                            [&]
+                            {
+                                if (!state->amplifyFadeDialog ||
+                                    !state->amplifyFadeDialog->isOpen())
+                                {
+                                    state->amplifyFadeDialog.reset(
+                                        new effects::AmplifyFadeDialog(state));
+                                }
+                                else
+                                {
+                                    state->amplifyFadeDialog->raise();
+                                }
+                            });
     effectsMenu->addSubMenu(
-        state, "Reverse",
+        state, "Amplify Envelope",
         [&]
         {
-            effects::performReverse(state);
-        });
-    effectsMenu->addSubMenu(
-        state, "Amplify/Fade",
-        [&]
-        {
-            if (!state->amplifyFadeDialog || !state->amplifyFadeDialog->isOpen())
+            if (!state->amplifyEnvelopeDialog ||
+                !state->amplifyEnvelopeDialog->isOpen())
             {
-                state->amplifyFadeDialog.reset(
-                    new effects::AmplifyFadeDialog(state));
+                state->amplifyEnvelopeDialog.reset(
+                    new effects::AmplifyEnvelopeDialog(state));
             }
             else
             {
-                state->amplifyFadeDialog->raise();
+                state->amplifyEnvelopeDialog->raise();
             }
         });
     effectsMenu->addSubMenu(
@@ -410,21 +410,20 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
                 state->devicePropertiesWindow->raise();
             }
         });
-    optionsMenu->addSubMenu(
-        state, "Display",
-        [&]
-        {
-            if (!state->displaySettingsWindow ||
-                !state->displaySettingsWindow->isOpen())
-            {
-                state->displaySettingsWindow.reset(
-                    new DisplaySettingsWindow(state));
-            }
-            else
-            {
-                state->displaySettingsWindow->raise();
-            }
-        });
+    optionsMenu->addSubMenu(state, "Display",
+                            [&]
+                            {
+                                if (!state->displaySettingsWindow ||
+                                    !state->displaySettingsWindow->isOpen())
+                                {
+                                    state->displaySettingsWindow.reset(
+                                        new DisplaySettingsWindow(state));
+                                }
+                                else
+                                {
+                                    state->displaySettingsWindow->raise();
+                                }
+                            });
 }
 
 void MenuBar::onDraw(SDL_Renderer *renderer)
@@ -505,9 +504,9 @@ void MenuBar::resized()
     generateMenu->setBounds(logoSpace + fileW + editW + viewW, 0, generateW, h);
     effectsMenu->setBounds(logoSpace + fileW + editW + viewW + generateW, 0,
                            effectsW, h);
-    optionsMenu->setBounds(
-        logoSpace + fileW + editW + viewW + generateW + effectsW, 0,
-        optionsW, h);
+    optionsMenu->setBounds(logoSpace + fileW + editW + viewW + generateW +
+                               effectsW,
+                           0, optionsW, h);
 
     SDL_Rect backgroundBounds = getLocalBounds();
     backgroundBounds.x = optionsMenu->getBounds().x + optionsW;
