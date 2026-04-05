@@ -297,6 +297,7 @@ namespace cupuacu::actions
             documentState.filePath = tab.session.currentFile;
             documentState.samplesPerPixel = tab.viewState.samplesPerPixel;
             documentState.sampleOffset = tab.viewState.sampleOffset;
+            documentState.cursor = tab.session.cursor;
             if (tab.session.selection.isActive())
             {
                 documentState.selectionStart = tab.session.selection.getStartInt();
@@ -743,6 +744,8 @@ namespace cupuacu::actions
 
         session.selection.reset();
         session.syncSelectionAndCursorToDocumentLength();
+        session.cursor = std::clamp(documentState.cursor.value_or(0),
+                                    int64_t{0}, frameCount);
         if (documentState.selectionStart.has_value() &&
             documentState.selectionEndExclusive.has_value())
         {

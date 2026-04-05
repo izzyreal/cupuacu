@@ -13,6 +13,7 @@ namespace cupuacu::persistence
         std::string filePath;
         std::optional<double> samplesPerPixel;
         std::optional<int64_t> sampleOffset;
+        std::optional<int64_t> cursor;
         std::optional<int64_t> selectionStart;
         std::optional<int64_t> selectionEndExclusive;
     };

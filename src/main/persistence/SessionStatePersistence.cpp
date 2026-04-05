@@ -12,7 +12,7 @@ namespace cupuacu::persistence
 {
     namespace
     {
-        constexpr int kFormatVersion = 2;
+        constexpr int kFormatVersion = 3;
 
         std::vector<std::string> filterFiles(const std::vector<std::string> &files)
         {
@@ -107,6 +107,8 @@ namespace cupuacu::persistence
                                         documentState.samplesPerPixel) ||
                     !loadOptionalInt64(entry, "sampleOffset",
                                        documentState.sampleOffset) ||
+                    !loadOptionalInt64(entry, "cursor",
+                                       documentState.cursor) ||
                     !loadOptionalInt64(entry, "selectionStart",
                                        documentState.selectionStart) ||
                     !loadOptionalInt64(entry, "selectionEndExclusive",
@@ -153,12 +155,12 @@ namespace cupuacu::persistence
         }
 
         const int version = json.value("version", 0);
-        if (version != 1 && version != kFormatVersion)
+        if (version != 1 && version != 2 && version != kFormatVersion)
         {
             return {};
         }
 
-        if (version >= kFormatVersion)
+        if (version >= 2)
         {
             const auto openDocuments = loadOpenDocuments(json);
             if (!openDocuments.has_value())
@@ -265,6 +267,10 @@ namespace cupuacu::persistence
             if (documentState.sampleOffset.has_value())
             {
                 entry["sampleOffset"] = *documentState.sampleOffset;
+            }
+            if (documentState.cursor.has_value())
+            {
+                entry["cursor"] = *documentState.cursor;
             }
             if (documentState.selectionStart.has_value())
             {
