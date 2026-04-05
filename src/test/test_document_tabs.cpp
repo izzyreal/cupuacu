@@ -92,6 +92,24 @@ TEST_CASE("Switching tabs changes the active document context", "[tabs]")
     REQUIRE_FALSE(cupuacu::actions::switchToTab(&state, 1));
 }
 
+TEST_CASE("Tab cycling wraps forward and backward across open tabs", "[tabs]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    state.tabs.resize(3);
+    state.tabs[0].session.currentFile = "/tmp/first.wav";
+    state.tabs[1].session.currentFile = "/tmp/second.wav";
+    state.tabs[2].session.currentFile = "/tmp/third.wav";
+    state.activeTabIndex = 2;
+
+    REQUIRE(cupuacu::actions::switchToNextTab(&state));
+    REQUIRE(state.activeTabIndex == 0);
+    REQUIRE(state.getActiveDocumentSession().currentFile == "/tmp/first.wav");
+
+    REQUIRE(cupuacu::actions::switchToPreviousTab(&state));
+    REQUIRE(state.activeTabIndex == 2);
+    REQUIRE(state.getActiveDocumentSession().currentFile == "/tmp/third.wav");
+}
+
 TEST_CASE("Tab strip exposes absolute file paths as tooltip text", "[tabs]")
 {
     cupuacu::test::StateWithTestPaths state{};

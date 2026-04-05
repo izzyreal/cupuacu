@@ -77,6 +77,18 @@ namespace cupuacu::gui
                 updateWaveforms(state);
             }
         }
+        else if (event->key.scancode == SDL_SCANCODE_TAB &&
+                 (event->key.mod & SDL_KMOD_CTRL))
+        {
+            if (event->key.mod & SDL_KMOD_SHIFT)
+            {
+                actions::switchToPreviousTab(state);
+            }
+            else
+            {
+                actions::switchToNextTab(state);
+            }
+        }
         else if (event->key.scancode == SDL_SCANCODE_E)
         {
             if (actions::tryZoomOutVertically(state, multiplier))

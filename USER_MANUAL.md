@@ -167,6 +167,8 @@ App-wide shortcuts:
 - `Cmd/Ctrl + C`: copy the current selection
 - `Cmd/Ctrl + V`: paste the clipboard
 - `Cmd/Ctrl + T`: trim to the current selection
+- `Ctrl + Tab`: switch to the next open tab
+- `Ctrl + Shift + Tab`: switch to the previous open tab
 - `Space`: play or stop playback
 - `Esc`: reset zoom
 - `Z`: zoom to the current selection
@@ -180,6 +182,8 @@ App-wide shortcuts:
 - `Shift + ,`: decrease pixel scale
 
 For the arrow keys and vertical zoom keys, holding modifier keys increases the step size. The current implementation multiplies the step when `Shift`, `Alt`, or `Ctrl` are held.
+
+Tab cycling uses `Ctrl` on all platforms, including macOS.
 
 ## View Menu
 

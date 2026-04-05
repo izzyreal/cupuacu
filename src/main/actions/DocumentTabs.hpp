@@ -83,6 +83,49 @@ namespace cupuacu::actions
         return true;
     }
 
+    inline bool switchToNextTab(cupuacu::State *state)
+    {
+        if (!state || state->tabs.empty())
+        {
+            return false;
+        }
+        if (!canSwitchTabs(state))
+        {
+            return false;
+        }
+
+        const int tabCount = static_cast<int>(state->tabs.size());
+        if (tabCount <= 1)
+        {
+            return false;
+        }
+
+        const int nextIndex = (state->activeTabIndex + 1) % tabCount;
+        return switchToTab(state, nextIndex);
+    }
+
+    inline bool switchToPreviousTab(cupuacu::State *state)
+    {
+        if (!state || state->tabs.empty())
+        {
+            return false;
+        }
+        if (!canSwitchTabs(state))
+        {
+            return false;
+        }
+
+        const int tabCount = static_cast<int>(state->tabs.size());
+        if (tabCount <= 1)
+        {
+            return false;
+        }
+
+        const int previousIndex =
+            (state->activeTabIndex + tabCount - 1) % tabCount;
+        return switchToTab(state, previousIndex);
+    }
+
     inline void appendEmptyTab(cupuacu::State *state)
     {
         if (!state)

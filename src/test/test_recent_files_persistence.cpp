@@ -410,6 +410,35 @@ TEST_CASE("Primary-modifier Q does not apply horizontal zoom-out",
     REQUIRE(viewState.sampleOffset == 64);
 }
 
+TEST_CASE("Primary-modifier Tab cycles open tabs forward and backward",
+          "[persistence]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    state.tabs.resize(3);
+    state.tabs[0].session.currentFile = "/tmp/first.wav";
+    state.tabs[1].session.currentFile = "/tmp/second.wav";
+    state.tabs[2].session.currentFile = "/tmp/third.wav";
+    state.activeTabIndex = 0;
+
+    SDL_Event forward{};
+    forward.type = SDL_EVENT_KEY_DOWN;
+    forward.key.scancode = SDL_SCANCODE_TAB;
+    forward.key.mod = SDL_KMOD_CTRL;
+
+    cupuacu::gui::handleKeyDown(&forward, &state);
+    REQUIRE(state.activeTabIndex == 1);
+    REQUIRE(state.getActiveDocumentSession().currentFile == "/tmp/second.wav");
+
+    SDL_Event backward{};
+    backward.type = SDL_EVENT_KEY_DOWN;
+    backward.key.scancode = SDL_SCANCODE_TAB;
+    backward.key.mod = SDL_KMOD_CTRL | SDL_KMOD_SHIFT;
+
+    cupuacu::gui::handleKeyDown(&backward, &state);
+    REQUIRE(state.activeTabIndex == 0);
+    REQUIRE(state.getActiveDocumentSession().currentFile == "/tmp/first.wav");
+}
+
 TEST_CASE("Document lifecycle helpers can skip persistence when requested",
           "[persistence]")
 {
