@@ -6,6 +6,7 @@
 #include "gui/LabeledField.hpp"
 #include "gui/Colors.hpp"
 #include "gui/MainViewAccess.hpp"
+#include "gui/StatusBarEditLogic.hpp"
 #include "gui/UiScale.hpp"
 #include "gui/Waveform.hpp"
 
@@ -103,29 +104,6 @@ namespace cupuacu::gui
             return digits;
         }
 
-        static std::optional<int64_t> parseFrameIndex(const std::string &text)
-        {
-            if (text.empty())
-            {
-                return std::nullopt;
-            }
-
-            try
-            {
-                size_t consumed = 0;
-                const auto value = std::stoll(text, &consumed);
-                if (consumed != text.size())
-                {
-                    return std::nullopt;
-                }
-                return value;
-            }
-            catch (const std::exception &)
-            {
-                return std::nullopt;
-            }
-        }
-
         void invalidateTrackedPositionState()
         {
             lastDrawnPos = std::numeric_limits<int64_t>::max();
@@ -144,119 +122,47 @@ namespace cupuacu::gui
             timerCallback();
         }
 
-        int64_t getDocumentFrameCount() const
-        {
-            return state->getActiveDocumentSession().document.getFrameCount();
-        }
-
-        void applyLengthFromStart(const int64_t startFrame,
-                                  const int64_t desiredLength)
-        {
-            auto &session = state->getActiveDocumentSession();
-            const int64_t frameCount = getDocumentFrameCount();
-            const int64_t clampedStart =
-                std::clamp(startFrame, int64_t{0}, frameCount);
-            const int64_t clampedLength = std::max<int64_t>(0, desiredLength);
-            const int64_t endExclusive =
-                std::clamp(clampedStart + clampedLength, clampedStart, frameCount);
-
-            if (endExclusive == clampedStart)
-            {
-                session.selection.reset();
-            }
-            else
-            {
-                session.selection.setValue1(clampedStart);
-                session.selection.setValue2(endExclusive);
-            }
-        }
-
         bool applyPositionEdit(const std::string &text)
         {
-            const auto value = parseFrameIndex(text);
-            if (!value.has_value())
+            auto &session = state->getActiveDocumentSession();
+            if (!tryApplyStatusBarPositionEdit(session, text))
             {
                 return false;
             }
 
-            updateCursorPos(state, *value);
             refreshPositionDependentUi();
             return true;
         }
 
         bool applyStartEdit(const std::string &text)
         {
-            const auto value = parseFrameIndex(text);
-            if (!value.has_value())
+            auto &session = state->getActiveDocumentSession();
+            if (!tryApplyStatusBarStartEdit(session, text))
             {
                 return false;
             }
-
-            auto &session = state->getActiveDocumentSession();
-            if (!session.selection.isActive())
-            {
-                updateCursorPos(state, *value);
-                refreshPositionDependentUi();
-                return true;
-            }
-
-            const int64_t selectionLength = session.selection.getLengthInt();
-            const int64_t frameCount = getDocumentFrameCount();
-            const int64_t startFrame =
-                std::clamp(*value, int64_t{0},
-                           std::max<int64_t>(0, frameCount - selectionLength));
-            applyLengthFromStart(startFrame, selectionLength);
             refreshPositionDependentUi();
             return true;
         }
 
         bool applyEndEdit(const std::string &text)
         {
-            const auto value = parseFrameIndex(text);
-            if (!value.has_value())
+            auto &session = state->getActiveDocumentSession();
+            if (!tryApplyStatusBarEndEdit(session, text))
             {
                 return false;
             }
-
-            auto &session = state->getActiveDocumentSession();
-            const int64_t frameCount = getDocumentFrameCount();
-
-            if (!session.selection.isActive())
-            {
-                const int64_t cursor = std::clamp(
-                    session.cursor, int64_t{0}, std::max<int64_t>(0, frameCount));
-                const int64_t inclusiveEnd = std::clamp(
-                    *value, int64_t{0}, std::max<int64_t>(0, frameCount - 1));
-                const int64_t selectionStart = std::min(cursor, inclusiveEnd);
-                const int64_t selectionEndExclusive =
-                    std::max(cursor, inclusiveEnd) + 1;
-                applyLengthFromStart(
-                    selectionStart, selectionEndExclusive - selectionStart);
-                refreshPositionDependentUi();
-                return true;
-            }
-
-            const int64_t startFrame = session.selection.getStartInt();
-            const int64_t inclusiveEnd = std::clamp(
-                *value, startFrame - 1, std::max<int64_t>(-1, frameCount - 1));
-            applyLengthFromStart(startFrame, inclusiveEnd - startFrame + 1);
             refreshPositionDependentUi();
             return true;
         }
 
         bool applyLengthEdit(const std::string &text)
         {
-            const auto value = parseFrameIndex(text);
-            if (!value.has_value())
+            auto &session = state->getActiveDocumentSession();
+            if (!tryApplyStatusBarLengthEdit(session, text))
             {
                 return false;
             }
-
-            auto &session = state->getActiveDocumentSession();
-            const int64_t startFrame =
-                session.selection.isActive() ? session.selection.getStartInt()
-                                             : session.cursor;
-            applyLengthFromStart(startFrame, *value);
             refreshPositionDependentUi();
             return true;
         }

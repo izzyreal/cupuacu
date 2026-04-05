@@ -787,6 +787,105 @@ TEST_CASE("Status bar integration tolerates missing audio devices",
     REQUIRE(startField->isDirty());
 }
 
+TEST_CASE("Status bar integration inline position edit submits on enter and cancels on escape",
+          "[integration]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    createBuiltSessionUi(&state, 1024, 44100, 2, 800, 400);
+
+    auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
+    auto *statusBar = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::StatusBar>(mainWindow->getContentLayer(), "StatusBar");
+    REQUIRE(statusBar != nullptr);
+
+    auto *posField = findStatusField(statusBar, "Pos");
+    REQUIRE(posField != nullptr);
+
+    statusBar->timerCallback();
+    REQUIRE(posField->getValue() == "0");
+
+    REQUIRE(posField->mouseDown(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN, 10, 10, 10.0f, 10.0f, 0.0f, 0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false}, 2}));
+    REQUIRE(posField->isEditing());
+
+    auto *editor = findFirstRecursive<cupuacu::gui::TextInput>(posField);
+    REQUIRE(editor != nullptr);
+    REQUIRE(editor->textInput("12"));
+
+    state.getActiveDocumentSession().cursor = 77;
+    statusBar->timerCallback();
+    REQUIRE(editor->getText() == "12");
+
+    SDL_KeyboardEvent enter{};
+    enter.scancode = SDL_SCANCODE_RETURN;
+    REQUIRE(editor->keyDown(enter));
+    statusBar->timerCallback();
+    REQUIRE_FALSE(posField->isEditing());
+    REQUIRE(state.getActiveDocumentSession().cursor == 12);
+    REQUIRE(posField->getValue() == "12");
+
+    REQUIRE(posField->mouseDown(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN, 10, 10, 10.0f, 10.0f, 0.0f, 0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false}, 2}));
+    REQUIRE(posField->isEditing());
+    editor = findFirstRecursive<cupuacu::gui::TextInput>(posField);
+    REQUIRE(editor != nullptr);
+    REQUIRE(editor->textInput("34"));
+
+    SDL_KeyboardEvent escape{};
+    escape.scancode = SDL_SCANCODE_ESCAPE;
+    REQUIRE(editor->keyDown(escape));
+    statusBar->timerCallback();
+    REQUIRE_FALSE(posField->isEditing());
+    REQUIRE(state.getActiveDocumentSession().cursor == 12);
+    REQUIRE(posField->getValue() == "12");
+}
+
+TEST_CASE("Status bar integration inline length edit creates a selection from the cursor",
+          "[integration]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    createBuiltSessionUi(&state, 1024, 44100, 2, 800, 400);
+
+    auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
+    auto *statusBar = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::StatusBar>(mainWindow->getContentLayer(), "StatusBar");
+    REQUIRE(statusBar != nullptr);
+
+    auto *lengthField = findStatusField(statusBar, "Len");
+    auto *startField = findStatusField(statusBar, "St");
+    auto *endField = findStatusField(statusBar, "End");
+    REQUIRE(lengthField != nullptr);
+    REQUIRE(startField != nullptr);
+    REQUIRE(endField != nullptr);
+
+    state.getActiveDocumentSession().cursor = 100;
+    statusBar->timerCallback();
+
+    REQUIRE(lengthField->mouseDown(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN, 10, 10, 10.0f, 10.0f, 0.0f, 0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false}, 2}));
+
+    auto *editor = findFirstRecursive<cupuacu::gui::TextInput>(lengthField);
+    REQUIRE(editor != nullptr);
+    REQUIRE(editor->textInput("25"));
+
+    SDL_KeyboardEvent enter{};
+    enter.scancode = SDL_SCANCODE_RETURN;
+    REQUIRE(editor->keyDown(enter));
+    statusBar->timerCallback();
+
+    const auto &selection = state.getActiveDocumentSession().selection;
+    REQUIRE(selection.isActive());
+    REQUIRE(selection.getStartInt() == 100);
+    REQUIRE(selection.getEndInt() == 124);
+    REQUIRE(selection.getLengthInt() == 25);
+    REQUIRE(startField->getValue() == "100");
+    REQUIRE(endField->getValue() == "124");
+    REQUIRE(lengthField->getValue() == "25");
+}
+
 TEST_CASE("Status bar integration shows sample rate and bit depth",
           "[integration]")
 {

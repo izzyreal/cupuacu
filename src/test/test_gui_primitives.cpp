@@ -14,6 +14,7 @@
 #include "gui/ScrollBar.hpp"
 #include "gui/Slider.hpp"
 #include "gui/StatusBar.hpp"
+#include "gui/StatusBarEditLogic.hpp"
 #include "gui/TextInput.hpp"
 #include "gui/TextButton.hpp"
 #include "gui/Window.hpp"
@@ -577,112 +578,33 @@ TEST_CASE("TextInput escape cancels without submitting", "[gui]")
     REQUIRE(canceledCount == 1);
 }
 
-TEST_CASE("StatusBar inline position edit submits on enter and cancels on escape",
-          "[gui]")
+TEST_CASE("StatusBar edit logic updates the cursor from position input", "[gui]")
 {
     cupuacu::test::StateWithTestPaths state{};
-    auto harness = createStatusBarHarness(&state, 1024);
+    auto &session = state.getActiveDocumentSession();
+    session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 1024);
+    session.syncSelectionAndCursorToDocumentLength();
+    session.cursor = 7;
 
-    auto *posField = findStatusField(harness.statusBar, "Pos");
-    REQUIRE(posField != nullptr);
+    REQUIRE(cupuacu::gui::tryApplyStatusBarPositionEdit(session, "12"));
+    REQUIRE(session.cursor == 12);
 
-    harness.statusBar->timerCallback();
-    REQUIRE(posField->getValue() == "0");
-
-    REQUIRE(posField->mouseDown(cupuacu::gui::MouseEvent{
-        cupuacu::gui::DOWN,
-        10,
-        10,
-        10.0f,
-        10.0f,
-        0.0f,
-        0.0f,
-        cupuacu::gui::MouseButtonState{true, false, false},
-        2}));
-    REQUIRE(posField->isEditing());
-
-    auto *editor = findFirstRecursive<cupuacu::gui::TextInput>(posField);
-    REQUIRE(editor != nullptr);
-    REQUIRE(editor->textInput("12"));
-
-    state.getActiveDocumentSession().cursor = 77;
-    harness.statusBar->timerCallback();
-    REQUIRE(editor->getText() == "12");
-
-    SDL_KeyboardEvent enter{};
-    enter.scancode = SDL_SCANCODE_RETURN;
-    REQUIRE(editor->keyDown(enter));
-    harness.statusBar->timerCallback();
-    REQUIRE_FALSE(posField->isEditing());
-    REQUIRE(state.getActiveDocumentSession().cursor == 12);
-    REQUIRE(posField->getValue() == "12");
-
-    REQUIRE(posField->mouseDown(cupuacu::gui::MouseEvent{
-        cupuacu::gui::DOWN,
-        10,
-        10,
-        10.0f,
-        10.0f,
-        0.0f,
-        0.0f,
-        cupuacu::gui::MouseButtonState{true, false, false},
-        2}));
-    REQUIRE(posField->isEditing());
-    editor = findFirstRecursive<cupuacu::gui::TextInput>(posField);
-    REQUIRE(editor != nullptr);
-    REQUIRE(editor->textInput("34"));
-
-    SDL_KeyboardEvent escape{};
-    escape.scancode = SDL_SCANCODE_ESCAPE;
-    REQUIRE(editor->keyDown(escape));
-    harness.statusBar->timerCallback();
-    REQUIRE_FALSE(posField->isEditing());
-    REQUIRE(state.getActiveDocumentSession().cursor == 12);
-    REQUIRE(posField->getValue() == "12");
+    REQUIRE_FALSE(cupuacu::gui::tryApplyStatusBarPositionEdit(session, "12x"));
+    REQUIRE(session.cursor == 12);
 }
 
-TEST_CASE("StatusBar inline length edit creates a selection from the cursor",
+TEST_CASE("StatusBar edit logic length input creates a selection from the cursor",
           "[gui]")
 {
     cupuacu::test::StateWithTestPaths state{};
-    auto harness = createStatusBarHarness(&state, 1024);
+    auto &session = state.getActiveDocumentSession();
+    session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 1024);
+    session.syncSelectionAndCursorToDocumentLength();
+    session.cursor = 100;
 
-    auto *lengthField = findStatusField(harness.statusBar, "Len");
-    auto *startField = findStatusField(harness.statusBar, "St");
-    auto *endField = findStatusField(harness.statusBar, "End");
-    REQUIRE(lengthField != nullptr);
-    REQUIRE(startField != nullptr);
-    REQUIRE(endField != nullptr);
-
-    state.getActiveDocumentSession().cursor = 100;
-    harness.statusBar->timerCallback();
-
-    REQUIRE(lengthField->mouseDown(cupuacu::gui::MouseEvent{
-        cupuacu::gui::DOWN,
-        10,
-        10,
-        10.0f,
-        10.0f,
-        0.0f,
-        0.0f,
-        cupuacu::gui::MouseButtonState{true, false, false},
-        2}));
-
-    auto *editor = findFirstRecursive<cupuacu::gui::TextInput>(lengthField);
-    REQUIRE(editor != nullptr);
-    REQUIRE(editor->textInput("25"));
-
-    SDL_KeyboardEvent enter{};
-    enter.scancode = SDL_SCANCODE_RETURN;
-    REQUIRE(editor->keyDown(enter));
-    harness.statusBar->timerCallback();
-
-    const auto &selection = state.getActiveDocumentSession().selection;
-    REQUIRE(selection.isActive());
-    REQUIRE(selection.getStartInt() == 100);
-    REQUIRE(selection.getEndInt() == 124);
-    REQUIRE(selection.getLengthInt() == 25);
-    REQUIRE(startField->getValue() == "100");
-    REQUIRE(endField->getValue() == "124");
-    REQUIRE(lengthField->getValue() == "25");
+    REQUIRE(cupuacu::gui::tryApplyStatusBarLengthEdit(session, "25"));
+    REQUIRE(session.selection.isActive());
+    REQUIRE(session.selection.getStartInt() == 100);
+    REQUIRE(session.selection.getEndInt() == 124);
+    REQUIRE(session.selection.getLengthInt() == 25);
 }
