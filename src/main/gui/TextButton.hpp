@@ -12,6 +12,7 @@ namespace cupuacu::gui
                    const ButtonType typeToUse = ButtonType::Momentary);
 
         void setText(const std::string &textToUse);
+        void setFontSize(int fontSize);
         void resized() override;
 
     private:

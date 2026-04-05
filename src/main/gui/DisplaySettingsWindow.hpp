@@ -3,10 +3,10 @@
 #include <memory>
 
 #include "../State.hpp"
+#include "Component.hpp"
 #include "DropdownMenu.hpp"
 #include "Label.hpp"
 #include "OpaqueRect.hpp"
-#include "Window.hpp"
 
 namespace cupuacu::gui
 {
@@ -56,28 +56,15 @@ namespace cupuacu::gui
                static_cast<double>(oldPixelScale);
     }
 
-    class DisplaySettingsWindow
+    class DisplaySettingsPane : public Component
     {
     public:
-        explicit DisplaySettingsWindow(State *stateToUse);
-        ~DisplaySettingsWindow();
+        explicit DisplaySettingsPane(State *stateToUse);
+        ~DisplaySettingsPane() override = default;
 
-        bool isOpen() const
-        {
-            return window && window->isOpen();
-        }
-
-        void raise() const;
-
-        Window *getWindow() const
-        {
-            return window.get();
-        }
+        void resized() override;
 
     private:
-        State *state = nullptr;
-        std::unique_ptr<Window> window;
-
         OpaqueRect *background = nullptr;
         Label *vuMeterScaleLabel = nullptr;
         DropdownMenu *vuMeterScaleDropdown = nullptr;
@@ -85,7 +72,6 @@ namespace cupuacu::gui
         DropdownMenu *pixelScaleDropdown = nullptr;
 
         void layoutComponents() const;
-        void renderOnce() const;
         void syncVuMeterScaleSelection();
         void syncPixelScaleSelection();
         void persistDisplayProperties() const;

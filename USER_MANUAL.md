@@ -167,6 +167,7 @@ App-wide shortcuts:
 - `Cmd/Ctrl + C`: copy the current selection
 - `Cmd/Ctrl + V`: paste the clipboard
 - `Cmd/Ctrl + T`: trim to the current selection
+- `Cmd + ,` on macOS / `Ctrl + ,` on other platforms: open the Options window
 - `Ctrl + Tab`: switch to the next open tab
 - `Ctrl + Shift + Tab`: switch to the previous open tab
 - `Space`: play or stop playback
@@ -247,17 +248,37 @@ This menu is disabled when no document is open.
 
 The `Options` menu contains:
 
-- `Device Properties`
+- `All options`
+- `Audio`
+- `Display`
 
-### Device Properties
+`All options` opens the shared `Options` window.
 
-The `Device Properties` window lets you choose:
+Shortcut:
+
+- macOS: `Cmd + ,`
+- other platforms: `Ctrl + ,`
+
+`Audio` and `Display` are shortcuts that open the same `Options` window and select the corresponding section.
+
+### Audio
+
+The `Audio` section lets you choose:
 
 - device type / host API
 - output device
 - input device
 
 Changes are persisted automatically when you select a different device configuration.
+
+### Display
+
+The `Display` section lets you choose:
+
+- VU meter scale
+- pixel scale
+
+Changes are persisted automatically when you select a different display configuration.
 
 ## Persisted Settings
 
@@ -321,7 +342,7 @@ User-visible behavior:
 
 ### audio_device_properties.json
 
-This file stores the selected audio device configuration used by the `Device Properties` window.
+This file stores the selected audio device configuration used by the `Options -> Audio` section.
 
 In practical terms, it remembers:
 

@@ -121,6 +121,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/gui/DropdownMenu.cpp
     src/main/gui/DevicePropertiesWindow.cpp
     src/main/gui/DisplaySettingsWindow.cpp
+    src/main/gui/OptionsWindow.cpp
     src/main/gui/NewFileDialogWindow.cpp
     src/main/gui/GenerateSilenceDialogWindow.cpp
     src/main/gui/ExportAudioDialogWindow.cpp

@@ -17,6 +17,11 @@ void TextButton::setText(const std::string &textToUse)
     label->setText(textToUse);
 }
 
+void TextButton::setFontSize(const int fontSize)
+{
+    label->setFontSize(fontSize);
+}
+
 void TextButton::resized()
 {
     label->setBounds(getLocalBounds());

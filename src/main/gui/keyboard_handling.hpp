@@ -3,6 +3,7 @@
 #include "audio/AudioDevices.hpp"
 #include "Waveform.hpp"
 #include "WaveformRefresh.hpp"
+#include "OptionsWindow.hpp"
 #include "Window.hpp"
 #include "../actions/ShowOpenFileDialog.hpp"
 #include "../actions/DocumentLifecycle.hpp"
@@ -189,6 +190,11 @@ namespace cupuacu::gui
                     actions::overwrite(state);
                 }
             }
+        }
+        else if (event->key.scancode == SDL_SCANCODE_COMMA &&
+                 primaryModifierHeld && !(event->key.mod & SDL_KMOD_SHIFT))
+        {
+            showOptionsWindow(state);
         }
         else if (event->key.scancode == SDL_SCANCODE_SPACE)
         {

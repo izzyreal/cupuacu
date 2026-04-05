@@ -454,7 +454,7 @@ TEST_CASE("Menu integration undo and redo actions reflect undo stack state",
     REQUIRE(state.getActiveRedoables().empty());
 }
 
-TEST_CASE("Options menu integration opens device properties window once",
+TEST_CASE("Options menu integration opens audio options in a shared options window once",
           "[integration]")
 {
     cupuacu::test::ensureSdlTtfInitialized();
@@ -480,25 +480,31 @@ TEST_CASE("Options menu integration opens device properties window once",
     auto *optionsMenu = topLevelMenus[5];
 
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
-    REQUIRE(optionEntries.size() == 2);
-    auto *devicePropertiesEntry = optionEntries[0];
+    REQUIRE(optionEntries.size() == 3);
+    auto *audioEntry = optionEntries[1];
 
-    REQUIRE(state.devicePropertiesWindow == nullptr);
+    REQUIRE(state.optionsWindow == nullptr);
     const auto initialWindowCount = state.windows.size();
 
     optionsMenu->mouseDown(cupuacu::test::integration::leftMouseDown());
     REQUIRE(optionsMenu->isOpen());
 
-    devicePropertiesEntry->mouseDown(cupuacu::test::integration::leftMouseDown());
-    REQUIRE(state.devicePropertiesWindow != nullptr);
-    REQUIRE(state.devicePropertiesWindow->isOpen());
+    audioEntry->mouseDown(cupuacu::test::integration::leftMouseDown());
+    REQUIRE(state.optionsWindow != nullptr);
+    REQUIRE(state.optionsWindow->isOpen());
     REQUIRE(state.windows.size() == initialWindowCount + 1);
+
+    auto *audioPane = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::Component>(
+        state.optionsWindow->getWindow()->getRootComponent(),
+        "OptionsAudioPane");
+    REQUIRE(audioPane != nullptr);
 
     std::vector<cupuacu::gui::DropdownMenu *> dropdowns;
     std::vector<cupuacu::gui::Label *> labels;
-    collectChildrenRecursive(state.devicePropertiesWindow->getWindow()->getRootComponent(),
+    collectChildrenRecursive(audioPane,
                              dropdowns);
-    collectChildrenRecursive(state.devicePropertiesWindow->getWindow()->getRootComponent(),
+    collectChildrenRecursive(audioPane,
                              labels);
 
     REQUIRE(dropdowns.size() == 3);
@@ -509,17 +515,17 @@ TEST_CASE("Options menu integration opens device properties window once",
         REQUIRE(dropdown->getHeight() >= dropdown->getRowHeight());
     }
 
-    auto *openedWindow = state.devicePropertiesWindow.get();
+    auto *openedWindow = state.optionsWindow.get();
     optionsMenu->mouseDown(cupuacu::test::integration::leftMouseDown());
-    devicePropertiesEntry->mouseDown(cupuacu::test::integration::leftMouseDown());
-    REQUIRE(state.devicePropertiesWindow.get() == openedWindow);
+    audioEntry->mouseDown(cupuacu::test::integration::leftMouseDown());
+    REQUIRE(state.optionsWindow.get() == openedWindow);
     REQUIRE(state.windows.size() == initialWindowCount + 1);
 
-    state.devicePropertiesWindow.reset();
+    state.optionsWindow.reset();
     REQUIRE(state.windows.size() == initialWindowCount);
 }
 
-TEST_CASE("Options menu integration opens display settings window once",
+TEST_CASE("Options menu integration opens display options in a shared options window once",
           "[integration]")
 {
     cupuacu::test::ensureSdlTtfInitialized();
@@ -545,34 +551,41 @@ TEST_CASE("Options menu integration opens display settings window once",
     auto *optionsMenu = topLevelMenus[5];
 
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
-    REQUIRE(optionEntries.size() == 2);
-    auto *displayEntry = optionEntries[1];
+    REQUIRE(optionEntries.size() == 3);
+    auto *displayEntry = optionEntries[2];
 
-    REQUIRE(state.displaySettingsWindow == nullptr);
+    REQUIRE(state.optionsWindow == nullptr);
     const auto initialWindowCount = state.windows.size();
 
     optionsMenu->mouseDown(cupuacu::test::integration::leftMouseDown());
     REQUIRE(optionsMenu->isOpen());
 
     displayEntry->mouseDown(cupuacu::test::integration::leftMouseDown());
-    REQUIRE(state.displaySettingsWindow != nullptr);
-    REQUIRE(state.displaySettingsWindow->isOpen());
+    REQUIRE(state.optionsWindow != nullptr);
+    REQUIRE(state.optionsWindow->isOpen());
     REQUIRE(state.windows.size() == initialWindowCount + 1);
+    REQUIRE(state.optionsWindow->getSelectedSection() ==
+            cupuacu::gui::OptionsSection::Display);
+
+    auto *displayPane = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::Component>(
+        state.optionsWindow->getWindow()->getRootComponent(),
+        "OptionsDisplayPane");
+    REQUIRE(displayPane != nullptr);
 
     std::vector<cupuacu::gui::DropdownMenu *> dropdowns;
-    collectChildrenRecursive(
-        state.displaySettingsWindow->getWindow()->getRootComponent(), dropdowns);
+    collectChildrenRecursive(displayPane, dropdowns);
     REQUIRE(dropdowns.size() == 2);
     REQUIRE(dropdowns[0]->getSelectedIndex() >= 0);
     REQUIRE(dropdowns[1]->getSelectedIndex() >= 0);
 
-    auto *openedWindow = state.displaySettingsWindow.get();
+    auto *openedWindow = state.optionsWindow.get();
     optionsMenu->mouseDown(cupuacu::test::integration::leftMouseDown());
     displayEntry->mouseDown(cupuacu::test::integration::leftMouseDown());
-    REQUIRE(state.displaySettingsWindow.get() == openedWindow);
+    REQUIRE(state.optionsWindow.get() == openedWindow);
     REQUIRE(state.windows.size() == initialWindowCount + 1);
 
-    state.displaySettingsWindow.reset();
+    state.optionsWindow.reset();
     REQUIRE(state.windows.size() == initialWindowCount);
 }
 
@@ -776,14 +789,14 @@ TEST_CASE("Device properties integration persists normalized selection when reop
     REQUIRE(topLevelMenus.size() == 6);
     auto *optionsMenu = topLevelMenus[5];
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
-    REQUIRE(optionEntries.size() == 2);
+    REQUIRE(optionEntries.size() == 3);
 
-    REQUIRE(state.devicePropertiesWindow == nullptr);
+    REQUIRE(state.optionsWindow == nullptr);
     REQUIRE(optionsMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
-    REQUIRE(optionEntries[0]->mouseDown(
+    REQUIRE(optionEntries[1]->mouseDown(
         cupuacu::test::integration::leftMouseDown()));
-    REQUIRE(state.devicePropertiesWindow != nullptr);
-    REQUIRE(state.devicePropertiesWindow->isOpen());
+    REQUIRE(state.optionsWindow != nullptr);
+    REQUIRE(state.optionsWindow->isOpen());
 
     const auto normalizedSelection = state.audioDevices->getDeviceSelection();
     REQUIRE(normalizedSelection != invalidSelection);
@@ -806,7 +819,7 @@ TEST_CASE("Device properties integration persists normalized selection when reop
             "device:" + std::to_string(normalizedSelection.inputDeviceIndex));
 }
 
-TEST_CASE("Options menu integration replaces a closed device properties window instance",
+TEST_CASE("Options menu integration replaces a closed options window instance",
           "[integration]")
 {
     cupuacu::test::ensureSdlTtfInitialized();
@@ -831,13 +844,13 @@ TEST_CASE("Options menu integration replaces a closed device properties window i
     REQUIRE(topLevelMenus.size() == 6);
     auto *optionsMenu = topLevelMenus[5];
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
-    REQUIRE(optionEntries.size() == 2);
+    REQUIRE(optionEntries.size() == 3);
 
     REQUIRE(optionsMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
-    REQUIRE(optionEntries[0]->mouseDown(
+    REQUIRE(optionEntries[1]->mouseDown(
         cupuacu::test::integration::leftMouseDown()));
-    REQUIRE(state.devicePropertiesWindow != nullptr);
-    auto *firstWindow = state.devicePropertiesWindow.get();
+    REQUIRE(state.optionsWindow != nullptr);
+    auto *firstWindow = state.optionsWindow.get();
 
     SDL_Event event{};
     event.type = SDL_EVENT_KEY_DOWN;
@@ -850,9 +863,60 @@ TEST_CASE("Options menu integration replaces a closed device properties window i
     REQUIRE(optionsMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
     REQUIRE(optionEntries[0]->mouseDown(
         cupuacu::test::integration::leftMouseDown()));
-    REQUIRE(state.devicePropertiesWindow != nullptr);
-    REQUIRE(state.devicePropertiesWindow.get() != firstWindow);
-    REQUIRE(state.devicePropertiesWindow->isOpen());
+    REQUIRE(state.optionsWindow != nullptr);
+    REQUIRE(state.optionsWindow.get() != firstWindow);
+    REQUIRE(state.optionsWindow->isOpen());
+}
+
+TEST_CASE("Options window integration reopens on the last selected section from All options",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto sessionUi =
+        cupuacu::test::integration::createSessionUi(&state, 512, false);
+
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "options-last-section", 480, 240, SDL_WINDOW_HIDDEN);
+
+    auto root =
+        std::make_unique<cupuacu::test::integration::RootComponent>(&state);
+    auto *menuBar = root->emplaceChild<cupuacu::gui::MenuBar>(&state);
+    root->setBounds(0, 0, 480, 240);
+    menuBar->setBounds(0, 0, 480, 40);
+    window->setRootComponent(std::move(root));
+    window->setMenuBar(menuBar);
+
+    auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
+    REQUIRE(topLevelMenus.size() == 6);
+    auto *optionsMenu = topLevelMenus[5];
+    auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
+    REQUIRE(optionEntries.size() == 3);
+
+    REQUIRE(optionsMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
+    REQUIRE(optionEntries[2]->mouseDown(
+        cupuacu::test::integration::leftMouseDown()));
+    REQUIRE(state.optionsWindow != nullptr);
+    REQUIRE(state.optionsWindow->getSelectedSection() ==
+            cupuacu::gui::OptionsSection::Display);
+
+    auto *openedWindow = state.optionsWindow.get();
+    SDL_Event event{};
+    event.type = SDL_EVENT_KEY_DOWN;
+    event.key.windowID = openedWindow->getWindow()->getId();
+    event.key.scancode = SDL_SCANCODE_ESCAPE;
+
+    REQUIRE(openedWindow->getWindow()->handleEvent(event));
+    REQUIRE_FALSE(openedWindow->isOpen());
+
+    REQUIRE(optionsMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
+    REQUIRE(optionEntries[0]->mouseDown(
+        cupuacu::test::integration::leftMouseDown()));
+    REQUIRE(state.optionsWindow != nullptr);
+    REQUIRE(state.optionsWindow->isOpen());
+    REQUIRE(state.optionsWindow->getSelectedSection() ==
+            cupuacu::gui::OptionsSection::Display);
 }
 
 TEST_CASE("Device properties integration refreshes layout when pixel scale changes",
@@ -880,26 +944,39 @@ TEST_CASE("Device properties integration refreshes layout when pixel scale chang
     REQUIRE(topLevelMenus.size() == 6);
     auto *optionsMenu = topLevelMenus[5];
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
-    REQUIRE(optionEntries.size() == 2);
+    REQUIRE(optionEntries.size() == 3);
 
     REQUIRE(optionsMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
-    REQUIRE(optionEntries[0]->mouseDown(
+    REQUIRE(optionEntries[1]->mouseDown(
         cupuacu::test::integration::leftMouseDown()));
-    REQUIRE(state.devicePropertiesWindow != nullptr);
+    REQUIRE(state.optionsWindow != nullptr);
 
+    auto *audioPane = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::Component>(
+        state.optionsWindow->getWindow()->getRootComponent(),
+        "OptionsAudioPane");
+    auto *audioButton = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::TextButton>(
+        state.optionsWindow->getWindow()->getRootComponent(),
+        "TextButton:Audio");
+    REQUIRE(audioPane != nullptr);
+    REQUIRE(audioButton != nullptr);
     std::vector<cupuacu::gui::DropdownMenu *> dropdowns;
-    collectChildrenRecursive(
-        state.devicePropertiesWindow->getWindow()->getRootComponent(), dropdowns);
+    collectChildrenRecursive(audioPane, dropdowns);
     REQUIRE(dropdowns.size() == 3);
 
     const int originalHeight = dropdowns[0]->getHeight();
     const int originalY = dropdowns[1]->getYPos();
+    const int originalButtonHeight = audioButton->getHeight();
+    const int originalButtonWidth = audioButton->getWidth();
 
     state.pixelScale = 2;
-    state.devicePropertiesWindow->getWindow()->refreshForScaleOrResize();
+    state.optionsWindow->getWindow()->refreshForScaleOrResize();
 
     REQUIRE(dropdowns[0]->getHeight() != originalHeight);
     REQUIRE(dropdowns[1]->getYPos() != originalY);
+    REQUIRE(audioButton->getHeight() != originalButtonHeight);
+    REQUIRE(audioButton->getWidth() != originalButtonWidth);
 }
 
 TEST_CASE("Dropdown integration keeps only one dropdown open and closes on outside clicks",

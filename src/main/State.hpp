@@ -9,6 +9,7 @@
 #include "effects/EffectSettings.hpp"
 #include "Paths.hpp"
 #include "gui/DocumentSessionWindow.hpp"
+#include "gui/OptionsSection.hpp"
 #include "gui/VuMeterScale.hpp"
 
 #include <cstdint>
@@ -34,8 +35,7 @@ namespace cupuacu
 
     namespace gui
     {
-        class DevicePropertiesWindow;
-        class DisplaySettingsWindow;
+        class OptionsWindow;
         class NewFileDialogWindow;
         class GenerateSilenceDialogWindow;
         class ExportAudioDialogWindow;
@@ -55,7 +55,7 @@ namespace cupuacu
     void destroyAmplifyFadeDialog(effects::AmplifyFadeDialog *);
     void destroyDynamicsDialog(effects::DynamicsDialog *);
     void destroyRemoveSilenceDialog(effects::RemoveSilenceDialog *);
-    void destroyDisplaySettingsWindow(gui::DisplaySettingsWindow *);
+    void destroyOptionsWindow(gui::OptionsWindow *);
     void destroyNewFileDialogWindow(gui::NewFileDialogWindow *);
     void destroyGenerateSilenceDialogWindow(gui::GenerateSilenceDialogWindow *);
     void destroyExportAudioDialogWindow(gui::ExportAudioDialogWindow *);
@@ -68,6 +68,8 @@ namespace cupuacu
         uint8_t pixelScale = 1;
         float uiScale = 1.0f;
         gui::VuMeterScale vuMeterScale = gui::VuMeterScale::PeakDbfs;
+        gui::OptionsSection lastSelectedOptionsSection =
+            gui::OptionsSection::Audio;
         bool loopPlaybackEnabled = false;
         uint64_t playbackRangeStart = 0;
         uint64_t playbackRangeEnd = 0;
@@ -80,10 +82,8 @@ namespace cupuacu
         std::vector<gui::Waveform *> waveforms;
         std::vector<gui::Window *> windows;
         std::unique_ptr<gui::DocumentSessionWindow> mainDocumentSessionWindow;
-        std::unique_ptr<gui::DevicePropertiesWindow> devicePropertiesWindow;
-        std::unique_ptr<gui::DisplaySettingsWindow,
-                        void (*)(gui::DisplaySettingsWindow *)>
-            displaySettingsWindow{nullptr, destroyDisplaySettingsWindow};
+        std::unique_ptr<gui::OptionsWindow, void (*)(gui::OptionsWindow *)>
+            optionsWindow{nullptr, destroyOptionsWindow};
         std::unique_ptr<gui::NewFileDialogWindow,
                         void (*)(gui::NewFileDialogWindow *)>
             newFileDialogWindow{nullptr, destroyNewFileDialogWindow};

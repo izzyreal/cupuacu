@@ -13,56 +13,14 @@
 
 using namespace cupuacu::gui;
 
-namespace
+DisplaySettingsPane::DisplaySettingsPane(State *stateToUse)
+    : Component(stateToUse, "OptionsDisplayPane")
 {
-    constexpr int kWindowWidth = 500;
-    constexpr int kWindowHeight = 240;
-
-    constexpr Uint32 getHighDensityWindowFlag()
-    {
-        return SDL_WINDOW_HIGH_PIXEL_DENSITY;
-    }
-} // namespace
-
-DisplaySettingsWindow::DisplaySettingsWindow(State *stateToUse)
-    : state(stateToUse)
-{
-    if (!state)
-    {
-        return;
-    }
-
-    window = std::make_unique<Window>(
-        state, "Display", kWindowWidth, kWindowHeight,
-        SDL_WINDOW_RESIZABLE | getHighDensityWindowFlag());
-    if (!window->isOpen())
-    {
-        return;
-    }
-
-    state->windows.push_back(window.get());
-
-    auto *mainWindow = state->mainDocumentSessionWindow
-                           ? state->mainDocumentSessionWindow->getWindow()
-                           : nullptr;
-    if (mainWindow && mainWindow->getSdlWindow())
-    {
-        if (!SDL_SetWindowParent(window->getSdlWindow(),
-                                 mainWindow->getSdlWindow()))
-        {
-            SDL_Log("DisplaySettingsWindow: SDL_SetWindowParent failed: %s",
-                    SDL_GetError());
-        }
-    }
-
-    auto rootComponent = std::make_unique<Component>(state, "DisplaySettingsRoot");
-    rootComponent->setVisible(true);
-
-    background = rootComponent->emplaceChild<OpaqueRect>(state, Colors::background);
-    vuMeterScaleLabel = rootComponent->emplaceChild<Label>(state, "VU Meter Scale");
-    vuMeterScaleDropdown = rootComponent->emplaceChild<DropdownMenu>(state);
-    pixelScaleLabel = rootComponent->emplaceChild<Label>(state, "Pixel Scale");
-    pixelScaleDropdown = rootComponent->emplaceChild<DropdownMenu>(state);
+    background = emplaceChild<OpaqueRect>(state, Colors::background);
+    vuMeterScaleLabel = emplaceChild<Label>(state, "VU Meter Scale");
+    vuMeterScaleDropdown = emplaceChild<DropdownMenu>(state);
+    pixelScaleLabel = emplaceChild<Label>(state, "Pixel Scale");
+    pixelScaleDropdown = emplaceChild<DropdownMenu>(state);
 
     const int labelFontSize = static_cast<int>(state->menuFontSize);
     vuMeterScaleLabel->setFontSize(labelFontSize);
@@ -71,10 +29,12 @@ DisplaySettingsWindow::DisplaySettingsWindow(State *stateToUse)
     pixelScaleDropdown->setFontSize(labelFontSize);
     vuMeterScaleDropdown->setExpanded(false);
     vuMeterScaleDropdown->setItems(vuMeterScaleOptionLabels());
-    vuMeterScaleDropdown->setSelectedIndex(vuMeterScaleToIndex(state->vuMeterScale));
+    vuMeterScaleDropdown->setSelectedIndex(
+        vuMeterScaleToIndex(state->vuMeterScale));
     pixelScaleDropdown->setExpanded(false);
     pixelScaleDropdown->setItems(displayPixelScaleOptionLabels());
-    pixelScaleDropdown->setSelectedIndex(displayPixelScaleToIndex(state->pixelScale));
+    pixelScaleDropdown->setSelectedIndex(
+        displayPixelScaleToIndex(state->pixelScale));
     vuMeterScaleDropdown->setOnSelectionChanged(
         [this](const int index)
         {
@@ -86,7 +46,10 @@ DisplaySettingsWindow::DisplaySettingsWindow(State *stateToUse)
             state->vuMeterScale = vuMeterScaleFromIndex(index);
             syncVuMeterScaleSelection();
             persistDisplayProperties();
-            renderOnce();
+            if (window)
+            {
+                window->renderFrameIfDirty();
+            }
         });
     pixelScaleDropdown->setOnSelectionChanged(
         [this](const int index)
@@ -98,56 +61,26 @@ DisplaySettingsWindow::DisplaySettingsWindow(State *stateToUse)
 
             applyPixelScale(displayPixelScaleFromIndex(index));
             persistDisplayProperties();
-            renderOnce();
+            if (window)
+            {
+                window->renderFrameIfDirty();
+            }
         });
 
-    window->setOnResize(
-        [this]()
-        {
-            layoutComponents();
-            renderOnce();
-        });
-
-    window->setRootComponent(std::move(rootComponent));
-
-    layoutComponents();
     syncVuMeterScaleSelection();
     syncPixelScaleSelection();
-    renderOnce();
-    raise();
 }
 
-DisplaySettingsWindow::~DisplaySettingsWindow()
+void DisplaySettingsPane::resized()
 {
-    if (window && state)
-    {
-        const auto it =
-            std::find(state->windows.begin(), state->windows.end(), window.get());
-        if (it != state->windows.end())
-        {
-            state->windows.erase(it);
-        }
-    }
+    layoutComponents();
 }
 
-void DisplaySettingsWindow::layoutComponents() const
+void DisplaySettingsPane::layoutComponents() const
 {
-    if (!window || !window->getRootComponent())
-    {
-        return;
-    }
+    const int canvasWi = getWidth();
+    const int canvasHi = getHeight();
 
-    float canvasW = static_cast<float>(kWindowWidth);
-    float canvasH = static_cast<float>(kWindowHeight);
-    if (window->getCanvas())
-    {
-        SDL_GetTextureSize(window->getCanvas(), &canvasW, &canvasH);
-    }
-
-    const int canvasWi = static_cast<int>(canvasW);
-    const int canvasHi = static_cast<int>(canvasH);
-
-    window->getRootComponent()->setSize(canvasWi, canvasHi);
     background->setBounds(0, 0, canvasWi, canvasHi);
 
     const int padding = scaleUi(state, 8.0f);
@@ -166,7 +99,7 @@ void DisplaySettingsWindow::layoutComponents() const
                  std::max(1, static_cast<int>(std::ceil(pixelScaleLabelH)))) +
         padding * 2;
     const int dropdownX = padding + labelWidth + padding;
-    const int dropdownW = canvasWi - dropdownX - padding;
+    const int dropdownW = std::max(1, canvasWi - dropdownX - padding);
     const int secondRowY = padding + rowHeight + padding;
 
     vuMeterScaleLabel->setBounds(padding, padding, labelWidth, rowHeight);
@@ -179,22 +112,15 @@ void DisplaySettingsWindow::layoutComponents() const
     pixelScaleDropdown->setItemMargin(padding);
 }
 
-void DisplaySettingsWindow::renderOnce() const
-{
-    if (window)
-    {
-        window->renderFrame();
-    }
-}
-
-void DisplaySettingsWindow::syncVuMeterScaleSelection()
+void DisplaySettingsPane::syncVuMeterScaleSelection()
 {
     if (!state)
     {
         return;
     }
 
-    vuMeterScaleDropdown->setSelectedIndex(vuMeterScaleToIndex(state->vuMeterScale));
+    vuMeterScaleDropdown->setSelectedIndex(
+        vuMeterScaleToIndex(state->vuMeterScale));
 
     if (!state->mainDocumentSessionWindow)
     {
@@ -221,17 +147,18 @@ void DisplaySettingsWindow::syncVuMeterScaleSelection()
     mainWindow->renderFrame();
 }
 
-void DisplaySettingsWindow::syncPixelScaleSelection()
+void DisplaySettingsPane::syncPixelScaleSelection()
 {
     if (!state)
     {
         return;
     }
 
-    pixelScaleDropdown->setSelectedIndex(displayPixelScaleToIndex(state->pixelScale));
+    pixelScaleDropdown->setSelectedIndex(
+        displayPixelScaleToIndex(state->pixelScale));
 }
 
-void DisplaySettingsWindow::persistDisplayProperties() const
+void DisplaySettingsPane::persistDisplayProperties() const
 {
     if (!state)
     {
@@ -243,7 +170,7 @@ void DisplaySettingsWindow::persistDisplayProperties() const
         {.pixelScale = state->pixelScale, .vuMeterScale = state->vuMeterScale});
 }
 
-void DisplaySettingsWindow::applyPixelScale(const uint8_t newPixelScale)
+void DisplaySettingsPane::applyPixelScale(const uint8_t newPixelScale)
 {
     if (!state || !state->mainDocumentSessionWindow || newPixelScale == 0 ||
         state->pixelScale == newPixelScale)
@@ -273,12 +200,4 @@ void DisplaySettingsWindow::applyPixelScale(const uint8_t newPixelScale)
     }
     refreshWaveforms(state, true, true);
     syncPixelScaleSelection();
-}
-
-void DisplaySettingsWindow::raise() const
-{
-    if (window && window->getSdlWindow())
-    {
-        SDL_RaiseWindow(window->getSdlWindow());
-    }
 }

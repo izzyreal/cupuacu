@@ -14,8 +14,7 @@
 #include "gui/Menu.hpp"
 #include "gui/MenuBarPlanning.hpp"
 #include "gui/Window.hpp"
-#include "gui/DevicePropertiesWindow.hpp"
-#include "gui/DisplaySettingsWindow.hpp"
+#include "gui/OptionsWindow.hpp"
 #include "gui/GenerateSilenceDialogWindow.hpp"
 #include "gui/NewFileDialogWindow.hpp"
 #include "gui/Colors.hpp"
@@ -87,6 +86,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
     const std::string cutText{"Cut (Cmd + X)"};
     const std::string copyText{"Copy (Cmd + C)"};
     const std::string pasteText{"Paste (Cmd + V)"};
+    const std::string allOptionsText{"All options (Cmd + ,)"};
 #else
     const std::string newText{"New file (Ctrl + N)"};
     const std::string openText{"Open (Ctrl + O)"};
@@ -98,6 +98,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
     const std::string cutText{"Cut (Ctrl + X)"};
     const std::string copyText{"Copy (Ctrl + C)"};
     const std::string pasteText{"Paste (Ctrl + V)"};
+    const std::string allOptionsText{"All options (Ctrl + ,)"};
 #endif
 
     fileMenu->addSubMenu(state, newText,
@@ -396,34 +397,23 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
         });
 
     optionsMenu->addSubMenu(
-        state, "Device Properties",
+        state, allOptionsText,
         [&]
         {
-            if (!state->devicePropertiesWindow ||
-                !state->devicePropertiesWindow->isOpen())
-            {
-                state->devicePropertiesWindow =
-                    std::make_unique<DevicePropertiesWindow>(state);
-            }
-            else
-            {
-                state->devicePropertiesWindow->raise();
-            }
+            showOptionsWindow(state);
         });
-    optionsMenu->addSubMenu(state, "Display",
-                            [&]
-                            {
-                                if (!state->displaySettingsWindow ||
-                                    !state->displaySettingsWindow->isOpen())
-                                {
-                                    state->displaySettingsWindow.reset(
-                                        new DisplaySettingsWindow(state));
-                                }
-                                else
-                                {
-                                    state->displaySettingsWindow->raise();
-                                }
-                            });
+    optionsMenu->addSubMenu(
+        state, "Audio",
+        [&]
+        {
+            showOptionsWindow(state, OptionsSection::Audio);
+        });
+    optionsMenu->addSubMenu(
+        state, "Display",
+        [&]
+        {
+            showOptionsWindow(state, OptionsSection::Display);
+        });
 }
 
 void MenuBar::onDraw(SDL_Renderer *renderer)
@@ -488,7 +478,7 @@ void MenuBar::resized()
     const int generateW = int(66 * scale);
     const int effectsW = int(56 * scale);
     const int optionsW =
-        int(60 * scale); // wide enough for Device Properties and Display text
+        int(60 * scale); // wide enough for All options, Audio, and Display
     const int h = getHeight();
 
     int logoSpace = 0;

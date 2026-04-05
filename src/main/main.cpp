@@ -8,8 +8,7 @@
 #include "Logger.hpp"
 #include "gui/EventHandling.hpp"
 #include "gui/Gui.hpp"
-#include "gui/DevicePropertiesWindow.hpp"
-#include "gui/DisplaySettingsWindow.hpp"
+#include "gui/OptionsWindow.hpp"
 #include "gui/DocumentSessionWindow.hpp"
 #include "gui/GenerateSilenceDialogWindow.hpp"
 #include "gui/NewFileDialogWindow.hpp"
@@ -170,15 +169,9 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         }
     }
 
-    if (state->devicePropertiesWindow &&
-        !state->devicePropertiesWindow->isOpen())
+    if (state->optionsWindow && !state->optionsWindow->isOpen())
     {
-        state->devicePropertiesWindow.reset();
-    }
-    if (state->displaySettingsWindow &&
-        !state->displaySettingsWindow->isOpen())
-    {
-        state->displaySettingsWindow.reset();
+        state->optionsWindow.reset();
     }
     if (state->newFileDialogWindow && !state->newFileDialogWindow->isOpen())
     {
@@ -220,8 +213,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
         {.pixelScale = state->pixelScale, .vuMeterScale = state->vuMeterScale});
     state->generateSilenceDialogWindow.reset();
     state->newFileDialogWindow.reset();
-    state->devicePropertiesWindow.reset();
-    state->displaySettingsWindow.reset();
+    state->optionsWindow.reset();
     state->mainDocumentSessionWindow.reset();
     state->windows.clear();
     SDL_Quit();

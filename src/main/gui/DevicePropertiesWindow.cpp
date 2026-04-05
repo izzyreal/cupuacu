@@ -6,22 +6,14 @@
 #include "Colors.hpp"
 #include "text.hpp"
 
-#include <portaudio.h>
 #include <algorithm>
 #include <cmath>
+#include <portaudio.h>
 
 using namespace cupuacu::gui;
 
 namespace
 {
-    constexpr int kWindowWidth = 500;
-    constexpr int kWindowHeight = 500;
-
-    constexpr Uint32 getHighDensityWindowFlag()
-    {
-        return SDL_WINDOW_HIGH_PIXEL_DENSITY;
-    }
-
     int findIndex(const std::vector<int> &indices, const int value)
     {
         const auto it = std::find(indices.begin(), indices.end(), value);
@@ -45,55 +37,19 @@ namespace
     }
 } // namespace
 
-DevicePropertiesWindow::DevicePropertiesWindow(State *stateToUse)
-    : state(stateToUse)
+DevicePropertiesPane::DevicePropertiesPane(State *stateToUse)
+    : Component(stateToUse, "OptionsAudioPane")
 {
-    if (!state)
-    {
-        return;
-    }
+    background = emplaceChild<OpaqueRect>(state, Colors::background);
 
-    window = std::make_unique<Window>(
-        state, "Device Properties", kWindowWidth, kWindowHeight,
-        SDL_WINDOW_RESIZABLE | getHighDensityWindowFlag());
-    if (!window->isOpen())
-    {
-        return;
-    }
+    deviceTypeLabel = emplaceChild<Label>(state, "Device Type");
+    deviceTypeDropdown = emplaceChild<DropdownMenu>(state);
 
-    if (state)
-    {
-        state->windows.push_back(window.get());
-    }
+    outputDeviceLabel = emplaceChild<Label>(state, "Output Device");
+    outputDeviceDropdown = emplaceChild<DropdownMenu>(state);
 
-    auto *mainWindow = state->mainDocumentSessionWindow->getWindow();
-    if (mainWindow && mainWindow->getSdlWindow())
-    {
-        if (!SDL_SetWindowParent(window->getSdlWindow(),
-                                 mainWindow->getSdlWindow()))
-        {
-            SDL_Log("DevicePropertiesWindow: SDL_SetWindowParent failed: %s",
-                    SDL_GetError());
-        }
-    }
-
-    auto rootComponent =
-        std::make_unique<Component>(state, "DevicePropertiesRoot");
-    rootComponent->setVisible(true);
-
-    background =
-        rootComponent->emplaceChild<OpaqueRect>(state, Colors::background);
-
-    deviceTypeLabel = rootComponent->emplaceChild<Label>(state, "Device Type");
-    deviceTypeDropdown = rootComponent->emplaceChild<DropdownMenu>(state);
-
-    outputDeviceLabel =
-        rootComponent->emplaceChild<Label>(state, "Output Device");
-    outputDeviceDropdown = rootComponent->emplaceChild<DropdownMenu>(state);
-
-    inputDeviceLabel =
-        rootComponent->emplaceChild<Label>(state, "Input Device");
-    inputDeviceDropdown = rootComponent->emplaceChild<DropdownMenu>(state);
+    inputDeviceLabel = emplaceChild<Label>(state, "Input Device");
+    inputDeviceDropdown = emplaceChild<DropdownMenu>(state);
 
     const int labelFontSize = static_cast<int>(state->menuFontSize);
     deviceTypeLabel->setFontSize(labelFontSize);
@@ -112,7 +68,7 @@ DevicePropertiesWindow::DevicePropertiesWindow(State *stateToUse)
     int preferredHostApiIndex = -1;
     int preferredOutputDeviceIndex = -1;
     int preferredInputDeviceIndex = -1;
-    if (state->audioDevices)
+    if (state && state->audioDevices)
     {
         const auto selection = state->audioDevices->getDeviceSelection();
         preferredHostApiIndex = selection.hostApiIndex;
@@ -129,7 +85,7 @@ DevicePropertiesWindow::DevicePropertiesWindow(State *stateToUse)
 
     const int hostApiIndex =
         hostApiDropdownIndex >= 0 &&
-                hostApiDropdownIndex < (int)hostApiIndices.size()
+                hostApiDropdownIndex < static_cast<int>(hostApiIndices.size())
             ? hostApiIndices[hostApiDropdownIndex]
             : -1;
     populateDevices(hostApiIndex, preferredOutputDeviceIndex,
@@ -145,7 +101,7 @@ DevicePropertiesWindow::DevicePropertiesWindow(State *stateToUse)
         [this](const int index)
         {
             int hostApiIndexToUse = -1;
-            if (index >= 0 && index < (int)hostApiIndices.size())
+            if (index >= 0 && index < static_cast<int>(hostApiIndices.size()))
             {
                 hostApiIndexToUse = hostApiIndices[index];
             }
@@ -153,8 +109,7 @@ DevicePropertiesWindow::DevicePropertiesWindow(State *stateToUse)
             int preferredInputDeviceIndex = -1;
             if (state && state->audioDevices)
             {
-                const auto selection =
-                    state->audioDevices->getDeviceSelection();
+                const auto selection = state->audioDevices->getDeviceSelection();
                 preferredOutputDeviceIndex = selection.outputDeviceIndex;
                 preferredInputDeviceIndex = selection.inputDeviceIndex;
             }
@@ -167,7 +122,10 @@ DevicePropertiesWindow::DevicePropertiesWindow(State *stateToUse)
                     state->audioDevices->getDeviceSelection());
             }
             layoutComponents();
-            renderOnce();
+            if (window)
+            {
+                window->renderFrameIfDirty();
+            }
         });
     outputDeviceDropdown->setOnSelectionChanged(
         [this](const int)
@@ -189,51 +147,22 @@ DevicePropertiesWindow::DevicePropertiesWindow(State *stateToUse)
                     state->audioDevices->getDeviceSelection());
             }
         });
-
-    window->setOnResize(
-        [this]
-        {
-            layoutComponents();
-            renderOnce();
-        });
-    window->setOnClose(
-        [this]
-        {
-            if (!state)
-            {
-                return;
-            }
-        });
-
-    window->setRootComponent(std::move(rootComponent));
-
-    layoutComponents();
-    renderOnce();
-
-    raise();
 }
 
-DevicePropertiesWindow::~DevicePropertiesWindow()
+DevicePropertiesPane::~DevicePropertiesPane()
 {
-    if (window && state)
-    {
-        const auto it = std::find(state->windows.begin(), state->windows.end(),
-                                  window.get());
-        if (it != state->windows.end())
-        {
-            state->windows.erase(it);
-        }
-    }
-
-    window.reset();
-
     if (ownsPortAudio)
     {
         Pa_Terminate();
     }
 }
 
-void DevicePropertiesWindow::populateHostApis()
+void DevicePropertiesPane::resized()
+{
+    layoutComponents();
+}
+
+void DevicePropertiesPane::populateHostApis()
 {
     int apiCount = Pa_GetHostApiCount();
     if (apiCount == paNotInitialized)
@@ -281,7 +210,7 @@ void DevicePropertiesWindow::populateHostApis()
     deviceTypeDropdown->setSelectedIndex(0);
 }
 
-void DevicePropertiesWindow::populateDevices(
+void DevicePropertiesPane::populateDevices(
     const int hostApiIndex, const int preferredOutputDeviceIndex,
     const int preferredInputDeviceIndex)
 {
@@ -355,8 +284,8 @@ void DevicePropertiesWindow::populateDevices(
     outputDeviceDropdown->setSelectedIndex(outputSelectionIndex);
 
     inputDeviceDropdown->setItems(inputItems);
-    int inputSelectionIndex =
-        findIndex(inputDeviceIndices, preferredInputDeviceIndex);
+    int inputSelectionIndex = findIndex(inputDeviceIndices,
+                                        preferredInputDeviceIndex);
     if (inputSelectionIndex < 0)
     {
         const int defaultInputDeviceIndex =
@@ -371,119 +300,94 @@ void DevicePropertiesWindow::populateDevices(
     inputDeviceDropdown->setSelectedIndex(inputSelectionIndex);
 }
 
-int DevicePropertiesWindow::getSelectedHostApiIndex() const
+int DevicePropertiesPane::getSelectedHostApiIndex() const
 {
     if (!deviceTypeDropdown)
     {
         return -1;
     }
-    const int selectedIndex = deviceTypeDropdown->getSelectedIndex();
-    if (selectedIndex >= 0 && selectedIndex < (int)hostApiIndices.size())
+    const int index = deviceTypeDropdown->getSelectedIndex();
+    if (index < 0 || index >= static_cast<int>(hostApiIndices.size()))
     {
-        return hostApiIndices[selectedIndex];
+        return -1;
     }
-    return -1;
+    return hostApiIndices[static_cast<std::size_t>(index)];
 }
 
-int DevicePropertiesWindow::getSelectedDeviceIndex(
+int DevicePropertiesPane::getSelectedDeviceIndex(
     const DropdownMenu *dropdown, const std::vector<int> &indices) const
 {
     if (!dropdown)
     {
         return -1;
     }
-    const int selectedIndex = dropdown->getSelectedIndex();
-    if (selectedIndex >= 0 && selectedIndex < (int)indices.size())
+    const int index = dropdown->getSelectedIndex();
+    if (index < 0 || index >= static_cast<int>(indices.size()))
     {
-        return indices[selectedIndex];
+        return -1;
     }
-    return -1;
+    return indices[static_cast<std::size_t>(index)];
 }
 
-bool DevicePropertiesWindow::syncSelectionToAudioDevices()
+bool DevicePropertiesPane::syncSelectionToAudioDevices()
 {
     if (!state || !state->audioDevices)
     {
         return false;
     }
 
-    cupuacu::audio::AudioDevices::DeviceSelection selection;
-    selection.hostApiIndex = getSelectedHostApiIndex();
-    selection.outputDeviceIndex =
-        getSelectedDeviceIndex(outputDeviceDropdown, outputDeviceIndices);
-    selection.inputDeviceIndex =
-        getSelectedDeviceIndex(inputDeviceDropdown, inputDeviceIndices);
-
+    const audio::AudioDevices::DeviceSelection selection{
+        .hostApiIndex = getSelectedHostApiIndex(),
+        .outputDeviceIndex =
+            getSelectedDeviceIndex(outputDeviceDropdown, outputDeviceIndices),
+        .inputDeviceIndex =
+            getSelectedDeviceIndex(inputDeviceDropdown, inputDeviceIndices)};
     return state->audioDevices->setDeviceSelection(selection);
 }
 
-void DevicePropertiesWindow::layoutComponents() const
+void DevicePropertiesPane::layoutComponents() const
 {
-    if (!window || !window->getRootComponent())
-    {
-        return;
-    }
+    const int canvasWi = getWidth();
+    const int canvasHi = getHeight();
 
-    float canvasW = (float)kWindowWidth;
-    float canvasH = (float)kWindowHeight;
-    if (window->getCanvas())
-    {
-        SDL_GetTextureSize(window->getCanvas(), &canvasW, &canvasH);
-    }
-
-    const int canvasWi = (int)canvasW;
-    const int canvasHi = (int)canvasH;
-
-    window->getRootComponent()->setSize(canvasWi, canvasHi);
     background->setBounds(0, 0, canvasWi, canvasHi);
 
     const int padding = scaleUi(state, 8.0f);
     const uint8_t labelFontPointSize =
         scaleFontPointSize(state, state->menuFontSize);
-    const auto [labelTextW, labelTextH] =
+    const auto [deviceTypeLabelW, deviceTypeLabelH] =
+        measureText("Device Type", labelFontPointSize);
+    const auto [outputDeviceLabelW, outputDeviceLabelH] =
         measureText("Output Device", labelFontPointSize);
+    const auto [inputDeviceLabelW, inputDeviceLabelH] =
+        measureText("Input Device", labelFontPointSize);
     const int labelWidth =
-        std::max(1, static_cast<int>(std::ceil(labelTextW))) + padding;
+        std::max({std::max(1, static_cast<int>(std::ceil(deviceTypeLabelW))),
+                  std::max(1, static_cast<int>(std::ceil(outputDeviceLabelW))),
+                  std::max(1, static_cast<int>(std::ceil(inputDeviceLabelW)))}) +
+        padding;
     const int rowHeight =
-        std::max(1, static_cast<int>(std::ceil(labelTextH))) + padding * 2;
-
+        std::max({std::max(1, static_cast<int>(std::ceil(deviceTypeLabelH))),
+                  std::max(1, static_cast<int>(std::ceil(outputDeviceLabelH))),
+                  std::max(1, static_cast<int>(std::ceil(inputDeviceLabelH)))}) +
+        padding * 2;
     const int dropdownX = padding + labelWidth + padding;
-    const int dropdownW = canvasWi - dropdownX - padding;
+    const int dropdownW = std::max(1, canvasWi - dropdownX - padding);
 
-    int y = padding;
-
-    deviceTypeLabel->setBounds(padding, y, labelWidth, rowHeight);
-    deviceTypeDropdown->setBounds(dropdownX, y, dropdownW, rowHeight);
+    deviceTypeLabel->setBounds(padding, padding, labelWidth, rowHeight);
+    deviceTypeDropdown->setBounds(dropdownX, padding, dropdownW, rowHeight);
     deviceTypeDropdown->setCollapsedHeight(rowHeight);
     deviceTypeDropdown->setItemMargin(padding);
 
-    y += rowHeight + padding;
-
-    outputDeviceLabel->setBounds(padding, y, labelWidth, rowHeight);
-    outputDeviceDropdown->setBounds(dropdownX, y, dropdownW, rowHeight);
+    const int secondRowY = padding + rowHeight + padding;
+    outputDeviceLabel->setBounds(padding, secondRowY, labelWidth, rowHeight);
+    outputDeviceDropdown->setBounds(dropdownX, secondRowY, dropdownW, rowHeight);
     outputDeviceDropdown->setCollapsedHeight(rowHeight);
     outputDeviceDropdown->setItemMargin(padding);
 
-    y += rowHeight + padding;
-
-    inputDeviceLabel->setBounds(padding, y, labelWidth, rowHeight);
-    inputDeviceDropdown->setBounds(dropdownX, y, dropdownW, rowHeight);
+    const int thirdRowY = secondRowY + rowHeight + padding;
+    inputDeviceLabel->setBounds(padding, thirdRowY, labelWidth, rowHeight);
+    inputDeviceDropdown->setBounds(dropdownX, thirdRowY, dropdownW, rowHeight);
     inputDeviceDropdown->setCollapsedHeight(rowHeight);
     inputDeviceDropdown->setItemMargin(padding);
-}
-
-void DevicePropertiesWindow::renderOnce() const
-{
-    if (window)
-    {
-        window->renderFrame();
-    }
-}
-
-void DevicePropertiesWindow::raise() const
-{
-    if (window && window->getSdlWindow())
-    {
-        SDL_RaiseWindow(window->getSdlWindow());
-    }
 }

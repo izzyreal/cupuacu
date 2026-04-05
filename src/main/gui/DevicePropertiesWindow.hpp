@@ -5,31 +5,22 @@
 #include <vector>
 
 #include "../State.hpp"
+#include "Component.hpp"
 #include "DropdownMenu.hpp"
 #include "Label.hpp"
 #include "OpaqueRect.hpp"
-#include "Window.hpp"
 
 namespace cupuacu::gui
 {
-    class DevicePropertiesWindow
+    class DevicePropertiesPane : public Component
     {
     public:
-        DevicePropertiesWindow(State *stateToUse);
-        ~DevicePropertiesWindow();
-        bool isOpen() const
-        {
-            return window && window->isOpen();
-        }
-        void raise() const;
-        Window *getWindow() const
-        {
-            return window.get();
-        }
+        explicit DevicePropertiesPane(State *stateToUse);
+        ~DevicePropertiesPane() override;
+
+        void resized() override;
 
     private:
-        State *state = nullptr;
-        std::unique_ptr<Window> window;
         bool ownsPortAudio = false;
 
         OpaqueRect *background = nullptr;
@@ -53,6 +44,5 @@ namespace cupuacu::gui
                                    const std::vector<int> &indices) const;
         bool syncSelectionToAudioDevices();
         void layoutComponents() const;
-        void renderOnce() const;
     };
 } // namespace cupuacu::gui

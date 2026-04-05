@@ -6,11 +6,10 @@
 #include "effects/RemoveSilenceEffect.hpp"
 
 #include "gui/Waveform.hpp"
-#include "gui/DisplaySettingsWindow.hpp"
-#include "gui/DevicePropertiesWindow.hpp"
 #include "gui/ExportAudioDialogWindow.hpp"
 #include "gui/GenerateSilenceDialogWindow.hpp"
 #include "gui/NewFileDialogWindow.hpp"
+#include "gui/OptionsWindow.hpp"
 #include "actions/Undoable.hpp"
 
 int64_t getMaxSampleOffset(const cupuacu::State *state)
@@ -53,9 +52,9 @@ void cupuacu::destroyRemoveSilenceDialog(effects::RemoveSilenceDialog *dialog)
     delete dialog;
 }
 
-void cupuacu::destroyDisplaySettingsWindow(gui::DisplaySettingsWindow *dialog)
+void cupuacu::destroyOptionsWindow(gui::OptionsWindow *window)
 {
-    delete dialog;
+    delete window;
 }
 
 void cupuacu::destroyNewFileDialogWindow(gui::NewFileDialogWindow *dialog)
