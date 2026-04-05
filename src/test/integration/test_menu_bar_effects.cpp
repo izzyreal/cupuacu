@@ -200,23 +200,24 @@ TEST_CASE(
         cupuacu::gui::Component>(root, "AmplifyEnvelopePreview");
     REQUIRE(preview != nullptr);
 
-    auto countHandles = [&](cupuacu::gui::Component *component,
-                            auto &&countHandlesRef) -> int
+    auto countEnvelopeNodes = [&](cupuacu::gui::Component *component,
+                                  auto &&countNodesRef) -> int
     {
         int count = 0;
         for (const auto &child : component->getChildren())
         {
             if (dynamic_cast<cupuacu::gui::ControlPointHandle *>(child.get()) !=
-                nullptr)
+                    nullptr &&
+                child->getComponentName().rfind("AmplifyEnvelopeNode:", 0) == 0)
             {
                 ++count;
             }
-            count += countHandlesRef(child.get(), countHandlesRef);
+            count += countNodesRef(child.get(), countNodesRef);
         }
         return count;
     };
 
-    REQUIRE(countHandles(root, countHandles) == 2);
+    REQUIRE(countEnvelopeNodes(preview, countEnvelopeNodes) == 2);
 
     const SDL_Rect previewBounds = preview->getBounds();
     const int handleSize = cupuacu::gui::getWaveformSamplePointSize(
@@ -234,7 +235,7 @@ TEST_CASE(
                                         clickX, defaultLineY, true);
     REQUIRE(cupuacu::gui::handleAppEvent(&state, &down) == SDL_APP_CONTINUE);
     REQUIRE(cupuacu::gui::handleAppEvent(&state, &up) == SDL_APP_CONTINUE);
-    REQUIRE(countHandles(root, countHandles) == 3);
+    REQUIRE(countEnvelopeNodes(preview, countEnvelopeNodes) == 3);
 
     auto *newHandle = cupuacu::test::integration::findByNameRecursive<
         cupuacu::gui::ControlPointHandle>(root, "AmplifyEnvelopeNode:1");
@@ -248,7 +249,7 @@ TEST_CASE(
                               nodeBounds.y + nodeBounds.h * 0.5f, true, 2);
     REQUIRE(cupuacu::gui::handleAppEvent(&state, &down) == SDL_APP_CONTINUE);
     REQUIRE(cupuacu::gui::handleAppEvent(&state, &up) == SDL_APP_CONTINUE);
-    REQUIRE(countHandles(root, countHandles) == 2);
+    REQUIRE(countEnvelopeNodes(preview, countEnvelopeNodes) == 2);
 }
 
 TEST_CASE(
