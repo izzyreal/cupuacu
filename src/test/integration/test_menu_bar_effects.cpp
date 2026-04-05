@@ -240,7 +240,7 @@ TEST_CASE(
     auto *newHandle = cupuacu::test::integration::findByNameRecursive<
         cupuacu::gui::ControlPointHandle>(root, "AmplifyEnvelopeNode:1");
     REQUIRE(newHandle != nullptr);
-    const SDL_Rect nodeBounds = newHandle->getBounds();
+    const SDL_Rect nodeBounds = newHandle->getAbsoluteBounds();
     down = makeMouseButtonEvent(SDL_EVENT_MOUSE_BUTTON_DOWN, dialogWindow,
                                 nodeBounds.x + nodeBounds.w * 0.5f,
                                 nodeBounds.y + nodeBounds.h * 0.5f, true, 2);
