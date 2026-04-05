@@ -2,22 +2,17 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "State.hpp"
-#include "TestSdlTtfGuard.hpp"
 #include "TestPaths.hpp"
 #include "SelectedChannels.hpp"
 #include "audio/AudioDevices.hpp"
 #include "audio/AudioMessage.hpp"
-#include "gui/DocumentSessionWindow.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/DisplaySettingsWindow.hpp"
-#include "gui/Label.hpp"
-#include "gui/Ruler.hpp"
 #include "gui/TextButton.hpp"
 #include "gui/TransportButtonsContainer.hpp"
 #include "gui/VuMeterContainer.hpp"
 #include "gui/VuMeter.hpp"
 #include "gui/VuMeterModel.hpp"
-#include "gui/Window.hpp"
 
 #include <algorithm>
 #include <memory>
@@ -111,19 +106,6 @@ namespace
         }
     }
 
-    std::unique_ptr<cupuacu::gui::Window> createWindowWithVuMeterContainer(
-        cupuacu::State *state, cupuacu::gui::VuMeterContainer *&outContainer)
-    {
-        cupuacu::test::ensureSdlTtfInitialized();
-        auto window = std::make_unique<cupuacu::gui::Window>(
-            state, "vu-meter-test", 480, 180, SDL_WINDOW_HIDDEN);
-        auto root = std::make_unique<RootComponent>(state);
-        root->setBounds(0, 0, 480, 180);
-        outContainer = root->emplaceChild<cupuacu::gui::VuMeterContainer>(state);
-        outContainer->setBounds(0, 0, 480, 120);
-        window->setRootComponent(std::move(root));
-        return window;
-    }
 } // namespace
 
 TEST_CASE("Transport buttons container drives record stop play-stop and loop state",

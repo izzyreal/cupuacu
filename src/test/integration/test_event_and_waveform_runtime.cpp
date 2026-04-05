@@ -908,6 +908,41 @@ TEST_CASE("Status bar integration shows sample rate and bit depth",
     REQUIRE(depthField->getValue() == "32-bit");
 }
 
+TEST_CASE("Startup restore integration with built main window preserves persisted view state",
+          "[integration]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-startup-restore-built-view"));
+    const auto validPath = cleanup.path() / "view.wav";
+    std::vector<float> samples(6000, 0.0f);
+    for (size_t i = 0; i < samples.size(); ++i)
+    {
+        samples[i] = static_cast<float>(i % 17) / 17.0f;
+    }
+    writeTestWav(validPath, 32000, 1, samples);
+
+    cupuacu::test::StateWithTestPaths state{};
+    createBuiltEmptySessionUi(&state, 800, 400);
+
+    cupuacu::persistence::PersistedSessionState persistedState{};
+    persistedState.openDocuments = {
+        {
+            .filePath = validPath.string(),
+            .samplesPerPixel = 2.75,
+            .sampleOffset = 200,
+        },
+    };
+    persistedState.openFiles = {validPath.string()};
+    persistedState.activeOpenFileIndex = 0;
+
+    cupuacu::actions::restoreStartupDocument(
+        &state, {validPath.string()}, persistedState);
+
+    const auto &viewState = state.getActiveViewState();
+    REQUIRE(viewState.samplesPerPixel == Catch::Approx(2.75));
+    REQUIRE(viewState.sampleOffset == 200);
+}
+
 TEST_CASE("Status bar integration shows persisted integer sample values for PCM",
           "[integration]")
 {

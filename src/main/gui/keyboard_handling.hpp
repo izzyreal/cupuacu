@@ -27,7 +27,6 @@ namespace cupuacu::gui
     static void handleKeyDown(SDL_Event *event, State *state)
     {
         auto &viewState = state->getActiveViewState();
-        auto *mainWindow = state->mainDocumentSessionWindow->getWindow();
         uint8_t multiplier = 1;
         const uint8_t multiplierFactor = 12 / state->pixelScale;
 
@@ -194,6 +193,13 @@ namespace cupuacu::gui
         {
             if (state->pixelScale < 4)
             {
+                auto *mainWindow = state->mainDocumentSessionWindow
+                                       ? state->mainDocumentSessionWindow->getWindow()
+                                       : nullptr;
+                if (!mainWindow)
+                {
+                    return;
+                }
                 state->pixelScale = std::min<uint8_t>(state->pixelScale * 2, 4);
 
                 viewState.samplesPerPixel *= 2.0;
@@ -215,6 +221,13 @@ namespace cupuacu::gui
         {
             if (state->pixelScale > 1)
             {
+                auto *mainWindow = state->mainDocumentSessionWindow
+                                       ? state->mainDocumentSessionWindow->getWindow()
+                                       : nullptr;
+                if (!mainWindow)
+                {
+                    return;
+                }
                 state->pixelScale = std::max<uint8_t>(state->pixelScale / 2, 1);
 
                 viewState.samplesPerPixel /= 2.0;

@@ -362,11 +362,6 @@ TEST_CASE("Primary-modifier Q does not apply horizontal zoom-out",
         cupuacu::SampleFormat::PCM_S16, 44100, 1, 8192);
     state.activeTabIndex = 0;
 
-    state.mainDocumentSessionWindow =
-        std::make_unique<cupuacu::gui::DocumentSessionWindow>(
-            &state, &state.getActiveDocumentSession(), &state.getActiveViewState(),
-            "main", 800, 400, SDL_WINDOW_HIDDEN);
-
     auto &viewState = state.getActiveViewState();
     viewState.samplesPerPixel = 4.0;
     viewState.sampleOffset = 64;

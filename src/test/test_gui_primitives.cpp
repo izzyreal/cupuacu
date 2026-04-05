@@ -2,7 +2,6 @@
 
 #include "State.hpp"
 #include "TestPaths.hpp"
-#include "TestSdlTtfGuard.hpp"
 #include "gui/Button.hpp"
 #include "gui/Component.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
@@ -85,53 +84,6 @@ namespace
         return nullptr;
     }
 
-    cupuacu::gui::LabeledField *findStatusField(cupuacu::gui::StatusBar *statusBar,
-                                                const std::string_view label)
-    {
-        if (!statusBar)
-        {
-            return nullptr;
-        }
-
-        for (const auto &child : statusBar->getChildren())
-        {
-            if (child->getComponentName() ==
-                std::string("LabeledField for ") + std::string(label))
-            {
-                return dynamic_cast<cupuacu::gui::LabeledField *>(child.get());
-            }
-        }
-
-        return nullptr;
-    }
-
-    struct StatusBarHarness
-    {
-        std::unique_ptr<cupuacu::gui::Window> window;
-        cupuacu::gui::StatusBar *statusBar = nullptr;
-    };
-
-    StatusBarHarness createStatusBarHarness(cupuacu::State *state,
-                                            const int64_t frameCount)
-    {
-        cupuacu::test::ensureSdlTtfInitialized();
-        cupuacu::test::ensureTestPaths(*state, "status-bar");
-
-        auto &session = state->getActiveDocumentSession();
-        session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2,
-                                    frameCount);
-        session.syncSelectionAndCursorToDocumentLength();
-
-        StatusBarHarness harness{};
-        harness.window = std::make_unique<cupuacu::gui::Window>(
-            state, "status-bar-test", 700, 40, SDL_WINDOW_HIDDEN);
-        auto root = std::make_unique<RootComponent>(state);
-        root->setBounds(0, 0, 700, 40);
-        harness.statusBar = root->emplaceChild<cupuacu::gui::StatusBar>(state);
-        harness.statusBar->setBounds(0, 0, 700, 24);
-        harness.window->setRootComponent(std::move(root));
-        return harness;
-    }
 } // namespace
 
 TEST_CASE("ScrollBar click and drag update value with clamping", "[gui]")
