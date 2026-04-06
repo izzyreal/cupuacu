@@ -52,7 +52,7 @@ pipelines:
               cp build/linux-amd64/Cupuacu "$PKG_DIR/Cupuacu"
               (
                 cd "$PKG_DIR"
-                cmake -E tar cf "$PWD/../../../dist/Cupuacu-amd64-v${VERSION}.zip" --format=zip Cupuacu
+                cmake -E tar cf "$PWD/../../../dist/Cupuacu-linux-amd64-v${VERSION}.zip" --format=zip Cupuacu
               )
 
       - id: linux-arm64
@@ -89,7 +89,7 @@ pipelines:
               cp build/linux-arm64/Cupuacu "$PKG_DIR/Cupuacu"
               (
                 cd "$PKG_DIR"
-                cmake -E tar cf "$PWD/../../../dist/Cupuacu-arm64-v${VERSION}.zip" --format=zip Cupuacu
+                cmake -E tar cf "$PWD/../../../dist/Cupuacu-linux-arm64-v${VERSION}.zip" --format=zip Cupuacu
               )
 
       - id: linux-amd64-integration
@@ -184,7 +184,7 @@ pipelines:
               command: ./build/macos-universal/cupuacu-tests --reporter JUnit --out build/macos-universal/result-junit.xml
               format: junit-xml
               report: build/macos-universal/result-junit.xml
-          - run: VERSION="$(cat VERSION)" && sh packaging/build-macos-dmg.sh build/macos-universal/Cupuacu.app "$VERSION" "dist/Cupuacu-v${VERSION}.dmg"
+          - run: VERSION="$(cat VERSION)" && sh packaging/build-macos-dmg.sh build/macos-universal/Cupuacu.app "$VERSION" "dist/Cupuacu-macos-v${VERSION}.dmg"
 
       - id: windows-amd64
         runs_on:
@@ -216,7 +216,7 @@ pipelines:
               command: build\windows-amd64\Release\cupuacu-tests.exe --reporter JUnit --out build\windows-amd64\result-junit.xml
               format: junit-xml
               report: build/windows-amd64/result-junit.xml
-          - run: for /f %%i in (VERSION) do powershell -ExecutionPolicy Bypass -File packaging\build-windows-installer.ps1 -Version "%%i" -InputExe "build\windows-amd64\Release\Cupuacu.exe" -OutputExe "dist\Cupuacu-Setup-x86_64-v%%i.exe"
+          - run: for /f %%i in (VERSION) do powershell -ExecutionPolicy Bypass -File packaging\build-windows-installer.ps1 -Version "%%i" -InputExe "build\windows-amd64\Release\Cupuacu.exe" -OutputExe "dist\Cupuacu-windows-Setup-x86_64-v%%i.exe"
 
   - id: release
     trigger: manual
@@ -263,17 +263,17 @@ pipelines:
               GITHUB_TOKEN: "{{ secret.github-secret }}"
             skip_dry_run: true
           - run: test -f VERSION
-          - run: VERSION="$(cat VERSION)" && test -f "dist/Cupuacu-amd64-v${VERSION}.zip"
-          - run: VERSION="$(cat VERSION)" && test -f "dist/Cupuacu-arm64-v${VERSION}.zip"
-          - run: VERSION="$(cat VERSION)" && test -f "dist/Cupuacu-v${VERSION}.dmg"
-          - run: VERSION="$(cat VERSION)" && test -f "dist/Cupuacu-Setup-x86_64-v${VERSION}.exe"
+          - run: VERSION="$(cat VERSION)" && test -f "dist/Cupuacu-linux-amd64-v${VERSION}.zip"
+          - run: VERSION="$(cat VERSION)" && test -f "dist/Cupuacu-linux-arm64-v${VERSION}.zip"
+          - run: VERSION="$(cat VERSION)" && test -f "dist/Cupuacu-macos-v${VERSION}.dmg"
+          - run: VERSION="$(cat VERSION)" && test -f "dist/Cupuacu-windows-Setup-x86_64-v${VERSION}.exe"
           - run: |
               VERSION="$(cat VERSION)"
               shasum -a 256 \
-                "dist/Cupuacu-amd64-v${VERSION}.zip" \
-                "dist/Cupuacu-arm64-v${VERSION}.zip" \
-                "dist/Cupuacu-v${VERSION}.dmg" \
-                "dist/Cupuacu-Setup-x86_64-v${VERSION}.exe" \
+                "dist/Cupuacu-linux-amd64-v${VERSION}.zip" \
+                "dist/Cupuacu-linux-arm64-v${VERSION}.zip" \
+                "dist/Cupuacu-macos-v${VERSION}.dmg" \
+                "dist/Cupuacu-windows-Setup-x86_64-v${VERSION}.exe" \
                 > "dist/Cupuacu-sha256-v${VERSION}.txt"
           - run: |
               TAG="${CIWI_PIPELINE_TAG}"
@@ -306,10 +306,10 @@ pipelines:
                   --notes "Release $TAG"
               fi
               gh release upload "$TAG" \
-                "dist/Cupuacu-amd64-v${VERSION}.zip" \
-                "dist/Cupuacu-arm64-v${VERSION}.zip" \
-                "dist/Cupuacu-v${VERSION}.dmg" \
-                "dist/Cupuacu-Setup-x86_64-v${VERSION}.exe" \
+                "dist/Cupuacu-linux-amd64-v${VERSION}.zip" \
+                "dist/Cupuacu-linux-arm64-v${VERSION}.zip" \
+                "dist/Cupuacu-macos-v${VERSION}.dmg" \
+                "dist/Cupuacu-windows-Setup-x86_64-v${VERSION}.exe" \
                 "dist/Cupuacu-sha256-v${VERSION}.txt" \
                 --repo izzyreal/cupuacu \
                 --clobber
