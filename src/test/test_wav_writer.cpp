@@ -13,6 +13,7 @@
 #include "file/SndfilePath.hpp"
 #include "file/file_loading.hpp"
 #include "file/wav/WavParser.hpp"
+#include "file/wav/WavPreservationSupport.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/Window.hpp"
 
@@ -536,6 +537,82 @@ TEST_CASE("WAV parser exposes chunk table for PCM16 file", "[file]")
     REQUIRE(parsed.findChunk("JUNK") != nullptr);
     REQUIRE(parsed.findChunk("LIST") != nullptr);
     REQUIRE(parsed.chunks.size() == 4);
+}
+
+TEST_CASE("WAV preservation support reports supported for valid PCM16 overwrite",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-preservation-support-ok"));
+    const auto wavPath = cleanup.path() / "supported.wav";
+
+    writePcm16WavFile(wavPath, 44100, 1, {100, 200, 300, 400});
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+
+    const auto support =
+        cupuacu::file::wav::WavPreservationSupport::assessOverwrite(&state);
+    REQUIRE(support.supported);
+    REQUIRE(support.reason.empty());
+    REQUIRE(state.getActiveDocumentSession().overwritePreservation.available);
+    REQUIRE(
+        state.getActiveDocumentSession().overwritePreservation.reason.empty());
+}
+
+TEST_CASE("WAV preservation support reports structural rejection reason",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-preservation-support-reject"));
+    const auto wavPath = cleanup.path() / "unsupported.wav";
+
+    const auto wavBytes = buildRiffWaveBytes(
+        {{"fmt ", makePcm16FmtChunkPayload(44100, 1)},
+         {"data", encodePcm16Samples({100, 200})},
+         {"data", encodePcm16Samples({300, 400})}});
+    writeRawBytes(wavPath, wavBytes);
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto &session = state.getActiveDocumentSession();
+    session.currentFile = wavPath.string();
+    session.currentFileExportSettings = cupuacu::file::AudioExportSettings{
+        .container = cupuacu::file::AudioExportContainer::WAV,
+        .codec = cupuacu::file::AudioExportCodec::PCM,
+        .majorFormat = SF_FORMAT_WAV,
+        .subtype = SF_FORMAT_PCM_16,
+        .containerLabel = "WAV",
+        .codecLabel = "PCM",
+        .encodingLabel = "16-bit PCM",
+        .extension = "wav",
+    };
+    session.document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 2);
+
+    const auto support =
+        cupuacu::file::wav::WavPreservationSupport::assessOverwrite(&state);
+    REQUIRE_FALSE(support.supported);
+    REQUIRE(support.reason.find("exactly one data chunk") !=
+            std::string::npos);
+}
+
+TEST_CASE("Loading valid PCM16 WAV updates session overwrite preservation state",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-session-preservation-state"));
+    const auto wavPath = cleanup.path() / "session_state.wav";
+
+    writePcm16WavFile(wavPath, 44100, 1, {100, 200, 300, 400});
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+
+    const auto &preservation =
+        state.getActiveDocumentSession().overwritePreservation;
+    REQUIRE(preservation.available);
+    REQUIRE(preservation.reason.empty());
 }
 
 TEST_CASE("Overwrite rejects WAV files with multiple data chunks", "[file]")
@@ -1181,6 +1258,8 @@ TEST_CASE("Save as writes a new WAV file and updates active file state", "[file]
     REQUIRE(session.currentFileExportSettings.has_value());
     REQUIRE(session.currentFileExportSettings->majorFormat == SF_FORMAT_WAV);
     REQUIRE(session.currentFileExportSettings->subtype == SF_FORMAT_PCM_16);
+    REQUIRE(session.overwritePreservation.available);
+    REQUIRE(session.overwritePreservation.reason.empty());
     REQUIRE(state.recentFiles.size() == 1);
     REQUIRE(state.recentFiles.front() == outputPath.string());
 

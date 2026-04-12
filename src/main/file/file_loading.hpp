@@ -3,6 +3,7 @@
 #include "../State.hpp"
 #include "AudioExport.hpp"
 #include "FileIo.hpp"
+#include "OverwritePreservation.hpp"
 #include "SndfilePath.hpp"
 
 #include <sndfile.hh>
@@ -72,6 +73,7 @@ namespace cupuacu::file
         {
             doc.markCurrentStateAsSavedSource();
         }
+        cupuacu::file::OverwritePreservation::refreshActiveSession(state);
 
         session.selection.reset();
         session.cursor = 0;

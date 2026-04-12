@@ -2,6 +2,7 @@
 
 #include "Document.hpp"
 #include "file/AudioExport.hpp"
+#include "file/OverwritePreservationState.hpp"
 #include "gui/Selection.hpp"
 
 #include <algorithm>
@@ -15,6 +16,7 @@ namespace cupuacu
     {
         std::string currentFile;
         std::optional<file::AudioExportSettings> currentFileExportSettings;
+        file::OverwritePreservationState overwritePreservation;
         Document document;
         gui::Selection<double> selection = gui::Selection<double>(0.0);
         int64_t cursor = 0;
@@ -23,6 +25,7 @@ namespace cupuacu
         {
             currentFile.clear();
             currentFileExportSettings.reset();
+            overwritePreservation = {};
         }
 
         void setCurrentFile(
@@ -31,6 +34,7 @@ namespace cupuacu
         {
             currentFile = std::move(pathToUse);
             currentFileExportSettings = std::move(settings);
+            overwritePreservation = {};
         }
 
         void syncSelectionAndCursorToDocumentLength()

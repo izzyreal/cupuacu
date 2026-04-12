@@ -3,6 +3,8 @@
 #include "../State.hpp"
 #include "../file/AudioExport.hpp"
 #include "../file/AudioFileWriter.hpp"
+#include "../file/OverwritePreservation.hpp"
+#include "../file/wav/WavPreservationSupport.hpp"
 #include "../file/wav/WavPreservationWriter.hpp"
 #include "DocumentLifecycle.hpp"
 
@@ -123,6 +125,12 @@ namespace cupuacu::actions
             {
                 if (file::isOverwritePreservingWavRewriteCandidate(*settings))
                 {
+                    const auto support =
+                        file::wav::WavPreservationSupport::assessOverwrite(state);
+                    if (!support.supported)
+                    {
+                        throw std::runtime_error(support.reason);
+                    }
                     file::wav::WavPreservationWriter::overwritePreservingWavFile(
                         state);
                     return;
@@ -135,6 +143,7 @@ namespace cupuacu::actions
         {
             return false;
         }
+        file::OverwritePreservation::refreshActiveSession(state);
         if (state->getActiveDocumentSession().document.getSampleFormat() ==
             cupuacu::SampleFormat::PCM_S16)
         {
@@ -183,6 +192,7 @@ namespace cupuacu::actions
 
         state->getActiveDocumentSession().setCurrentFile(normalizedPath.string(),
                                                          settings);
+        file::OverwritePreservation::refreshActiveSession(state);
         if (state->getActiveDocumentSession().document.getSampleFormat() ==
             cupuacu::SampleFormat::PCM_S16)
         {

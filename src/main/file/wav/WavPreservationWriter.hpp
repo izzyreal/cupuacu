@@ -4,6 +4,7 @@
 #include "../FileIo.hpp"
 #include "../SampleQuantization.hpp"
 #include "WavParser.hpp"
+#include "WavPreservationSupport.hpp"
 
 #include <array>
 #include <cstring>
@@ -335,25 +336,12 @@ namespace cupuacu::file::wav
 
             const std::filesystem::path inputPath(
                 state->getActiveDocumentSession().currentFile);
+            const auto support = WavPreservationSupport::assessOverwrite(state);
+            if (!support.supported)
+            {
+                throw std::runtime_error(support.reason);
+            }
             const ParsedFile parsed = WavParser::parseFile(inputPath);
-            if (!parsed.isPcm16)
-            {
-                throw std::invalid_argument("Not a 16-bit PCM WAV file");
-            }
-            if (parsed.fmtChunkCount != 1)
-            {
-                throw std::runtime_error(
-                    "Unsupported WAV structure: expected exactly one fmt chunk");
-            }
-            if (parsed.dataChunkCount != 1)
-            {
-                throw std::runtime_error(
-                    "Unsupported WAV structure: expected exactly one data chunk");
-            }
-            if (parsed.findChunk("data") == nullptr)
-            {
-                throw std::runtime_error("data chunk not found");
-            }
 
             if (canPatchDataChunkInPlace(state, parsed))
             {
