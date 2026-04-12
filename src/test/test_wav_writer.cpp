@@ -1186,6 +1186,50 @@ TEST_CASE("Overwrite after record-style append preserves original prefix and app
             std::vector<uint8_t>({'p', 'o', 's', 't'}));
 }
 
+TEST_CASE("Record edit that changes channel count breaks overwrite preservation until undo",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-record-breaks-preservation"));
+    const auto wavPath = cleanup.path() / "record_breaks_preservation.wav";
+
+    writePcm16WavFile(wavPath, 44100, 1, {100, 200, 300, 400});
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+    REQUIRE(state.getActiveDocumentSession().overwritePreservation.available);
+
+    cupuacu::actions::audio::RecordEditData data;
+    data.startFrame = 1;
+    data.endFrame = 3;
+    data.oldFrameCount = 4;
+    data.oldChannelCount = 1;
+    data.targetChannelCount = 2;
+    data.oldSampleRate = 44100;
+    data.newSampleRate = 44100;
+    data.oldFormat = cupuacu::SampleFormat::PCM_S16;
+    data.newFormat = cupuacu::SampleFormat::PCM_S16;
+    data.oldCursor = 1;
+    data.newCursor = 3;
+    data.overwrittenOldSamples = {{200.0f / 32767.0f, 300.0f / 32767.0f}};
+    data.recordedSamples = {{0.25f, -0.25f}, {-0.5f, 0.5f}};
+
+    state.addAndDoUndoable(
+        std::make_shared<cupuacu::actions::audio::RecordEdit>(&state, data));
+
+    const auto &broken = state.getActiveDocumentSession().overwritePreservation;
+    REQUIRE_FALSE(broken.available);
+    REQUIRE(broken.reason.find("channel count") != std::string::npos);
+
+    state.undo();
+
+    const auto &restored =
+        state.getActiveDocumentSession().overwritePreservation;
+    REQUIRE(restored.available);
+    REQUIRE(restored.reason.empty());
+}
+
 TEST_CASE("Second overwrite after edit is byte-identical", "[file]")
 {
     ScopedDirCleanup cleanup(

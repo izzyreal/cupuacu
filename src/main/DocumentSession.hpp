@@ -17,6 +17,8 @@ namespace cupuacu
         std::string currentFile;
         std::optional<file::AudioExportSettings> currentFileExportSettings;
         file::OverwritePreservationState overwritePreservation;
+        bool overwritePreservationBrokenByOperation = false;
+        std::string overwritePreservationBrokenReason;
         Document document;
         gui::Selection<double> selection = gui::Selection<double>(0.0);
         int64_t cursor = 0;
@@ -26,6 +28,8 @@ namespace cupuacu
             currentFile.clear();
             currentFileExportSettings.reset();
             overwritePreservation = {};
+            overwritePreservationBrokenByOperation = false;
+            overwritePreservationBrokenReason.clear();
         }
 
         void setCurrentFile(
@@ -35,6 +39,20 @@ namespace cupuacu
             currentFile = std::move(pathToUse);
             currentFileExportSettings = std::move(settings);
             overwritePreservation = {};
+            overwritePreservationBrokenByOperation = false;
+            overwritePreservationBrokenReason.clear();
+        }
+
+        void breakOverwritePreservation(std::string reason)
+        {
+            overwritePreservationBrokenByOperation = true;
+            overwritePreservationBrokenReason = std::move(reason);
+        }
+
+        void clearOverwritePreservationBreak()
+        {
+            overwritePreservationBrokenByOperation = false;
+            overwritePreservationBrokenReason.clear();
         }
 
         void syncSelectionAndCursorToDocumentLength()

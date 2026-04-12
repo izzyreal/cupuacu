@@ -11,6 +11,7 @@
 #include "gui/NewFileDialogWindow.hpp"
 #include "gui/OptionsWindow.hpp"
 #include "actions/Undoable.hpp"
+#include "file/OverwritePreservation.hpp"
 
 int64_t getMaxSampleOffset(const cupuacu::State *state)
 {
@@ -90,6 +91,7 @@ void cupuacu::State::addAndDoUndoable(
 {
     addUndoable(undoable);
     undoable->redo();
+    cupuacu::file::OverwritePreservation::refreshActiveSession(this);
     undoable->updateGui();
 }
 
@@ -105,6 +107,7 @@ void cupuacu::State::undo()
     auto undoable = undoables.back();
     undoables.pop_back();
     undoable->undo();
+    cupuacu::file::OverwritePreservation::refreshActiveSession(this);
     undoable->updateGui();
     redoables.push_back(undoable);
 }
@@ -121,6 +124,7 @@ void cupuacu::State::redo()
     auto redoable = redoables.back();
     redoables.pop_back();
     redoable->redo();
+    cupuacu::file::OverwritePreservation::refreshActiveSession(this);
     redoable->updateGui();
     undoables.push_back(redoable);
 }

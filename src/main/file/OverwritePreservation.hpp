@@ -24,6 +24,11 @@ namespace cupuacu::file
             {
                 return {.available = false, .reason = "No current file"};
             }
+            if (session.overwritePreservationBrokenByOperation)
+            {
+                return {.available = false,
+                        .reason = session.overwritePreservationBrokenReason};
+            }
 
             const auto wavSupport =
                 cupuacu::file::wav::WavPreservationSupport::assessOverwrite(state);
