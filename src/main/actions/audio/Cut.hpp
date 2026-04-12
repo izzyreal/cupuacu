@@ -13,7 +13,7 @@ namespace cupuacu::actions::audio
         int64_t startFrame;
         int64_t numFrames;
 
-        std::vector<std::vector<float>> removed;
+        Document::AudioSegment removed;
 
         double oldSel1 = 0.0;
         double oldSel2 = 0.0;
@@ -54,17 +54,8 @@ namespace cupuacu::actions::audio
             state->clipboard.initialize(doc.getSampleFormat(), sr, ch,
                                         numFrames);
 
-            removed.assign((size_t)ch, {});
-            for (int64_t c = 0; c < ch; ++c)
-            {
-                removed[(size_t)c].resize((size_t)numFrames);
-                for (int64_t i = 0; i < numFrames; ++i)
-                {
-                    float v = doc.getSample(c, startFrame + i);
-                    removed[(size_t)c][(size_t)i] = v;
-                    state->clipboard.setSample(c, i, v, false);
-                }
-            }
+            removed = doc.captureSegment(startFrame, numFrames);
+            state->clipboard.assignSegment(removed);
 
             doc.removeFrames(startFrame, numFrames);
             doc.updateWaveformCache();
@@ -78,18 +69,8 @@ namespace cupuacu::actions::audio
         {
             auto &session = state->getActiveDocumentSession();
             auto &doc = session.document;
-            const int64_t ch = doc.getChannelCount();
-
             doc.insertFrames(startFrame, numFrames);
-
-            for (int64_t c = 0; c < ch; ++c)
-            {
-                for (int64_t i = 0; i < numFrames; ++i)
-                {
-                    doc.setSample(c, startFrame + i,
-                                  removed[(size_t)c][(size_t)i], false);
-                }
-            }
+            doc.writeSegment(startFrame, removed, false);
 
             if (doc.getFrameCount() > 0)
             {

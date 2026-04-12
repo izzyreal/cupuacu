@@ -39,8 +39,8 @@ namespace cupuacu::actions::audio
         int64_t middleCount = 0;
         int64_t afterCount = 0;
 
-        std::vector<std::vector<float>> before;
-        std::vector<std::vector<float>> after;
+        Document::AudioSegment before;
+        Document::AudioSegment after;
 
         ViewSnapshot preTrimView{};
         ViewSnapshot postTrimView{};
@@ -146,30 +146,8 @@ namespace cupuacu::actions::audio
                 return;
             }
 
-            before.assign((size_t)ch, {});
-            after.assign((size_t)ch, {});
-
-            for (int64_t c = 0; c < ch; ++c)
-            {
-                if (beforeCount > 0)
-                {
-                    before[(size_t)c].resize((size_t)beforeCount);
-                    for (int64_t i = 0; i < beforeCount; ++i)
-                    {
-                        before[(size_t)c][(size_t)i] = doc.getSample(c, i);
-                    }
-                }
-
-                if (afterCount > 0)
-                {
-                    after[(size_t)c].resize((size_t)afterCount);
-                    for (int64_t i = 0; i < afterCount; ++i)
-                    {
-                        after[(size_t)c][(size_t)i] =
-                            doc.getSample(c, endFrame + i);
-                    }
-                }
-            }
+            before = doc.captureSegment(0, beforeCount);
+            after = doc.captureSegment(endFrame, afterCount);
 
             doc.removeFrames(endFrame, afterCount);
             doc.removeFrames(0, beforeCount);
@@ -187,8 +165,6 @@ namespace cupuacu::actions::audio
 
             auto &session = state->getActiveDocumentSession();
             auto &doc = session.document;
-            const int64_t ch = doc.getChannelCount();
-
             if (beforeCount == 0 && afterCount == 0)
             {
                 updateCursorPos(state, beforeCount);
@@ -198,23 +174,10 @@ namespace cupuacu::actions::audio
             }
 
             doc.insertFrames(0, beforeCount);
-            for (int64_t c = 0; c < ch; ++c)
-            {
-                for (int64_t i = 0; i < beforeCount; ++i)
-                {
-                    doc.setSample(c, i, before[(size_t)c][(size_t)i], false);
-                }
-            }
+            doc.writeSegment(0, before, false);
 
             doc.insertFrames(beforeCount + middleCount, afterCount);
-            for (int64_t c = 0; c < ch; ++c)
-            {
-                for (int64_t i = 0; i < afterCount; ++i)
-                {
-                    doc.setSample(c, beforeCount + middleCount + i,
-                                  after[(size_t)c][(size_t)i], false);
-                }
-            }
+            doc.writeSegment(beforeCount + middleCount, after, false);
 
             if (doc.getFrameCount() > 0)
             {

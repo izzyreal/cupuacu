@@ -1,5 +1,7 @@
 #pragma once
 
+#include "SampleProvenance.hpp"
+
 #include <vector>
 #include <span>
 #include <cstdint>
@@ -15,6 +17,25 @@ namespace cupuacu::audio
         virtual bool isDirty(int64_t channel, int64_t frame) const
         {
             return true;
+        }
+
+        virtual SampleProvenance getProvenance(int64_t channel,
+                                               int64_t frame) const
+        {
+            return {};
+        }
+
+        virtual void setProvenance(int64_t channel, int64_t frame,
+                                   const SampleProvenance &sampleProvenance)
+        {
+        }
+
+        virtual void markAllClean()
+        {
+        }
+
+        virtual void establishSequentialProvenance(const std::uint64_t sourceId)
+        {
         }
 
         virtual void resize(int64_t numChannels, int64_t numFrames)

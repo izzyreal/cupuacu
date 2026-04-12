@@ -16,8 +16,8 @@ namespace cupuacu::actions::audio
         int64_t insertedFrameCount = 0;
         int64_t overwrittenFrameCount = 0;
 
-        std::vector<std::vector<float>> inserted;
-        std::vector<std::vector<float>> overwritten;
+        Document::AudioSegment inserted;
+        Document::AudioSegment overwritten;
 
         bool hadOldSelection = false;
         double oldSel1 = 0;
@@ -66,18 +66,10 @@ namespace cupuacu::actions::audio
             }
 
             insertedFrameCount = clipFrames;
-            inserted.assign((size_t)ch, {});
-            for (int64_t c = 0; c < ch; ++c)
-            {
-                inserted[(size_t)c].resize((size_t)insertedFrameCount);
-                for (int64_t i = 0; i < insertedFrameCount; ++i)
-                {
-                    inserted[(size_t)c][(size_t)i] = clip.getSample(c, i);
-                }
-            }
+            inserted = clip.captureSegment(0, insertedFrameCount);
 
             overwrittenFrameCount = 0;
-            overwritten.clear();
+            overwritten = {};
 
             if (endFrame >= 0 && endFrame > startFrame)
             {
@@ -86,19 +78,10 @@ namespace cupuacu::actions::audio
                 overwrittenFrameCount =
                     std::max<int64_t>(0, overwrittenFrameCount);
 
-                overwritten.assign((size_t)ch, {});
+                overwritten = {};
                 if (overwrittenFrameCount > 0)
                 {
-                    for (int64_t c = 0; c < ch; ++c)
-                    {
-                        overwritten[(size_t)c].resize(
-                            (size_t)overwrittenFrameCount);
-                        for (int64_t i = 0; i < overwrittenFrameCount; ++i)
-                        {
-                            overwritten[(size_t)c][(size_t)i] =
-                                doc.getSample(c, startFrame + i);
-                        }
-                    }
+                    overwritten = doc.captureSegment(startFrame, overwrittenFrameCount);
 
                     doc.removeFrames(startFrame, overwrittenFrameCount);
                 }
@@ -110,16 +93,7 @@ namespace cupuacu::actions::audio
                 doc.insertFrames(startFrame, insertedFrameCount);
             }
 
-            const int64_t maxWritable = std::min<int64_t>(
-                insertedFrameCount, doc.getFrameCount() - startFrame);
-            for (int64_t c = 0; c < ch; ++c)
-            {
-                for (int64_t i = 0; i < maxWritable; ++i)
-                {
-                    doc.setSample(c, startFrame + i,
-                                  inserted[(size_t)c][(size_t)i], false);
-                }
-            }
+            doc.writeSegment(startFrame, inserted, false);
 
             if (doc.getFrameCount() > 0)
             {
@@ -153,17 +127,7 @@ namespace cupuacu::actions::audio
             if (endFrame >= 0 && overwrittenFrameCount > 0)
             {
                 doc.insertFrames(startFrame, overwrittenFrameCount);
-                const int64_t maxRestore = std::min<int64_t>(
-                    overwrittenFrameCount, doc.getFrameCount() - startFrame);
-
-                for (int64_t c = 0; c < ch; ++c)
-                {
-                    for (int64_t i = 0; i < maxRestore; ++i)
-                    {
-                        doc.setSample(c, startFrame + i,
-                                      overwritten[(size_t)c][(size_t)i], false);
-                    }
-                }
+                doc.writeSegment(startFrame, overwritten, false);
             }
 
             if (doc.getFrameCount() > 0)

@@ -3,7 +3,7 @@
 #include "../State.hpp"
 #include "../file/AudioExport.hpp"
 #include "../file/AudioFileWriter.hpp"
-#include "../file/WavWriter.hpp"
+#include "../file/wav/WavPreservationWriter.hpp"
 #include "DocumentLifecycle.hpp"
 
 #include <SDL3/SDL.h>
@@ -116,20 +116,31 @@ namespace cupuacu::actions
             return false;
         }
 
-        return detail::runSaveOperation(
+        const bool ok = detail::runSaveOperation(
             state, "Save",
             session.currentFile,
             [&]
             {
                 if (file::isOverwritePreservingWavRewriteCandidate(*settings))
                 {
-                    file::WavWriter::rewriteWavFile(state);
+                    file::wav::WavPreservationWriter::overwritePreservingWavFile(
+                        state);
                     return;
                 }
 
                 file::AudioFileWriter::writeFile(state, session.currentFile,
                                                  *settings);
             });
+        if (!ok)
+        {
+            return false;
+        }
+        if (state->getActiveDocumentSession().document.getSampleFormat() ==
+            cupuacu::SampleFormat::PCM_S16)
+        {
+            state->getActiveDocumentSession().document.markCurrentStateAsSavedSource();
+        }
+        return true;
     }
 
     static bool saveAs(cupuacu::State *state, const std::string &absoluteFilePath)
@@ -172,6 +183,11 @@ namespace cupuacu::actions
 
         state->getActiveDocumentSession().setCurrentFile(normalizedPath.string(),
                                                          settings);
+        if (state->getActiveDocumentSession().document.getSampleFormat() ==
+            cupuacu::SampleFormat::PCM_S16)
+        {
+            state->getActiveDocumentSession().document.markCurrentStateAsSavedSource();
+        }
         rememberRecentFile(state, normalizedPath.string());
         setMainWindowTitle(state, normalizedPath.string());
         return true;

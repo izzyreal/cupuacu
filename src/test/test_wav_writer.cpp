@@ -5,9 +5,14 @@
 #include "TestSdlLogSilencer.hpp"
 #include "TestPaths.hpp"
 #include "actions/Save.hpp"
+#include "actions/audio/RecordEdit.hpp"
+#include "actions/audio/EditCommands.hpp"
+#include "actions/audio/Trim.hpp"
 #include "file/AudioExport.hpp"
+#include "file/SampleQuantization.hpp"
 #include "file/SndfilePath.hpp"
 #include "file/file_loading.hpp"
+#include "file/wav/WavParser.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/Window.hpp"
 
@@ -175,11 +180,72 @@ namespace
         REQUIRE(out.good());
     }
 
+    void writeRawBytes(const std::filesystem::path &path,
+                       const std::vector<uint8_t> &bytes)
+    {
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        REQUIRE(out.good());
+        out.write(reinterpret_cast<const char *>(bytes.data()),
+                  static_cast<std::streamsize>(bytes.size()));
+        REQUIRE(out.good());
+    }
+
+    std::vector<uint8_t> buildRiffWaveBytes(
+        const std::vector<std::pair<const char *, std::vector<uint8_t>>> &chunks)
+    {
+        std::vector<uint8_t> wavBytes;
+        appendAscii(wavBytes, "RIFF");
+        appendLe32(wavBytes, 0);
+        appendAscii(wavBytes, "WAVE");
+        for (const auto &[chunkId, payload] : chunks)
+        {
+            appendChunk(wavBytes, chunkId, payload);
+        }
+
+        const uint32_t riffSize = static_cast<uint32_t>(wavBytes.size() - 8);
+        wavBytes[4] = static_cast<uint8_t>(riffSize & 0xffu);
+        wavBytes[5] = static_cast<uint8_t>((riffSize >> 8) & 0xffu);
+        wavBytes[6] = static_cast<uint8_t>((riffSize >> 16) & 0xffu);
+        wavBytes[7] = static_cast<uint8_t>((riffSize >> 24) & 0xffu);
+        return wavBytes;
+    }
+
+    std::vector<uint8_t> makePcm16FmtChunkPayload(const int sampleRate,
+                                                  const int channels)
+    {
+        std::vector<uint8_t> fmtChunk;
+        appendLe16(fmtChunk, 1);
+        appendLe16(fmtChunk, static_cast<uint16_t>(channels));
+        appendLe32(fmtChunk, static_cast<uint32_t>(sampleRate));
+        const uint32_t byteRate =
+            static_cast<uint32_t>(sampleRate * channels * sizeof(int16_t));
+        appendLe32(fmtChunk, byteRate);
+        appendLe16(fmtChunk, static_cast<uint16_t>(channels * sizeof(int16_t)));
+        appendLe16(fmtChunk, 16);
+        return fmtChunk;
+    }
+
     std::vector<uint8_t> readBytes(const std::filesystem::path &path)
     {
         std::ifstream in(path, std::ios::binary);
         REQUIRE(in.good());
         return std::vector<uint8_t>(std::istreambuf_iterator<char>(in), {});
+    }
+
+    std::vector<std::size_t> findDifferingByteOffsets(
+        const std::vector<uint8_t> &lhs, const std::vector<uint8_t> &rhs)
+    {
+        REQUIRE(lhs.size() == rhs.size());
+
+        std::vector<std::size_t> offsets;
+        for (std::size_t i = 0; i < lhs.size(); ++i)
+        {
+            if (lhs[i] != rhs[i])
+            {
+                offsets.push_back(i);
+            }
+        }
+        return offsets;
     }
 
     std::vector<float> readFramesAsFloat(const std::filesystem::path &path,
@@ -197,6 +263,80 @@ namespace
         sf_close(file);
         REQUIRE(readCount == info.frames);
         return frames;
+    }
+
+    std::vector<uint8_t> readChunkPayload(const std::filesystem::path &path,
+                                          const char (&chunkId)[5])
+    {
+        const auto parsed = cupuacu::file::wav::WavParser::parseFile(path);
+        const auto *chunk = parsed.findChunk(chunkId);
+        REQUIRE(chunk != nullptr);
+
+        std::ifstream in(path, std::ios::binary);
+        REQUIRE(in.good());
+        in.seekg(static_cast<std::streamoff>(chunk->payloadOffset), std::ios::beg);
+        std::vector<uint8_t> payload(chunk->payloadSize);
+        if (!payload.empty())
+        {
+            in.read(reinterpret_cast<char *>(payload.data()),
+                    static_cast<std::streamsize>(payload.size()));
+            REQUIRE(in.good());
+        }
+        return payload;
+    }
+
+    std::vector<uint8_t> sliceBytes(const std::vector<uint8_t> &bytes,
+                                    const std::size_t start,
+                                    const std::size_t count)
+    {
+        REQUIRE(start + count <= bytes.size());
+        return std::vector<uint8_t>(bytes.begin() + static_cast<std::ptrdiff_t>(start),
+                                    bytes.begin() +
+                                        static_cast<std::ptrdiff_t>(start + count));
+    }
+
+    std::vector<uint8_t> encodePcm16Samples(const std::vector<std::int16_t> &samples)
+    {
+        std::vector<uint8_t> bytes;
+        bytes.reserve(samples.size() * sizeof(std::int16_t));
+        for (const auto sample : samples)
+        {
+            appendLe16(bytes, static_cast<uint16_t>(sample));
+        }
+        return bytes;
+    }
+
+    std::vector<uint8_t> readChunkBytes(const std::filesystem::path &path,
+                                        const char (&chunkId)[5])
+    {
+        const auto parsed = cupuacu::file::wav::WavParser::parseFile(path);
+        const auto *chunk = parsed.findChunk(chunkId);
+        REQUIRE(chunk != nullptr);
+
+        return sliceBytes(readBytes(path), chunk->headerOffset,
+                          8 + chunk->paddedPayloadSize);
+    }
+
+    uint32_t readRiffSizeField(const std::filesystem::path &path)
+    {
+        const auto bytes = readBytes(path);
+        REQUIRE(bytes.size() >= 8);
+        return static_cast<uint32_t>(bytes[4]) |
+               (static_cast<uint32_t>(bytes[5]) << 8) |
+               (static_cast<uint32_t>(bytes[6]) << 16) |
+               (static_cast<uint32_t>(bytes[7]) << 24);
+    }
+
+    std::vector<std::string> readChunkOrder(const std::filesystem::path &path)
+    {
+        const auto parsed = cupuacu::file::wav::WavParser::parseFile(path);
+        std::vector<std::string> order;
+        order.reserve(parsed.chunks.size());
+        for (const auto &chunk : parsed.chunks)
+        {
+            order.emplace_back(chunk.id, chunk.id + 4);
+        }
+        return order;
     }
 } // namespace
 
@@ -234,6 +374,759 @@ TEST_CASE("Overwrite preserves non-audio WAV chunks around data", "[file]")
     REQUIRE(cupuacu::actions::overwrite(&state));
 
     REQUIRE(readBytes(wavPath) == originalBytes);
+}
+
+TEST_CASE("Overwrite preserves odd-sized chunk bytes including padding", "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-odd-padding-preserve"));
+    const auto wavPath = cleanup.path() / "odd_chunks.wav";
+
+    writePcm16WavFile(wavPath, 44100, 1, {100, 200, 300, 400},
+                      {'o', 'd', 'd'}, {'t', 'a', 'i'});
+    const auto originalJunkChunk = readChunkBytes(wavPath, "JUNK");
+    const auto originalListChunk = readChunkBytes(wavPath, "LIST");
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+    state.getActiveDocumentSession().document.setSample(0, 1, 0.25f);
+
+    REQUIRE(cupuacu::actions::overwrite(&state));
+
+    REQUIRE(readChunkBytes(wavPath, "JUNK") == originalJunkChunk);
+    REQUIRE(readChunkBytes(wavPath, "LIST") == originalListChunk);
+}
+
+TEST_CASE("Overwrite after length change keeps RIFF and data sizes consistent",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-size-consistency"));
+    const auto wavPath = cleanup.path() / "size_consistency.wav";
+
+    writePcm16WavFile(wavPath, 44100, 1, {100, 200, 300, 400, 500},
+                      {'p', 'r', 'e', '!'}, {'p', 'o', 's', 't'});
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+    state.addAndDoUndoable(
+        std::make_shared<cupuacu::actions::audio::Trim>(&state, 1, 3));
+
+    REQUIRE(cupuacu::actions::overwrite(&state));
+
+    const auto bytes = readBytes(wavPath);
+    const auto parsed = cupuacu::file::wav::WavParser::parseFile(wavPath);
+    const auto *dataChunk = parsed.findChunk("data");
+    REQUIRE(dataChunk != nullptr);
+    REQUIRE(readRiffSizeField(wavPath) == bytes.size() - 8);
+    REQUIRE(dataChunk->payloadSize ==
+            static_cast<uint32_t>(3 * sizeof(std::int16_t)));
+}
+
+TEST_CASE("Overwrite after length change preserves chunk order", "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-chunk-order"));
+    const auto wavPath = cleanup.path() / "chunk_order.wav";
+
+    writePcm16WavFile(wavPath, 44100, 1, {100, 200, 300, 400},
+                      {'o', 'd', 'd'}, {'t', 'a', 'i'});
+    const auto originalOrder = readChunkOrder(wavPath);
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+    state.getActiveDocumentSession().cursor = 2;
+    cupuacu::actions::audio::performInsertSilence(&state, 2);
+
+    REQUIRE(cupuacu::actions::overwrite(&state));
+
+    REQUIRE(readChunkOrder(wavPath) == originalOrder);
+}
+
+TEST_CASE("Overwrite after stereo append keeps RIFF and data sizes consistent",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-stereo-append-size"));
+    const auto wavPath = cleanup.path() / "stereo_append.wav";
+
+    writePcm16WavFile(wavPath, 44100, 2, {10, 20, 30, 40, 50, 60, 70, 80},
+                      {'o', 'd', 'd'}, {'t', 'a', 'i'});
+    const auto originalOrder = readChunkOrder(wavPath);
+    const auto originalData = readChunkPayload(wavPath, "data");
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+    auto &session = state.getActiveDocumentSession();
+    session.cursor = state.getActiveDocumentSession().document.getFrameCount();
+    cupuacu::actions::audio::performInsertSilence(&state, 2);
+
+    REQUIRE(cupuacu::actions::overwrite(&state));
+
+    const auto bytes = readBytes(wavPath);
+    const auto parsed = cupuacu::file::wav::WavParser::parseFile(wavPath);
+    const auto *dataChunk = parsed.findChunk("data");
+    REQUIRE(dataChunk != nullptr);
+    REQUIRE(readRiffSizeField(wavPath) == bytes.size() - 8);
+    REQUIRE(dataChunk->payloadSize ==
+            static_cast<uint32_t>(6 * 2 * sizeof(std::int16_t)));
+    REQUIRE(readChunkOrder(wavPath) == originalOrder);
+
+    std::vector<uint8_t> expectedData = originalData;
+    expectedData.insert(expectedData.end(), 2 * 2 * sizeof(std::int16_t), 0);
+    REQUIRE(readChunkPayload(wavPath, "data") == expectedData);
+}
+
+TEST_CASE("Overwrite after length change preserves multiple non-audio chunks byte-identically",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-multi-nonaudio-preserve"));
+    const auto wavPath = cleanup.path() / "multi_nonaudio.wav";
+
+    const auto wavBytes = buildRiffWaveBytes(
+        {{"fmt ", makePcm16FmtChunkPayload(44100, 1)},
+         {"JUNK", {'p', 'r', 'e'}},
+         {"cue ", {1, 2, 3, 4, 5, 6}},
+         {"data", encodePcm16Samples({100, 200, 300, 400})},
+         {"LIST", {'p', 'o', 's', 't', '!'}}});
+    writeRawBytes(wavPath, wavBytes);
+    const auto originalOrder = readChunkOrder(wavPath);
+    const auto originalJunkChunk = readChunkBytes(wavPath, "JUNK");
+    const auto originalCueChunk = readChunkBytes(wavPath, "cue ");
+    const auto originalListChunk = readChunkBytes(wavPath, "LIST");
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+    auto &session = state.getActiveDocumentSession();
+    session.selection.setValue1(1.0);
+    session.selection.setValue2(3.0);
+    cupuacu::actions::audio::performCut(&state);
+
+    REQUIRE(cupuacu::actions::overwrite(&state));
+
+    REQUIRE(readChunkOrder(wavPath) == originalOrder);
+    REQUIRE(readChunkBytes(wavPath, "JUNK") == originalJunkChunk);
+    REQUIRE(readChunkBytes(wavPath, "cue ") == originalCueChunk);
+    REQUIRE(readChunkBytes(wavPath, "LIST") == originalListChunk);
+}
+
+TEST_CASE("WAV parser exposes chunk table for PCM16 file", "[file]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-wav-parser"));
+    const auto wavPath = cleanup.path() / "parsed.wav";
+
+    writePcm16WavFile(wavPath, 48000, 1, {100, -100, 200, -200},
+                      {'p', 'r', 'e', '!', 1, 2},
+                      {'p', 'o', 's', 't', 9, 8, 7, 6});
+
+    const auto parsed = cupuacu::file::wav::WavParser::parseFile(wavPath);
+    REQUIRE(parsed.isWave);
+    REQUIRE(parsed.isPcm16);
+    REQUIRE(parsed.channelCount == 1);
+    REQUIRE(parsed.sampleRate == 48000);
+    REQUIRE(parsed.bitsPerSample == 16);
+    REQUIRE(parsed.findChunk("fmt ") != nullptr);
+    REQUIRE(parsed.findChunk("data") != nullptr);
+    REQUIRE(parsed.findChunk("JUNK") != nullptr);
+    REQUIRE(parsed.findChunk("LIST") != nullptr);
+    REQUIRE(parsed.chunks.size() == 4);
+}
+
+TEST_CASE("Overwrite rejects WAV files with multiple data chunks", "[file]")
+{
+    cupuacu::test::ScopedSdlLogSilencer silenceLogs;
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-multiple-data-chunks"));
+    const auto wavPath = cleanup.path() / "multiple_data.wav";
+
+    const auto wavBytes = buildRiffWaveBytes(
+        {{"fmt ", makePcm16FmtChunkPayload(44100, 1)},
+         {"data", encodePcm16Samples({100, 200})},
+         {"data", encodePcm16Samples({300, 400})}});
+    writeRawBytes(wavPath, wavBytes);
+    const auto originalBytes = readBytes(wavPath);
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto &session = state.getActiveDocumentSession();
+    session.currentFile = wavPath.string();
+    session.currentFileExportSettings = cupuacu::file::AudioExportSettings{
+        .container = cupuacu::file::AudioExportContainer::WAV,
+        .codec = cupuacu::file::AudioExportCodec::PCM,
+        .majorFormat = SF_FORMAT_WAV,
+        .subtype = SF_FORMAT_PCM_16,
+        .containerLabel = "WAV",
+        .codecLabel = "PCM",
+        .encodingLabel = "16-bit PCM",
+        .extension = "wav",
+    };
+    session.document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 2);
+
+    std::string reportedMessage;
+    state.errorReporter = [&](const std::string &, const std::string &message)
+    {
+        reportedMessage = message;
+    };
+
+    REQUIRE_FALSE(cupuacu::actions::overwrite(&state));
+    REQUIRE(reportedMessage.find("exactly one data chunk") != std::string::npos);
+    REQUIRE(readBytes(wavPath) == originalBytes);
+}
+
+TEST_CASE("Overwrite rejects WAV files without fmt chunk", "[file]")
+{
+    cupuacu::test::ScopedSdlLogSilencer silenceLogs;
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-wav-missing-fmt"));
+    const auto wavPath = cleanup.path() / "missing_fmt.wav";
+
+    const auto wavBytes = buildRiffWaveBytes(
+        {{"data", encodePcm16Samples({100, 200, 300, 400})}});
+    writeRawBytes(wavPath, wavBytes);
+    const auto originalBytes = readBytes(wavPath);
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto &session = state.getActiveDocumentSession();
+    session.currentFile = wavPath.string();
+    session.currentFileExportSettings = cupuacu::file::AudioExportSettings{
+        .container = cupuacu::file::AudioExportContainer::WAV,
+        .codec = cupuacu::file::AudioExportCodec::PCM,
+        .majorFormat = SF_FORMAT_WAV,
+        .subtype = SF_FORMAT_PCM_16,
+        .containerLabel = "WAV",
+        .codecLabel = "PCM",
+        .encodingLabel = "16-bit PCM",
+        .extension = "wav",
+    };
+    session.document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 2);
+
+    std::string reportedMessage;
+    state.errorReporter = [&](const std::string &, const std::string &message)
+    {
+        reportedMessage = message;
+    };
+
+    REQUIRE_FALSE(cupuacu::actions::overwrite(&state));
+    REQUIRE(reportedMessage.find("Not a 16-bit PCM WAV file") !=
+            std::string::npos);
+    REQUIRE(readBytes(wavPath) == originalBytes);
+}
+
+TEST_CASE("Overwrite rejects WAV files with multiple fmt chunks", "[file]")
+{
+    cupuacu::test::ScopedSdlLogSilencer silenceLogs;
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-multiple-fmt-chunks"));
+    const auto wavPath = cleanup.path() / "multiple_fmt.wav";
+
+    const auto wavBytes = buildRiffWaveBytes(
+        {{"fmt ", makePcm16FmtChunkPayload(44100, 1)},
+         {"fmt ", makePcm16FmtChunkPayload(44100, 1)},
+         {"data", encodePcm16Samples({100, 200})}});
+    writeRawBytes(wavPath, wavBytes);
+    const auto originalBytes = readBytes(wavPath);
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto &session = state.getActiveDocumentSession();
+    session.currentFile = wavPath.string();
+    session.currentFileExportSettings = cupuacu::file::AudioExportSettings{
+        .container = cupuacu::file::AudioExportContainer::WAV,
+        .codec = cupuacu::file::AudioExportCodec::PCM,
+        .majorFormat = SF_FORMAT_WAV,
+        .subtype = SF_FORMAT_PCM_16,
+        .containerLabel = "WAV",
+        .codecLabel = "PCM",
+        .encodingLabel = "16-bit PCM",
+        .extension = "wav",
+    };
+    session.document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 2);
+
+    std::string reportedMessage;
+    state.errorReporter = [&](const std::string &, const std::string &message)
+    {
+        reportedMessage = message;
+    };
+
+    REQUIRE_FALSE(cupuacu::actions::overwrite(&state));
+    REQUIRE(reportedMessage.find("exactly one fmt chunk") != std::string::npos);
+    REQUIRE(readBytes(wavPath) == originalBytes);
+}
+
+TEST_CASE("Overwrite rejects WAV files with truncated chunk payload", "[file]")
+{
+    cupuacu::test::ScopedSdlLogSilencer silenceLogs;
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-truncated-chunk"));
+    const auto wavPath = cleanup.path() / "truncated.wav";
+
+    auto wavBytes = buildRiffWaveBytes(
+        {{"fmt ", makePcm16FmtChunkPayload(44100, 1)},
+         {"data", encodePcm16Samples({100, 200})}});
+    wavBytes.resize(wavBytes.size() - sizeof(std::int16_t));
+    const uint32_t riffSize = static_cast<uint32_t>(wavBytes.size() - 8);
+    wavBytes[4] = static_cast<uint8_t>(riffSize & 0xffu);
+    wavBytes[5] = static_cast<uint8_t>((riffSize >> 8) & 0xffu);
+    wavBytes[6] = static_cast<uint8_t>((riffSize >> 16) & 0xffu);
+    wavBytes[7] = static_cast<uint8_t>((riffSize >> 24) & 0xffu);
+    writeRawBytes(wavPath, wavBytes);
+    const auto originalBytes = readBytes(wavPath);
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto &session = state.getActiveDocumentSession();
+    session.currentFile = wavPath.string();
+    session.currentFileExportSettings = cupuacu::file::AudioExportSettings{
+        .container = cupuacu::file::AudioExportContainer::WAV,
+        .codec = cupuacu::file::AudioExportCodec::PCM,
+        .majorFormat = SF_FORMAT_WAV,
+        .subtype = SF_FORMAT_PCM_16,
+        .containerLabel = "WAV",
+        .codecLabel = "PCM",
+        .encodingLabel = "16-bit PCM",
+        .extension = "wav",
+    };
+    session.document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 2);
+
+    std::string reportedMessage;
+    state.errorReporter = [&](const std::string &, const std::string &message)
+    {
+        reportedMessage = message;
+    };
+
+    REQUIRE_FALSE(cupuacu::actions::overwrite(&state));
+    REQUIRE(reportedMessage.find("extends past end of file") !=
+            std::string::npos);
+    REQUIRE(readBytes(wavPath) == originalBytes);
+}
+
+TEST_CASE("Overwrite rejects WAV files with inconsistent RIFF size", "[file]")
+{
+    cupuacu::test::ScopedSdlLogSilencer silenceLogs;
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-bad-riff-size"));
+    const auto wavPath = cleanup.path() / "bad_riff_size.wav";
+
+    auto wavBytes = buildRiffWaveBytes(
+        {{"fmt ", makePcm16FmtChunkPayload(44100, 1)},
+         {"data", encodePcm16Samples({100, 200})}});
+    appendByte(wavBytes, 0x7f);
+    writeRawBytes(wavPath, wavBytes);
+    const auto originalBytes = readBytes(wavPath);
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto &session = state.getActiveDocumentSession();
+    session.currentFile = wavPath.string();
+    session.currentFileExportSettings = cupuacu::file::AudioExportSettings{
+        .container = cupuacu::file::AudioExportContainer::WAV,
+        .codec = cupuacu::file::AudioExportCodec::PCM,
+        .majorFormat = SF_FORMAT_WAV,
+        .subtype = SF_FORMAT_PCM_16,
+        .containerLabel = "WAV",
+        .codecLabel = "PCM",
+        .encodingLabel = "16-bit PCM",
+        .extension = "wav",
+    };
+    session.document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 2);
+
+    std::string reportedMessage;
+    state.errorReporter = [&](const std::string &, const std::string &message)
+    {
+        reportedMessage = message;
+    };
+
+    REQUIRE_FALSE(cupuacu::actions::overwrite(&state));
+    REQUIRE(reportedMessage.find("RIFF size field does not match file size") !=
+            std::string::npos);
+    REQUIRE(readBytes(wavPath) == originalBytes);
+}
+
+TEST_CASE("Overwrite patches only one mono PCM16 sample in place", "[file]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-wav-mono-patch"));
+    const auto wavPath = cleanup.path() / "mono.wav";
+
+    writePcm16WavFile(wavPath, 44100, 1, {0, 1000, -1000, 2000});
+    const auto originalBytes = readBytes(wavPath);
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+    state.getActiveDocumentSession().document.setSample(0, 2, 0.25f);
+
+    REQUIRE(cupuacu::actions::overwrite(&state));
+
+    const auto updatedBytes = readBytes(wavPath);
+    const auto differingOffsets =
+        findDifferingByteOffsets(originalBytes, updatedBytes);
+    REQUIRE(differingOffsets.size() == sizeof(std::int16_t));
+}
+
+TEST_CASE("Overwrite patches only one stereo channel sample in place", "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-stereo-channel-patch"));
+    const auto wavPath = cleanup.path() / "stereo.wav";
+
+    writePcm16WavFile(wavPath, 44100, 2, {10, 20, 30, 40, 50, 60});
+    const auto originalBytes = readBytes(wavPath);
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+    state.getActiveDocumentSession().document.setSample(1, 1, -0.5f);
+
+    REQUIRE(cupuacu::actions::overwrite(&state));
+
+    const auto updatedBytes = readBytes(wavPath);
+    const auto differingOffsets =
+        findDifferingByteOffsets(originalBytes, updatedBytes);
+    REQUIRE(differingOffsets.size() == sizeof(std::int16_t));
+}
+
+TEST_CASE("Overwrite after trim preserves surviving PCM16 sample bytes",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-wav-trim-preserve"));
+    const auto wavPath = cleanup.path() / "trim.wav";
+
+    writePcm16WavFile(wavPath, 44100, 1, {100, 200, 300, 400, 500},
+                      {'p', 'r', 'e', '!'}, {'p', 'o', 's', 't'});
+    const auto originalData = readChunkPayload(wavPath, "data");
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+    state.addAndDoUndoable(
+        std::make_shared<cupuacu::actions::audio::Trim>(&state, 1, 3));
+
+    REQUIRE(cupuacu::actions::overwrite(&state));
+
+    const auto updatedData = readChunkPayload(wavPath, "data");
+    REQUIRE(updatedData ==
+            sliceBytes(originalData, sizeof(std::int16_t) * 1,
+                       sizeof(std::int16_t) * 3));
+    REQUIRE(readChunkPayload(wavPath, "JUNK") ==
+            std::vector<uint8_t>({'p', 'r', 'e', '!'}));
+    REQUIRE(readChunkPayload(wavPath, "LIST") ==
+            std::vector<uint8_t>({'p', 'o', 's', 't'}));
+}
+
+TEST_CASE("Overwrite after cut preserves surviving PCM16 sample bytes",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-wav-cut-preserve"));
+    const auto wavPath = cleanup.path() / "cut.wav";
+
+    writePcm16WavFile(wavPath, 44100, 1, {100, 200, 300, 400, 500, 600},
+                      {'p', 'r', 'e', '!'}, {'p', 'o', 's', 't'});
+    const auto originalData = readChunkPayload(wavPath, "data");
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+    auto &session = state.getActiveDocumentSession();
+    session.selection.setValue1(2.0);
+    session.selection.setValue2(4.0);
+    cupuacu::actions::audio::performCut(&state);
+
+    REQUIRE(cupuacu::actions::overwrite(&state));
+
+    const auto updatedData = readChunkPayload(wavPath, "data");
+    std::vector<uint8_t> expectedData;
+    expectedData.insert(expectedData.end(), originalData.begin(),
+                        originalData.begin() +
+                            static_cast<std::ptrdiff_t>(sizeof(std::int16_t) * 2));
+    expectedData.insert(expectedData.end(),
+                        originalData.begin() +
+                            static_cast<std::ptrdiff_t>(sizeof(std::int16_t) * 4),
+                        originalData.end());
+    REQUIRE(updatedData == expectedData);
+    REQUIRE(readChunkPayload(wavPath, "JUNK") ==
+            std::vector<uint8_t>({'p', 'r', 'e', '!'}));
+    REQUIRE(readChunkPayload(wavPath, "LIST") ==
+            std::vector<uint8_t>({'p', 'o', 's', 't'}));
+}
+
+TEST_CASE("Overwrite after paste of copied original material preserves source PCM16 sample bytes",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-wav-paste-preserve"));
+    const auto wavPath = cleanup.path() / "paste.wav";
+
+    writePcm16WavFile(wavPath, 44100, 1, {100, 200, 300, 400, 500},
+                      {'p', 'r', 'e', '!'}, {'p', 'o', 's', 't'});
+    const auto originalData = readChunkPayload(wavPath, "data");
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+    auto &session = state.getActiveDocumentSession();
+
+    session.selection.setValue1(1.0);
+    session.selection.setValue2(3.0);
+    cupuacu::actions::audio::performCopy(&state);
+    session.selection.reset();
+    session.cursor = 5;
+    cupuacu::actions::audio::performPaste(&state);
+
+    REQUIRE(cupuacu::actions::overwrite(&state));
+
+    const auto updatedData = readChunkPayload(wavPath, "data");
+    std::vector<uint8_t> expectedData = originalData;
+    expectedData.insert(expectedData.end(),
+                        originalData.begin() +
+                            static_cast<std::ptrdiff_t>(sizeof(std::int16_t) * 1),
+                        originalData.begin() +
+                            static_cast<std::ptrdiff_t>(sizeof(std::int16_t) * 3));
+    REQUIRE(updatedData == expectedData);
+    REQUIRE(readChunkPayload(wavPath, "JUNK") ==
+            std::vector<uint8_t>({'p', 'r', 'e', '!'}));
+    REQUIRE(readChunkPayload(wavPath, "LIST") ==
+            std::vector<uint8_t>({'p', 'o', 's', 't'}));
+}
+
+TEST_CASE("Overwrite after insert silence preserves surrounding PCM16 sample bytes",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-insert-silence-preserve"));
+    const auto wavPath = cleanup.path() / "insert_silence.wav";
+
+    writePcm16WavFile(wavPath, 44100, 1, {100, 200, 300, 400},
+                      {'p', 'r', 'e', '!'}, {'p', 'o', 's', 't'});
+    const auto originalData = readChunkPayload(wavPath, "data");
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+    auto &session = state.getActiveDocumentSession();
+    session.cursor = 2;
+    cupuacu::actions::audio::performInsertSilence(&state, 2);
+
+    REQUIRE(cupuacu::actions::overwrite(&state));
+
+    const auto updatedData = readChunkPayload(wavPath, "data");
+    std::vector<uint8_t> expectedData;
+    expectedData.insert(expectedData.end(), originalData.begin(),
+                        originalData.begin() +
+                            static_cast<std::ptrdiff_t>(sizeof(std::int16_t) * 2));
+    expectedData.insert(expectedData.end(), 2 * sizeof(std::int16_t), 0);
+    expectedData.insert(expectedData.end(),
+                        originalData.begin() +
+                            static_cast<std::ptrdiff_t>(sizeof(std::int16_t) * 2),
+                        originalData.end());
+    REQUIRE(updatedData == expectedData);
+    REQUIRE(readChunkPayload(wavPath, "JUNK") ==
+            std::vector<uint8_t>({'p', 'r', 'e', '!'}));
+    REQUIRE(readChunkPayload(wavPath, "LIST") ==
+            std::vector<uint8_t>({'p', 'o', 's', 't'}));
+}
+
+TEST_CASE("Overwrite after trim preserves dirty survivors and clean survivors distinctly",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-trim-dirty-survivor"));
+    const auto wavPath = cleanup.path() / "trim_dirty.wav";
+
+    writePcm16WavFile(wavPath, 44100, 1, {100, 200, 300, 400, 500},
+                      {'p', 'r', 'e', '!'}, {'p', 'o', 's', 't'});
+    const auto originalData = readChunkPayload(wavPath, "data");
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+    auto &document = state.getActiveDocumentSession().document;
+    document.setSample(0, 2, 0.25f);
+    state.addAndDoUndoable(
+        std::make_shared<cupuacu::actions::audio::Trim>(&state, 1, 3));
+
+    REQUIRE(cupuacu::actions::overwrite(&state));
+
+    const auto updatedData = readChunkPayload(wavPath, "data");
+    const auto dirtySample = static_cast<std::int16_t>(
+        cupuacu::file::quantizeIntegerPcmSample(cupuacu::SampleFormat::PCM_S16,
+                                                0.25f, false));
+    std::vector<uint8_t> expectedData;
+    expectedData.insert(expectedData.end(),
+                        originalData.begin() +
+                            static_cast<std::ptrdiff_t>(sizeof(std::int16_t) * 1),
+                        originalData.begin() +
+                            static_cast<std::ptrdiff_t>(sizeof(std::int16_t) * 2));
+    const auto dirtyBytes = encodePcm16Samples({dirtySample});
+    expectedData.insert(expectedData.end(), dirtyBytes.begin(), dirtyBytes.end());
+    expectedData.insert(expectedData.end(),
+                        originalData.begin() +
+                            static_cast<std::ptrdiff_t>(sizeof(std::int16_t) * 3),
+                        originalData.begin() +
+                            static_cast<std::ptrdiff_t>(sizeof(std::int16_t) * 4));
+    REQUIRE(updatedData == expectedData);
+    REQUIRE(readChunkPayload(wavPath, "JUNK") ==
+            std::vector<uint8_t>({'p', 'r', 'e', '!'}));
+    REQUIRE(readChunkPayload(wavPath, "LIST") ==
+            std::vector<uint8_t>({'p', 'o', 's', 't'}));
+}
+
+TEST_CASE("Overwrite after stereo cut preserves surviving interleaved PCM16 sample bytes",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-stereo-cut-preserve"));
+    const auto wavPath = cleanup.path() / "stereo_cut.wav";
+
+    writePcm16WavFile(wavPath, 44100, 2, {10, 20, 30, 40, 50, 60, 70, 80},
+                      {'p', 'r', 'e', '!'}, {'p', 'o', 's', 't'});
+    const auto originalData = readChunkPayload(wavPath, "data");
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+    auto &session = state.getActiveDocumentSession();
+    session.selection.setValue1(1.0);
+    session.selection.setValue2(3.0);
+    cupuacu::actions::audio::performCut(&state);
+
+    REQUIRE(cupuacu::actions::overwrite(&state));
+
+    const auto updatedData = readChunkPayload(wavPath, "data");
+    std::vector<uint8_t> expectedData;
+    expectedData.insert(expectedData.end(), originalData.begin(),
+                        originalData.begin() +
+                            static_cast<std::ptrdiff_t>(sizeof(std::int16_t) * 2));
+    expectedData.insert(expectedData.end(),
+                        originalData.begin() +
+                            static_cast<std::ptrdiff_t>(sizeof(std::int16_t) * 6),
+                        originalData.end());
+    REQUIRE(updatedData == expectedData);
+    REQUIRE(readChunkPayload(wavPath, "JUNK") ==
+            std::vector<uint8_t>({'p', 'r', 'e', '!'}));
+    REQUIRE(readChunkPayload(wavPath, "LIST") ==
+            std::vector<uint8_t>({'p', 'o', 's', 't'}));
+}
+
+TEST_CASE("Overwrite after record-style overwrite patches recorded PCM16 bytes",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-record-overwrite"));
+    const auto wavPath = cleanup.path() / "record_overwrite.wav";
+
+    writePcm16WavFile(wavPath, 44100, 2, {10, 20, 30, 40, 50, 60, 70, 80},
+                      {'p', 'r', 'e', '!'}, {'p', 'o', 's', 't'});
+    const auto originalBytes = readBytes(wavPath);
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+
+    cupuacu::actions::audio::RecordEditData data;
+    data.startFrame = 1;
+    data.endFrame = 3;
+    data.oldFrameCount = 4;
+    data.oldChannelCount = 2;
+    data.targetChannelCount = 2;
+    data.oldSampleRate = 44100;
+    data.newSampleRate = 44100;
+    data.oldFormat = cupuacu::SampleFormat::PCM_S16;
+    data.newFormat = cupuacu::SampleFormat::PCM_S16;
+    data.oldCursor = 1;
+    data.newCursor = 3;
+    data.overwrittenOldSamples = {{30.0f / 32767.0f, 50.0f / 32767.0f},
+                                  {40.0f / 32767.0f, 60.0f / 32767.0f}};
+    data.recordedSamples = {{0.25f, -0.25f}, {-0.5f, 0.5f}};
+
+    state.addAndDoUndoable(
+        std::make_shared<cupuacu::actions::audio::RecordEdit>(&state, data));
+
+    REQUIRE(cupuacu::actions::overwrite(&state));
+
+    const auto updatedBytes = readBytes(wavPath);
+    REQUIRE(updatedBytes != originalBytes);
+
+    int sampleRate = 0;
+    int channels = 0;
+    const auto frames = readFramesAsFloat(wavPath, sampleRate, channels);
+    REQUIRE(sampleRate == 44100);
+    REQUIRE(channels == 2);
+    REQUIRE(frames.size() == 8);
+    REQUIRE(frames[2] == Catch::Approx(0.25f).margin(1.0f / 32767.0f));
+    REQUIRE(frames[3] == Catch::Approx(-0.5f).margin(1.0f / 32767.0f));
+    REQUIRE(frames[4] == Catch::Approx(-0.25f).margin(1.0f / 32767.0f));
+    REQUIRE(frames[5] == Catch::Approx(0.5f).margin(1.0f / 32767.0f));
+}
+
+TEST_CASE("Overwrite after record-style append preserves original prefix and appends new PCM16 bytes",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-record-append"));
+    const auto wavPath = cleanup.path() / "record_append.wav";
+
+    writePcm16WavFile(wavPath, 44100, 1, {100, 200, 300, 400},
+                      {'p', 'r', 'e', '!'}, {'p', 'o', 's', 't'});
+    const auto originalData = readChunkPayload(wavPath, "data");
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+
+    cupuacu::actions::audio::RecordEditData data;
+    data.startFrame = 4;
+    data.endFrame = 6;
+    data.oldFrameCount = 4;
+    data.oldChannelCount = 1;
+    data.targetChannelCount = 1;
+    data.oldSampleRate = 44100;
+    data.newSampleRate = 44100;
+    data.oldFormat = cupuacu::SampleFormat::PCM_S16;
+    data.newFormat = cupuacu::SampleFormat::PCM_S16;
+    data.oldCursor = 4;
+    data.newCursor = 6;
+    data.overwrittenOldSamples = {{}};
+    data.recordedSamples = {{0.25f, -0.25f}};
+
+    state.addAndDoUndoable(
+        std::make_shared<cupuacu::actions::audio::RecordEdit>(&state, data));
+
+    REQUIRE(cupuacu::actions::overwrite(&state));
+
+    const auto updatedData = readChunkPayload(wavPath, "data");
+    const auto appendedSamples = encodePcm16Samples(
+        {static_cast<std::int16_t>(cupuacu::file::quantizeIntegerPcmSample(
+             cupuacu::SampleFormat::PCM_S16, 0.25f, false)),
+         static_cast<std::int16_t>(cupuacu::file::quantizeIntegerPcmSample(
+             cupuacu::SampleFormat::PCM_S16, -0.25f, false))});
+    std::vector<uint8_t> expectedData = originalData;
+    expectedData.insert(expectedData.end(), appendedSamples.begin(),
+                        appendedSamples.end());
+    REQUIRE(updatedData == expectedData);
+    REQUIRE(readChunkPayload(wavPath, "JUNK") ==
+            std::vector<uint8_t>({'p', 'r', 'e', '!'}));
+    REQUIRE(readChunkPayload(wavPath, "LIST") ==
+            std::vector<uint8_t>({'p', 'o', 's', 't'}));
+}
+
+TEST_CASE("Second overwrite after edit is byte-identical", "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-second-overwrite"));
+    const auto wavPath = cleanup.path() / "second.wav";
+
+    writePcm16WavFile(wavPath, 44100, 1, {0, 1000, 2000, 3000});
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+    state.getActiveDocumentSession().document.setSample(0, 1, -0.25f);
+
+    REQUIRE(cupuacu::actions::overwrite(&state));
+    const auto savedBytes = readBytes(wavPath);
+
+    REQUIRE(cupuacu::actions::overwrite(&state));
+    REQUIRE(readBytes(wavPath) == savedBytes);
 }
 
 TEST_CASE("Overwrite clips edited samples into valid PCM16 range", "[file]")

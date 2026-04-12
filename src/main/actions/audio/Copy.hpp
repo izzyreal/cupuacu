@@ -53,15 +53,7 @@ namespace cupuacu::actions::audio
                 std::min<int64_t>(numFrames, totalFrames - startFrame);
 
             // Copy selection to clipboard
-            state->clipboard.initialize(doc.getSampleFormat(), sr, ch, maxCopy);
-            for (int64_t c = 0; c < ch; ++c)
-            {
-                for (int64_t i = 0; i < maxCopy; ++i)
-                {
-                    state->clipboard.setSample(
-                        c, i, doc.getSample(c, startFrame + i), false);
-                }
-            }
+            state->clipboard.assignSegment(doc.captureSegment(startFrame, maxCopy));
 
             // Keep the same selection and cursor position
             session.selection.setValue1(startFrame);

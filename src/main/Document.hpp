@@ -2,6 +2,7 @@
 
 #include "audio/AudioBuffer.hpp"
 #include "audio/DirtyTrackingAudioBuffer.hpp"
+#include "audio/SampleProvenance.hpp"
 #include "SampleFormat.hpp"
 #include "gui/WaveformCache.hpp"
 
@@ -12,11 +13,23 @@ namespace cupuacu
 {
     class Document
     {
+    public:
+        struct AudioSegment
+        {
+            SampleFormat format = SampleFormat::Unknown;
+            int sampleRate = 0;
+            int64_t channelCount = 0;
+            int64_t frameCount = 0;
+            std::vector<std::vector<float>> samples;
+            std::vector<std::vector<audio::SampleProvenance>> provenance;
+        };
+
     private:
         std::shared_ptr<cupuacu::audio::AudioBuffer> buffer =
             std::make_shared<cupuacu::audio::AudioBuffer>();
         int sampleRate = 0;
         SampleFormat format = SampleFormat::Unknown;
+        uint64_t preservationSourceId = 0;
         uint64_t waveformDataVersion = 0;
         std::vector<gui::WaveformCache> waveformCache =
             std::vector<gui::WaveformCache>(2);
@@ -53,5 +66,15 @@ namespace cupuacu
         void updateWaveformCache();
 
         std::shared_ptr<cupuacu::audio::AudioBuffer> getAudioBuffer() const;
+        uint64_t getPreservationSourceId() const;
+        audio::SampleProvenance getSampleProvenance(int64_t channel,
+                                                    int64_t frame) const;
+        void setSampleProvenance(int64_t channel, int64_t frame,
+                                 const audio::SampleProvenance &provenance);
+        AudioSegment captureSegment(int64_t startFrame, int64_t frameCount) const;
+        void assignSegment(const AudioSegment &segment);
+        void writeSegment(int64_t startFrame, const AudioSegment &segment,
+                          bool shouldMarkDirty = false);
+        void markCurrentStateAsSavedSource();
     };
 } // namespace cupuacu

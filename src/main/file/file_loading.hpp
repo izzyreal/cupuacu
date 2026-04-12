@@ -68,6 +68,11 @@ namespace cupuacu::file
         // Done with file
         sf_close(snd);
 
+        if (sampleFormat == SampleFormat::PCM_S16)
+        {
+            doc.markCurrentStateAsSavedSource();
+        }
+
         session.selection.reset();
         session.cursor = 0;
         session.syncSelectionAndCursorToDocumentLength();

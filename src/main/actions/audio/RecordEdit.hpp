@@ -88,7 +88,7 @@ namespace cupuacu::actions::audio
                     recordedFrameCount, static_cast<int64_t>(samples.size()));
                 for (int64_t i = 0; i < framesToWrite; ++i)
                 {
-                    doc.setSample(ch, data.startFrame + i, samples[i], false);
+                    doc.setSample(ch, data.startFrame + i, samples[i], true);
                 }
                 if (framesToWrite > 0)
                 {
