@@ -327,33 +327,35 @@ namespace cupuacu::file::wav
         }
 
     public:
-        static void overwritePreservingWavFile(cupuacu::State *state)
+        static void writePreservingWavFile(
+            cupuacu::State *state, const std::filesystem::path &referencePath,
+            const std::filesystem::path &outputPath,
+            const cupuacu::file::AudioExportSettings &settings)
         {
             if (state == nullptr)
             {
                 throw std::invalid_argument("State is null");
             }
 
-            const std::filesystem::path inputPath(
-                state->getActiveDocumentSession().currentFile);
-            const auto support = WavPreservationSupport::assessOverwrite(state);
+            const auto support =
+                WavPreservationSupport::assessAgainstReference(state, settings);
             if (!support.supported)
             {
                 throw std::runtime_error(support.reason);
             }
-            const ParsedFile parsed = WavParser::parseFile(inputPath);
+            const ParsedFile parsed = WavParser::parseFile(referencePath);
 
-            if (canPatchDataChunkInPlace(state, parsed))
+            if (referencePath == outputPath && canPatchDataChunkInPlace(state, parsed))
             {
-                patchDataChunkInPlace(state, inputPath);
+                patchDataChunkInPlace(state, referencePath);
                 return;
             }
 
             writeFileAtomically(
-                inputPath,
+                outputPath,
                 [&](const std::filesystem::path &outputPath)
                 {
-                    auto input = openInputFileStream(inputPath);
+                    auto input = openInputFileStream(referencePath);
                     auto output = openOutputFileStream(outputPath);
                     copyPrefix(input, output, parsed);
                     writeDataChunk(state, input, output, parsed);
@@ -361,6 +363,33 @@ namespace cupuacu::file::wav
                     updateRiffSizeField(output, parsed);
                     output.flush();
                 });
+        }
+
+        static void overwritePreservingWavFile(cupuacu::State *state)
+        {
+            if (state == nullptr)
+            {
+                throw std::invalid_argument("State is null");
+            }
+
+            const auto &session = state->getActiveDocumentSession();
+            auto settings = session.currentFileExportSettings;
+            if (!settings.has_value())
+            {
+                settings = cupuacu::file::defaultExportSettingsForPath(
+                    session.currentFile, session.document.getSampleFormat());
+            }
+            if (!settings.has_value())
+            {
+                throw std::runtime_error(
+                    "Could not determine current file export settings");
+            }
+
+            const auto referenceFile = !session.preservationReferenceFile.empty()
+                                           ? session.preservationReferenceFile
+                                           : session.currentFile;
+            writePreservingWavFile(state, referenceFile,
+                                   session.currentFile, *settings);
         }
     };
 } // namespace cupuacu::file::wav

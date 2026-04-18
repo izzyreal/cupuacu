@@ -35,7 +35,7 @@ namespace
 
         menu->setDirty();
     }
-}
+} // namespace
 
 Menu::Menu(State *state, const std::string &menuNameToUse,
            const std::function<void()> &actionToUse)
@@ -62,7 +62,29 @@ Menu::Menu(State *state,
 
 void Menu::setIsAvailable(const std::function<bool()> &isAvailableToUse)
 {
-    isAvailable = isAvailableToUse;
+    availabilityGetter = [isAvailableToUse]()
+    {
+        return MenuAvailability{.available = isAvailableToUse()};
+    };
+}
+
+void Menu::setAvailability(
+    const std::function<MenuAvailability()> &availabilityToUse)
+{
+    availabilityGetter = availabilityToUse;
+}
+
+void Menu::setTooltipText(const std::function<std::string()> &tooltipTextToUse)
+{
+    tooltipTextGetter = tooltipTextToUse;
+}
+
+void Menu::setTooltipText(const std::string &tooltipTextToUse)
+{
+    tooltipTextGetter = [tooltipTextToUse]()
+    {
+        return tooltipTextToUse;
+    };
 }
 
 std::string Menu::getMenuName() const
@@ -84,20 +106,55 @@ bool Menu::shouldShowAsSubMenuItem() const
     return !getMenuName().empty();
 }
 
-bool Menu::isEffectivelyAvailable() const
+MenuAvailability Menu::getLocalAvailability() const
 {
-    if (!isAvailable())
+    auto availability = availabilityGetter();
+    if (availability.available)
     {
-        return false;
+        availability.unavailableReason.clear();
+    }
+    return availability;
+}
+
+MenuAvailability Menu::getEffectiveAvailability() const
+{
+    const auto localAvailability = getLocalAvailability();
+    if (!localAvailability.available)
+    {
+        return localAvailability;
     }
 
     const auto *parentMenu = dynamic_cast<const Menu *>(getParent());
     if (!parentMenu)
     {
-        return true;
+        return localAvailability;
     }
 
-    return parentMenu->isEffectivelyAvailable();
+    return parentMenu->getEffectiveAvailability();
+}
+
+bool Menu::isEffectivelyAvailable() const
+{
+    return getEffectiveAvailability().available;
+}
+
+std::string Menu::getTooltipText() const
+{
+    const std::string baseTooltip = tooltipTextGetter();
+    const auto availability = getEffectiveAvailability();
+    if (availability.available || availability.unavailableReason.empty())
+    {
+        return baseTooltip;
+    }
+
+    const std::string unavailableText =
+        "Currently unavailable: " + availability.unavailableReason;
+    if (baseTooltip.empty())
+    {
+        return unavailableText;
+    }
+
+    return baseTooltip + "\n\n" + unavailableText;
 }
 
 void Menu::resized()
@@ -145,10 +202,10 @@ void Menu::showSubMenus()
         textWidths.push_back(tw);
     }
 
-    const auto layoutPlan = planMenuSubMenuLayout(
-        firstLevel, getWidth(), getHeight(), itemHeight,
-        nestedHorizontalOverlap, subMenuHorizontalMargin, textWidths,
-        shouldShow);
+    const auto layoutPlan =
+        planMenuSubMenuLayout(firstLevel, getWidth(), getHeight(), itemHeight,
+                              nestedHorizontalOverlap, subMenuHorizontalMargin,
+                              textWidths, shouldShow);
 
     for (std::size_t i = 0; i < subMenus.size(); ++i)
     {
@@ -269,9 +326,8 @@ void Menu::onDraw(SDL_Renderer *renderer)
 
 bool Menu::mouseDown(const MouseEvent &e)
 {
-    const auto plan =
-        planMenuMouseDown(subMenus.empty() == false, currentlyOpen,
-                          isEffectivelyAvailable());
+    const auto plan = planMenuMouseDown(
+        subMenus.empty() == false, currentlyOpen, isEffectivelyAvailable());
     if (const auto window = getWindow(); window && window->getMenuBar())
     {
         if (plan.hideMenuBarSubMenus)
@@ -320,8 +376,9 @@ void Menu::mouseLeave()
             componentUnderMouse &&
             Component::isComponentOrChildOf(componentUnderMouse,
                                             window->getMenuBar());
-        const auto plan = planMenuMouseLeave(
-            componentUnderMouseIsInMenuBarTree, window->getMenuBar()->hasMenuOpen());
+        const auto plan =
+            planMenuMouseLeave(componentUnderMouseIsInMenuBarTree,
+                               window->getMenuBar()->hasMenuOpen());
         if (plan.hideMenuBarSubMenus)
         {
             window->getMenuBar()->hideSubMenus();

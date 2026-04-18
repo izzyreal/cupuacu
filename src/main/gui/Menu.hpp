@@ -11,6 +11,11 @@
 
 namespace cupuacu::gui
 {
+    struct MenuAvailability
+    {
+        bool available = true;
+        std::string unavailableReason;
+    };
 
     class Label;
 
@@ -25,9 +30,13 @@ namespace cupuacu::gui
         {
             return "";
         };
-        std::function<bool()> isAvailable = []
+        std::function<MenuAvailability()> availabilityGetter = []
         {
-            return true;
+            return MenuAvailability{};
+        };
+        std::function<std::string()> tooltipTextGetter = []
+        {
+            return "";
         };
 
         Label *label = nullptr;
@@ -35,6 +44,8 @@ namespace cupuacu::gui
         bool isFirstLevel() const;
 
         bool shouldShowAsSubMenuItem() const;
+        MenuAvailability getLocalAvailability() const;
+        MenuAvailability getEffectiveAvailability() const;
         bool isEffectivelyAvailable() const;
 
     public:
@@ -44,6 +55,9 @@ namespace cupuacu::gui
              const std::function<void()> &actionToUse = {});
 
         void setIsAvailable(const std::function<bool()> &);
+        void setAvailability(const std::function<MenuAvailability()> &);
+        void setTooltipText(const std::function<std::string()> &);
+        void setTooltipText(const std::string &);
 
         template <typename... Args> Menu *addSubMenu(Args &&...args)
         {
@@ -62,6 +76,7 @@ namespace cupuacu::gui
         }
 
         std::string getMenuName() const;
+        std::string getTooltipText() const override;
 
         void resized() override;
         void onDraw(SDL_Renderer *) override;

@@ -44,6 +44,8 @@ namespace cupuacu::file
         session.currentFileExportSettings =
             inferExportSettingsForFile(session.currentFile, sfinfo.format,
                                        sampleFormat);
+        session.setPreservationReference(session.currentFile,
+                                         session.currentFileExportSettings);
 
         doc.initialize(sampleFormat, sfinfo.samplerate, channels, frames);
 

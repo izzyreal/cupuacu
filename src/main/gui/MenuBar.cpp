@@ -80,7 +80,6 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
     const std::string openText{"Open (Cmd + O)"};
     const std::string saveAsText{"Save as (Cmd + Shift + S)"};
     const std::string closeText{"Close file (Cmd + W)"};
-    const std::string overwriteText{"Overwrite (Cmd + S)"};
     const std::string exitText{"Exit"};
     const std::string trimText{"Trim (Cmd + T)"};
     const std::string cutText{"Cut (Cmd + X)"};
@@ -92,7 +91,6 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
     const std::string openText{"Open (Ctrl + O)"};
     const std::string saveAsText{"Save as (Ctrl + Shift + S)"};
     const std::string closeText{"Close file (Ctrl + W)"};
-    const std::string overwriteText{"Overwrite (Ctrl + S)"};
     const std::string exitText{"Exit"};
     const std::string trimText{"Trim (Ctrl + T)"};
     const std::string cutText{"Cut (Ctrl + X)"};
@@ -111,16 +109,31 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
                          {
                              actions::showOpenFileDialog(state);
                          });
-    auto *saveAsMenu =
-        fileMenu->addSubMenu(state, saveAsText,
-                             [&]
-                             {
-                                 actions::showExportAudioDialog(state);
-                             });
-    saveAsMenu->setIsAvailable(
+    auto *saveAsMenu = fileMenu->addSubMenu(
+        state, saveAsText,
         [&]
         {
-            return actions::hasActiveDocument(state);
+            actions::showExportAudioDialog(state,
+                                           cupuacu::PendingSaveAsMode::Generic);
+        });
+    saveAsMenu->setTooltipText(buildSaveAsTooltipText());
+    saveAsMenu->setAvailability(
+        [&]
+        {
+            return describeSaveAsAvailability(state);
+        });
+    auto *preservingSaveAsMenu = fileMenu->addSubMenu(
+        state, "Preserving save as...",
+        [&]
+        {
+            actions::showExportAudioDialog(
+                state, cupuacu::PendingSaveAsMode::Preserving);
+        });
+    preservingSaveAsMenu->setTooltipText(buildPreservingSaveAsTooltipText());
+    preservingSaveAsMenu->setAvailability(
+        [&]
+        {
+            return describePreservingSaveAsAvailability(state);
         });
 
     auto *recentMenu = fileMenu->addSubMenu(state, "Recent");
@@ -182,16 +195,34 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
         {
             return actions::hasActiveDocument(state);
         });
-    auto *overwriteMenu = fileMenu->addSubMenu(state, overwriteText,
-                                               [&]
-                                               {
-                                                   actions::overwrite(state);
-                                               });
-    overwriteMenu->setIsAvailable(
+    auto *overwriteMenu = fileMenu->addSubMenu(
+        state,
+        [this]() -> std::string
+        {
+            return buildOverwriteMenuLabel(state);
+        },
         [&]
         {
-            return actions::hasActiveDocument(state) &&
-                   !state->getActiveDocumentSession().currentFile.empty();
+            actions::overwrite(state);
+        });
+    overwriteMenu->setTooltipText(buildOverwriteTooltipText());
+    overwriteMenu->setAvailability(
+        [&]
+        {
+            return describeOverwriteAvailability(state);
+        });
+    auto *preservingOverwriteMenu =
+        fileMenu->addSubMenu(state, buildPreservingOverwriteMenuLabel(),
+                             [&]
+                             {
+                                 actions::overwritePreserving(state);
+                             });
+    preservingOverwriteMenu->setTooltipText(
+        buildPreservingOverwriteTooltipText());
+    preservingOverwriteMenu->setAvailability(
+        [&]
+        {
+            return describePreservingOverwriteAvailability(state);
         });
     fileMenu->addSubMenu(state, exitText,
                          [&]
@@ -396,24 +427,22 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
             return actions::hasActiveDocument(state);
         });
 
-    optionsMenu->addSubMenu(
-        state, allOptionsText,
-        [&]
-        {
-            showOptionsWindow(state);
-        });
-    optionsMenu->addSubMenu(
-        state, "Audio",
-        [&]
-        {
-            showOptionsWindow(state, OptionsSection::Audio);
-        });
-    optionsMenu->addSubMenu(
-        state, "Display",
-        [&]
-        {
-            showOptionsWindow(state, OptionsSection::Display);
-        });
+    optionsMenu->addSubMenu(state, allOptionsText,
+                            [&]
+                            {
+                                showOptionsWindow(state);
+                            });
+    optionsMenu->addSubMenu(state, "Audio",
+                            [&]
+                            {
+                                showOptionsWindow(state, OptionsSection::Audio);
+                            });
+    optionsMenu->addSubMenu(state, "Display",
+                            [&]
+                            {
+                                showOptionsWindow(state,
+                                                  OptionsSection::Display);
+                            });
 }
 
 void MenuBar::onDraw(SDL_Renderer *renderer)

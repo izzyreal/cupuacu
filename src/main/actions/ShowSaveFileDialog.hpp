@@ -35,9 +35,12 @@ namespace cupuacu::actions
         auto *state = static_cast<cupuacu::State *>(userdata);
         const auto settings =
             state ? state->pendingSaveAsExportSettings : std::nullopt;
+        const auto mode =
+            state ? state->pendingSaveAsMode : cupuacu::PendingSaveAsMode::Generic;
         if (state)
         {
             state->pendingSaveAsExportSettings.reset();
+            state->pendingSaveAsMode = cupuacu::PendingSaveAsMode::Generic;
         }
 
         if (!filelist)
@@ -54,6 +57,12 @@ namespace cupuacu::actions
 
         if (!state || !settings.has_value())
         {
+            return;
+        }
+
+        if (mode == cupuacu::PendingSaveAsMode::Preserving)
+        {
+            actions::saveAsPreserving(state, *filelist, *settings);
             return;
         }
 

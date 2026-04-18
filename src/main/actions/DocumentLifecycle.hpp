@@ -885,12 +885,17 @@ namespace cupuacu::actions
         }
     }
 
-    inline void showExportAudioDialog(cupuacu::State *state)
+    inline void showExportAudioDialog(
+        cupuacu::State *state,
+        const cupuacu::PendingSaveAsMode mode =
+            cupuacu::PendingSaveAsMode::Generic)
     {
         if (!state)
         {
             return;
         }
+
+        state->pendingSaveAsMode = mode;
 
         if (!state->exportAudioDialogWindow ||
             !state->exportAudioDialogWindow->isOpen())

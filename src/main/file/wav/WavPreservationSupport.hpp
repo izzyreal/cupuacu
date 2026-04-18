@@ -18,7 +18,8 @@ namespace cupuacu::file::wav
     {
     public:
         [[nodiscard]] static OverwritePreservationSupport
-        assessOverwrite(const cupuacu::State *state)
+        assessAgainstReference(const cupuacu::State *state,
+                               const cupuacu::file::AudioExportSettings &settings)
         {
             if (state == nullptr)
             {
@@ -26,28 +27,19 @@ namespace cupuacu::file::wav
             }
 
             const auto &session = state->getActiveDocumentSession();
-            if (session.currentFile.empty())
+            const auto referenceFile = !session.preservationReferenceFile.empty()
+                                           ? session.preservationReferenceFile
+                                           : session.currentFile;
+            if (referenceFile.empty())
             {
-                return {.supported = false, .reason = "No current file"};
+                return {.supported = false, .reason = "No preservation reference"};
             }
 
-            auto settings = session.currentFileExportSettings;
-            if (!settings.has_value())
-            {
-                settings = cupuacu::file::defaultExportSettingsForPath(
-                    session.currentFile, session.document.getSampleFormat());
-            }
-            if (!settings.has_value())
+            if (!cupuacu::file::isOverwritePreservingWavRewriteCandidate(settings))
             {
                 return {.supported = false,
-                        .reason = "Could not determine file export settings"};
-            }
-
-            if (!cupuacu::file::isOverwritePreservingWavRewriteCandidate(
-                    *settings))
-            {
-                return {.supported = false,
-                        .reason = "Current file is not a WAV PCM16 preservation candidate"};
+                        .reason =
+                            "Selected target format is not a WAV PCM16 preservation candidate"};
             }
 
             if (session.document.getSampleFormat() != cupuacu::SampleFormat::PCM_S16)
@@ -59,7 +51,7 @@ namespace cupuacu::file::wav
             ParsedFile parsed{};
             try
             {
-                parsed = WavParser::parseFile(session.currentFile);
+                parsed = WavParser::parseFile(referenceFile);
             }
             catch (const std::exception &e)
             {
@@ -100,6 +92,30 @@ namespace cupuacu::file::wav
             }
 
             return {.supported = true};
+        }
+
+        [[nodiscard]] static OverwritePreservationSupport
+        assessOverwrite(const cupuacu::State *state)
+        {
+            if (state == nullptr)
+            {
+                return {.supported = false, .reason = "State is null"};
+            }
+
+            const auto &session = state->getActiveDocumentSession();
+            auto settings = session.currentFileExportSettings;
+            if (!settings.has_value())
+            {
+                settings = cupuacu::file::defaultExportSettingsForPath(
+                    session.currentFile, session.document.getSampleFormat());
+            }
+            if (!settings.has_value())
+            {
+                return {.supported = false,
+                        .reason = "Could not determine file export settings"};
+            }
+
+            return assessAgainstReference(state, *settings);
         }
     };
 } // namespace cupuacu::file::wav

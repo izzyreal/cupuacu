@@ -400,7 +400,7 @@ TEST_CASE("Menu integration opens submenus and switches siblings on hover",
 
     auto fileSubMenus = cupuacu::test::integration::menuChildren(fileMenu);
     auto viewSubMenus = cupuacu::test::integration::menuChildren(viewMenu);
-    REQUIRE(fileSubMenus.size() == 7);
+    REQUIRE(fileSubMenus.size() == 9);
     REQUIRE(viewSubMenus.size() == 5);
 
     fileMenu->mouseDown(cupuacu::test::integration::leftMouseDown());
@@ -985,6 +985,7 @@ TEST_CASE("Device properties integration refreshes layout when pixel scale chang
     REQUIRE(audioButton->getWidth() != originalButtonWidth);
 }
 
+
 TEST_CASE("Dropdown integration keeps only one dropdown open and closes on outside clicks",
           "[integration]")
 {
@@ -1185,8 +1186,8 @@ TEST_CASE("File menu integration opens a recent file into the active session",
     REQUIRE(topLevelMenus.size() == 6);
     auto *fileMenu = topLevelMenus[0];
     auto fileEntries = cupuacu::test::integration::menuChildren(fileMenu);
-    REQUIRE(fileEntries.size() == 7);
-    auto *recentMenu = fileEntries[3];
+    REQUIRE(fileEntries.size() == 9);
+    auto *recentMenu = fileEntries[4];
 
     auto recentEntries = cupuacu::test::integration::menuChildren(recentMenu);
     REQUIRE(recentEntries.size() ==
@@ -1230,7 +1231,7 @@ TEST_CASE("Recent submenu integration does not show blank placeholder rows",
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
     auto *fileMenu = topLevelMenus[0];
-    auto *recentMenu = cupuacu::test::integration::menuChildren(fileMenu)[3];
+    auto *recentMenu = cupuacu::test::integration::menuChildren(fileMenu)[4];
     auto recentEntries = cupuacu::test::integration::menuChildren(recentMenu);
 
     REQUIRE(fileMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
@@ -1270,7 +1271,7 @@ TEST_CASE("Recent submenu integration hover keeps File menu open",
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
     auto *fileMenu = topLevelMenus[0];
-    auto *recentMenu = cupuacu::test::integration::menuChildren(fileMenu)[3];
+    auto *recentMenu = cupuacu::test::integration::menuChildren(fileMenu)[4];
 
     REQUIRE(fileMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
     REQUIRE(fileMenu->isOpen());
@@ -1308,7 +1309,7 @@ TEST_CASE("Recent submenu integration overlays file menu with slight horizontal 
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
     auto *fileMenu = topLevelMenus[0];
-    auto *recentMenu = cupuacu::test::integration::menuChildren(fileMenu)[3];
+    auto *recentMenu = cupuacu::test::integration::menuChildren(fileMenu)[4];
     auto *recentEntry =
         cupuacu::test::integration::menuChildren(recentMenu)[1];
 
@@ -1350,7 +1351,7 @@ TEST_CASE("Recent submenu integration closes when hovering another active top-le
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
     auto *fileMenu = topLevelMenus[0];
     auto *editMenu = topLevelMenus[1];
-    auto *recentMenu = cupuacu::test::integration::menuChildren(fileMenu)[3];
+    auto *recentMenu = cupuacu::test::integration::menuChildren(fileMenu)[4];
     auto *recentEntry =
         cupuacu::test::integration::menuChildren(recentMenu)[1];
 
@@ -1391,8 +1392,8 @@ TEST_CASE("File menu integration exit entry pushes a quit event", "[integration]
     REQUIRE(topLevelMenus.size() == 6);
     auto *fileMenu = topLevelMenus[0];
     auto fileEntries = cupuacu::test::integration::menuChildren(fileMenu);
-    REQUIRE(fileEntries.size() == 7);
-    auto *exitEntry = fileEntries[6];
+    REQUIRE(fileEntries.size() == 9);
+    auto *exitEntry = fileEntries[8];
 
     REQUIRE(fileMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
     REQUIRE(exitEntry->mouseDown(cupuacu::test::integration::leftMouseDown()));

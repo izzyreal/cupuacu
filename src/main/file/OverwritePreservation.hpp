@@ -20,9 +20,10 @@ namespace cupuacu::file
             }
 
             const auto &session = state->getActiveDocumentSession();
-            if (session.currentFile.empty())
+            if (session.preservationReferenceFile.empty() &&
+                session.currentFile.empty())
             {
-                return {.available = false, .reason = "No current file"};
+                return {.available = false, .reason = "No preservation reference"};
             }
             if (session.overwritePreservationBrokenByOperation)
             {

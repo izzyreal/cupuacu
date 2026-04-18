@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace
 {
@@ -30,7 +31,64 @@ namespace
     {
         return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h;
     }
-}
+
+    std::vector<std::string> splitTooltipLines(const std::string &text)
+    {
+        std::vector<std::string> lines;
+        std::size_t start = 0;
+        while (start <= text.size())
+        {
+            const std::size_t end = text.find('\n', start);
+            if (end == std::string::npos)
+            {
+                lines.push_back(text.substr(start));
+                break;
+            }
+            lines.push_back(text.substr(start, end - start));
+            start = end + 1;
+        }
+        if (lines.empty())
+        {
+            lines.push_back("");
+        }
+        return lines;
+    }
+
+    std::pair<int, int> measureTooltipTextBlock(const std::string &text,
+                                                const uint8_t pointSize)
+    {
+        const auto lines = splitTooltipLines(text);
+        const auto [sampleWidth, lineHeight] =
+            cupuacu::gui::measureText("Ag", pointSize);
+        const int safeLineHeight = std::max(1, lineHeight);
+
+        int maxWidth = 0;
+        for (const auto &line : lines)
+        {
+            const auto [lineWidth, ignoredHeight] =
+                cupuacu::gui::measureText(line.empty() ? " " : line, pointSize);
+            (void)ignoredHeight;
+            maxWidth = std::max(maxWidth, lineWidth);
+        }
+
+        const int totalHeight =
+            safeLineHeight *
+            static_cast<int>(std::max<std::size_t>(1, lines.size()));
+        return {std::max(maxWidth, sampleWidth), totalHeight};
+    }
+
+    bool isComponentInMenuTree(cupuacu::gui::Window *window,
+                               cupuacu::gui::Component *component)
+    {
+        if (!window || !window->getMenuBar() || !component)
+        {
+            return false;
+        }
+
+        return cupuacu::gui::Component::isComponentOrChildOf(
+            component, window->getMenuBar());
+    }
+} // namespace
 
 namespace cupuacu::gui
 {
@@ -61,8 +119,9 @@ namespace cupuacu::gui
             const int paddingCanvas = scaleUi(state, 10.0f);
             const int gapCanvas = scaleUi(state, 8.0f);
             const auto [textWidthPx, textHeightPx] =
-                measureText(text, fontPointSize);
-            const SDL_DisplayID displayId = SDL_GetDisplayForWindow(parentWindow);
+                measureTooltipTextBlock(text, fontPointSize);
+            const SDL_DisplayID displayId =
+                SDL_GetDisplayForWindow(parentWindow);
             SDL_Rect displayBounds{0, 0, 0, 0};
             if (!displayId ||
                 !SDL_GetDisplayUsableBounds(displayId, &displayBounds))
@@ -92,16 +151,18 @@ namespace cupuacu::gui
             const SDL_Rect parentBounds{parentX, parentY, parentW, parentH};
 
             const auto placement = planTooltipPopupPlacement(
-                parentBounds, anchorBounds, displayBounds, geometry.logicalWidth,
-                geometry.logicalHeight, geometry.gapLogical);
+                parentBounds, anchorBounds, displayBounds,
+                geometry.logicalWidth, geometry.logicalHeight,
+                geometry.gapLogical);
             if (!placement.valid)
             {
                 hide();
                 return;
             }
 
-            if (!ensureWindow(parentWindow, placement.offsetX, placement.offsetY,
-                              geometry.logicalWidth, geometry.logicalHeight))
+            if (!ensureWindow(parentWindow, placement.offsetX,
+                              placement.offsetY, geometry.logicalWidth,
+                              geometry.logicalHeight))
             {
                 hide();
                 return;
@@ -191,8 +252,7 @@ namespace cupuacu::gui
         }
 
         bool ensureWindow(SDL_Window *parentWindow, const int offsetX,
-                          const int offsetY, const int width,
-                          const int height)
+                          const int offsetY, const int width, const int height)
         {
             destroy();
 
@@ -246,12 +306,22 @@ namespace cupuacu::gui
                                     std::max(0, static_cast<int>(canvasHeight) -
                                                     renderPaddingPx * 2)};
             SDL_SetRenderClipRect(renderer, &clipRect);
-            renderText(renderer, text, fontPointSize,
-                       SDL_FRect{static_cast<float>(renderPaddingPx),
-                                 static_cast<float>(renderPaddingPx),
-                                 static_cast<float>(clipRect.w),
-                                 static_cast<float>(clipRect.h)},
-                       false);
+            const auto lines = splitTooltipLines(text);
+            const auto [sampleWidth, lineHeight] =
+                measureText("Ag", fontPointSize);
+            (void)sampleWidth;
+            const float safeLineHeight =
+                static_cast<float>(std::max(1, lineHeight));
+            float lineY = static_cast<float>(renderPaddingPx);
+            for (const auto &line : lines)
+            {
+                renderText(renderer, line.empty() ? " " : line, fontPointSize,
+                           SDL_FRect{static_cast<float>(renderPaddingPx), lineY,
+                                     static_cast<float>(clipRect.w),
+                                     safeLineHeight},
+                           false);
+                lineY += safeLineHeight;
+            }
             SDL_SetRenderClipRect(renderer, nullptr);
 
             SDL_SetRenderTarget(renderer, nullptr);
@@ -270,7 +340,8 @@ namespace cupuacu::gui
 
     TooltipController::~TooltipController() = default;
 
-    Component *TooltipController::resolveTooltipSource(Component *component) const
+    Component *
+    TooltipController::resolveTooltipSource(Component *component) const
     {
         while (component)
         {
@@ -309,7 +380,6 @@ namespace cupuacu::gui
 
         if ((state && state->modalWindow && state->modalWindow != window) ||
             window->getCapturingComponent() != nullptr ||
-            (window->getMenuBar() && window->getMenuBar()->hasMenuOpen()) ||
             SDL_GetMouseState(nullptr, nullptr) != 0)
         {
             hide();
@@ -318,6 +388,13 @@ namespace cupuacu::gui
 
         auto *source = resolveTooltipSource(window->getComponentUnderMouse());
         if (!source)
+        {
+            hide();
+            return;
+        }
+
+        if (window->getMenuBar() && window->getMenuBar()->hasMenuOpen() &&
+            !isComponentInMenuTree(window, source))
         {
             hide();
             return;

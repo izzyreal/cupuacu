@@ -16,6 +16,9 @@ namespace cupuacu
     {
         std::string currentFile;
         std::optional<file::AudioExportSettings> currentFileExportSettings;
+        std::string preservationReferenceFile;
+        std::optional<file::AudioExportSettings>
+            preservationReferenceExportSettings;
         file::OverwritePreservationState overwritePreservation;
         bool overwritePreservationBrokenByOperation = false;
         std::string overwritePreservationBrokenReason;
@@ -27,6 +30,8 @@ namespace cupuacu
         {
             currentFile.clear();
             currentFileExportSettings.reset();
+            preservationReferenceFile.clear();
+            preservationReferenceExportSettings.reset();
             overwritePreservation = {};
             overwritePreservationBrokenByOperation = false;
             overwritePreservationBrokenReason.clear();
@@ -38,9 +43,19 @@ namespace cupuacu
         {
             currentFile = std::move(pathToUse);
             currentFileExportSettings = std::move(settings);
+            preservationReferenceFile = currentFile;
+            preservationReferenceExportSettings = currentFileExportSettings;
             overwritePreservation = {};
             overwritePreservationBrokenByOperation = false;
             overwritePreservationBrokenReason.clear();
+        }
+
+        void setPreservationReference(
+            std::string pathToUse,
+            std::optional<file::AudioExportSettings> settings = std::nullopt)
+        {
+            preservationReferenceFile = std::move(pathToUse);
+            preservationReferenceExportSettings = std::move(settings);
         }
 
         void breakOverwritePreservation(std::string reason)

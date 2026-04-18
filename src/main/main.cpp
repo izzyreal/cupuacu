@@ -71,7 +71,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     {
         state->audioDevices->setDeviceSelection(*persistedSelection);
     }
-
     const auto persistedRecentFiles =
         cupuacu::persistence::RecentFilesPersistence::load(
             state->paths->recentlyOpenedFilesPath());
@@ -182,7 +181,6 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     {
         state->generateSilenceDialogWindow.reset();
     }
-
     state->windows.erase(std::remove_if(state->windows.begin(),
                                         state->windows.end(),
                                         [](cupuacu::gui::Window *window)

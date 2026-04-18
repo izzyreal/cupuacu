@@ -10,6 +10,7 @@
 #include "actions/audio/SetSampleValue.hpp"
 #include "actions/audio/Trim.hpp"
 #include "file/AudioExport.hpp"
+#include "file/SaveWritePlan.hpp"
 #include "file/SampleQuantization.hpp"
 #include "file/SndfilePath.hpp"
 #include "file/file_loading.hpp"
@@ -354,7 +355,7 @@ TEST_CASE("Overwrite keeps untouched 16-bit PCM WAV byte-identical", "[file]")
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = wavPath.string();
     cupuacu::file::loadSampleData(&state);
-    REQUIRE(cupuacu::actions::overwrite(&state));
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
     REQUIRE(readBytes(wavPath) == originalBytes);
 }
@@ -373,7 +374,7 @@ TEST_CASE("Overwrite preserves non-audio WAV chunks around data", "[file]")
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = wavPath.string();
     cupuacu::file::loadSampleData(&state);
-    REQUIRE(cupuacu::actions::overwrite(&state));
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
     REQUIRE(readBytes(wavPath) == originalBytes);
 }
@@ -394,7 +395,7 @@ TEST_CASE("Overwrite preserves odd-sized chunk bytes including padding", "[file]
     cupuacu::file::loadSampleData(&state);
     state.getActiveDocumentSession().document.setSample(0, 1, 0.25f);
 
-    REQUIRE(cupuacu::actions::overwrite(&state));
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
     REQUIRE(readChunkBytes(wavPath, "JUNK") == originalJunkChunk);
     REQUIRE(readChunkBytes(wavPath, "LIST") == originalListChunk);
@@ -416,7 +417,7 @@ TEST_CASE("Overwrite after length change keeps RIFF and data sizes consistent",
     state.addAndDoUndoable(
         std::make_shared<cupuacu::actions::audio::Trim>(&state, 1, 3));
 
-    REQUIRE(cupuacu::actions::overwrite(&state));
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
     const auto bytes = readBytes(wavPath);
     const auto parsed = cupuacu::file::wav::WavParser::parseFile(wavPath);
@@ -443,7 +444,7 @@ TEST_CASE("Overwrite after length change preserves chunk order", "[file]")
     state.getActiveDocumentSession().cursor = 2;
     cupuacu::actions::audio::performInsertSilence(&state, 2);
 
-    REQUIRE(cupuacu::actions::overwrite(&state));
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
     REQUIRE(readChunkOrder(wavPath) == originalOrder);
 }
@@ -467,7 +468,7 @@ TEST_CASE("Overwrite after stereo append keeps RIFF and data sizes consistent",
     session.cursor = state.getActiveDocumentSession().document.getFrameCount();
     cupuacu::actions::audio::performInsertSilence(&state, 2);
 
-    REQUIRE(cupuacu::actions::overwrite(&state));
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
     const auto bytes = readBytes(wavPath);
     const auto parsed = cupuacu::file::wav::WavParser::parseFile(wavPath);
@@ -510,7 +511,7 @@ TEST_CASE("Overwrite after length change preserves multiple non-audio chunks byt
     session.selection.setValue2(3.0);
     cupuacu::actions::audio::performCut(&state);
 
-    REQUIRE(cupuacu::actions::overwrite(&state));
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
     REQUIRE(readChunkOrder(wavPath) == originalOrder);
     REQUIRE(readChunkBytes(wavPath, "JUNK") == originalJunkChunk);
@@ -616,6 +617,113 @@ TEST_CASE("Loading valid PCM16 WAV updates session overwrite preservation state"
     REQUIRE(preservation.reason.empty());
 }
 
+TEST_CASE("Save write planner selects preserving overwrite when preservation is supported",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-save-write-plan-preserving"));
+    const auto wavPath = cleanup.path() / "plan_preserving.wav";
+
+    writePcm16WavFile(wavPath, 44100, 1, {100, 200, 300, 400});
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+
+    const auto settings = cupuacu::file::defaultExportSettingsForPath(
+        wavPath, state.getActiveDocumentSession().document.getSampleFormat());
+    REQUIRE(settings.has_value());
+
+    const auto plan =
+        cupuacu::file::SaveWritePlanner::planPreservingOverwrite(&state, *settings);
+    REQUIRE(plan.mode ==
+            cupuacu::file::SaveWriteMode::OverwritePreservingRewrite);
+    REQUIRE_FALSE(plan.preservationUnavailableReason.has_value());
+}
+
+TEST_CASE("Save write planner selects preserving save as when reference and format support it",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-save-write-plan-prefer-preserving"));
+    const auto wavPath = cleanup.path() / "plan_prefer_preserving.wav";
+
+    writePcm16WavFile(wavPath, 44100, 1, {100, 200, 300, 400});
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+
+    const auto settings = cupuacu::file::defaultExportSettingsForPath(
+        wavPath, state.getActiveDocumentSession().document.getSampleFormat());
+    REQUIRE(settings.has_value());
+
+    const auto plan =
+        cupuacu::file::SaveWritePlanner::planPreservingSaveAs(&state, *settings);
+    REQUIRE(plan.mode ==
+            cupuacu::file::SaveWriteMode::OverwritePreservingRewrite);
+}
+
+TEST_CASE("Save write planner rejects preserving save as for incompatible target format",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-save-write-plan-prefer-rewrite"));
+    const auto wavPath = cleanup.path() / "plan_prefer_rewrite.wav";
+
+    writePcm16WavFile(wavPath, 44100, 1, {100, 200, 300, 400});
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+
+    const auto settings = cupuacu::file::AudioExportSettings{
+        .container = cupuacu::file::AudioExportContainer::FLAC,
+        .codec = cupuacu::file::AudioExportCodec::FLAC,
+        .majorFormat = SF_FORMAT_FLAC,
+        .subtype = SF_FORMAT_PCM_16,
+        .containerLabel = "FLAC",
+        .codecLabel = "FLAC",
+        .encodingLabel = "16-bit PCM",
+        .extension = "flac",
+    };
+
+    const auto plan =
+        cupuacu::file::SaveWritePlanner::planPreservingSaveAs(&state, settings);
+    REQUIRE(plan.mode ==
+            cupuacu::file::SaveWriteMode::PreservationRequiredButUnavailable);
+    REQUIRE(plan.preservationUnavailableReason.has_value());
+}
+
+TEST_CASE("Save write planner reports unavailable preservation when overwrite cannot preserve",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-save-write-plan-fallback"));
+    const auto wavPath = cleanup.path() / "plan_fallback.wav";
+
+    writePcm16WavFile(wavPath, 44100, 1, {100, 200, 300, 400});
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+
+    auto settings = cupuacu::file::defaultExportSettingsForPath(
+        wavPath, state.getActiveDocumentSession().document.getSampleFormat());
+    REQUIRE(settings.has_value());
+
+    state.getActiveDocumentSession().breakOverwritePreservation(
+        "Recording changed channel count");
+
+    const auto plan =
+        cupuacu::file::SaveWritePlanner::planPreservingOverwrite(&state, *settings);
+    REQUIRE(plan.mode ==
+            cupuacu::file::SaveWriteMode::PreservationRequiredButUnavailable);
+    REQUIRE(plan.preservationUnavailableReason.has_value());
+    REQUIRE(plan.preservationUnavailableReason->find("channel count") !=
+            std::string::npos);
+}
+
 TEST_CASE("Overwrite rejects WAV files with multiple data chunks", "[file]")
 {
     cupuacu::test::ScopedSdlLogSilencer silenceLogs;
@@ -651,7 +759,7 @@ TEST_CASE("Overwrite rejects WAV files with multiple data chunks", "[file]")
         reportedMessage = message;
     };
 
-    REQUIRE_FALSE(cupuacu::actions::overwrite(&state));
+    REQUIRE_FALSE(cupuacu::actions::overwritePreserving(&state));
     REQUIRE(reportedMessage.find("exactly one data chunk") != std::string::npos);
     REQUIRE(readBytes(wavPath) == originalBytes);
 }
@@ -688,7 +796,7 @@ TEST_CASE("Overwrite rejects WAV files without fmt chunk", "[file]")
         reportedMessage = message;
     };
 
-    REQUIRE_FALSE(cupuacu::actions::overwrite(&state));
+    REQUIRE_FALSE(cupuacu::actions::overwritePreserving(&state));
     REQUIRE(reportedMessage.find("Not a 16-bit PCM WAV file") !=
             std::string::npos);
     REQUIRE(readBytes(wavPath) == originalBytes);
@@ -729,7 +837,7 @@ TEST_CASE("Overwrite rejects WAV files with multiple fmt chunks", "[file]")
         reportedMessage = message;
     };
 
-    REQUIRE_FALSE(cupuacu::actions::overwrite(&state));
+    REQUIRE_FALSE(cupuacu::actions::overwritePreserving(&state));
     REQUIRE(reportedMessage.find("exactly one fmt chunk") != std::string::npos);
     REQUIRE(readBytes(wavPath) == originalBytes);
 }
@@ -774,7 +882,7 @@ TEST_CASE("Overwrite rejects WAV files with truncated chunk payload", "[file]")
         reportedMessage = message;
     };
 
-    REQUIRE_FALSE(cupuacu::actions::overwrite(&state));
+    REQUIRE_FALSE(cupuacu::actions::overwritePreserving(&state));
     REQUIRE(reportedMessage.find("extends past end of file") !=
             std::string::npos);
     REQUIRE(readBytes(wavPath) == originalBytes);
@@ -815,7 +923,7 @@ TEST_CASE("Overwrite rejects WAV files with inconsistent RIFF size", "[file]")
         reportedMessage = message;
     };
 
-    REQUIRE_FALSE(cupuacu::actions::overwrite(&state));
+    REQUIRE_FALSE(cupuacu::actions::overwritePreserving(&state));
     REQUIRE(reportedMessage.find("RIFF size field does not match file size") !=
             std::string::npos);
     REQUIRE(readBytes(wavPath) == originalBytes);
@@ -834,7 +942,7 @@ TEST_CASE("Overwrite patches only one mono PCM16 sample in place", "[file]")
     cupuacu::file::loadSampleData(&state);
     state.getActiveDocumentSession().document.setSample(0, 2, 0.25f);
 
-    REQUIRE(cupuacu::actions::overwrite(&state));
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
     const auto updatedBytes = readBytes(wavPath);
     const auto differingOffsets =
@@ -856,7 +964,7 @@ TEST_CASE("Overwrite patches only one stereo channel sample in place", "[file]")
     cupuacu::file::loadSampleData(&state);
     state.getActiveDocumentSession().document.setSample(1, 1, -0.5f);
 
-    REQUIRE(cupuacu::actions::overwrite(&state));
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
     const auto updatedBytes = readBytes(wavPath);
     const auto differingOffsets =
@@ -880,7 +988,7 @@ TEST_CASE("Overwrite after trim preserves surviving PCM16 sample bytes",
     state.addAndDoUndoable(
         std::make_shared<cupuacu::actions::audio::Trim>(&state, 1, 3));
 
-    REQUIRE(cupuacu::actions::overwrite(&state));
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
     const auto updatedData = readChunkPayload(wavPath, "data");
     REQUIRE(updatedData ==
@@ -910,7 +1018,7 @@ TEST_CASE("Overwrite after cut preserves surviving PCM16 sample bytes",
     session.selection.setValue2(4.0);
     cupuacu::actions::audio::performCut(&state);
 
-    REQUIRE(cupuacu::actions::overwrite(&state));
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
     const auto updatedData = readChunkPayload(wavPath, "data");
     std::vector<uint8_t> expectedData;
@@ -950,7 +1058,7 @@ TEST_CASE("Overwrite after paste of copied original material preserves source PC
     session.cursor = 5;
     cupuacu::actions::audio::performPaste(&state);
 
-    REQUIRE(cupuacu::actions::overwrite(&state));
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
     const auto updatedData = readChunkPayload(wavPath, "data");
     std::vector<uint8_t> expectedData = originalData;
@@ -984,7 +1092,7 @@ TEST_CASE("Overwrite after insert silence preserves surrounding PCM16 sample byt
     session.cursor = 2;
     cupuacu::actions::audio::performInsertSilence(&state, 2);
 
-    REQUIRE(cupuacu::actions::overwrite(&state));
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
     const auto updatedData = readChunkPayload(wavPath, "data");
     std::vector<uint8_t> expectedData;
@@ -1022,7 +1130,7 @@ TEST_CASE("Overwrite after trim preserves dirty survivors and clean survivors di
     state.addAndDoUndoable(
         std::make_shared<cupuacu::actions::audio::Trim>(&state, 1, 3));
 
-    REQUIRE(cupuacu::actions::overwrite(&state));
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
     const auto updatedData = readChunkPayload(wavPath, "data");
     const auto dirtySample = static_cast<std::int16_t>(
@@ -1067,7 +1175,7 @@ TEST_CASE("Overwrite after stereo cut preserves surviving interleaved PCM16 samp
     session.selection.setValue2(3.0);
     cupuacu::actions::audio::performCut(&state);
 
-    REQUIRE(cupuacu::actions::overwrite(&state));
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
     const auto updatedData = readChunkPayload(wavPath, "data");
     std::vector<uint8_t> expectedData;
@@ -1119,7 +1227,7 @@ TEST_CASE("Overwrite after record-style overwrite patches recorded PCM16 bytes",
     state.addAndDoUndoable(
         std::make_shared<cupuacu::actions::audio::RecordEdit>(&state, data));
 
-    REQUIRE(cupuacu::actions::overwrite(&state));
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
     const auto updatedBytes = readBytes(wavPath);
     REQUIRE(updatedBytes != originalBytes);
@@ -1169,7 +1277,7 @@ TEST_CASE("Overwrite after record-style append preserves original prefix and app
     state.addAndDoUndoable(
         std::make_shared<cupuacu::actions::audio::RecordEdit>(&state, data));
 
-    REQUIRE(cupuacu::actions::overwrite(&state));
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
     const auto updatedData = readChunkPayload(wavPath, "data");
     const auto appendedSamples = encodePcm16Samples(
@@ -1279,7 +1387,7 @@ TEST_CASE("Trim keeps overwrite preservation available", "[file]")
         state.getActiveDocumentSession().overwritePreservation;
     REQUIRE(preservation.available);
     REQUIRE(preservation.reason.empty());
-    REQUIRE(cupuacu::actions::overwrite(&state));
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
 }
 
 TEST_CASE("Second overwrite after edit is byte-identical", "[file]")
@@ -1295,10 +1403,10 @@ TEST_CASE("Second overwrite after edit is byte-identical", "[file]")
     cupuacu::file::loadSampleData(&state);
     state.getActiveDocumentSession().document.setSample(0, 1, -0.25f);
 
-    REQUIRE(cupuacu::actions::overwrite(&state));
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
     const auto savedBytes = readBytes(wavPath);
 
-    REQUIRE(cupuacu::actions::overwrite(&state));
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
     REQUIRE(readBytes(wavPath) == savedBytes);
 }
 
@@ -1318,7 +1426,7 @@ TEST_CASE("Overwrite clips edited samples into valid PCM16 range", "[file]")
     document.setSample(0, 1, -1.25f);
     document.setSample(0, 2, 0.5f);
 
-    REQUIRE(cupuacu::actions::overwrite(&state));
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
     int sampleRate = 0;
     int channels = 0;
@@ -1351,7 +1459,9 @@ TEST_CASE("Save as writes a new WAV file and updates active file state", "[file]
 
     REQUIRE(std::filesystem::exists(outputPath));
     REQUIRE(session.currentFile == outputPath.string());
+    REQUIRE(session.preservationReferenceFile == outputPath.string());
     REQUIRE(session.currentFileExportSettings.has_value());
+    REQUIRE(session.preservationReferenceExportSettings.has_value());
     REQUIRE(session.currentFileExportSettings->majorFormat == SF_FORMAT_WAV);
     REQUIRE(session.currentFileExportSettings->subtype == SF_FORMAT_PCM_16);
     REQUIRE(session.overwritePreservation.available);
@@ -1371,6 +1481,42 @@ TEST_CASE("Save as writes a new WAV file and updates active file state", "[file]
     REQUIRE(frames[3] == Catch::Approx(-0.5f).margin(1.0f / 32767.0f));
     REQUIRE(frames[4] == Catch::Approx(0.0f).margin(1.0f / 32767.0f));
     REQUIRE(frames[5] == Catch::Approx(0.25f).margin(1.0f / 32767.0f));
+}
+
+TEST_CASE("Preserving save as writes against the reference and updates it",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-preserving-save-as"));
+    const auto sourcePath = cleanup.path() / "source.wav";
+    const auto outputPath = cleanup.path() / "copy.wav";
+
+    writePcm16WavFile(sourcePath, 44100, 1, {100, 200, 300, 400},
+                      {'p', 'r', 'e', '!'}, {'p', 'o', 's', 't'});
+    const auto originalOrder = readChunkOrder(sourcePath);
+    const auto originalJunkChunk = readChunkBytes(sourcePath, "JUNK");
+    const auto originalListChunk = readChunkBytes(sourcePath, "LIST");
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto &session = state.getActiveDocumentSession();
+    session.currentFile = sourcePath.string();
+    cupuacu::file::loadSampleData(&state);
+    session.document.setSample(0, 1, 0.25f, false);
+
+    const auto settings = cupuacu::file::defaultExportSettingsForPath(
+        outputPath, session.document.getSampleFormat());
+    REQUIRE(settings.has_value());
+
+    REQUIRE(cupuacu::actions::saveAsPreserving(&state, outputPath.string(),
+                                               *settings));
+    REQUIRE(std::filesystem::exists(outputPath));
+    REQUIRE(session.currentFile == outputPath.string());
+    REQUIRE(session.preservationReferenceFile == outputPath.string());
+    REQUIRE(session.currentFileExportSettings.has_value());
+    REQUIRE(session.preservationReferenceExportSettings.has_value());
+    REQUIRE(readChunkOrder(outputPath) == originalOrder);
+    REQUIRE(readChunkBytes(outputPath, "JUNK") == originalJunkChunk);
+    REQUIRE(readChunkBytes(outputPath, "LIST") == originalListChunk);
 }
 
 TEST_CASE("Save as normalizes the output extension to the selected format",
@@ -1474,7 +1620,7 @@ TEST_CASE("Overwrite reports failure instead of throwing on invalid target",
         reportedMessage = message;
     };
 
-    REQUIRE_FALSE(cupuacu::actions::overwrite(&state));
+    REQUIRE_FALSE(cupuacu::actions::overwritePreserving(&state));
     REQUIRE(reportedMessage.find(invalidTarget.string()) != std::string::npos);
     REQUIRE(std::filesystem::is_directory(invalidTarget));
 }

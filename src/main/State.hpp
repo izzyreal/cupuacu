@@ -60,6 +60,12 @@ namespace cupuacu
     void destroyGenerateSilenceDialogWindow(gui::GenerateSilenceDialogWindow *);
     void destroyExportAudioDialogWindow(gui::ExportAudioDialogWindow *);
 
+    enum class PendingSaveAsMode
+    {
+        Generic,
+        Preserving,
+    };
+
     struct State
     {
         std::shared_ptr<audio::AudioDevices> audioDevices;
@@ -107,6 +113,7 @@ namespace cupuacu
                         void (*)(effects::RemoveSilenceDialog *)>
             removeSilenceDialog{nullptr, destroyRemoveSilenceDialog};
         std::optional<file::AudioExportSettings> pendingSaveAsExportSettings;
+        PendingSaveAsMode pendingSaveAsMode = PendingSaveAsMode::Generic;
         std::function<void(const std::string &, const std::string &)>
             errorReporter;
         std::optional<std::pair<std::string, std::string>>
