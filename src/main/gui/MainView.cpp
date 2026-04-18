@@ -260,6 +260,8 @@ void MainView::applyRecordedChunkToSession(
 
     const auto applyResult =
         cupuacu::actions::audio::applyRecordedChunk(doc, chunk);
+    cupuacu::file::OverwritePreservationMutationHelper::applyToSession(
+        session, applyResult.preservationMutation);
     waveformCacheChanged =
         waveformCacheChanged || applyResult.waveformCacheChanged;
     channelLayoutChanged =

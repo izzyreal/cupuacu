@@ -153,6 +153,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_waveform_selection.cpp
     src/test/test_session_loading.cpp
     src/test/test_wav_writer.cpp
+    src/test/test_overwrite_preservation_mutation.cpp
     src/test/test_audio_device_properties_persistence.cpp
     src/test/test_display_properties_persistence.cpp
     src/test/test_recent_files_persistence.cpp

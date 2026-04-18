@@ -297,6 +297,12 @@ namespace cupuacu::effects
             return "Amplify Envelope";
         }
 
+        [[nodiscard]] cupuacu::file::OverwritePreservationMutation
+        overwritePreservationMutation() const override
+        {
+            return cupuacu::file::OverwritePreservationMutationHelper::compatible();
+        }
+
     private:
         AmplifyEnvelopeSettings settings{};
         int64_t startFrame = 0;

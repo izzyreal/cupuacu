@@ -59,6 +59,12 @@ namespace
         {
             return description;
         }
+
+        [[nodiscard]] cupuacu::file::OverwritePreservationMutation
+        overwritePreservationMutation() const override
+        {
+            return cupuacu::file::OverwritePreservationMutationHelper::compatible();
+        }
     };
 
     std::vector<cupuacu::gui::Menu *> menuChildren(cupuacu::gui::Component *parent)

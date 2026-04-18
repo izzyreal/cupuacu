@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../State.hpp"
+#include "../file/OverwritePreservationMutation.hpp"
 
 #include <functional>
 #include <string>
@@ -22,5 +23,8 @@ namespace cupuacu::actions
 
         virtual std::string getRedoDescription() = 0;
         virtual std::string getUndoDescription() = 0;
+
+        [[nodiscard]] virtual cupuacu::file::OverwritePreservationMutation
+        overwritePreservationMutation() const = 0;
     };
 } // namespace cupuacu::actions

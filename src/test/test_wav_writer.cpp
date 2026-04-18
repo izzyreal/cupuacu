@@ -7,6 +7,7 @@
 #include "actions/Save.hpp"
 #include "actions/audio/RecordEdit.hpp"
 #include "actions/audio/EditCommands.hpp"
+#include "actions/audio/SetSampleValue.hpp"
 #include "actions/audio/Trim.hpp"
 #include "file/AudioExport.hpp"
 #include "file/SampleQuantization.hpp"
@@ -1228,6 +1229,57 @@ TEST_CASE("Record edit that changes channel count breaks overwrite preservation 
         state.getActiveDocumentSession().overwritePreservation;
     REQUIRE(restored.available);
     REQUIRE(restored.reason.empty());
+}
+
+TEST_CASE("Sample value edit keeps overwrite preservation available", "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-sample-edit-preservation"));
+    const auto wavPath = cleanup.path() / "sample_edit_preservation.wav";
+
+    writePcm16WavFile(wavPath, 44100, 1, {100, 200, 300, 400});
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+
+    REQUIRE(state.getActiveDocumentSession().overwritePreservation.available);
+
+    auto &document = state.getActiveDocumentSession().document;
+    const auto oldValue = document.getSample(0, 1);
+    auto undoable = std::make_shared<cupuacu::actions::audio::SetSampleValue>(
+        &state, 0, 1, oldValue);
+    undoable->setNewValue(0.25f);
+    state.addAndDoUndoable(undoable);
+
+    const auto &preservation =
+        state.getActiveDocumentSession().overwritePreservation;
+    REQUIRE(preservation.available);
+    REQUIRE(preservation.reason.empty());
+}
+
+TEST_CASE("Trim keeps overwrite preservation available", "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-trim-preservation"));
+    const auto wavPath = cleanup.path() / "trim_preservation.wav";
+
+    writePcm16WavFile(wavPath, 44100, 1, {100, 200, 300, 400});
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+
+    REQUIRE(state.getActiveDocumentSession().overwritePreservation.available);
+
+    state.addAndDoUndoable(
+        std::make_shared<cupuacu::actions::audio::Trim>(&state, 1, 2));
+
+    const auto &preservation =
+        state.getActiveDocumentSession().overwritePreservation;
+    REQUIRE(preservation.available);
+    REQUIRE(preservation.reason.empty());
+    REQUIRE(cupuacu::actions::overwrite(&state));
 }
 
 TEST_CASE("Second overwrite after edit is byte-identical", "[file]")

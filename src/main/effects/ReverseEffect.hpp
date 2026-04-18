@@ -48,6 +48,12 @@ namespace cupuacu::effects
             return "Reverse";
         }
 
+        [[nodiscard]] cupuacu::file::OverwritePreservationMutation
+        overwritePreservationMutation() const override
+        {
+            return cupuacu::file::OverwritePreservationMutationHelper::compatible();
+        }
+
     private:
         int64_t startFrame = 0;
         int64_t frameCount = 0;

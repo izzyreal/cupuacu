@@ -3,6 +3,7 @@
 #include "DurationMutationUndoable.hpp"
 
 #include "../../Document.hpp"
+#include "../../file/OverwritePreservationMutation.hpp"
 #include "../../gui/MainViewAccess.hpp"
 #include "../../gui/Waveform.hpp"
 
@@ -99,11 +100,6 @@ namespace cupuacu::actions::audio
 
             doc.updateWaveformCache();
             session.syncSelectionAndCursorToDocumentLength();
-            if (breaksOverwritePreservation())
-            {
-                session.breakOverwritePreservation(
-                    overwritePreservationBreakReason());
-            }
             restoreNewSessionState();
         }
 
@@ -167,10 +163,6 @@ namespace cupuacu::actions::audio
 
             doc.updateWaveformCache();
             session.syncSelectionAndCursorToDocumentLength();
-            if (breaksOverwritePreservation())
-            {
-                session.clearOverwritePreservationBreak();
-            }
             restoreOldSessionState();
         }
 
@@ -187,28 +179,25 @@ namespace cupuacu::actions::audio
     private:
         RecordEditData data;
 
-        [[nodiscard]] bool breaksOverwritePreservation() const
-        {
-            return data.newFormat != data.oldFormat ||
-                   data.newSampleRate != data.oldSampleRate ||
-                   data.targetChannelCount != data.oldChannelCount;
-        }
-
-        [[nodiscard]] std::string overwritePreservationBreakReason() const
+        [[nodiscard]] cupuacu::file::OverwritePreservationMutation
+        overwritePreservationMutation() const override
         {
             if (data.newFormat != data.oldFormat)
             {
-                return "Recording changed sample format";
+                return cupuacu::file::OverwritePreservationMutationHelper::
+                    incompatible("Recording changed sample format");
             }
             if (data.newSampleRate != data.oldSampleRate)
             {
-                return "Recording changed sample rate";
+                return cupuacu::file::OverwritePreservationMutationHelper::
+                    incompatible("Recording changed sample rate");
             }
             if (data.targetChannelCount != data.oldChannelCount)
             {
-                return "Recording changed channel count";
+                return cupuacu::file::OverwritePreservationMutationHelper::
+                    incompatible("Recording changed channel count");
             }
-            return "Operation changed overwrite preservation compatibility";
+            return cupuacu::file::OverwritePreservationMutationHelper::compatible();
         }
 
         void afterDurationMutationUi() override

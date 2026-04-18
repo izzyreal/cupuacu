@@ -166,6 +166,12 @@ namespace
         {
             return description;
         }
+
+        [[nodiscard]] cupuacu::file::OverwritePreservationMutation
+        overwritePreservationMutation() const override
+        {
+            return cupuacu::file::OverwritePreservationMutationHelper::compatible();
+        }
     };
 
     cupuacu::gui::MouseEvent leftMouseDownAt(const int x, const int y)

@@ -62,6 +62,12 @@ namespace cupuacu::effects
             return "Amplify/Fade";
         }
 
+        [[nodiscard]] cupuacu::file::OverwritePreservationMutation
+        overwritePreservationMutation() const override
+        {
+            return cupuacu::file::OverwritePreservationMutationHelper::compatible();
+        }
+
     public:
         static Curve clampCurve(const int curveIndex)
         {

@@ -469,6 +469,12 @@ namespace cupuacu::effects
             return "Remove silence";
         }
 
+        [[nodiscard]] cupuacu::file::OverwritePreservationMutation
+        overwritePreservationMutation() const override
+        {
+            return cupuacu::file::OverwritePreservationMutationHelper::compatible();
+        }
+
     protected:
         void afterDurationMutationUi() override
         {
@@ -558,6 +564,12 @@ namespace cupuacu::effects
         std::string getRedoDescription() override
         {
             return "Remove silence";
+        }
+
+        [[nodiscard]] cupuacu::file::OverwritePreservationMutation
+        overwritePreservationMutation() const override
+        {
+            return cupuacu::file::OverwritePreservationMutationHelper::compatible();
         }
 
     private:

@@ -2,6 +2,7 @@
 
 #include "../../Document.hpp"
 #include "../../audio/RecordedChunk.hpp"
+#include "../../file/OverwritePreservationMutation.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -13,6 +14,7 @@ namespace cupuacu::actions::audio
         bool channelLayoutChanged = false;
         bool waveformCacheChanged = false;
         int64_t requiredFrameCount = 0;
+        cupuacu::file::OverwritePreservationMutation preservationMutation;
     };
 
     inline RecordedChunkApplyResult
@@ -31,10 +33,16 @@ namespace cupuacu::actions::audio
         {
             doc.initialize(cupuacu::SampleFormat::FLOAT32, 44100,
                            chunk.channelCount, 0);
+            result.preservationMutation =
+                cupuacu::file::OverwritePreservationMutationHelper::incompatible(
+                    "Recording changed sample format");
         }
         else if (doc.getChannelCount() < chunkChannelCount)
         {
             doc.resizeBuffer(chunkChannelCount, doc.getFrameCount());
+            result.preservationMutation =
+                cupuacu::file::OverwritePreservationMutationHelper::incompatible(
+                    "Recording changed channel count");
 
             for (int ch = oldChannelCount; ch < chunkChannelCount; ++ch)
             {

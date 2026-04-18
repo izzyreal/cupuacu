@@ -55,6 +55,12 @@ namespace cupuacu::effects
             return "Dynamics";
         }
 
+        [[nodiscard]] cupuacu::file::OverwritePreservationMutation
+        overwritePreservationMutation() const override
+        {
+            return cupuacu::file::OverwritePreservationMutationHelper::compatible();
+        }
+
     public:
         static double getRatioForSettings(const DynamicsSettings &settings)
         {

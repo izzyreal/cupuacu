@@ -159,6 +159,12 @@ namespace cupuacu::actions::audio
         {
             return getUndoDescription();
         }
+
+        [[nodiscard]] cupuacu::file::OverwritePreservationMutation
+        overwritePreservationMutation() const override
+        {
+            return cupuacu::file::OverwritePreservationMutationHelper::compatible();
+        }
     };
 
 } // namespace cupuacu::actions::audio

@@ -12,6 +12,7 @@
 #include "gui/OptionsWindow.hpp"
 #include "actions/Undoable.hpp"
 #include "file/OverwritePreservation.hpp"
+#include "file/OverwritePreservationMutation.hpp"
 
 int64_t getMaxSampleOffset(const cupuacu::State *state)
 {
@@ -91,6 +92,8 @@ void cupuacu::State::addAndDoUndoable(
 {
     addUndoable(undoable);
     undoable->redo();
+    cupuacu::file::OverwritePreservationMutationHelper::applyToSession(
+        getActiveDocumentSession(), undoable->overwritePreservationMutation());
     cupuacu::file::OverwritePreservation::refreshActiveSession(this);
     undoable->updateGui();
 }
@@ -107,6 +110,8 @@ void cupuacu::State::undo()
     auto undoable = undoables.back();
     undoables.pop_back();
     undoable->undo();
+    cupuacu::file::OverwritePreservationMutationHelper::revertOnSession(
+        getActiveDocumentSession(), undoable->overwritePreservationMutation());
     cupuacu::file::OverwritePreservation::refreshActiveSession(this);
     undoable->updateGui();
     redoables.push_back(undoable);
@@ -124,6 +129,8 @@ void cupuacu::State::redo()
     auto redoable = redoables.back();
     redoables.pop_back();
     redoable->redo();
+    cupuacu::file::OverwritePreservationMutationHelper::applyToSession(
+        getActiveDocumentSession(), redoable->overwritePreservationMutation());
     cupuacu::file::OverwritePreservation::refreshActiveSession(this);
     redoable->updateGui();
     undoables.push_back(redoable);
