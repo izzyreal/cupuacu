@@ -676,6 +676,44 @@ TEST_CASE("Save write planner selects preserving AIFF save paths when supported"
             cupuacu::file::SaveWriteMode::OverwritePreservingRewrite);
 }
 
+TEST_CASE("Preservation backend current-file overwrite uses AIFF writer",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-aiff-backend-overwrite-current"));
+    const auto aiffPath = cleanup.path() / "backend_overwrite.aiff";
+
+    writePcm16AiffFile(aiffPath, 44100, 1, {100, 200, 300, 400},
+                       {'p', 'r', 'e', '!'}, {'p', 'o', 's', 't'});
+    const auto originalOrder = readChunkOrder(aiffPath);
+    const auto originalNameChunk = readChunkBytes(aiffPath, "NAME");
+    const auto originalAnnoChunk = readChunkBytes(aiffPath, "ANNO");
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto &session = state.getActiveDocumentSession();
+    session.currentFile = aiffPath.string();
+    cupuacu::file::loadSampleData(&state);
+    session.document.setSample(0, 1, 0.25f);
+
+    const auto settings = cupuacu::file::defaultExportSettingsForPath(
+        aiffPath, session.document.getSampleFormat());
+    REQUIRE(settings.has_value());
+
+    cupuacu::file::overwritePreservingCurrentFile(&state, *settings);
+
+    REQUIRE(readChunkOrder(aiffPath) == originalOrder);
+    REQUIRE(readChunkBytes(aiffPath, "NAME") == originalNameChunk);
+    REQUIRE(readChunkBytes(aiffPath, "ANNO") == originalAnnoChunk);
+
+    int sampleRate = 0;
+    int channels = 0;
+    const auto frames = readFramesAsFloat(aiffPath, sampleRate, channels);
+    REQUIRE(sampleRate == 44100);
+    REQUIRE(channels == 1);
+    REQUIRE(frames.size() == 4);
+    REQUIRE(frames[1] == Catch::Approx(0.25f).margin(1.0f / 32767.0f));
+}
+
 TEST_CASE("Preserving AIFF save as writes against the reference and updates it",
           "[file]")
 {

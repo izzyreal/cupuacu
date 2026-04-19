@@ -129,4 +129,29 @@ namespace cupuacu::file
                     "Selected target format does not have a preservation writer yet");
         }
     }
+
+    inline void overwritePreservingCurrentFile(cupuacu::State *state,
+                                               const AudioExportSettings &settings)
+    {
+        if (state == nullptr)
+        {
+            throw std::invalid_argument("State is null");
+        }
+
+        switch (preservationBackendKindForSettings(settings))
+        {
+            case PreservationBackendKind::AiffPcm16:
+                cupuacu::file::aiff::AiffPreservationWriter::
+                    overwritePreservingAiffFile(state);
+                return;
+            case PreservationBackendKind::WavPcm16:
+                cupuacu::file::wav::WavPreservationWriter::
+                    overwritePreservingWavFile(state);
+                return;
+            case PreservationBackendKind::None:
+            default:
+                throw std::runtime_error(
+                    "Current file format does not have a preservation writer yet");
+        }
+    }
 } // namespace cupuacu::file

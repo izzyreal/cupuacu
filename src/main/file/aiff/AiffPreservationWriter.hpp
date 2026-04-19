@@ -339,5 +339,32 @@ namespace cupuacu::file::aiff
                     updateFormSizeField(output, parsed);
                 });
         }
+
+        static void overwritePreservingAiffFile(cupuacu::State *state)
+        {
+            if (state == nullptr)
+            {
+                throw std::invalid_argument("State is null");
+            }
+
+            const auto &session = state->getActiveDocumentSession();
+            auto settings = session.currentFileExportSettings;
+            if (!settings.has_value())
+            {
+                settings = cupuacu::file::defaultExportSettingsForPath(
+                    session.currentFile, session.document.getSampleFormat());
+            }
+            if (!settings.has_value())
+            {
+                throw std::runtime_error(
+                    "Could not determine current file export settings");
+            }
+
+            const auto referenceFile = !session.preservationReferenceFile.empty()
+                                           ? session.preservationReferenceFile
+                                           : session.currentFile;
+            writePreservingAiffFile(state, referenceFile, session.currentFile,
+                                    *settings);
+        }
     };
 } // namespace cupuacu::file::aiff

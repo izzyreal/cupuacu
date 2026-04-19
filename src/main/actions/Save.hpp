@@ -207,9 +207,7 @@ namespace cupuacu::actions
             state, "Preserving overwrite", session.currentFile,
             [&]
             {
-                file::writePreservingFile(
-                    state, session.preservationReferenceFile,
-                    std::filesystem::path(session.currentFile), *settings);
+                file::overwritePreservingCurrentFile(state, *settings);
             });
         if (!ok)
         {
