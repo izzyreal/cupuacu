@@ -3,8 +3,12 @@
 #include "../State.hpp"
 #include "AudioExport.hpp"
 #include "OverwritePreservationState.hpp"
+#include "aiff/AiffPreservationSupport.hpp"
+#include "aiff/AiffPreservationWriter.hpp"
 #include "wav/WavPreservationSupport.hpp"
 #include "wav/WavPreservationWriter.hpp"
+
+#include <sndfile.h>
 
 #include <filesystem>
 #include <stdexcept>
@@ -14,6 +18,7 @@ namespace cupuacu::file
     enum class PreservationBackendKind
     {
         None,
+        AiffPcm16,
         WavPcm16,
     };
 
@@ -23,6 +28,11 @@ namespace cupuacu::file
         if (isOverwritePreservingWavRewriteCandidate(settings))
         {
             return PreservationBackendKind::WavPcm16;
+        }
+        if (settings.majorFormat == SF_FORMAT_AIFF &&
+            settings.subtype == SF_FORMAT_PCM_16)
+        {
+            return PreservationBackendKind::AiffPcm16;
         }
 
         return PreservationBackendKind::None;
@@ -39,6 +49,13 @@ namespace cupuacu::file
 
         switch (preservationBackendKindForSettings(settings))
         {
+            case PreservationBackendKind::AiffPcm16:
+            {
+                const auto support =
+                    cupuacu::file::aiff::AiffPreservationSupport::
+                        assessAgainstReference(state, settings);
+                return {.available = support.supported, .reason = support.reason};
+            }
             case PreservationBackendKind::WavPcm16:
             {
                 const auto support =
@@ -64,6 +81,13 @@ namespace cupuacu::file
 
         switch (preservationBackendKindForSettings(settings))
         {
+            case PreservationBackendKind::AiffPcm16:
+            {
+                const auto support =
+                    cupuacu::file::aiff::AiffPreservationSupport::assessOverwrite(
+                        state);
+                return {.available = support.supported, .reason = support.reason};
+            }
             case PreservationBackendKind::WavPcm16:
             {
                 const auto support =
@@ -90,6 +114,11 @@ namespace cupuacu::file
 
         switch (preservationBackendKindForSettings(settings))
         {
+            case PreservationBackendKind::AiffPcm16:
+                cupuacu::file::aiff::AiffPreservationWriter::
+                    writePreservingAiffFile(state, referencePath, outputPath,
+                                            settings);
+                return;
             case PreservationBackendKind::WavPcm16:
                 cupuacu::file::wav::WavPreservationWriter::writePreservingWavFile(
                     state, referencePath, outputPath, settings);
