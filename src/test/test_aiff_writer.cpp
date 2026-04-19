@@ -1,11 +1,15 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include "State.hpp"
 #include "TestPaths.hpp"
 #include "actions/Save.hpp"
+#include "actions/audio/EditCommands.hpp"
+#include "actions/audio/Trim.hpp"
 #include "file/AudioExport.hpp"
 #include "file/PreservationBackend.hpp"
 #include "file/SaveWritePlan.hpp"
+#include "file/SampleQuantization.hpp"
 #include "file/SndfilePath.hpp"
 #include "file/aiff/AiffPreservationSupport.hpp"
 #include "file/aiff/AiffParser.hpp"
@@ -409,6 +413,239 @@ TEST_CASE("Overwrite after length change keeps AIFF sizes and chunk order consis
     REQUIRE(readChunkOrder(aiffPath) == originalOrder);
 }
 
+TEST_CASE("Overwrite patches only one mono PCM16 AIFF sample in place", "[file]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-aiff-mono-patch"));
+    const auto aiffPath = cleanup.path() / "mono.aiff";
+
+    writePcm16AiffFile(aiffPath, 44100, 1, {0, 1000, -1000, 2000});
+    const auto originalBytes = readBytes(aiffPath);
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = aiffPath.string();
+    cupuacu::file::loadSampleData(&state);
+    state.getActiveDocumentSession().document.setSample(0, 2, 0.25f);
+
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
+
+    const auto updatedBytes = readBytes(aiffPath);
+    const auto differingOffsets =
+        findDifferingByteOffsets(originalBytes, updatedBytes);
+    REQUIRE(differingOffsets.size() == sizeof(std::int16_t));
+}
+
+TEST_CASE("Overwrite patches only one stereo channel AIFF sample in place",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-aiff-stereo-channel-patch"));
+    const auto aiffPath = cleanup.path() / "stereo.aiff";
+
+    writePcm16AiffFile(aiffPath, 44100, 2, {10, 20, 30, 40, 50, 60});
+    const auto originalBytes = readBytes(aiffPath);
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = aiffPath.string();
+    cupuacu::file::loadSampleData(&state);
+    state.getActiveDocumentSession().document.setSample(1, 1, -0.5f);
+
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
+
+    const auto updatedBytes = readBytes(aiffPath);
+    const auto differingOffsets =
+        findDifferingByteOffsets(originalBytes, updatedBytes);
+    REQUIRE(differingOffsets.size() == sizeof(std::int16_t));
+}
+
+TEST_CASE("Overwrite after trim preserves surviving PCM16 AIFF sample bytes",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-aiff-trim-preserve"));
+    const auto aiffPath = cleanup.path() / "trim.aiff";
+
+    writePcm16AiffFile(aiffPath, 44100, 1, {100, 200, 300, 400, 500},
+                       {'p', 'r', 'e', '!'}, {'p', 'o', 's', 't'});
+    const auto originalSsndChunk = readChunkBytes(aiffPath, "SSND");
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = aiffPath.string();
+    cupuacu::file::loadSampleData(&state);
+    state.addAndDoUndoable(
+        std::make_shared<cupuacu::actions::audio::Trim>(&state, 1, 3));
+
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
+
+    const auto updatedSsndChunk = readChunkBytes(aiffPath, "SSND");
+    REQUIRE(sliceBytes(updatedSsndChunk, 16, 6) ==
+            sliceBytes(originalSsndChunk, 18, 6));
+    REQUIRE(readChunkBytes(aiffPath, "NAME") ==
+            std::vector<uint8_t>({'N', 'A', 'M', 'E', 0, 0, 0, 4, 'p', 'r', 'e',
+                                  '!'}));
+    REQUIRE(readChunkBytes(aiffPath, "ANNO") ==
+            std::vector<uint8_t>({'A', 'N', 'N', 'O', 0, 0, 0, 4, 'p', 'o', 's',
+                                  't'}));
+}
+
+TEST_CASE("Overwrite after cut preserves surviving PCM16 AIFF sample bytes",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-aiff-cut-preserve"));
+    const auto aiffPath = cleanup.path() / "cut.aiff";
+
+    writePcm16AiffFile(aiffPath, 44100, 1, {100, 200, 300, 400, 500, 600},
+                       {'p', 'r', 'e', '!'}, {'p', 'o', 's', 't'});
+    const auto originalSsndChunk = readChunkBytes(aiffPath, "SSND");
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = aiffPath.string();
+    cupuacu::file::loadSampleData(&state);
+    auto &session = state.getActiveDocumentSession();
+    session.selection.setValue1(2.0);
+    session.selection.setValue2(4.0);
+    cupuacu::actions::audio::performCut(&state);
+
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
+
+    const auto updatedSsndChunk = readChunkBytes(aiffPath, "SSND");
+    std::vector<uint8_t> expectedAudio;
+    expectedAudio.insert(expectedAudio.end(),
+                         originalSsndChunk.begin() + 16,
+                         originalSsndChunk.begin() + 20);
+    expectedAudio.insert(expectedAudio.end(),
+                         originalSsndChunk.begin() + 24,
+                         originalSsndChunk.begin() + 28);
+    REQUIRE(sliceBytes(updatedSsndChunk, 16, expectedAudio.size()) ==
+            expectedAudio);
+}
+
+TEST_CASE("Overwrite after insert silence preserves surrounding PCM16 AIFF sample bytes",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-aiff-insert-silence"));
+    const auto aiffPath = cleanup.path() / "insert_silence.aiff";
+
+    writePcm16AiffFile(aiffPath, 44100, 1, {100, 200, 300, 400},
+                       {'p', 'r', 'e', '!'}, {'p', 'o', 's', 't'});
+    const auto originalSsndChunk = readChunkBytes(aiffPath, "SSND");
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = aiffPath.string();
+    cupuacu::file::loadSampleData(&state);
+    auto &session = state.getActiveDocumentSession();
+    session.cursor = 2;
+    cupuacu::actions::audio::performInsertSilence(&state, 2);
+
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
+
+    const auto updatedSsndChunk = readChunkBytes(aiffPath, "SSND");
+    std::vector<uint8_t> expectedAudio;
+    expectedAudio.insert(expectedAudio.end(),
+                         originalSsndChunk.begin() + 16,
+                         originalSsndChunk.begin() + 20);
+    expectedAudio.insert(expectedAudio.end(), 4, 0);
+    expectedAudio.insert(expectedAudio.end(),
+                         originalSsndChunk.begin() + 20,
+                         originalSsndChunk.begin() + 24);
+    REQUIRE(sliceBytes(updatedSsndChunk, 16, expectedAudio.size()) ==
+            expectedAudio);
+}
+
+TEST_CASE("Overwrite after trim preserves dirty and clean AIFF survivors distinctly",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-aiff-trim-dirty-survivor"));
+    const auto aiffPath = cleanup.path() / "trim_dirty.aiff";
+
+    writePcm16AiffFile(aiffPath, 44100, 1, {100, 200, 300, 400, 500},
+                       {'p', 'r', 'e', '!'}, {'p', 'o', 's', 't'});
+    const auto originalSsndChunk = readChunkBytes(aiffPath, "SSND");
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = aiffPath.string();
+    cupuacu::file::loadSampleData(&state);
+    auto &document = state.getActiveDocumentSession().document;
+    document.setSample(0, 2, 0.25f);
+    state.addAndDoUndoable(
+        std::make_shared<cupuacu::actions::audio::Trim>(&state, 1, 3));
+
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
+
+    const auto updatedSsndChunk = readChunkBytes(aiffPath, "SSND");
+    const auto dirtySample = static_cast<std::int16_t>(
+        cupuacu::file::quantizeIntegerPcmSample(cupuacu::SampleFormat::PCM_S16,
+                                                0.25f, false));
+    std::vector<uint8_t> expectedAudio;
+    expectedAudio.insert(expectedAudio.end(),
+                         originalSsndChunk.begin() + 18,
+                         originalSsndChunk.begin() + 20);
+    expectedAudio.push_back(
+        static_cast<uint8_t>((static_cast<uint16_t>(dirtySample) >> 8) & 0xffu));
+    expectedAudio.push_back(
+        static_cast<uint8_t>(static_cast<uint16_t>(dirtySample) & 0xffu));
+    expectedAudio.insert(expectedAudio.end(),
+                         originalSsndChunk.begin() + 22,
+                         originalSsndChunk.begin() + 24);
+    REQUIRE(sliceBytes(updatedSsndChunk, 16, expectedAudio.size()) ==
+            expectedAudio);
+}
+
+TEST_CASE("Overwrite after stereo cut preserves surviving interleaved AIFF PCM16 sample bytes",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-aiff-stereo-cut-preserve"));
+    const auto aiffPath = cleanup.path() / "stereo_cut.aiff";
+
+    writePcm16AiffFile(aiffPath, 44100, 2, {10, 20, 30, 40, 50, 60, 70, 80},
+                       {'p', 'r', 'e', '!'}, {'p', 'o', 's', 't'});
+    const auto originalSsndChunk = readChunkBytes(aiffPath, "SSND");
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = aiffPath.string();
+    cupuacu::file::loadSampleData(&state);
+    auto &session = state.getActiveDocumentSession();
+    session.selection.setValue1(1.0);
+    session.selection.setValue2(3.0);
+    cupuacu::actions::audio::performCut(&state);
+
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
+
+    const auto updatedSsndChunk = readChunkBytes(aiffPath, "SSND");
+    std::vector<uint8_t> expectedAudio;
+    expectedAudio.insert(expectedAudio.end(),
+                         originalSsndChunk.begin() + 16,
+                         originalSsndChunk.begin() + 20);
+    expectedAudio.insert(expectedAudio.end(),
+                         originalSsndChunk.begin() + 28,
+                         originalSsndChunk.begin() + 32);
+    REQUIRE(sliceBytes(updatedSsndChunk, 16, expectedAudio.size()) ==
+            expectedAudio);
+}
+
+TEST_CASE("Second AIFF overwrite after edit is byte-identical", "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-aiff-second-overwrite"));
+    const auto aiffPath = cleanup.path() / "second.aiff";
+
+    writePcm16AiffFile(aiffPath, 44100, 1, {0, 1000, 2000, 3000});
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = aiffPath.string();
+    cupuacu::file::loadSampleData(&state);
+    state.getActiveDocumentSession().document.setSample(0, 1, -0.25f);
+
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
+    const auto savedBytes = readBytes(aiffPath);
+
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
+    REQUIRE(readBytes(aiffPath) == savedBytes);
+}
+
 TEST_CASE("Save write planner selects preserving AIFF save paths when supported",
           "[file]")
 {
@@ -437,4 +674,40 @@ TEST_CASE("Save write planner selects preserving AIFF save paths when supported"
         cupuacu::file::SaveWritePlanner::planPreservingSaveAs(&state, *settings);
     REQUIRE(saveAsPlan.mode ==
             cupuacu::file::SaveWriteMode::OverwritePreservingRewrite);
+}
+
+TEST_CASE("Preserving AIFF save as writes against the reference and updates it",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-aiff-preserving-save-as"));
+    const auto sourcePath = cleanup.path() / "source.aiff";
+    const auto outputPath = cleanup.path() / "copy.aiff";
+
+    writePcm16AiffFile(sourcePath, 44100, 1, {100, 200, 300, 400},
+                       {'p', 'r', 'e', '!'}, {'p', 'o', 's', 't'});
+    const auto originalOrder = readChunkOrder(sourcePath);
+    const auto originalNameChunk = readChunkBytes(sourcePath, "NAME");
+    const auto originalAnnoChunk = readChunkBytes(sourcePath, "ANNO");
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto &session = state.getActiveDocumentSession();
+    session.currentFile = sourcePath.string();
+    cupuacu::file::loadSampleData(&state);
+    session.document.setSample(0, 1, 0.25f, false);
+
+    const auto settings = cupuacu::file::defaultExportSettingsForPath(
+        outputPath, session.document.getSampleFormat());
+    REQUIRE(settings.has_value());
+
+    REQUIRE(cupuacu::actions::saveAsPreserving(&state, outputPath.string(),
+                                               *settings));
+    REQUIRE(std::filesystem::exists(outputPath));
+    REQUIRE(session.currentFile == outputPath.string());
+    REQUIRE(session.preservationReferenceFile == outputPath.string());
+    REQUIRE(session.currentFileExportSettings.has_value());
+    REQUIRE(session.preservationReferenceExportSettings.has_value());
+    REQUIRE(readChunkOrder(outputPath) == originalOrder);
+    REQUIRE(readChunkBytes(outputPath, "NAME") == originalNameChunk);
+    REQUIRE(readChunkBytes(outputPath, "ANNO") == originalAnnoChunk);
 }

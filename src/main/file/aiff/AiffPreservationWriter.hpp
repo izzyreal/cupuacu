@@ -1,14 +1,13 @@
 #pragma once
 
 #include "../../State.hpp"
-#include "../FileIo.hpp"
-#include "../SampleQuantization.hpp"
+#include "../ChunkedPreservationRewrite.hpp"
+#include "../Pcm16PreservationIO.hpp"
 #include "AiffParser.hpp"
 #include "AiffPreservationSupport.hpp"
 
 #include <array>
 #include <cmath>
-#include <cstring>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -21,36 +20,10 @@ namespace cupuacu::file::aiff
     class AiffPreservationWriter
     {
     private:
-        static std::ifstream openInputFileStream(const std::filesystem::path &path)
-        {
-            std::ifstream result(path, std::ios::binary);
-            if (!result.is_open())
-            {
-                throw cupuacu::file::detail::makeIoFailure(
-                    "Failed to open input file",
-                    cupuacu::file::detail::describeErrno(errno));
-            }
-            return result;
-        }
-
-        static std::ofstream openOutputFileStream(const std::filesystem::path &path)
-        {
-            std::ofstream result(path, std::ios::binary | std::ios::trunc);
-            if (!result.is_open())
-            {
-                throw cupuacu::file::detail::makeIoFailure(
-                    "Failed to open output file",
-                    cupuacu::file::detail::describeErrno(errno));
-            }
-            return result;
-        }
-
         static std::uint32_t expectedSoundDataSizeBytes(const cupuacu::State *state)
         {
-            const auto &document = state->getActiveDocumentSession().document;
-            return static_cast<std::uint32_t>(
-                document.getFrameCount() * document.getChannelCount() *
-                static_cast<int64_t>(sizeof(std::int16_t)));
+            return cupuacu::file::preservation::
+                expectedInterleavedPcm16DataSizeBytes(state);
         }
 
         static bool canPatchSoundDataInPlace(const cupuacu::State *state,
@@ -117,42 +90,10 @@ namespace cupuacu::file::aiff
                                         std::fstream &io,
                                         const ParsedFile &parsed)
         {
-            auto buffer = state->getActiveDocumentSession().document.getAudioBuffer();
-
-            const std::size_t frames = static_cast<std::size_t>(
-                state->getActiveDocumentSession().document.getFrameCount());
-            const std::size_t channels = static_cast<std::size_t>(parsed.channelCount);
-
-            for (std::size_t frame = 0; frame < frames; ++frame)
-            {
-                for (std::size_t channel = 0; channel < channels; ++channel)
-                {
-                    const auto channelIndex = static_cast<std::int64_t>(channel);
-                    const auto frameIndex = static_cast<std::int64_t>(frame);
-                    if (!buffer->isDirty(channelIndex, frameIndex))
-                    {
-                        continue;
-                    }
-
-                    const float sample = buffer->getSample(channelIndex, frameIndex);
-                    const auto quantized = static_cast<std::int16_t>(
-                        quantizeIntegerPcmSample(cupuacu::SampleFormat::PCM_S16,
-                                                 sample, false));
-                    const auto encoded = encodeBe16(quantized);
-                    const std::size_t sampleIndex = frame * channels + channel;
-                    const std::size_t byteOffset =
-                        parsed.soundDataOffset + sampleIndex * sizeof(std::int16_t);
-
-                    io.seekp(static_cast<std::streamoff>(byteOffset), std::ios::beg);
-                    io.write(encoded.data(),
-                             static_cast<std::streamsize>(encoded.size()));
-                    if (!io)
-                    {
-                        throw std::runtime_error(
-                            "Failed to patch AIFF sample bytes");
-                    }
-                }
-            }
+            cupuacu::file::preservation::patchDirtyPcm16SamplesInPlace(
+                state, io, static_cast<std::size_t>(parsed.channelCount),
+                parsed.soundDataOffset,
+                [](const std::int16_t sample) { return encodeBe16(sample); });
         }
 
         static void patchSoundDataInPlace(const cupuacu::State *state,
@@ -189,66 +130,32 @@ namespace cupuacu::file::aiff
                 throw std::runtime_error("SSND chunk not found");
             }
 
-            input.clear();
-            input.seekg(0, std::ios::beg);
-            std::vector<char> buffer(ssndChunk->headerOffset);
-            if (!buffer.empty() &&
-                !input.read(buffer.data(),
-                            static_cast<std::streamsize>(buffer.size())))
-            {
-                throw std::runtime_error("Failed to read bytes before SSND chunk");
-            }
-            if (!buffer.empty())
-            {
-                output.write(buffer.data(),
-                             static_cast<std::streamsize>(buffer.size()));
-            }
+            cupuacu::file::preservation::copyByteRange(
+                input, output, 0, ssndChunk->headerOffset,
+                "Failed to read bytes before SSND chunk");
         }
 
         static void writeSoundChunk(const cupuacu::State *state, std::istream &input,
                                     std::ostream &output,
                                     const ParsedFile &parsed)
         {
-            const auto &document = state->getActiveDocumentSession().document;
-            const std::size_t frames =
-                static_cast<std::size_t>(document.getFrameCount());
-            const std::size_t channels =
-                static_cast<std::size_t>(document.getChannelCount());
-
             output.write("SSND", 4);
 
-            auto buffer = document.getAudioBuffer();
-
-            std::vector<std::int16_t> interleaved(frames * channels);
-            for (std::size_t frame = 0; frame < frames; ++frame)
-            {
-                for (std::size_t channel = 0; channel < channels; ++channel)
-                {
-                    const auto channelIndex = static_cast<std::int64_t>(channel);
-                    const auto frameIndex = static_cast<std::int64_t>(frame);
-                    const float sample = buffer->getSample(channelIndex, frameIndex);
-                    const auto provenance =
-                        document.getSampleProvenance(channelIndex, frameIndex);
-                    if (!buffer->isDirty(channelIndex, frameIndex) &&
-                        provenance.sourceId == document.getPreservationSourceId() &&
-                        provenance.frameIndex >= 0)
+            const auto &document = state->getActiveDocumentSession().document;
+            const auto encodedSamples =
+                cupuacu::file::preservation::buildEncodedPcm16Samples(
+                    state, input,
+                    static_cast<std::size_t>(document.getChannelCount()),
+                    [&](std::istream &sourceInput, const std::int64_t channel,
+                        const std::int64_t frame)
                     {
-                        const auto encoded = readOriginalSampleBytes(
-                            input, parsed, channelIndex, provenance.frameIndex);
-                        const auto targetIndex = frame * channels + channel;
-                        std::memcpy(&interleaved[targetIndex], encoded.data(),
-                                    sizeof(std::int16_t));
-                        continue;
-                    }
-
-                    interleaved[frame * channels + channel] = static_cast<std::int16_t>(
-                        quantizeIntegerPcmSample(cupuacu::SampleFormat::PCM_S16,
-                                                 sample, false));
-                }
-            }
+                        return readOriginalSampleBytes(sourceInput, parsed, channel,
+                                                       frame);
+                    },
+                    [](const std::int16_t sample) { return encodeBe16(sample); });
 
             const std::uint32_t soundDataSize = static_cast<std::uint32_t>(
-                interleaved.size() * sizeof(std::int16_t));
+                encodedSamples.size());
             const std::uint32_t ssndPayloadSize =
                 static_cast<std::uint32_t>(8 + parsed.ssndOffset + soundDataSize);
             const auto payloadSizeBytes = encodeBe32(ssndPayloadSize);
@@ -264,26 +171,16 @@ namespace cupuacu::file::aiff
 
             if (parsed.ssndOffset > 0)
             {
-                std::vector<char> offsetPadding(parsed.ssndOffset);
-                input.clear();
-                input.seekg(static_cast<std::streamoff>(
-                                parsed.findChunk("SSND")->payloadOffset + 8),
-                            std::ios::beg);
-                if (!input.read(offsetPadding.data(),
-                                static_cast<std::streamsize>(offsetPadding.size())))
-                {
-                    throw std::runtime_error(
-                        "Failed to read AIFF SSND offset padding");
-                }
-                output.write(offsetPadding.data(),
-                             static_cast<std::streamsize>(offsetPadding.size()));
+                cupuacu::file::preservation::copyByteRange(
+                    input, output,
+                    parsed.findChunk("SSND")->payloadOffset + 8, parsed.ssndOffset,
+                    "Failed to read AIFF SSND offset padding");
             }
 
-            for (const auto sample : interleaved)
+            if (!encodedSamples.empty())
             {
-                const auto encoded = encodeBe16(sample);
-                output.write(encoded.data(),
-                             static_cast<std::streamsize>(encoded.size()));
+                output.write(encodedSamples.data(),
+                             static_cast<std::streamsize>(encodedSamples.size()));
             }
 
             if ((ssndPayloadSize & 1u) != 0u)
@@ -301,26 +198,10 @@ namespace cupuacu::file::aiff
                 throw std::runtime_error("SSND chunk not found");
             }
 
-            const std::size_t suffixOffset =
-                ssndChunk->payloadOffset + ssndChunk->paddedPayloadSize;
-
-            input.clear();
-            input.seekg(0, std::ios::end);
-            const std::streamoff fileEnd = input.tellg();
-            if (fileEnd <= static_cast<std::streamoff>(suffixOffset))
-            {
-                return;
-            }
-
-            const std::streamsize suffixSize =
-                fileEnd - static_cast<std::streamoff>(suffixOffset);
-            std::vector<char> buffer(static_cast<std::size_t>(suffixSize));
-            input.seekg(static_cast<std::streamoff>(suffixOffset), std::ios::beg);
-            if (!input.read(buffer.data(), suffixSize))
-            {
-                throw std::runtime_error("Failed to read bytes after SSND chunk");
-            }
-            output.write(buffer.data(), suffixSize);
+            cupuacu::file::preservation::copySuffix(
+                input, output,
+                ssndChunk->payloadOffset + ssndChunk->paddedPayloadSize,
+                "Failed to read bytes after SSND chunk");
         }
 
         static std::size_t updatedCommSampleFrameCountOffset(
@@ -432,15 +313,22 @@ namespace cupuacu::file::aiff
                 return;
             }
 
-            writeFileAtomically(
-                outputPath,
-                [&](const std::filesystem::path &temporaryPath)
+            cupuacu::file::preservation::rewriteChunkPreserving(
+                referencePath, outputPath,
+                [&](std::istream &input, std::ostream &output)
                 {
-                    auto input = openInputFileStream(referencePath);
-                    auto output = openOutputFileStream(temporaryPath);
                     copyPrefix(input, output, parsed);
+                },
+                [&](std::istream &input, std::ostream &output)
+                {
                     writeSoundChunk(state, input, output, parsed);
+                },
+                [&](std::istream &input, std::ostream &output)
+                {
                     copySuffix(input, output, parsed);
+                },
+                [&](std::ostream &output)
+                {
                     const auto soundDataSize =
                         expectedSoundDataSizeBytes(state);
                     updateCommSampleFrameCount(
@@ -449,7 +337,6 @@ namespace cupuacu::file::aiff
                             state->getActiveDocumentSession().document.getFrameCount()),
                         soundDataSize);
                     updateFormSizeField(output, parsed);
-                    output.flush();
                 });
         }
     };

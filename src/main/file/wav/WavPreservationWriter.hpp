@@ -1,13 +1,12 @@
 #pragma once
 
 #include "../../State.hpp"
-#include "../FileIo.hpp"
-#include "../SampleQuantization.hpp"
+#include "../ChunkedPreservationRewrite.hpp"
+#include "../Pcm16PreservationIO.hpp"
 #include "WavParser.hpp"
 #include "WavPreservationSupport.hpp"
 
 #include <array>
-#include <cstring>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -20,36 +19,10 @@ namespace cupuacu::file::wav
     class WavPreservationWriter
     {
     private:
-        static std::ifstream openInputFileStream(const std::filesystem::path &path)
-        {
-            std::ifstream result(path, std::ios::binary);
-            if (!result.is_open())
-            {
-                throw cupuacu::file::detail::makeIoFailure(
-                    "Failed to open input file",
-                    cupuacu::file::detail::describeErrno(errno));
-            }
-            return result;
-        }
-
-        static std::ofstream openOutputFileStream(const std::filesystem::path &path)
-        {
-            std::ofstream result(path, std::ios::binary | std::ios::trunc);
-            if (!result.is_open())
-            {
-                throw cupuacu::file::detail::makeIoFailure(
-                    "Failed to open output file",
-                    cupuacu::file::detail::describeErrno(errno));
-            }
-            return result;
-        }
-
         static std::uint32_t expectedDataSizeBytes(const cupuacu::State *state)
         {
-            const auto &document = state->getActiveDocumentSession().document;
-            return static_cast<std::uint32_t>(
-                document.getFrameCount() * document.getChannelCount() *
-                static_cast<int64_t>(sizeof(std::int16_t)));
+            return cupuacu::file::preservation::
+                expectedInterleavedPcm16DataSizeBytes(state);
         }
 
         static bool canPatchDataChunkInPlace(const cupuacu::State *state,
@@ -120,43 +93,10 @@ namespace cupuacu::file::wav
                 throw std::runtime_error("data chunk not found");
             }
 
-            auto buffer = state->getActiveDocumentSession().document.getAudioBuffer();
-
-            const std::size_t frames = static_cast<std::size_t>(
-                state->getActiveDocumentSession().document.getFrameCount());
-            const std::size_t channels = static_cast<std::size_t>(parsed.channelCount);
-            const std::size_t sampleDataOffset = dataChunk->payloadOffset;
-
-            for (std::size_t frame = 0; frame < frames; ++frame)
-            {
-                for (std::size_t channel = 0; channel < channels; ++channel)
-                {
-                    const auto channelIndex = static_cast<std::int64_t>(channel);
-                    const auto frameIndex = static_cast<std::int64_t>(frame);
-                    if (!buffer->isDirty(channelIndex, frameIndex))
-                    {
-                        continue;
-                    }
-
-                    const float sample = buffer->getSample(channelIndex, frameIndex);
-                    const auto quantized = static_cast<std::int16_t>(
-                        quantizeIntegerPcmSample(cupuacu::SampleFormat::PCM_S16,
-                                                 sample, false));
-                    const auto encoded = encodeLe16(quantized);
-                    const std::size_t sampleIndex = frame * channels + channel;
-                    const std::size_t byteOffset =
-                        sampleDataOffset + sampleIndex * sizeof(std::int16_t);
-
-                    io.seekp(static_cast<std::streamoff>(byteOffset), std::ios::beg);
-                    io.write(encoded.data(),
-                             static_cast<std::streamsize>(encoded.size()));
-                    if (!io)
-                    {
-                        throw std::runtime_error(
-                            "Failed to patch WAV sample bytes");
-                    }
-                }
-            }
+            cupuacu::file::preservation::patchDirtyPcm16SamplesInPlace(
+                state, io, static_cast<std::size_t>(parsed.channelCount),
+                dataChunk->payloadOffset,
+                [](const std::int16_t sample) { return encodeLe16(sample); });
         }
 
         static void patchDataChunkInPlace(const cupuacu::State *state,
@@ -193,71 +133,36 @@ namespace cupuacu::file::wav
                 throw std::runtime_error("data chunk not found");
             }
 
-            input.clear();
-            input.seekg(0, std::ios::beg);
-            std::vector<char> buffer(dataChunk->headerOffset);
-            if (!buffer.empty() &&
-                !input.read(buffer.data(), static_cast<std::streamsize>(buffer.size())))
-            {
-                throw std::runtime_error("Failed to read bytes before data chunk");
-            }
-            if (!buffer.empty())
-            {
-                output.write(buffer.data(),
-                             static_cast<std::streamsize>(buffer.size()));
-            }
+            cupuacu::file::preservation::copyByteRange(
+                input, output, 0, dataChunk->headerOffset,
+                "Failed to read bytes before data chunk");
         }
 
         static void writeDataChunk(const cupuacu::State *state, std::istream &input,
                                    std::ostream &output,
                                    const ParsedFile &parsed)
         {
-            const auto &document = state->getActiveDocumentSession().document;
-            const std::size_t frames =
-                static_cast<std::size_t>(document.getFrameCount());
-            const std::size_t channels =
-                static_cast<std::size_t>(document.getChannelCount());
-
             output.write("data", 4);
 
-            auto buffer = document.getAudioBuffer();
-
-            std::vector<std::int16_t> interleaved(frames * channels);
-            for (std::size_t frame = 0; frame < frames; ++frame)
-            {
-                for (std::size_t channel = 0; channel < channels; ++channel)
-                {
-                    const auto channelIndex = static_cast<std::int64_t>(channel);
-                    const auto frameIndex = static_cast<std::int64_t>(frame);
-                    const float sample = buffer->getSample(
-                        static_cast<std::int64_t>(channel),
-                        static_cast<std::int64_t>(frame));
-                    const auto provenance =
-                        document.getSampleProvenance(channelIndex, frameIndex);
-                    if (!buffer->isDirty(channelIndex, frameIndex) &&
-                        provenance.sourceId == document.getPreservationSourceId() &&
-                        provenance.frameIndex >= 0)
+            const auto &document = state->getActiveDocumentSession().document;
+            const auto encodedSamples =
+                cupuacu::file::preservation::buildEncodedPcm16Samples(
+                    state, input,
+                    static_cast<std::size_t>(document.getChannelCount()),
+                    [&](std::istream &sourceInput, const std::int64_t channel,
+                        const std::int64_t frame)
                     {
-                        const auto encoded = readOriginalSampleBytes(
-                            input, parsed, channelIndex, provenance.frameIndex);
-                        const auto targetIndex = frame * channels + channel;
-                        std::memcpy(&interleaved[targetIndex], encoded.data(),
-                                    sizeof(std::int16_t));
-                        continue;
-                    }
-
-                    interleaved[frame * channels + channel] = static_cast<std::int16_t>(
-                        quantizeIntegerPcmSample(cupuacu::SampleFormat::PCM_S16,
-                                                 sample, false));
-                }
-            }
+                        return readOriginalSampleBytes(sourceInput, parsed, channel,
+                                                       frame);
+                    },
+                    [](const std::int16_t sample) { return encodeLe16(sample); });
 
             const std::uint32_t dataSize = static_cast<std::uint32_t>(
-                interleaved.size() * sizeof(std::int16_t));
+                encodedSamples.size());
             output.write(reinterpret_cast<const char *>(&dataSize), 4);
             if (dataSize > 0)
             {
-                output.write(reinterpret_cast<const char *>(interleaved.data()),
+                output.write(encodedSamples.data(),
                              static_cast<std::streamsize>(dataSize));
             }
         }
@@ -271,26 +176,10 @@ namespace cupuacu::file::wav
                 throw std::runtime_error("data chunk not found");
             }
 
-            const std::size_t suffixOffset =
-                dataChunk->payloadOffset + dataChunk->paddedPayloadSize;
-
-            input.clear();
-            input.seekg(0, std::ios::end);
-            const std::streamoff fileEnd = input.tellg();
-            if (fileEnd <= static_cast<std::streamoff>(suffixOffset))
-            {
-                return;
-            }
-
-            const std::streamsize suffixSize =
-                fileEnd - static_cast<std::streamoff>(suffixOffset);
-            std::vector<char> buffer(static_cast<std::size_t>(suffixSize));
-            input.seekg(static_cast<std::streamoff>(suffixOffset), std::ios::beg);
-            if (!input.read(buffer.data(), suffixSize))
-            {
-                throw std::runtime_error("Failed to read bytes after data chunk");
-            }
-            output.write(buffer.data(), suffixSize);
+            cupuacu::file::preservation::copySuffix(
+                input, output,
+                dataChunk->payloadOffset + dataChunk->paddedPayloadSize,
+                "Failed to read bytes after data chunk");
         }
 
         static void updateRiffSizeField(std::ostream &output,
@@ -351,18 +240,21 @@ namespace cupuacu::file::wav
                 return;
             }
 
-            writeFileAtomically(
-                outputPath,
-                [&](const std::filesystem::path &outputPath)
+            cupuacu::file::preservation::rewriteChunkPreserving(
+                referencePath, outputPath,
+                [&](std::istream &input, std::ostream &output)
                 {
-                    auto input = openInputFileStream(referencePath);
-                    auto output = openOutputFileStream(outputPath);
                     copyPrefix(input, output, parsed);
+                },
+                [&](std::istream &input, std::ostream &output)
+                {
                     writeDataChunk(state, input, output, parsed);
+                },
+                [&](std::istream &input, std::ostream &output)
+                {
                     copySuffix(input, output, parsed);
-                    updateRiffSizeField(output, parsed);
-                    output.flush();
-                });
+                },
+                [&](std::ostream &output) { updateRiffSizeField(output, parsed); });
         }
 
         static void overwritePreservingWavFile(cupuacu::State *state)
