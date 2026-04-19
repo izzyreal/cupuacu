@@ -1,8 +1,9 @@
 #pragma once
 
 #include "../State.hpp"
+#include "AudioExport.hpp"
+#include "PreservationBackend.hpp"
 #include "OverwritePreservationState.hpp"
-#include "wav/WavPreservationSupport.hpp"
 
 #include <string>
 
@@ -31,14 +32,26 @@ namespace cupuacu::file
                         .reason = session.overwritePreservationBrokenReason};
             }
 
-            const auto wavSupport =
-                cupuacu::file::wav::WavPreservationSupport::assessOverwrite(state);
-            if (wavSupport.supported)
+            auto settings = session.currentFileExportSettings;
+            if (!settings.has_value())
+            {
+                settings = cupuacu::file::defaultExportSettingsForPath(
+                    session.currentFile, session.document.getSampleFormat());
+            }
+            if (!settings.has_value())
+            {
+                return {.available = false,
+                        .reason = "Could not determine current file export settings"};
+            }
+
+            const auto support =
+                cupuacu::file::assessPreservationOverwrite(state, *settings);
+            if (support.available)
             {
                 return {.available = true};
             }
 
-            return {.available = false, .reason = wavSupport.reason};
+            return {.available = false, .reason = support.reason};
         }
 
         static void refreshActiveSession(cupuacu::State *state)

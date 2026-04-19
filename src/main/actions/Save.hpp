@@ -4,9 +4,8 @@
 #include "../file/AudioExport.hpp"
 #include "../file/AudioFileWriter.hpp"
 #include "../file/OverwritePreservation.hpp"
+#include "../file/PreservationBackend.hpp"
 #include "../file/SaveWritePlan.hpp"
-#include "../file/wav/WavPreservationSupport.hpp"
-#include "../file/wav/WavPreservationWriter.hpp"
 #include "DocumentLifecycle.hpp"
 
 #include <SDL3/SDL.h>
@@ -208,7 +207,7 @@ namespace cupuacu::actions
             state, "Preserving overwrite", session.currentFile,
             [&]
             {
-                file::wav::WavPreservationWriter::writePreservingWavFile(
+                file::writePreservingFile(
                     state, session.preservationReferenceFile,
                     std::filesystem::path(session.currentFile), *settings);
             });
@@ -297,8 +296,8 @@ namespace cupuacu::actions
                     !session.preservationReferenceFile.empty()
                         ? std::filesystem::path(session.preservationReferenceFile)
                         : std::filesystem::path(session.currentFile);
-                file::wav::WavPreservationWriter::writePreservingWavFile(
-                    state, referencePath, normalizedPath, settings);
+                file::writePreservingFile(state, referencePath, normalizedPath,
+                                          settings);
             });
         if (!ok)
         {

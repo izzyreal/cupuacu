@@ -3,7 +3,7 @@
 #include "../State.hpp"
 #include "AudioExport.hpp"
 #include "OverwritePreservation.hpp"
-#include "wav/WavPreservationSupport.hpp"
+#include "PreservationBackend.hpp"
 
 #include <optional>
 #include <string>
@@ -30,13 +30,6 @@ namespace cupuacu::file
         planPreservingOverwrite(const cupuacu::State *state,
                                 const AudioExportSettings &settings)
         {
-            if (!isOverwritePreservingWavRewriteCandidate(settings))
-            {
-                return {.mode = SaveWriteMode::PreservationRequiredButUnavailable,
-                        .preservationUnavailableReason =
-                            "Current file is not a WAV PCM16 preservation candidate"};
-            }
-
             const auto preservation =
                 cupuacu::file::OverwritePreservation::assessActiveSession(state);
             if (!preservation.available)
@@ -59,9 +52,8 @@ namespace cupuacu::file
             }
 
             const auto support =
-                cupuacu::file::wav::WavPreservationSupport::assessAgainstReference(
-                    state, settings);
-            if (!support.supported)
+                cupuacu::file::assessPreservationAgainstReference(state, settings);
+            if (!support.available)
             {
                 return {.mode = SaveWriteMode::PreservationRequiredButUnavailable,
                         .preservationUnavailableReason = support.reason};

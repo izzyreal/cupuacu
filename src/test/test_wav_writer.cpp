@@ -10,6 +10,7 @@
 #include "actions/audio/SetSampleValue.hpp"
 #include "actions/audio/Trim.hpp"
 #include "file/AudioExport.hpp"
+#include "file/PreservationBackend.hpp"
 #include "file/SaveWritePlan.hpp"
 #include "file/SampleQuantization.hpp"
 #include "file/SndfilePath.hpp"
@@ -693,6 +694,41 @@ TEST_CASE("Save write planner rejects preserving save as for incompatible target
     REQUIRE(plan.mode ==
             cupuacu::file::SaveWriteMode::PreservationRequiredButUnavailable);
     REQUIRE(plan.preservationUnavailableReason.has_value());
+}
+
+TEST_CASE("Preservation backend dispatch selects WAV and rejects unsupported formats",
+          "[file]")
+{
+    const auto wavSettings = cupuacu::file::AudioExportSettings{
+        .container = cupuacu::file::AudioExportContainer::WAV,
+        .codec = cupuacu::file::AudioExportCodec::PCM,
+        .majorFormat = SF_FORMAT_WAV,
+        .subtype = SF_FORMAT_PCM_16,
+        .containerLabel = "WAV",
+        .codecLabel = "PCM",
+        .encodingLabel = "16-bit PCM",
+        .extension = "wav",
+    };
+    REQUIRE(cupuacu::file::preservationBackendKindForSettings(wavSettings) ==
+            cupuacu::file::PreservationBackendKind::WavPcm16);
+
+    const auto flacSettings = cupuacu::file::AudioExportSettings{
+        .container = cupuacu::file::AudioExportContainer::FLAC,
+        .codec = cupuacu::file::AudioExportCodec::FLAC,
+        .majorFormat = SF_FORMAT_FLAC,
+        .subtype = SF_FORMAT_PCM_16,
+        .containerLabel = "FLAC",
+        .codecLabel = "FLAC",
+        .encodingLabel = "16-bit PCM",
+        .extension = "flac",
+    };
+    REQUIRE(cupuacu::file::preservationBackendKindForSettings(flacSettings) ==
+            cupuacu::file::PreservationBackendKind::None);
+
+    const auto support =
+        cupuacu::file::assessPreservationAgainstReference(nullptr, flacSettings);
+    REQUIRE_FALSE(support.available);
+    REQUIRE(support.reason == "State is null");
 }
 
 TEST_CASE("Save write planner reports unavailable preservation when overwrite cannot preserve",
