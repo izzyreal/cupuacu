@@ -18,6 +18,7 @@
 #include <sndfile.h>
 
 #include <algorithm>
+#include <bit>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -224,6 +225,131 @@ namespace
         REQUIRE(out.good());
     }
 
+    void writePcm8AiffFile(const std::filesystem::path &path,
+                           const int sampleRate, const int channels,
+                           const std::vector<int8_t> &interleavedSamples,
+                           const std::vector<uint8_t> &preSoundChunk = {},
+                           const std::vector<uint8_t> &postSoundChunk = {})
+    {
+        REQUIRE(channels > 0);
+        REQUIRE(interleavedSamples.size() % static_cast<size_t>(channels) == 0);
+
+        std::vector<uint8_t> aiffBytes;
+        appendAscii(aiffBytes, "FORM");
+        appendBe32(aiffBytes, 0);
+        appendAscii(aiffBytes, "AIFF");
+
+        std::vector<uint8_t> commChunk;
+        appendBe16(commChunk, static_cast<uint16_t>(channels));
+        appendBe32(
+            commChunk,
+            static_cast<uint32_t>(interleavedSamples.size() /
+                                  static_cast<size_t>(channels)));
+        appendBe16(commChunk, 8);
+        const auto sampleRateBytes =
+            encodeExtended80(static_cast<double>(sampleRate));
+        commChunk.insert(commChunk.end(), sampleRateBytes.begin(),
+                         sampleRateBytes.end());
+        appendChunk(aiffBytes, "COMM", commChunk);
+
+        if (!preSoundChunk.empty())
+        {
+            appendChunk(aiffBytes, "NAME", preSoundChunk);
+        }
+
+        std::vector<uint8_t> ssndChunk;
+        appendBe32(ssndChunk, 0);
+        appendBe32(ssndChunk, 0);
+        for (const auto sample : interleavedSamples)
+        {
+            appendByte(ssndChunk, static_cast<uint8_t>(sample));
+        }
+        appendChunk(aiffBytes, "SSND", ssndChunk);
+
+        if (!postSoundChunk.empty())
+        {
+            appendChunk(aiffBytes, "ANNO", postSoundChunk);
+        }
+
+        const uint32_t formSize = static_cast<uint32_t>(aiffBytes.size() - 8);
+        aiffBytes[4] = static_cast<uint8_t>((formSize >> 24) & 0xffu);
+        aiffBytes[5] = static_cast<uint8_t>((formSize >> 16) & 0xffu);
+        aiffBytes[6] = static_cast<uint8_t>((formSize >> 8) & 0xffu);
+        aiffBytes[7] = static_cast<uint8_t>(formSize & 0xffu);
+
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        REQUIRE(out.good());
+        out.write(reinterpret_cast<const char *>(aiffBytes.data()),
+                  static_cast<std::streamsize>(aiffBytes.size()));
+        REQUIRE(out.good());
+    }
+
+    void writeFloat32AifcFile(const std::filesystem::path &path,
+                              const int sampleRate, const int channels,
+                              const std::vector<float> &interleavedSamples,
+                              const std::vector<uint8_t> &preSoundChunk = {},
+                              const std::vector<uint8_t> &postSoundChunk = {})
+    {
+        REQUIRE(channels > 0);
+        REQUIRE(interleavedSamples.size() % static_cast<size_t>(channels) == 0);
+
+        std::vector<uint8_t> aiffBytes;
+        appendAscii(aiffBytes, "FORM");
+        appendBe32(aiffBytes, 0);
+        appendAscii(aiffBytes, "AIFC");
+
+        std::vector<uint8_t> fverChunk;
+        appendBe32(fverChunk, 0xA2805140u);
+        appendChunk(aiffBytes, "FVER", fverChunk);
+
+        std::vector<uint8_t> commChunk;
+        appendBe16(commChunk, static_cast<uint16_t>(channels));
+        appendBe32(
+            commChunk,
+            static_cast<uint32_t>(interleavedSamples.size() /
+                                  static_cast<size_t>(channels)));
+        appendBe16(commChunk, 32);
+        const auto sampleRateBytes =
+            encodeExtended80(static_cast<double>(sampleRate));
+        commChunk.insert(commChunk.end(), sampleRateBytes.begin(),
+                         sampleRateBytes.end());
+        appendAscii(commChunk, "FL32");
+        appendBe16(commChunk, 0);
+        appendChunk(aiffBytes, "COMM", commChunk);
+
+        if (!preSoundChunk.empty())
+        {
+            appendChunk(aiffBytes, "NAME", preSoundChunk);
+        }
+
+        std::vector<uint8_t> ssndChunk;
+        appendBe32(ssndChunk, 0);
+        appendBe32(ssndChunk, 0);
+        for (const auto sample : interleavedSamples)
+        {
+            const auto bits = std::bit_cast<std::uint32_t>(sample);
+            appendBe32(ssndChunk, bits);
+        }
+        appendChunk(aiffBytes, "SSND", ssndChunk);
+
+        if (!postSoundChunk.empty())
+        {
+            appendChunk(aiffBytes, "ANNO", postSoundChunk);
+        }
+
+        const uint32_t formSize = static_cast<uint32_t>(aiffBytes.size() - 8);
+        aiffBytes[4] = static_cast<uint8_t>((formSize >> 24) & 0xffu);
+        aiffBytes[5] = static_cast<uint8_t>((formSize >> 16) & 0xffu);
+        aiffBytes[6] = static_cast<uint8_t>((formSize >> 8) & 0xffu);
+        aiffBytes[7] = static_cast<uint8_t>(formSize & 0xffu);
+
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        REQUIRE(out.good());
+        out.write(reinterpret_cast<const char *>(aiffBytes.data()),
+                  static_cast<std::streamsize>(aiffBytes.size()));
+        REQUIRE(out.good());
+    }
+
     std::vector<uint8_t> readBytes(const std::filesystem::path &path)
     {
         std::ifstream in(path, std::ios::binary);
@@ -339,6 +465,44 @@ TEST_CASE("AIFF preservation support reports supported for valid PCM16 overwrite
     REQUIRE(support.reason.empty());
 }
 
+TEST_CASE("AIFF preservation support reports supported for valid PCM8 overwrite",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-aiff-preservation-support-pcm8"));
+    const auto aiffPath = cleanup.path() / "preserve_ok_pcm8.aiff";
+
+    writePcm8AiffFile(aiffPath, 44100, 1, {10, 20, 30, 40});
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = aiffPath.string();
+    cupuacu::file::loadSampleData(&state);
+
+    const auto support =
+        cupuacu::file::aiff::AiffPreservationSupport::assessOverwrite(&state);
+    REQUIRE(support.supported);
+    REQUIRE(support.reason.empty());
+}
+
+TEST_CASE("AIFF preservation support reports supported for valid float32 overwrite",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-aifc-preservation-support-f32"));
+    const auto aiffPath = cleanup.path() / "preserve_ok_f32.aiff";
+
+    writeFloat32AifcFile(aiffPath, 44100, 1, {0.0f, 0.25f, -0.25f, 0.5f});
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = aiffPath.string();
+    cupuacu::file::loadSampleData(&state);
+
+    const auto support =
+        cupuacu::file::aiff::AiffPreservationSupport::assessOverwrite(&state);
+    REQUIRE(support.supported);
+    REQUIRE(support.reason.empty());
+}
+
 TEST_CASE("Overwrite keeps untouched 16-bit PCM AIFF byte-identical", "[file]")
 {
     ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-aiff-overwrite"));
@@ -432,6 +596,60 @@ TEST_CASE("Overwrite patches only one mono PCM16 AIFF sample in place", "[file]"
     const auto differingOffsets =
         findDifferingByteOffsets(originalBytes, updatedBytes);
     REQUIRE(differingOffsets.size() == sizeof(std::int16_t));
+}
+
+TEST_CASE("Overwrite patches only one mono PCM8 AIFF sample in place", "[file]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-aiff-mono-patch-8"));
+    const auto aiffPath = cleanup.path() / "mono8.aiff";
+
+    writePcm8AiffFile(aiffPath, 44100, 1, {0, 10, -10, 20});
+    const auto originalBytes = readBytes(aiffPath);
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = aiffPath.string();
+    cupuacu::file::loadSampleData(&state);
+    state.getActiveDocumentSession().document.setSample(0, 2, 0.25f);
+
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
+
+    const auto updatedBytes = readBytes(aiffPath);
+    const auto differingOffsets =
+        findDifferingByteOffsets(originalBytes, updatedBytes);
+    REQUIRE(differingOffsets.size() == 1);
+}
+
+TEST_CASE("Overwrite patches only one mono float32 AIFF sample in place",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-aiff-mono-patch-f32"));
+    const auto aiffPath = cleanup.path() / "mono_f32.aiff";
+
+    writeFloat32AifcFile(aiffPath, 44100, 1, {0.0f, 0.25f, -0.25f, 0.5f});
+    const auto originalBytes = readBytes(aiffPath);
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = aiffPath.string();
+    cupuacu::file::loadSampleData(&state);
+    state.getActiveDocumentSession().document.setSample(0, 2, 0.75f);
+
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
+
+    const auto updatedBytes = readBytes(aiffPath);
+    const auto differingOffsets =
+        findDifferingByteOffsets(originalBytes, updatedBytes);
+    REQUIRE_FALSE(differingOffsets.empty());
+    REQUIRE(differingOffsets.size() <= sizeof(float));
+
+    const auto parsed = cupuacu::file::aiff::AiffParser::parseFile(aiffPath);
+    const auto expectedStart = parsed.soundDataOffset + sizeof(float) * 2;
+    const auto expectedEnd = expectedStart + sizeof(float);
+    for (const auto offset : differingOffsets)
+    {
+        REQUIRE(offset >= expectedStart);
+        REQUIRE(offset < expectedEnd);
+    }
 }
 
 TEST_CASE("Overwrite patches only one stereo channel AIFF sample in place",
@@ -663,7 +881,7 @@ TEST_CASE("Save write planner selects preserving AIFF save paths when supported"
         aiffPath, state.getActiveDocumentSession().document.getSampleFormat());
     REQUIRE(settings.has_value());
     REQUIRE(cupuacu::file::preservationBackendKindForSettings(*settings) ==
-            cupuacu::file::PreservationBackendKind::AiffPcm16);
+            cupuacu::file::PreservationBackendKind::AiffPcm);
 
     const auto overwritePlan =
         cupuacu::file::SaveWritePlanner::planPreservingOverwrite(&state, *settings);

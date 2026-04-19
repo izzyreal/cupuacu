@@ -18,6 +18,23 @@ namespace cupuacu::file::aiff
 
     class AiffPreservationSupport
     {
+    private:
+        [[nodiscard]] static std::string describeFormat(
+            const cupuacu::SampleFormat format)
+        {
+            switch (format)
+            {
+                case cupuacu::SampleFormat::PCM_S8:
+                    return "8-bit PCM";
+                case cupuacu::SampleFormat::PCM_S16:
+                    return "16-bit PCM";
+                case cupuacu::SampleFormat::FLOAT32:
+                    return "32-bit float";
+                default:
+                    return "unsupported";
+            }
+        }
+
     public:
         [[nodiscard]] static OverwritePreservationSupport
         assessAgainstReference(const cupuacu::State *state,
@@ -38,17 +55,22 @@ namespace cupuacu::file::aiff
             }
 
             if (!(settings.majorFormat == SF_FORMAT_AIFF &&
-                  settings.subtype == SF_FORMAT_PCM_16))
+                  (settings.subtype == SF_FORMAT_PCM_S8 ||
+                   settings.subtype == SF_FORMAT_PCM_16 ||
+                   settings.subtype == SF_FORMAT_FLOAT)))
             {
                 return {.supported = false,
                         .reason =
-                            "Selected target format is not an AIFF PCM16 preservation candidate"};
+                            "Selected target format is not an AIFF preserving PCM candidate"};
             }
 
-            if (session.document.getSampleFormat() != cupuacu::SampleFormat::PCM_S16)
+            const auto documentFormat = session.document.getSampleFormat();
+            if (documentFormat != cupuacu::SampleFormat::PCM_S8 &&
+                documentFormat != cupuacu::SampleFormat::PCM_S16 &&
+                documentFormat != cupuacu::SampleFormat::FLOAT32)
             {
                 return {.supported = false,
-                        .reason = "Document is not 16-bit PCM"};
+                        .reason = "Document is not a supported preserving AIFF/AIFC format"};
             }
 
             ParsedFile parsed{};
@@ -61,10 +83,12 @@ namespace cupuacu::file::aiff
                 return {.supported = false, .reason = e.what()};
             }
 
-            if (!parsed.isPcm16)
+            if (parsed.sampleFormat != documentFormat ||
+                parsed.sampleFormat == cupuacu::SampleFormat::Unknown)
             {
                 return {.supported = false,
-                        .reason = "Not a 16-bit PCM AIFF file"};
+                        .reason = "Source AIFF format does not match document format (" +
+                                  describeFormat(documentFormat) + ")"};
             }
             if (parsed.commChunkCount != 1)
             {

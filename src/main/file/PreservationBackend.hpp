@@ -18,8 +18,8 @@ namespace cupuacu::file
     enum class PreservationBackendKind
     {
         None,
-        AiffPcm16,
-        WavPcm16,
+        AiffPcm,
+        WavPcm,
     };
 
     inline PreservationBackendKind
@@ -27,12 +27,14 @@ namespace cupuacu::file
     {
         if (isOverwritePreservingWavRewriteCandidate(settings))
         {
-            return PreservationBackendKind::WavPcm16;
+            return PreservationBackendKind::WavPcm;
         }
         if (settings.majorFormat == SF_FORMAT_AIFF &&
-            settings.subtype == SF_FORMAT_PCM_16)
+            (settings.subtype == SF_FORMAT_PCM_S8 ||
+             settings.subtype == SF_FORMAT_PCM_16 ||
+             settings.subtype == SF_FORMAT_FLOAT))
         {
-            return PreservationBackendKind::AiffPcm16;
+            return PreservationBackendKind::AiffPcm;
         }
 
         return PreservationBackendKind::None;
@@ -49,14 +51,14 @@ namespace cupuacu::file
 
         switch (preservationBackendKindForSettings(settings))
         {
-            case PreservationBackendKind::AiffPcm16:
+            case PreservationBackendKind::AiffPcm:
             {
                 const auto support =
                     cupuacu::file::aiff::AiffPreservationSupport::
                         assessAgainstReference(state, settings);
                 return {.available = support.supported, .reason = support.reason};
             }
-            case PreservationBackendKind::WavPcm16:
+            case PreservationBackendKind::WavPcm:
             {
                 const auto support =
                     cupuacu::file::wav::WavPreservationSupport::
@@ -81,14 +83,14 @@ namespace cupuacu::file
 
         switch (preservationBackendKindForSettings(settings))
         {
-            case PreservationBackendKind::AiffPcm16:
+            case PreservationBackendKind::AiffPcm:
             {
                 const auto support =
                     cupuacu::file::aiff::AiffPreservationSupport::assessOverwrite(
                         state);
                 return {.available = support.supported, .reason = support.reason};
             }
-            case PreservationBackendKind::WavPcm16:
+            case PreservationBackendKind::WavPcm:
             {
                 const auto support =
                     cupuacu::file::wav::WavPreservationSupport::assessOverwrite(
@@ -114,12 +116,12 @@ namespace cupuacu::file
 
         switch (preservationBackendKindForSettings(settings))
         {
-            case PreservationBackendKind::AiffPcm16:
+            case PreservationBackendKind::AiffPcm:
                 cupuacu::file::aiff::AiffPreservationWriter::
                     writePreservingAiffFile(state, referencePath, outputPath,
                                             settings);
                 return;
-            case PreservationBackendKind::WavPcm16:
+            case PreservationBackendKind::WavPcm:
                 cupuacu::file::wav::WavPreservationWriter::writePreservingWavFile(
                     state, referencePath, outputPath, settings);
                 return;
@@ -140,11 +142,11 @@ namespace cupuacu::file
 
         switch (preservationBackendKindForSettings(settings))
         {
-            case PreservationBackendKind::AiffPcm16:
+            case PreservationBackendKind::AiffPcm:
                 cupuacu::file::aiff::AiffPreservationWriter::
                     overwritePreservingAiffFile(state);
                 return;
-            case PreservationBackendKind::WavPcm16:
+            case PreservationBackendKind::WavPcm:
                 cupuacu::file::wav::WavPreservationWriter::
                     overwritePreservingWavFile(state);
                 return;

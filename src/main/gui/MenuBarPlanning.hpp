@@ -70,7 +70,8 @@ namespace cupuacu::gui
     inline std::string buildPreservingSaveAsTooltipText()
     {
         return "Write a new file in preservation mode, keeping unchanged "
-               "source WAV PCM16 bytes intact where possible and using the "
+               "source audio bytes intact where possible for supported "
+               "preserving formats and using the "
                "latest opened or saved file as the reference.";
     }
 
@@ -83,7 +84,8 @@ namespace cupuacu::gui
     inline std::string buildPreservingOverwriteTooltipText()
     {
         return "Rewrite the current file in preservation mode, keeping "
-               "unchanged source WAV PCM16 bytes intact where possible.";
+               "unchanged source audio bytes intact where possible for "
+               "supported preserving formats.";
     }
 
     inline MenuAvailability

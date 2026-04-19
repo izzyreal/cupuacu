@@ -50,6 +50,7 @@ namespace
         {"16-bit PCM", SF_FORMAT_PCM_16, "aiff"},
         {"24-bit PCM", SF_FORMAT_PCM_24, "aiff"},
         {"32-bit PCM", SF_FORMAT_PCM_32, "aiff"},
+        {"32-bit float", SF_FORMAT_FLOAT, "aiff"},
     };
     constexpr CandidateEncoding kCafEncodings[] = {
         {"16-bit ALAC", SF_FORMAT_ALAC_16, "caf"},
@@ -669,6 +670,7 @@ cupuacu::file::sampleFormatForSndfileFormat(const int sndfileFormat)
         case SF_FORMAT_MPEG_LAYER_III:
             return cupuacu::SampleFormat::FLOAT32;
         case SF_FORMAT_PCM_U8:
+            return cupuacu::SampleFormat::PCM_S8;
         default:
             return cupuacu::SampleFormat::Unknown;
     }
@@ -729,5 +731,8 @@ bool cupuacu::file::isOverwritePreservingWavRewriteCandidate(
     const AudioExportSettings &settings)
 {
     return settings.majorFormat == SF_FORMAT_WAV &&
-           settings.subtype == SF_FORMAT_PCM_16;
+           (settings.subtype == SF_FORMAT_PCM_U8 ||
+            settings.subtype == SF_FORMAT_PCM_S8 ||
+            settings.subtype == SF_FORMAT_PCM_16 ||
+            settings.subtype == SF_FORMAT_FLOAT);
 }

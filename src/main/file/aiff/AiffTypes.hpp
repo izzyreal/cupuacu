@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../../SampleFormat.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -23,14 +25,19 @@ namespace cupuacu::file::aiff
         std::size_t formSizeOffset = 4;
         std::size_t formDataSize = 0;
         bool isAiff = false;
+        bool isAifc = false;
+        bool isIntegerPcm = false;
+        bool isFloat32 = false;
         bool isPcm16 = false;
         std::size_t commChunkCount = 0;
         std::size_t ssndChunkCount = 0;
         int channelCount = 0;
         int sampleRate = 0;
         int bitsPerSample = 0;
+        cupuacu::SampleFormat sampleFormat = cupuacu::SampleFormat::Unknown;
         std::uint32_t sampleFrameCount = 0;
         std::size_t commSampleFrameCountOffset = 0;
+        std::uint32_t commEncoding = 0;
         std::uint32_t ssndOffset = 0;
         std::uint32_t ssndBlockSize = 0;
         std::size_t soundDataOffset = 0;

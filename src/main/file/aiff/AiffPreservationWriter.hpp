@@ -2,11 +2,12 @@
 
 #include "../../State.hpp"
 #include "../ChunkedPreservationRewrite.hpp"
-#include "../Pcm16PreservationIO.hpp"
+#include "../PcmPreservationIO.hpp"
 #include "AiffParser.hpp"
 #include "AiffPreservationSupport.hpp"
 
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
@@ -20,16 +21,39 @@ namespace cupuacu::file::aiff
     class AiffPreservationWriter
     {
     private:
+        static std::size_t sampleByteWidth(const cupuacu::SampleFormat format)
+        {
+            switch (format)
+            {
+                case cupuacu::SampleFormat::PCM_S8:
+                    return 1;
+                case cupuacu::SampleFormat::PCM_S16:
+                    return sizeof(std::int16_t);
+                case cupuacu::SampleFormat::FLOAT32:
+                    return sizeof(float);
+                default:
+                    throw std::runtime_error(
+                        "Unsupported preserving AIFF sample format");
+            }
+        }
+
         static std::uint32_t expectedSoundDataSizeBytes(const cupuacu::State *state)
         {
             return cupuacu::file::preservation::
-                expectedInterleavedPcm16DataSizeBytes(state);
+                expectedInterleavedDataSizeBytes(
+                    state, sampleByteWidth(
+                               state->getActiveDocumentSession()
+                                   .document.getSampleFormat()));
         }
 
         static bool canPatchSoundDataInPlace(const cupuacu::State *state,
                                              const ParsedFile &parsed)
         {
-            if (state == nullptr || !parsed.isPcm16 || parsed.commChunkCount != 1 ||
+            if (state == nullptr ||
+                (parsed.sampleFormat != cupuacu::SampleFormat::PCM_S8 &&
+                 parsed.sampleFormat != cupuacu::SampleFormat::PCM_S16 &&
+                 parsed.sampleFormat != cupuacu::SampleFormat::FLOAT32) ||
+                parsed.commChunkCount != 1 ||
                 parsed.ssndChunkCount != 1)
             {
                 return false;
@@ -37,7 +61,8 @@ namespace cupuacu::file::aiff
 
             const auto &document = state->getActiveDocumentSession().document;
             if (document.getChannelCount() != parsed.channelCount ||
-                document.getSampleRate() != parsed.sampleRate)
+                document.getSampleRate() != parsed.sampleRate ||
+                document.getSampleFormat() != parsed.sampleFormat)
             {
                 return false;
             }
@@ -59,6 +84,33 @@ namespace cupuacu::file::aiff
                     static_cast<char>(encoded & 0xffu)};
         }
 
+        static std::array<char, 1> encodeS8(const std::int64_t value)
+        {
+            return {static_cast<char>(static_cast<std::int8_t>(value))};
+        }
+
+        static std::vector<char> encodeSampleBytes(
+            const cupuacu::SampleFormat format, const std::int64_t value)
+        {
+            if (format == cupuacu::SampleFormat::PCM_S8)
+            {
+                const auto encoded = encodeS8(value);
+                return std::vector<char>(encoded.begin(), encoded.end());
+            }
+
+            const auto encoded = encodeBe16(static_cast<std::int16_t>(value));
+            return std::vector<char>(encoded.begin(), encoded.end());
+        }
+
+        static std::vector<char> encodeFloat32Be(const float value)
+        {
+            const auto bits = std::bit_cast<std::uint32_t>(value);
+            return {static_cast<char>((bits >> 24) & 0xffu),
+                    static_cast<char>((bits >> 16) & 0xffu),
+                    static_cast<char>((bits >> 8) & 0xffu),
+                    static_cast<char>(bits & 0xffu)};
+        }
+
         static std::array<char, 4> encodeBe32(const std::uint32_t value)
         {
             return {static_cast<char>((value >> 24) & 0xffu),
@@ -67,7 +119,7 @@ namespace cupuacu::file::aiff
                     static_cast<char>(value & 0xffu)};
         }
 
-        static std::array<char, sizeof(std::int16_t)>
+        static std::vector<char>
         readOriginalSampleBytes(std::istream &input, const ParsedFile &parsed,
                                 const std::int64_t channel,
                                 const std::int64_t frame)
@@ -75,8 +127,10 @@ namespace cupuacu::file::aiff
             const auto sampleIndex =
                 frame * static_cast<std::int64_t>(parsed.channelCount) + channel;
             const auto byteOffset = static_cast<std::streamoff>(
-                parsed.soundDataOffset + sampleIndex * sizeof(std::int16_t));
-            std::array<char, sizeof(std::int16_t)> encoded{};
+                parsed.soundDataOffset +
+                sampleIndex * static_cast<std::int64_t>(
+                                  sampleByteWidth(parsed.sampleFormat)));
+            std::vector<char> encoded(sampleByteWidth(parsed.sampleFormat));
             input.seekg(byteOffset, std::ios::beg);
             if (!input.read(encoded.data(),
                             static_cast<std::streamsize>(encoded.size())))
@@ -90,10 +144,20 @@ namespace cupuacu::file::aiff
                                         std::fstream &io,
                                         const ParsedFile &parsed)
         {
-            cupuacu::file::preservation::patchDirtyPcm16SamplesInPlace(
-                state, io, static_cast<std::size_t>(parsed.channelCount),
+            cupuacu::file::preservation::patchDirtySamplesInPlace(
+                state, io, sampleByteWidth(parsed.sampleFormat),
+                static_cast<std::size_t>(parsed.channelCount),
                 parsed.soundDataOffset,
-                [](const std::int16_t sample) { return encodeBe16(sample); });
+                [&](const float sample)
+                {
+                    if (parsed.sampleFormat == cupuacu::SampleFormat::FLOAT32)
+                    {
+                        return encodeFloat32Be(sample);
+                    }
+                    const auto quantized = quantizeIntegerPcmSample(
+                        parsed.sampleFormat, sample, false);
+                    return encodeSampleBytes(parsed.sampleFormat, quantized);
+                });
         }
 
         static void patchSoundDataInPlace(const cupuacu::State *state,
@@ -143,8 +207,8 @@ namespace cupuacu::file::aiff
 
             const auto &document = state->getActiveDocumentSession().document;
             const auto encodedSamples =
-                cupuacu::file::preservation::buildEncodedPcm16Samples(
-                    state, input,
+                cupuacu::file::preservation::buildEncodedSamples(
+                    state, input, sampleByteWidth(document.getSampleFormat()),
                     static_cast<std::size_t>(document.getChannelCount()),
                     [&](std::istream &sourceInput, const std::int64_t channel,
                         const std::int64_t frame)
@@ -152,7 +216,18 @@ namespace cupuacu::file::aiff
                         return readOriginalSampleBytes(sourceInput, parsed, channel,
                                                        frame);
                     },
-                    [](const std::int16_t sample) { return encodeBe16(sample); });
+                    [&](const float sample)
+                    {
+                        if (document.getSampleFormat() ==
+                            cupuacu::SampleFormat::FLOAT32)
+                        {
+                            return encodeFloat32Be(sample);
+                        }
+                        const auto quantized = quantizeIntegerPcmSample(
+                            document.getSampleFormat(), sample, false);
+                        return encodeSampleBytes(document.getSampleFormat(),
+                                                 quantized);
+                    });
 
             const std::uint32_t soundDataSize = static_cast<std::uint32_t>(
                 encodedSamples.size());

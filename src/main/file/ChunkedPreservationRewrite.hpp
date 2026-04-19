@@ -1,7 +1,7 @@
 #pragma once
 
 #include "FileIo.hpp"
-#include "Pcm16PreservationIO.hpp"
+#include "PcmPreservationIO.hpp"
 
 #include <filesystem>
 #include <functional>

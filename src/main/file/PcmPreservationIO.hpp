@@ -40,12 +40,13 @@ namespace cupuacu::file::preservation
     }
 
     inline std::uint32_t
-    expectedInterleavedPcm16DataSizeBytes(const cupuacu::State *state)
+    expectedInterleavedDataSizeBytes(const cupuacu::State *state,
+                                     const std::size_t bytesPerSample)
     {
         const auto &document = state->getActiveDocumentSession().document;
         return static_cast<std::uint32_t>(
             document.getFrameCount() * document.getChannelCount() *
-            static_cast<int64_t>(sizeof(std::int16_t)));
+            static_cast<int64_t>(bytesPerSample));
     }
 
     inline void copyByteRange(std::istream &input, std::ostream &output,
@@ -87,12 +88,12 @@ namespace cupuacu::file::preservation
                       static_cast<std::size_t>(suffixSize), failureMessage);
     }
 
-    template <typename EncodeSampleFn>
-    void patchDirtyPcm16SamplesInPlace(const cupuacu::State *state,
-                                       std::fstream &io,
-                                       const std::size_t channelCount,
-                                       const std::size_t sampleDataOffset,
-                                       EncodeSampleFn encodeSample)
+    template <typename EncodeDirtySampleFn>
+    void patchDirtySamplesInPlace(const cupuacu::State *state, std::fstream &io,
+                                  const std::size_t sampleByteWidth,
+                                  const std::size_t channelCount,
+                                  const std::size_t sampleDataOffset,
+                                  EncodeDirtySampleFn encodeDirtySample)
     {
         auto buffer = state->getActiveDocumentSession().document.getAudioBuffer();
         const std::size_t frames = static_cast<std::size_t>(
@@ -110,13 +111,10 @@ namespace cupuacu::file::preservation
                 }
 
                 const float sample = buffer->getSample(channelIndex, frameIndex);
-                const auto quantized = static_cast<std::int16_t>(
-                    quantizeIntegerPcmSample(cupuacu::SampleFormat::PCM_S16,
-                                             sample, false));
-                const auto encoded = encodeSample(quantized);
+                const auto encoded = encodeDirtySample(sample);
                 const std::size_t sampleIndex = frame * channelCount + channel;
                 const std::size_t byteOffset =
-                    sampleDataOffset + sampleIndex * sizeof(std::int16_t);
+                    sampleDataOffset + sampleIndex * sampleByteWidth;
 
                 io.seekp(static_cast<std::streamoff>(byteOffset), std::ios::beg);
                 io.write(encoded.data(),
@@ -124,17 +122,19 @@ namespace cupuacu::file::preservation
                 if (!io)
                 {
                     throw std::runtime_error(
-                        "Failed to patch PCM16 sample bytes");
+                        "Failed to patch sample bytes");
                 }
             }
         }
     }
 
-    template <typename ReadOriginalBytesFn, typename EncodeSampleFn>
-    std::vector<char> buildEncodedPcm16Samples(
-        const cupuacu::State *state, std::istream &input,
-        const std::size_t channelCount, ReadOriginalBytesFn readOriginalBytes,
-        EncodeSampleFn encodeSample)
+    template <typename ReadOriginalBytesFn, typename EncodeDirtySampleFn>
+    std::vector<char> buildEncodedSamples(const cupuacu::State *state,
+                                          std::istream &input,
+                                          const std::size_t sampleByteWidth,
+                                          const std::size_t channelCount,
+                                          ReadOriginalBytesFn readOriginalBytes,
+                                          EncodeDirtySampleFn encodeDirtySample)
     {
         const auto &document = state->getActiveDocumentSession().document;
         const std::size_t frames =
@@ -142,7 +142,7 @@ namespace cupuacu::file::preservation
         auto buffer = document.getAudioBuffer();
 
         std::vector<char> encodedSamples;
-        encodedSamples.reserve(frames * channelCount * sizeof(std::int16_t));
+        encodedSamples.reserve(frames * channelCount * sampleByteWidth);
 
         for (std::size_t frame = 0; frame < frames; ++frame)
         {
@@ -164,10 +164,7 @@ namespace cupuacu::file::preservation
                     continue;
                 }
 
-                const auto quantized = static_cast<std::int16_t>(
-                    quantizeIntegerPcmSample(cupuacu::SampleFormat::PCM_S16,
-                                             sample, false));
-                const auto encoded = encodeSample(quantized);
+                const auto encoded = encodeDirtySample(sample);
                 encodedSamples.insert(encodedSamples.end(), encoded.begin(),
                                       encoded.end());
             }

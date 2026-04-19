@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../../SampleFormat.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -23,12 +25,15 @@ namespace cupuacu::file::wav
         std::size_t riffSizeOffset = 4;
         std::size_t riffDataSize = 0;
         bool isWave = false;
+        bool isIntegerPcm = false;
+        bool isFloat32 = false;
         bool isPcm16 = false;
         std::size_t fmtChunkCount = 0;
         std::size_t dataChunkCount = 0;
         int channelCount = 0;
         int sampleRate = 0;
         int bitsPerSample = 0;
+        cupuacu::SampleFormat sampleFormat = cupuacu::SampleFormat::Unknown;
 
         [[nodiscard]] const ChunkInfo *findChunk(const char (&chunkId)[5]) const
         {

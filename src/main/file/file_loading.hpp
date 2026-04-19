@@ -71,7 +71,9 @@ namespace cupuacu::file
         // Done with file
         sf_close(snd);
 
-        if (sampleFormat == SampleFormat::PCM_S16)
+        if (sampleFormat == SampleFormat::PCM_S8 ||
+            sampleFormat == SampleFormat::PCM_S16 ||
+            sampleFormat == SampleFormat::FLOAT32)
         {
             doc.markCurrentStateAsSavedSource();
         }

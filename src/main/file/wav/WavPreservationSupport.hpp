@@ -16,6 +16,23 @@ namespace cupuacu::file::wav
 
     class WavPreservationSupport
     {
+    private:
+        [[nodiscard]] static std::string describeFormat(
+            const cupuacu::SampleFormat format)
+        {
+            switch (format)
+            {
+                case cupuacu::SampleFormat::PCM_S8:
+                    return "8-bit PCM";
+                case cupuacu::SampleFormat::PCM_S16:
+                    return "16-bit PCM";
+                case cupuacu::SampleFormat::FLOAT32:
+                    return "32-bit float";
+                default:
+                    return "unsupported";
+            }
+        }
+
     public:
         [[nodiscard]] static OverwritePreservationSupport
         assessAgainstReference(const cupuacu::State *state,
@@ -39,13 +56,16 @@ namespace cupuacu::file::wav
             {
                 return {.supported = false,
                         .reason =
-                            "Selected target format is not a WAV PCM16 preservation candidate"};
+                            "Selected target format is not a preserving WAV PCM candidate"};
             }
 
-            if (session.document.getSampleFormat() != cupuacu::SampleFormat::PCM_S16)
+            const auto documentFormat = session.document.getSampleFormat();
+            if (documentFormat != cupuacu::SampleFormat::PCM_S8 &&
+                documentFormat != cupuacu::SampleFormat::PCM_S16 &&
+                documentFormat != cupuacu::SampleFormat::FLOAT32)
             {
                 return {.supported = false,
-                        .reason = "Document is not 16-bit PCM"};
+                        .reason = "Document is not a supported preserving WAV PCM format"};
             }
 
             ParsedFile parsed{};
@@ -58,9 +78,12 @@ namespace cupuacu::file::wav
                 return {.supported = false, .reason = e.what()};
             }
 
-            if (!parsed.isPcm16)
+            if (parsed.sampleFormat != documentFormat ||
+                parsed.sampleFormat == cupuacu::SampleFormat::Unknown)
             {
-                return {.supported = false, .reason = "Not a 16-bit PCM WAV file"};
+                return {.supported = false,
+                        .reason = "Source WAV format does not match document format (" +
+                                  describeFormat(documentFormat) + ")"};
             }
             if (parsed.fmtChunkCount != 1)
             {

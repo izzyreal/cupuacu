@@ -16,6 +16,12 @@ namespace cupuacu::file::aiff
 {
     namespace detail
     {
+        constexpr std::uint32_t markerAIFF = 0x41494646u;
+        constexpr std::uint32_t markerAIFC = 0x41494643u;
+        constexpr std::uint32_t markerNONE = 0x4e4f4e45u;
+        constexpr std::uint32_t markerFL32 = 0x464c3332u;
+        constexpr std::uint32_t markerfl32 = 0x666c3332u;
+
         inline std::uint16_t readBe16(const char *data)
         {
             return static_cast<std::uint16_t>(
@@ -102,13 +108,25 @@ namespace cupuacu::file::aiff
                 throw std::runtime_error("Failed to read AIFF header");
             }
 
-            if (std::memcmp(header.data(), "FORM", 4) != 0 ||
-                std::memcmp(header.data() + 8, "AIFF", 4) != 0)
+            if (std::memcmp(header.data(), "FORM", 4) != 0)
             {
-                throw std::runtime_error("Not an AIFF FORM file");
+                throw std::runtime_error("Not an AIFF/AIFC FORM file");
             }
 
-            result.isAiff = true;
+            const auto formType = detail::readBe32(header.data() + 8);
+            if (formType == detail::markerAIFF)
+            {
+                result.isAiff = true;
+            }
+            else if (formType == detail::markerAIFC)
+            {
+                result.isAifc = true;
+            }
+            else
+            {
+                throw std::runtime_error("Not an AIFF/AIFC FORM file");
+            }
+
             result.formDataSize = detail::readBe32(header.data() + 4);
             if (result.formDataSize + 8 != fileSize)
             {
@@ -155,6 +173,40 @@ namespace cupuacu::file::aiff
                             detail::readBe32(commData.data() + 2);
                         result.bitsPerSample = static_cast<int>(
                             detail::readBe16(commData.data() + 6));
+                        result.commEncoding = detail::markerNONE;
+                        if (result.isAifc && commData.size() >= 22)
+                        {
+                            result.commEncoding =
+                                detail::readBe32(commData.data() + 18);
+                        }
+
+                        if (!result.isAifc ||
+                            result.commEncoding == detail::markerNONE)
+                        {
+                            result.isIntegerPcm = true;
+                            switch (result.bitsPerSample)
+                            {
+                                case 8:
+                                    result.sampleFormat =
+                                        cupuacu::SampleFormat::PCM_S8;
+                                    break;
+                                case 16:
+                                    result.sampleFormat =
+                                        cupuacu::SampleFormat::PCM_S16;
+                                    break;
+                                default:
+                                    result.sampleFormat =
+                                        cupuacu::SampleFormat::Unknown;
+                                    break;
+                            }
+                        }
+                        else if (result.bitsPerSample == 32 &&
+                                 (result.commEncoding == detail::markerFL32 ||
+                                  result.commEncoding == detail::markerfl32))
+                        {
+                            result.isFloat32 = true;
+                            result.sampleFormat = cupuacu::SampleFormat::FLOAT32;
+                        }
                         const auto sampleRate =
                             detail::readExtended80(reinterpret_cast<
                                                    const unsigned char *>(

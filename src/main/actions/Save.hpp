@@ -114,7 +114,11 @@ namespace cupuacu::actions
 
             file::OverwritePreservation::refreshActiveSession(state);
             if (session.document.getSampleFormat() ==
-                cupuacu::SampleFormat::PCM_S16)
+                    cupuacu::SampleFormat::PCM_S8 ||
+                session.document.getSampleFormat() ==
+                    cupuacu::SampleFormat::PCM_S16 ||
+                session.document.getSampleFormat() ==
+                    cupuacu::SampleFormat::FLOAT32)
             {
                 session.document.markCurrentStateAsSavedSource();
             }

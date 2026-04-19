@@ -2,11 +2,13 @@
 
 #include "../../State.hpp"
 #include "../ChunkedPreservationRewrite.hpp"
-#include "../Pcm16PreservationIO.hpp"
+#include "../PcmPreservationIO.hpp"
 #include "WavParser.hpp"
 #include "WavPreservationSupport.hpp"
 
+#include <algorithm>
 #include <array>
+#include <bit>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -19,16 +21,39 @@ namespace cupuacu::file::wav
     class WavPreservationWriter
     {
     private:
+        static std::size_t sampleByteWidth(const cupuacu::SampleFormat format)
+        {
+            switch (format)
+            {
+                case cupuacu::SampleFormat::PCM_S8:
+                    return 1;
+                case cupuacu::SampleFormat::PCM_S16:
+                    return sizeof(std::int16_t);
+                case cupuacu::SampleFormat::FLOAT32:
+                    return sizeof(float);
+                default:
+                    throw std::runtime_error(
+                        "Unsupported preserving WAV sample format");
+            }
+        }
+
         static std::uint32_t expectedDataSizeBytes(const cupuacu::State *state)
         {
             return cupuacu::file::preservation::
-                expectedInterleavedPcm16DataSizeBytes(state);
+                expectedInterleavedDataSizeBytes(
+                    state, sampleByteWidth(
+                               state->getActiveDocumentSession()
+                                   .document.getSampleFormat()));
         }
 
         static bool canPatchDataChunkInPlace(const cupuacu::State *state,
                                              const ParsedFile &parsed)
         {
-            if (state == nullptr || !parsed.isPcm16 || parsed.fmtChunkCount != 1 ||
+            if (state == nullptr ||
+                (parsed.sampleFormat != cupuacu::SampleFormat::PCM_S8 &&
+                 parsed.sampleFormat != cupuacu::SampleFormat::PCM_S16 &&
+                 parsed.sampleFormat != cupuacu::SampleFormat::FLOAT32) ||
+                parsed.fmtChunkCount != 1 ||
                 parsed.dataChunkCount != 1)
             {
                 return false;
@@ -36,7 +61,8 @@ namespace cupuacu::file::wav
 
             const auto &document = state->getActiveDocumentSession().document;
             if (document.getChannelCount() != parsed.channelCount ||
-                document.getSampleRate() != parsed.sampleRate)
+                document.getSampleRate() != parsed.sampleRate ||
+                document.getSampleFormat() != parsed.sampleFormat)
             {
                 return false;
             }
@@ -58,7 +84,42 @@ namespace cupuacu::file::wav
                     static_cast<char>((encoded >> 8) & 0xffu)};
         }
 
-        static std::array<char, sizeof(std::int16_t)>
+        static std::array<char, 1> encodeS8(const std::int64_t value)
+        {
+            return {static_cast<char>(static_cast<std::int8_t>(value))};
+        }
+
+        static std::array<char, 1> encodeWavPcmU8(const std::int64_t value)
+        {
+            const auto signedValue = static_cast<std::int16_t>(value);
+            const auto unsignedValue = static_cast<std::uint8_t>(
+                std::clamp<int>(static_cast<int>(signedValue) + 128, 0, 255));
+            return {static_cast<char>(unsignedValue)};
+        }
+
+        static std::vector<char> encodeSampleBytes(
+            const cupuacu::SampleFormat format, const std::int64_t value)
+        {
+            if (format == cupuacu::SampleFormat::PCM_S8)
+            {
+                const auto encoded = encodeWavPcmU8(value);
+                return std::vector<char>(encoded.begin(), encoded.end());
+            }
+
+            const auto encoded = encodeLe16(static_cast<std::int16_t>(value));
+            return std::vector<char>(encoded.begin(), encoded.end());
+        }
+
+        static std::vector<char> encodeFloat32Le(const float value)
+        {
+            const auto bits = std::bit_cast<std::uint32_t>(value);
+            return {static_cast<char>(bits & 0xffu),
+                    static_cast<char>((bits >> 8) & 0xffu),
+                    static_cast<char>((bits >> 16) & 0xffu),
+                    static_cast<char>((bits >> 24) & 0xffu)};
+        }
+
+        static std::vector<char>
         readOriginalSampleBytes(std::istream &input, const ParsedFile &parsed,
                                 const std::int64_t channel,
                                 const std::int64_t frame)
@@ -72,8 +133,10 @@ namespace cupuacu::file::wav
             const auto sampleIndex =
                 frame * static_cast<std::int64_t>(parsed.channelCount) + channel;
             const auto byteOffset = static_cast<std::streamoff>(
-                dataChunk->payloadOffset + sampleIndex * sizeof(std::int16_t));
-            std::array<char, sizeof(std::int16_t)> encoded{};
+                dataChunk->payloadOffset +
+                sampleIndex * static_cast<std::int64_t>(
+                                  sampleByteWidth(parsed.sampleFormat)));
+            std::vector<char> encoded(sampleByteWidth(parsed.sampleFormat));
             input.seekg(byteOffset, std::ios::beg);
             if (!input.read(encoded.data(),
                             static_cast<std::streamsize>(encoded.size())))
@@ -93,10 +156,21 @@ namespace cupuacu::file::wav
                 throw std::runtime_error("data chunk not found");
             }
 
-            cupuacu::file::preservation::patchDirtyPcm16SamplesInPlace(
-                state, io, static_cast<std::size_t>(parsed.channelCount),
+            cupuacu::file::preservation::patchDirtySamplesInPlace(
+                state, io,
+                sampleByteWidth(parsed.sampleFormat),
+                static_cast<std::size_t>(parsed.channelCount),
                 dataChunk->payloadOffset,
-                [](const std::int16_t sample) { return encodeLe16(sample); });
+                [&](const float sample)
+                {
+                    if (parsed.sampleFormat == cupuacu::SampleFormat::FLOAT32)
+                    {
+                        return encodeFloat32Le(sample);
+                    }
+                    const auto quantized =
+                        quantizeIntegerPcmSample(parsed.sampleFormat, sample, false);
+                    return encodeSampleBytes(parsed.sampleFormat, quantized);
+                });
         }
 
         static void patchDataChunkInPlace(const cupuacu::State *state,
@@ -146,8 +220,9 @@ namespace cupuacu::file::wav
 
             const auto &document = state->getActiveDocumentSession().document;
             const auto encodedSamples =
-                cupuacu::file::preservation::buildEncodedPcm16Samples(
+                cupuacu::file::preservation::buildEncodedSamples(
                     state, input,
+                    sampleByteWidth(document.getSampleFormat()),
                     static_cast<std::size_t>(document.getChannelCount()),
                     [&](std::istream &sourceInput, const std::int64_t channel,
                         const std::int64_t frame)
@@ -155,7 +230,18 @@ namespace cupuacu::file::wav
                         return readOriginalSampleBytes(sourceInput, parsed, channel,
                                                        frame);
                     },
-                    [](const std::int16_t sample) { return encodeLe16(sample); });
+                    [&](const float sample)
+                    {
+                        if (document.getSampleFormat() ==
+                            cupuacu::SampleFormat::FLOAT32)
+                        {
+                            return encodeFloat32Le(sample);
+                        }
+                        const auto quantized = quantizeIntegerPcmSample(
+                            document.getSampleFormat(), sample, false);
+                        return encodeSampleBytes(document.getSampleFormat(),
+                                                 quantized);
+                    });
 
             const std::uint32_t dataSize = static_cast<std::uint32_t>(
                 encodedSamples.size());

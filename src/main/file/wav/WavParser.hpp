@@ -124,6 +124,31 @@ namespace cupuacu::file::wav
                             static_cast<int>(detail::readLe32(fmtData.data() + 4));
                         result.bitsPerSample =
                             static_cast<int>(detail::readLe16(fmtData.data() + 14));
+                        result.isIntegerPcm = audioFormat == 1;
+                        result.isFloat32 =
+                            audioFormat == 3 && result.bitsPerSample == 32;
+                        if (result.isIntegerPcm)
+                        {
+                            switch (result.bitsPerSample)
+                            {
+                                case 8:
+                                    result.sampleFormat =
+                                        cupuacu::SampleFormat::PCM_S8;
+                                    break;
+                                case 16:
+                                    result.sampleFormat =
+                                        cupuacu::SampleFormat::PCM_S16;
+                                    break;
+                                default:
+                                    result.sampleFormat =
+                                        cupuacu::SampleFormat::Unknown;
+                                    break;
+                            }
+                        }
+                        else if (result.isFloat32)
+                        {
+                            result.sampleFormat = cupuacu::SampleFormat::FLOAT32;
+                        }
                         result.isPcm16 =
                             audioFormat == 1 && result.bitsPerSample == 16;
                     }

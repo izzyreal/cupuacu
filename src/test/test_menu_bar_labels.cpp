@@ -426,16 +426,17 @@ TEST_CASE(
         "current document path.\n\nCurrently unavailable: No document is open");
     REQUIRE(preservingSaveAsEntry->getTooltipText() ==
             "Write a new file in preservation mode, keeping unchanged source "
-            "WAV PCM16 bytes intact where possible and using the latest opened "
-            "or saved file as the reference.\n\nCurrently unavailable: No "
-            "document is open");
+            "audio bytes intact where possible for supported preserving "
+            "formats and using the latest opened or saved file as the "
+            "reference.\n\nCurrently unavailable: No document is open");
     REQUIRE(overwriteEntry->getTooltipText() ==
             "Rewrite the current file at its existing path using the current "
             "export settings.\n\nCurrently unavailable: No document is open");
     REQUIRE(preservingOverwriteEntry->getTooltipText() ==
             "Rewrite the current file in preservation mode, keeping unchanged "
-            "source WAV PCM16 bytes intact where possible.\n\nCurrently "
-            "unavailable: No document is open");
+            "source audio bytes intact where possible for supported "
+            "preserving formats.\n\nCurrently unavailable: No document is "
+            "open");
 
     ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-menu-tooltips"));
     const auto wavPath = cleanup.path() / "tooltip.wav";
@@ -452,11 +453,13 @@ TEST_CASE(
             "export settings.");
     REQUIRE(preservingSaveAsEntry->getTooltipText() ==
             "Write a new file in preservation mode, keeping unchanged source "
-            "WAV PCM16 bytes intact where possible and using the latest opened "
-            "or saved file as the reference.");
+            "audio bytes intact where possible for supported preserving "
+            "formats and using the latest opened or saved file as the "
+            "reference.");
     REQUIRE(preservingOverwriteEntry->getTooltipText() ==
             "Rewrite the current file in preservation mode, keeping unchanged "
-            "source WAV PCM16 bytes intact where possible.");
+            "source audio bytes intact where possible for supported "
+            "preserving formats.");
 }
 
 TEST_CASE(

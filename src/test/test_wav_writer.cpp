@@ -23,6 +23,7 @@
 #include <sndfile.h>
 
 #include <algorithm>
+#include <bit>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -184,6 +185,118 @@ namespace
         REQUIRE(out.good());
     }
 
+    void writePcm8WavFile(const std::filesystem::path &path,
+                          const int sampleRate, const int channels,
+                          const std::vector<int8_t> &interleavedSamples,
+                          const std::vector<uint8_t> &preDataChunk = {},
+                          const std::vector<uint8_t> &postDataChunk = {})
+    {
+        REQUIRE(channels > 0);
+        REQUIRE(interleavedSamples.size() % static_cast<size_t>(channels) == 0);
+
+        std::vector<uint8_t> wavBytes;
+        appendAscii(wavBytes, "RIFF");
+        appendLe32(wavBytes, 0);
+        appendAscii(wavBytes, "WAVE");
+
+        std::vector<uint8_t> fmtChunk;
+        appendLe16(fmtChunk, 1);
+        appendLe16(fmtChunk, static_cast<uint16_t>(channels));
+        appendLe32(fmtChunk, static_cast<uint32_t>(sampleRate));
+        const uint32_t byteRate = static_cast<uint32_t>(sampleRate * channels);
+        appendLe32(fmtChunk, byteRate);
+        appendLe16(fmtChunk, static_cast<uint16_t>(channels));
+        appendLe16(fmtChunk, 8);
+        appendChunk(wavBytes, "fmt ", fmtChunk);
+
+        if (!preDataChunk.empty())
+        {
+            appendChunk(wavBytes, "JUNK", preDataChunk);
+        }
+
+        std::vector<uint8_t> dataChunk;
+        dataChunk.reserve(interleavedSamples.size());
+        for (const int8_t sample : interleavedSamples)
+        {
+            appendByte(dataChunk, static_cast<uint8_t>(sample));
+        }
+        appendChunk(wavBytes, "data", dataChunk);
+
+        if (!postDataChunk.empty())
+        {
+            appendChunk(wavBytes, "LIST", postDataChunk);
+        }
+
+        const uint32_t riffSize = static_cast<uint32_t>(wavBytes.size() - 8);
+        wavBytes[4] = static_cast<uint8_t>(riffSize & 0xffu);
+        wavBytes[5] = static_cast<uint8_t>((riffSize >> 8) & 0xffu);
+        wavBytes[6] = static_cast<uint8_t>((riffSize >> 16) & 0xffu);
+        wavBytes[7] = static_cast<uint8_t>((riffSize >> 24) & 0xffu);
+
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        REQUIRE(out.good());
+        out.write(reinterpret_cast<const char *>(wavBytes.data()),
+                  static_cast<std::streamsize>(wavBytes.size()));
+        REQUIRE(out.good());
+    }
+
+    void writeFloat32WavFile(const std::filesystem::path &path,
+                             const int sampleRate, const int channels,
+                             const std::vector<float> &interleavedSamples,
+                             const std::vector<uint8_t> &preDataChunk = {},
+                             const std::vector<uint8_t> &postDataChunk = {})
+    {
+        REQUIRE(channels > 0);
+        REQUIRE(interleavedSamples.size() % static_cast<size_t>(channels) == 0);
+
+        std::vector<uint8_t> wavBytes;
+        appendAscii(wavBytes, "RIFF");
+        appendLe32(wavBytes, 0);
+        appendAscii(wavBytes, "WAVE");
+
+        std::vector<uint8_t> fmtChunk;
+        appendLe16(fmtChunk, 3);
+        appendLe16(fmtChunk, static_cast<uint16_t>(channels));
+        appendLe32(fmtChunk, static_cast<uint32_t>(sampleRate));
+        const uint32_t byteRate =
+            static_cast<uint32_t>(sampleRate * channels * sizeof(float));
+        appendLe32(fmtChunk, byteRate);
+        appendLe16(fmtChunk, static_cast<uint16_t>(channels * sizeof(float)));
+        appendLe16(fmtChunk, 32);
+        appendChunk(wavBytes, "fmt ", fmtChunk);
+
+        if (!preDataChunk.empty())
+        {
+            appendChunk(wavBytes, "JUNK", preDataChunk);
+        }
+
+        std::vector<uint8_t> dataChunk;
+        dataChunk.reserve(interleavedSamples.size() * sizeof(float));
+        for (const float sample : interleavedSamples)
+        {
+            const auto bits = std::bit_cast<std::uint32_t>(sample);
+            appendLe32(dataChunk, bits);
+        }
+        appendChunk(wavBytes, "data", dataChunk);
+
+        if (!postDataChunk.empty())
+        {
+            appendChunk(wavBytes, "LIST", postDataChunk);
+        }
+
+        const uint32_t riffSize = static_cast<uint32_t>(wavBytes.size() - 8);
+        wavBytes[4] = static_cast<uint8_t>(riffSize & 0xffu);
+        wavBytes[5] = static_cast<uint8_t>((riffSize >> 8) & 0xffu);
+        wavBytes[6] = static_cast<uint8_t>((riffSize >> 16) & 0xffu);
+        wavBytes[7] = static_cast<uint8_t>((riffSize >> 24) & 0xffu);
+
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        REQUIRE(out.good());
+        out.write(reinterpret_cast<const char *>(wavBytes.data()),
+                  static_cast<std::streamsize>(wavBytes.size()));
+        REQUIRE(out.good());
+    }
+
     void writeRawBytes(const std::filesystem::path &path,
                        const std::vector<uint8_t> &bytes)
     {
@@ -306,6 +419,17 @@ namespace
         for (const auto sample : samples)
         {
             appendLe16(bytes, static_cast<uint16_t>(sample));
+        }
+        return bytes;
+    }
+
+    std::vector<uint8_t> encodePcm8Samples(const std::vector<std::int8_t> &samples)
+    {
+        std::vector<uint8_t> bytes;
+        bytes.reserve(samples.size());
+        for (const auto sample : samples)
+        {
+            bytes.push_back(static_cast<uint8_t>(sample));
         }
         return bytes;
     }
@@ -710,7 +834,20 @@ TEST_CASE("Preservation backend dispatch selects WAV and rejects unsupported for
         .extension = "wav",
     };
     REQUIRE(cupuacu::file::preservationBackendKindForSettings(wavSettings) ==
-            cupuacu::file::PreservationBackendKind::WavPcm16);
+            cupuacu::file::PreservationBackendKind::WavPcm);
+
+    const auto wavPcm8Settings = cupuacu::file::AudioExportSettings{
+        .container = cupuacu::file::AudioExportContainer::WAV,
+        .codec = cupuacu::file::AudioExportCodec::PCM,
+        .majorFormat = SF_FORMAT_WAV,
+        .subtype = SF_FORMAT_PCM_S8,
+        .containerLabel = "WAV",
+        .codecLabel = "PCM",
+        .encodingLabel = "8-bit PCM",
+        .extension = "wav",
+    };
+    REQUIRE(cupuacu::file::preservationBackendKindForSettings(wavPcm8Settings) ==
+            cupuacu::file::PreservationBackendKind::WavPcm);
 
     const auto flacSettings = cupuacu::file::AudioExportSettings{
         .container = cupuacu::file::AudioExportContainer::FLAC,
@@ -729,6 +866,44 @@ TEST_CASE("Preservation backend dispatch selects WAV and rejects unsupported for
         cupuacu::file::assessPreservationAgainstReference(nullptr, flacSettings);
     REQUIRE_FALSE(support.available);
     REQUIRE(support.reason == "State is null");
+}
+
+TEST_CASE("WAV preservation support reports supported for valid PCM8 overwrite",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-pcm8-preservation-support"));
+    const auto wavPath = cleanup.path() / "preserve_pcm8.wav";
+
+    writePcm8WavFile(wavPath, 44100, 1, {10, 20, 30, 40});
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+
+    const auto support =
+        cupuacu::file::wav::WavPreservationSupport::assessOverwrite(&state);
+    REQUIRE(support.supported);
+    REQUIRE(support.reason.empty());
+}
+
+TEST_CASE("WAV preservation support reports supported for valid float32 overwrite",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-f32-preservation-support"));
+    const auto wavPath = cleanup.path() / "preserve_f32.wav";
+
+    writeFloat32WavFile(wavPath, 44100, 1, {0.0f, 0.25f, -0.25f, 0.5f});
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+
+    const auto support =
+        cupuacu::file::wav::WavPreservationSupport::assessOverwrite(&state);
+    REQUIRE(support.supported);
+    REQUIRE(support.reason.empty());
 }
 
 TEST_CASE("Save write planner reports unavailable preservation when overwrite cannot preserve",
@@ -833,7 +1008,7 @@ TEST_CASE("Overwrite rejects WAV files without fmt chunk", "[file]")
     };
 
     REQUIRE_FALSE(cupuacu::actions::overwritePreserving(&state));
-    REQUIRE(reportedMessage.find("Not a 16-bit PCM WAV file") !=
+    REQUIRE(reportedMessage.find("Source WAV format does not match document format") !=
             std::string::npos);
     REQUIRE(readBytes(wavPath) == originalBytes);
 }
@@ -986,6 +1161,48 @@ TEST_CASE("Overwrite patches only one mono PCM16 sample in place", "[file]")
     REQUIRE(differingOffsets.size() == sizeof(std::int16_t));
 }
 
+TEST_CASE("Overwrite patches only one mono PCM8 sample in place", "[file]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-wav-pcm8-patch"));
+    const auto wavPath = cleanup.path() / "mono_pcm8.wav";
+
+    writePcm8WavFile(wavPath, 44100, 1, {0, 10, -10, 20});
+    const auto originalBytes = readBytes(wavPath);
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+    state.getActiveDocumentSession().document.setSample(0, 2, 0.25f);
+
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
+
+    const auto updatedBytes = readBytes(wavPath);
+    const auto differingOffsets =
+        findDifferingByteOffsets(originalBytes, updatedBytes);
+    REQUIRE(differingOffsets.size() == 1);
+}
+
+TEST_CASE("Overwrite patches only one mono float32 sample in place", "[file]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-wav-f32-patch"));
+    const auto wavPath = cleanup.path() / "mono_f32.wav";
+
+    writeFloat32WavFile(wavPath, 44100, 1, {0.0f, 0.25f, -0.25f, 0.5f});
+    const auto originalBytes = readBytes(wavPath);
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+    state.getActiveDocumentSession().document.setSample(0, 2, 0.75f);
+
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
+
+    const auto updatedBytes = readBytes(wavPath);
+    const auto differingOffsets =
+        findDifferingByteOffsets(originalBytes, updatedBytes);
+    REQUIRE(differingOffsets.size() == sizeof(float));
+}
+
 TEST_CASE("Overwrite patches only one stereo channel sample in place", "[file]")
 {
     ScopedDirCleanup cleanup(
@@ -1030,6 +1247,33 @@ TEST_CASE("Overwrite after trim preserves surviving PCM16 sample bytes",
     REQUIRE(updatedData ==
             sliceBytes(originalData, sizeof(std::int16_t) * 1,
                        sizeof(std::int16_t) * 3));
+    REQUIRE(readChunkPayload(wavPath, "JUNK") ==
+            std::vector<uint8_t>({'p', 'r', 'e', '!'}));
+    REQUIRE(readChunkPayload(wavPath, "LIST") ==
+            std::vector<uint8_t>({'p', 'o', 's', 't'}));
+}
+
+TEST_CASE("Overwrite after trim preserves surviving PCM8 sample bytes",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-pcm8-trim-preserve"));
+    const auto wavPath = cleanup.path() / "trim_pcm8.wav";
+
+    writePcm8WavFile(wavPath, 44100, 1, {10, 20, 30, 40, 50},
+                     {'p', 'r', 'e', '!'}, {'p', 'o', 's', 't'});
+    const auto originalData = readChunkPayload(wavPath, "data");
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+    state.addAndDoUndoable(
+        std::make_shared<cupuacu::actions::audio::Trim>(&state, 1, 3));
+
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
+
+    const auto updatedData = readChunkPayload(wavPath, "data");
+    REQUIRE(updatedData == sliceBytes(originalData, 1, 3));
     REQUIRE(readChunkPayload(wavPath, "JUNK") ==
             std::vector<uint8_t>({'p', 'r', 'e', '!'}));
     REQUIRE(readChunkPayload(wavPath, "LIST") ==
