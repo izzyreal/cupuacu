@@ -8,6 +8,7 @@
 #include "gui/DropdownMenu.hpp"
 #include "gui/Label.hpp"
 #include "gui/OpaqueRect.hpp"
+#include "gui/SecondaryWindowLifecycle.hpp"
 #include "gui/Slider.hpp"
 #include "gui/TextButton.hpp"
 #include "gui/TextInput.hpp"
@@ -217,16 +218,7 @@ namespace cupuacu::effects
             }
 
             state->windows.push_back(window.get());
-            state->modalWindow = window.get();
-            if (auto *mainWindow =
-                    state->mainDocumentSessionWindow
-                        ? state->mainDocumentSessionWindow->getWindow()
-                        : nullptr;
-                mainWindow && mainWindow->getSdlWindow())
-            {
-                SDL_SetWindowParent(window->getSdlWindow(),
-                                    mainWindow->getSdlWindow());
-            }
+            cupuacu::gui::attachSecondaryWindow(state, window.get(), true);
 
             auto rootComponent = std::make_unique<cupuacu::gui::Component>(
                 state, definition.title + "Root");
@@ -308,21 +300,7 @@ namespace cupuacu::effects
             window->setOnClose(
                 [this]
                 {
-                    if (!window || !state)
-                    {
-                        return;
-                    }
-                    const auto it =
-                        std::find(state->windows.begin(), state->windows.end(),
-                                  window.get());
-                    if (it != state->windows.end())
-                    {
-                        state->windows.erase(it);
-                    }
-                    if (state->modalWindow == window.get())
-                    {
-                        state->modalWindow = nullptr;
-                    }
+                    cupuacu::gui::detachSecondaryWindow(state, window.get());
                 });
 
             window->setRootComponent(std::move(rootComponent));
@@ -334,19 +312,7 @@ namespace cupuacu::effects
 
         ~EffectDialogWindow()
         {
-            if (window && state)
-            {
-                const auto it = std::find(state->windows.begin(),
-                                          state->windows.end(), window.get());
-                if (it != state->windows.end())
-                {
-                    state->windows.erase(it);
-                }
-                if (state->modalWindow == window.get())
-                {
-                    state->modalWindow = nullptr;
-                }
-            }
+            cupuacu::gui::detachSecondaryWindow(state, window.get());
         }
 
         bool isOpen() const
@@ -356,10 +322,7 @@ namespace cupuacu::effects
 
         void raise() const
         {
-            if (window && window->getSdlWindow())
-            {
-                SDL_RaiseWindow(window->getSdlWindow());
-            }
+            cupuacu::gui::raiseSecondaryWindow(window.get());
         }
 
         cupuacu::gui::Window *getWindow() const

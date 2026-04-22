@@ -1,6 +1,7 @@
 #include "OptionsWindow.hpp"
 
 #include "Colors.hpp"
+#include "SecondaryWindowLifecycle.hpp"
 #include "UiScale.hpp"
 #include "text.hpp"
 
@@ -38,20 +39,7 @@ OptionsWindow::OptionsWindow(State *stateToUse,
         return;
     }
 
-    state->windows.push_back(window.get());
-
-    auto *mainWindow = state->mainDocumentSessionWindow
-                           ? state->mainDocumentSessionWindow->getWindow()
-                           : nullptr;
-    if (mainWindow && mainWindow->getSdlWindow())
-    {
-        if (!SDL_SetWindowParent(window->getSdlWindow(),
-                                 mainWindow->getSdlWindow()))
-        {
-            SDL_Log("OptionsWindow: SDL_SetWindowParent failed: %s",
-                    SDL_GetError());
-        }
-    }
+    attachSecondaryWindow(state, window.get(), false);
 
     auto rootComponent = std::make_unique<Component>(state, "OptionsRoot");
     rootComponent->setVisible(true);
@@ -87,16 +75,7 @@ OptionsWindow::OptionsWindow(State *stateToUse,
     window->setOnClose(
         [this]()
         {
-            if (!state)
-            {
-                return;
-            }
-            const auto it = std::find(state->windows.begin(), state->windows.end(),
-                                      window.get());
-            if (it != state->windows.end())
-            {
-                state->windows.erase(it);
-            }
+            detachSecondaryWindow(state, window.get());
         });
 
     window->setRootComponent(std::move(rootComponent));
@@ -108,23 +87,12 @@ OptionsWindow::OptionsWindow(State *stateToUse,
 
 OptionsWindow::~OptionsWindow()
 {
-    if (window && state)
-    {
-        const auto it = std::find(state->windows.begin(), state->windows.end(),
-                                  window.get());
-        if (it != state->windows.end())
-        {
-            state->windows.erase(it);
-        }
-    }
+    detachSecondaryWindow(state, window.get());
 }
 
 void OptionsWindow::raise() const
 {
-    if (window && window->getSdlWindow())
-    {
-        SDL_RaiseWindow(window->getSdlWindow());
-    }
+    raiseSecondaryWindow(window.get());
 }
 
 void OptionsWindow::selectSection(const OptionsSection section)

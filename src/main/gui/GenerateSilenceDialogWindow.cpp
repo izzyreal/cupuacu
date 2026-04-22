@@ -4,6 +4,7 @@
 #include "../actions/audio/EditCommands.hpp"
 
 #include "Colors.hpp"
+#include "SecondaryWindowLifecycle.hpp"
 #include "UiScale.hpp"
 
 #include <SDL3/SDL.h>
@@ -41,16 +42,7 @@ namespace cupuacu::gui
             return;
         }
 
-        state->windows.push_back(window.get());
-        state->modalWindow = window.get();
-
-        if (auto *mainWindow = state->mainDocumentSessionWindow
-                                   ? state->mainDocumentSessionWindow->getWindow()
-                                   : nullptr;
-            mainWindow && mainWindow->getSdlWindow())
-        {
-            SDL_SetWindowParent(window->getSdlWindow(), mainWindow->getSdlWindow());
-        }
+        attachSecondaryWindow(state, window.get(), true);
 
         auto root = std::make_unique<Component>(state, "GenerateSilenceDialogRoot");
         root->setVisible(true);
@@ -94,6 +86,7 @@ namespace cupuacu::gui
         window->setOnResize([this]() { layoutComponents(); });
         window->setDefaultAction(applySilence);
         window->setCancelAction([this]() { requestClose(); });
+        window->setOnClose([this]() { detachFromState(); });
         window->setRootComponent(std::move(root));
         layoutComponents();
         window->renderFrame();
@@ -111,10 +104,7 @@ namespace cupuacu::gui
 
     void GenerateSilenceDialogWindow::raise() const
     {
-        if (window && window->getSdlWindow())
-        {
-            SDL_RaiseWindow(window->getSdlWindow());
-        }
+        raiseSecondaryWindow(window.get());
     }
 
     void GenerateSilenceDialogWindow::requestClose()
@@ -125,15 +115,7 @@ namespace cupuacu::gui
             return;
         }
 
-        if (state && state->modalWindow == window.get())
-        {
-            state->modalWindow = nullptr;
-        }
-
-        SDL_Event event{};
-        event.type = SDL_EVENT_WINDOW_CLOSE_REQUESTED;
-        event.window.windowID = window->getId();
-        SDL_PushEvent(&event);
+        requestSecondaryWindowClose(state, window.get());
     }
 
     void GenerateSilenceDialogWindow::detachFromState()
@@ -143,19 +125,7 @@ namespace cupuacu::gui
             return;
         }
 
-        if (window)
-        {
-            const auto it =
-                std::find(state->windows.begin(), state->windows.end(), window.get());
-            if (it != state->windows.end())
-            {
-                state->windows.erase(it);
-            }
-            if (state->modalWindow == window.get())
-            {
-                state->modalWindow = nullptr;
-            }
-        }
+        detachSecondaryWindow(state, window.get());
     }
 
     void GenerateSilenceDialogWindow::layoutComponents() const

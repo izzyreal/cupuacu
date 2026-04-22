@@ -3,6 +3,7 @@
 #include "../actions/markers/EditCommands.hpp"
 
 #include "Colors.hpp"
+#include "SecondaryWindowLifecycle.hpp"
 #include "UiScale.hpp"
 
 #include <SDL3/SDL.h>
@@ -35,16 +36,7 @@ namespace cupuacu::gui
             return;
         }
 
-        state->windows.push_back(window.get());
-        state->modalWindow = window.get();
-
-        if (auto *mainWindow = state->mainDocumentSessionWindow
-                                   ? state->mainDocumentSessionWindow->getWindow()
-                                   : nullptr;
-            mainWindow && mainWindow->getSdlWindow())
-        {
-            SDL_SetWindowParent(window->getSdlWindow(), mainWindow->getSdlWindow());
-        }
+        attachSecondaryWindow(state, window.get(), true);
 
         auto root = std::make_unique<Component>(state, "MarkerEditorDialogRoot");
         root->setVisible(true);
@@ -106,10 +98,7 @@ namespace cupuacu::gui
 
     void MarkerEditorDialogWindow::raise() const
     {
-        if (window && window->getSdlWindow())
-        {
-            SDL_RaiseWindow(window->getSdlWindow());
-        }
+        raiseSecondaryWindow(window.get());
     }
 
     void MarkerEditorDialogWindow::requestClose()
@@ -119,7 +108,7 @@ namespace cupuacu::gui
             detachFromState();
             return;
         }
-        window->requestClose();
+        requestSecondaryWindowClose(state, window.get());
     }
 
     void MarkerEditorDialogWindow::detachFromState()
@@ -129,19 +118,7 @@ namespace cupuacu::gui
             return;
         }
 
-        if (window)
-        {
-            const auto it =
-                std::find(state->windows.begin(), state->windows.end(), window.get());
-            if (it != state->windows.end())
-            {
-                state->windows.erase(it);
-            }
-            if (state->modalWindow == window.get())
-            {
-                state->modalWindow = nullptr;
-            }
-        }
+        detachSecondaryWindow(state, window.get());
     }
 
     void MarkerEditorDialogWindow::layoutComponents() const
