@@ -31,6 +31,10 @@ namespace cupuacu::persistence
         std::vector<PersistedOpenDocumentState> openDocuments;
         std::vector<std::string> openFiles;
         int activeOpenFileIndex = -1;
+        std::optional<int> windowWidth;
+        std::optional<int> windowHeight;
+        std::optional<int> windowX;
+        std::optional<int> windowY;
     };
 
     class SessionStatePersistence

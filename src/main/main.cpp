@@ -12,15 +12,15 @@
 #include "gui/DocumentSessionWindow.hpp"
 #include "gui/GenerateSilenceDialogWindow.hpp"
 #include "gui/NewFileDialogWindow.hpp"
+#include "gui/WindowPlacementPlanning.hpp"
 #include "gui/UiScale.hpp"
 #include "gui/Window.hpp"
 #include "actions/DocumentLifecycle.hpp"
 
-const uint16_t initialDimensions[] = {1280, 720};
-
 #include <cstdint>
-#include <string>
 #include <filesystem>
+#include <string>
+#include <vector>
 
 #include "audio/AudioDevices.hpp"
 #include "persistence/AudioDevicePropertiesPersistence.hpp"
@@ -38,9 +38,55 @@ const uint16_t initialDimensions[] = {1280, 720};
 
 namespace
 {
+    constexpr int kDefaultMainWindowWidth = 1280;
+    constexpr int kDefaultMainWindowHeight = 720;
+
     constexpr Uint32 getHighDensityWindowFlag()
     {
         return SDL_WINDOW_HIGH_PIXEL_DENSITY;
+    }
+
+    SDL_Point resolveInitialMainWindowSize(
+        const cupuacu::persistence::PersistedSessionState &persistedSessionState)
+    {
+        const bool hasPersistedSize =
+            persistedSessionState.windowWidth.has_value() &&
+            persistedSessionState.windowHeight.has_value() &&
+            *persistedSessionState.windowWidth > 0 &&
+            *persistedSessionState.windowHeight > 0;
+
+        if (hasPersistedSize)
+        {
+            return {
+                *persistedSessionState.windowWidth,
+                *persistedSessionState.windowHeight,
+            };
+        }
+
+        return {kDefaultMainWindowWidth, kDefaultMainWindowHeight};
+    }
+
+    std::vector<SDL_Rect> getDisplayUsableBounds()
+    {
+        std::vector<SDL_Rect> result;
+        int displayCount = 0;
+        SDL_DisplayID *displays = SDL_GetDisplays(&displayCount);
+        if (!displays || displayCount <= 0)
+        {
+            return result;
+        }
+
+        for (int index = 0; index < displayCount; ++index)
+        {
+            SDL_Rect bounds{};
+            if (SDL_GetDisplayUsableBounds(displays[index], &bounds))
+            {
+                result.push_back(bounds);
+            }
+        }
+
+        SDL_free(displays);
+        return result;
     }
 }
 
@@ -78,6 +124,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     const auto persistedSessionState =
         cupuacu::persistence::SessionStatePersistence::load(
             state->paths->sessionStatePath());
+    const SDL_Point initialMainWindowSize =
+        resolveInitialMainWindowSize(persistedSessionState);
 
     *appstate = state;
 
@@ -105,13 +153,23 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     state->mainDocumentSessionWindow =
         std::make_unique<cupuacu::gui::DocumentSessionWindow>(
             state, &session, &state->getActiveViewState(), "",
-            initialDimensions[0], initialDimensions[1],
+            initialMainWindowSize.x, initialMainWindowSize.y,
             SDL_WINDOW_RESIZABLE | getHighDensityWindowFlag());
 
     auto *mainWindow = state->mainDocumentSessionWindow->getWindow();
     if (!mainWindow || !mainWindow->isOpen())
     {
         return SDL_APP_FAILURE;
+    }
+
+    const auto initialPlacement = cupuacu::gui::planInitialWindowPlacement(
+        persistedSessionState.windowX, persistedSessionState.windowY,
+        initialMainWindowSize.x, initialMainWindowSize.y,
+        getDisplayUsableBounds());
+    if (initialPlacement.usePersistedPosition)
+    {
+        SDL_SetWindowPosition(mainWindow->getSdlWindow(), initialPlacement.x,
+                              initialPlacement.y);
     }
     state->windows.push_back(mainWindow);
 

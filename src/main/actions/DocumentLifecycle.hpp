@@ -12,6 +12,7 @@
 #include "../persistence/RecentFilesPersistence.hpp"
 #include "../persistence/SessionStatePersistence.hpp"
 #include "Play.hpp"
+#include "SessionWindowGeometryPlanning.hpp"
 #include "ViewPolicy.hpp"
 #include "Zoom.hpp"
 
@@ -286,6 +287,32 @@ namespace cupuacu::actions
         }
 
         int openFileIndex = 0;
+        if (state->mainDocumentSessionWindow)
+        {
+            auto *mainWindow = state->mainDocumentSessionWindow->getWindow();
+            auto *sdlWindow = mainWindow ? mainWindow->getSdlWindow() : nullptr;
+            int windowWidth = 0;
+            int windowHeight = 0;
+            int windowX = 0;
+            int windowY = 0;
+            if (sdlWindow &&
+                SDL_GetWindowSize(sdlWindow, &windowWidth, &windowHeight) &&
+                windowWidth > 0 && windowHeight > 0)
+            {
+                if (SDL_GetWindowPosition(sdlWindow, &windowX, &windowY))
+                {
+                    applyPersistedWindowGeometry(
+                        persisted, windowWidth, windowHeight, windowX, windowY);
+                }
+                else
+                {
+                    applyPersistedWindowGeometry(persisted, windowWidth,
+                                                 windowHeight, std::nullopt,
+                                                 std::nullopt);
+                }
+            }
+        }
+
         for (int i = 0; i < static_cast<int>(state->tabs.size()); ++i)
         {
             const auto &tab = state->tabs[static_cast<size_t>(i)];

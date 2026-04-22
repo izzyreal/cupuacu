@@ -4,9 +4,8 @@
 #include "TestSdlTtfGuard.hpp"
 #include "TestPaths.hpp"
 #include "actions/DocumentLifecycle.hpp"
+#include "actions/SessionWindowGeometryPlanning.hpp"
 #include "actions/Zoom.hpp"
-#include "gui/DevicePropertiesWindow.hpp"
-#include "gui/DocumentSessionWindow.hpp"
 #include "gui/Gui.hpp"
 #include "gui/keyboard_handling.hpp"
 #include "persistence/RecentFilesPersistence.hpp"
@@ -143,6 +142,10 @@ TEST_CASE("Session state persistence round-trips open files and active index",
     };
     state.openFiles = {"/tmp/open-a.wav", "/tmp/open-b.wav"};
     state.activeOpenFileIndex = 1;
+    state.windowWidth = 1111;
+    state.windowHeight = 777;
+    state.windowX = -320;
+    state.windowY = 64;
 
     REQUIRE(cupuacu::persistence::SessionStatePersistence::save(path, state));
 
@@ -168,6 +171,10 @@ TEST_CASE("Session state persistence round-trips open files and active index",
     REQUIRE(loaded.openFiles ==
             std::vector<std::string>{"/tmp/open-a.wav", "/tmp/open-b.wav"});
     REQUIRE(loaded.activeOpenFileIndex == 1);
+    REQUIRE(loaded.windowWidth == 1111);
+    REQUIRE(loaded.windowHeight == 777);
+    REQUIRE(loaded.windowX == -320);
+    REQUIRE(loaded.windowY == 64);
 }
 
 TEST_CASE("Session state persistence rejects malformed payloads", "[persistence]")
@@ -209,6 +216,36 @@ TEST_CASE("Session state persistence loads legacy version 1 open files",
     REQUIRE(loaded.openDocuments[0].filePath == "/tmp/legacy-a.wav");
     REQUIRE_FALSE(loaded.openDocuments[0].samplesPerPixel.has_value());
     REQUIRE(loaded.activeOpenFileIndex == 1);
+    REQUIRE_FALSE(loaded.windowWidth.has_value());
+    REQUIRE_FALSE(loaded.windowHeight.has_value());
+    REQUIRE_FALSE(loaded.windowX.has_value());
+    REQUIRE_FALSE(loaded.windowY.has_value());
+}
+
+TEST_CASE("Persisted window geometry applies size and placement when size is valid",
+          "[persistence]")
+{
+    cupuacu::persistence::PersistedSessionState persisted{};
+
+    cupuacu::actions::applyPersistedWindowGeometry(persisted, 640, 360, 12, 34);
+
+    REQUIRE(persisted.windowWidth == 640);
+    REQUIRE(persisted.windowHeight == 360);
+    REQUIRE(persisted.windowX == 12);
+    REQUIRE(persisted.windowY == 34);
+}
+
+TEST_CASE("Persisted window geometry ignores invalid size",
+          "[persistence]")
+{
+    cupuacu::persistence::PersistedSessionState persisted{};
+
+    cupuacu::actions::applyPersistedWindowGeometry(persisted, 0, 360, 12, 34);
+
+    REQUIRE_FALSE(persisted.windowWidth.has_value());
+    REQUIRE_FALSE(persisted.windowHeight.has_value());
+    REQUIRE_FALSE(persisted.windowX.has_value());
+    REQUIRE_FALSE(persisted.windowY.has_value());
 }
 
 TEST_CASE("Startup document restore plan restores multiple open files and active tab",

@@ -12,7 +12,7 @@ namespace cupuacu::persistence
 {
     namespace
     {
-        constexpr int kFormatVersion = 4;
+        constexpr int kFormatVersion = 6;
 
         std::vector<std::string> filterFiles(const std::vector<std::string> &files)
         {
@@ -61,6 +61,21 @@ namespace cupuacu::persistence
                 return false;
             }
             value = json.at(key).get<int64_t>();
+            return true;
+        }
+
+        bool loadOptionalInt(const nlohmann::json &json, const char *key,
+                             std::optional<int> &value)
+        {
+            if (!json.contains(key))
+            {
+                return true;
+            }
+            if (!json.at(key).is_number_integer())
+            {
+                return false;
+            }
+            value = json.at(key).get<int>();
             return true;
         }
 
@@ -204,7 +219,8 @@ namespace cupuacu::persistence
         }
 
         const int version = json.value("version", 0);
-        if (version != 1 && version != 2 && version != 3 &&
+        if (version != 1 && version != 2 && version != 3 && version != 4 &&
+            version != 5 &&
             version != kFormatVersion)
         {
             return {};
@@ -247,6 +263,22 @@ namespace cupuacu::persistence
         {
             state.activeOpenFileIndex =
                 json.at("activeOpenFileIndex").get<int>();
+        }
+        if (!loadOptionalInt(json, "windowWidth", state.windowWidth) ||
+            !loadOptionalInt(json, "windowHeight", state.windowHeight) ||
+            !loadOptionalInt(json, "windowX", state.windowX) ||
+            !loadOptionalInt(json, "windowY", state.windowY))
+        {
+            return {};
+        }
+
+        if (state.windowWidth.has_value() && *state.windowWidth <= 0)
+        {
+            state.windowWidth.reset();
+        }
+        if (state.windowHeight.has_value() && *state.windowHeight <= 0)
+        {
+            state.windowHeight.reset();
         }
         return state;
     }
@@ -360,7 +392,25 @@ namespace cupuacu::persistence
             {"activeOpenFileIndex", activeOpenFileIndex},
         };
 
-        output << json.dump(2) << '\n';
+        nlohmann::json outputJson = json;
+        if (state.windowWidth.has_value())
+        {
+            outputJson["windowWidth"] = *state.windowWidth;
+        }
+        if (state.windowHeight.has_value())
+        {
+            outputJson["windowHeight"] = *state.windowHeight;
+        }
+        if (state.windowX.has_value())
+        {
+            outputJson["windowX"] = *state.windowX;
+        }
+        if (state.windowY.has_value())
+        {
+            outputJson["windowY"] = *state.windowY;
+        }
+
+        output << outputJson.dump(2) << '\n';
         return output.good();
     }
 } // namespace cupuacu::persistence
