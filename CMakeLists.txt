@@ -114,6 +114,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/gui/DocumentSessionWindow.cpp
     src/main/gui/MainView.cpp
     src/main/gui/TriangleMarker.cpp
+    src/main/gui/DocumentMarkerHandle.cpp
     src/main/gui/Component.cpp
     src/main/gui/Button.cpp
     src/main/gui/TextButton.cpp
@@ -125,6 +126,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/gui/NewFileDialogWindow.cpp
     src/main/gui/GenerateSilenceDialogWindow.cpp
     src/main/gui/ExportAudioDialogWindow.cpp
+    src/main/gui/MarkerEditorDialogWindow.cpp
     src/main/effects/AmplifyEnvelopeEffect.cpp
     src/main/effects/AmplifyFadeEffect.cpp
     src/main/effects/DynamicsEffect.cpp
@@ -159,6 +161,8 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_display_properties_persistence.cpp
     src/test/test_recent_files_persistence.cpp
     src/test/test_document_tabs.cpp
+    src/test/test_document_markers.cpp
+    src/test/test_marker_persistence.cpp
     src/test/test_sample_quantization.cpp
     src/test/test_audio_callback_core.cpp
     src/test/test_action_undoables.cpp

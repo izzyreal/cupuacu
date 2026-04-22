@@ -141,6 +141,11 @@ namespace cupuacu::gui
     {
         constexpr SDL_Color textColor = {255, 255, 255, 255};
 
+        if (text.empty())
+        {
+            return;
+        }
+
         SDL_Texture *canvas = SDL_GetRenderTarget(renderer);
         SDL_SetRenderTarget(renderer, nullptr);
 

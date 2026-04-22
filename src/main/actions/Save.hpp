@@ -2,6 +2,7 @@
 
 #include "../State.hpp"
 #include "../file/AudioExport.hpp"
+#include "../file/MarkerPersistence.hpp"
 #include "../file/AudioFileWriter.hpp"
 #include "../file/OverwritePreservation.hpp"
 #include "../file/PreservationBackend.hpp"
@@ -66,6 +67,92 @@ namespace cupuacu::actions
             SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Save failed",
                                      message.c_str(),
                                      getSaveErrorParentWindow(state));
+        }
+
+        static bool confirmWarning(cupuacu::State *state,
+                                   const std::string &title,
+                                   const std::string &message)
+        {
+            if (state && state->confirmationReporter)
+            {
+                return state->confirmationReporter(title, message);
+            }
+            if (SDL_WasInit(SDL_INIT_VIDEO) == 0)
+            {
+                return false;
+            }
+
+            const SDL_MessageBoxButtonData buttons[] = {
+                {SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1, "Continue save"},
+                {SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, "Cancel"},
+            };
+            const SDL_MessageBoxData data{
+                .flags = SDL_MESSAGEBOX_WARNING,
+                .window = getSaveErrorParentWindow(state),
+                .title = title.c_str(),
+                .message = message.c_str(),
+                .numbuttons = 2,
+                .buttons = buttons,
+                .colorScheme = nullptr,
+            };
+
+            int pressedButtonId = 0;
+            if (!SDL_ShowMessageBox(&data, &pressedButtonId))
+            {
+                return false;
+            }
+
+            return pressedButtonId == 1;
+        }
+
+        static std::optional<std::pair<std::string, std::string>>
+        markerPersistenceWarning(const cupuacu::State *state,
+                                 const file::AudioExportSettings &settings)
+        {
+            if (!state)
+            {
+                return std::nullopt;
+            }
+
+            const auto &document = state->getActiveDocumentSession().document;
+            if (document.getMarkers().empty())
+            {
+                return std::nullopt;
+            }
+
+            const auto assessment =
+                file::assessMarkerPersistenceForSettings(document, settings);
+            switch (assessment.fidelity)
+            {
+                case file::MarkerPersistenceFidelity::Lossy:
+                    return std::make_pair(
+                        std::string("Marker save warning"),
+                        std::string(
+                            "The selected format supports native markers, but some "
+                            "marker data may be truncated.\n\nContinue saving?"));
+                case file::MarkerPersistenceFidelity::Unsupported:
+                    return std::make_pair(
+                        std::string("Marker save warning"),
+                        std::string(
+                            "The selected format has no native marker support. "
+                            "Saving to this format will not store markers in the "
+                            "audio file.\n\nContinue saving?"));
+                case file::MarkerPersistenceFidelity::Exact:
+                default:
+                    return std::nullopt;
+            }
+        }
+
+        static bool confirmMarkerPersistenceIfNeeded(
+            cupuacu::State *state, const file::AudioExportSettings &settings)
+        {
+            const auto warning = markerPersistenceWarning(state, settings);
+            if (!warning.has_value())
+            {
+                return true;
+            }
+
+            return confirmWarning(state, warning->first, warning->second);
         }
 
         template <typename Fn>
@@ -155,6 +242,10 @@ namespace cupuacu::actions
             return false;
         }
 
+        if (!detail::confirmMarkerPersistenceIfNeeded(state, *settings))
+        {
+            return false;
+        }
         const bool ok = detail::runSaveOperation(
             state, "Save", session.currentFile,
             [&]
@@ -207,6 +298,11 @@ namespace cupuacu::actions
             return false;
         }
 
+        if (!detail::confirmMarkerPersistenceIfNeeded(state, *settings))
+        {
+            return false;
+        }
+
         const bool ok = detail::runSaveOperation(
             state, "Preserving overwrite", session.currentFile,
             [&]
@@ -250,6 +346,10 @@ namespace cupuacu::actions
 
         const auto normalizedPath =
             file::normalizeExportPath(absoluteFilePath, settings);
+        if (!detail::confirmMarkerPersistenceIfNeeded(state, settings))
+        {
+            return false;
+        }
         const bool ok = detail::runSaveOperation(
             state, "Save", normalizedPath.string(),
             [&]
@@ -286,6 +386,10 @@ namespace cupuacu::actions
                 state, "Preserving save as", normalizedPath.string(),
                 plan.preservationUnavailableReason.value_or(
                     "Preserving save as is unavailable"));
+            return false;
+        }
+        if (!detail::confirmMarkerPersistenceIfNeeded(state, settings))
+        {
             return false;
         }
 

@@ -281,6 +281,7 @@ namespace cupuacu::gui
         void renderSmoothWaveform(SDL_Renderer *) const;
 
         void drawPlaybackPosition(SDL_Renderer *) const;
+        void drawMarkers(SDL_Renderer *) const;
         void drawCursor(SDL_Renderer *) const;
     };
 } // namespace cupuacu::gui

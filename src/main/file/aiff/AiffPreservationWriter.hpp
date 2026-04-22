@@ -3,6 +3,7 @@
 #include "../../State.hpp"
 #include "../ChunkedPreservationRewrite.hpp"
 #include "../PcmPreservationIO.hpp"
+#include "AiffMarkerMetadata.hpp"
 #include "AiffParser.hpp"
 #include "AiffPreservationSupport.hpp"
 
@@ -362,6 +363,77 @@ namespace cupuacu::file::aiff
             }
         }
 
+        static bool hasMarkerChunks(const ParsedFile &parsed)
+        {
+            return std::any_of(parsed.chunks.begin(), parsed.chunks.end(),
+                               [](const ChunkInfo &chunk)
+                               { return markers::isMarkerChunk(chunk); });
+        }
+
+        static void rewriteWholeFileWithMarkers(
+            cupuacu::State *state, const std::filesystem::path &referencePath,
+            const std::filesystem::path &outputPath, const ParsedFile &parsed)
+        {
+            cupuacu::file::writeFileAtomically(
+                outputPath,
+                [&](const std::filesystem::path &temporaryPath)
+                {
+                    auto input = cupuacu::file::preservation::openInputFileStream(
+                        referencePath);
+                    auto output = cupuacu::file::preservation::openOutputFileStream(
+                        temporaryPath);
+
+                    cupuacu::file::preservation::copyByteRange(
+                        input, output, 0, 12, "Failed to copy AIFF header");
+
+                    bool insertedMarkers = false;
+                    for (const auto &chunk : parsed.chunks)
+                    {
+                        if (!insertedMarkers &&
+                            (markers::isMarkerChunk(chunk) ||
+                             std::memcmp(chunk.id, "SSND", 4) == 0))
+                        {
+                            markers::writeMarkerChunks(
+                                output,
+                                state->getActiveDocumentSession().document.getMarkers());
+                            insertedMarkers = true;
+                        }
+
+                        if (markers::isMarkerChunk(chunk))
+                        {
+                            continue;
+                        }
+
+                        if (std::memcmp(chunk.id, "SSND", 4) == 0)
+                        {
+                            writeSoundChunk(state, input, output, parsed);
+                            continue;
+                        }
+
+                        cupuacu::file::preservation::copyByteRange(
+                            input, output, chunk.headerOffset,
+                            8 + chunk.paddedPayloadSize,
+                            "Failed to copy AIFF chunk");
+                    }
+
+                    if (!insertedMarkers)
+                    {
+                        markers::writeMarkerChunks(
+                            output,
+                            state->getActiveDocumentSession().document.getMarkers());
+                    }
+
+                    const auto soundDataSize = expectedSoundDataSizeBytes(state);
+                    updateCommSampleFrameCount(
+                        output, parsed,
+                        static_cast<std::uint32_t>(
+                            state->getActiveDocumentSession().document.getFrameCount()),
+                        soundDataSize);
+                    updateFormSizeField(output, parsed);
+                    output.flush();
+                });
+        }
+
     public:
         static void writePreservingAiffFile(
             cupuacu::State *state, const std::filesystem::path &referencePath,
@@ -381,38 +453,47 @@ namespace cupuacu::file::aiff
             }
             const ParsedFile parsed = AiffParser::parseFile(referencePath);
 
-            if (referencePath == outputPath &&
-                canPatchSoundDataInPlace(state, parsed))
+            const bool markersRequireRewrite =
+                !state->getActiveDocumentSession().document.getMarkers().empty();
+
+            if (!markersRequireRewrite)
             {
-                patchSoundDataInPlace(state, referencePath);
+                if (referencePath == outputPath &&
+                    canPatchSoundDataInPlace(state, parsed))
+                {
+                    patchSoundDataInPlace(state, referencePath);
+                    return;
+                }
+
+                cupuacu::file::preservation::rewriteChunkPreserving(
+                    referencePath, outputPath,
+                    [&](std::istream &input, std::ostream &output)
+                    {
+                        copyPrefix(input, output, parsed);
+                    },
+                    [&](std::istream &input, std::ostream &output)
+                    {
+                        writeSoundChunk(state, input, output, parsed);
+                    },
+                    [&](std::istream &input, std::ostream &output)
+                    {
+                        copySuffix(input, output, parsed);
+                    },
+                    [&](std::ostream &output)
+                    {
+                        const auto soundDataSize =
+                            expectedSoundDataSizeBytes(state);
+                        updateCommSampleFrameCount(
+                            output, parsed,
+                            static_cast<std::uint32_t>(
+                                state->getActiveDocumentSession().document.getFrameCount()),
+                            soundDataSize);
+                        updateFormSizeField(output, parsed);
+                    });
                 return;
             }
 
-            cupuacu::file::preservation::rewriteChunkPreserving(
-                referencePath, outputPath,
-                [&](std::istream &input, std::ostream &output)
-                {
-                    copyPrefix(input, output, parsed);
-                },
-                [&](std::istream &input, std::ostream &output)
-                {
-                    writeSoundChunk(state, input, output, parsed);
-                },
-                [&](std::istream &input, std::ostream &output)
-                {
-                    copySuffix(input, output, parsed);
-                },
-                [&](std::ostream &output)
-                {
-                    const auto soundDataSize =
-                        expectedSoundDataSizeBytes(state);
-                    updateCommSampleFrameCount(
-                        output, parsed,
-                        static_cast<std::uint32_t>(
-                            state->getActiveDocumentSession().document.getFrameCount()),
-                        soundDataSize);
-                    updateFormSizeField(output, parsed);
-                });
+            rewriteWholeFileWithMarkers(state, referencePath, outputPath, parsed);
         }
 
         static void overwritePreservingAiffFile(cupuacu::State *state)

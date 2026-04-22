@@ -14,6 +14,7 @@
 #include "actions/audio/RecordedChunkApplier.hpp"
 #include "actions/audio/SetSampleValue.hpp"
 #include "actions/audio/Trim.hpp"
+#include "actions/markers/EditCommands.hpp"
 #include "audio/RecordedChunk.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/Window.hpp"
@@ -418,6 +419,37 @@ TEST_CASE("Paste overwrite undo restores zero-based previous selection",
     REQUIRE(session.selection.getStartInt() == 0);
     REQUIRE(session.selection.getLengthInt() == 2);
     REQUIRE(session.cursor == 2);
+}
+
+TEST_CASE("Marker commands insert and delete with undo and redo",
+          "[actions][markers]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    initializeMonoDocument(state, {0, 1, 2, 3});
+
+    auto &session = state.getActiveDocumentSession();
+    session.cursor = 2;
+
+    cupuacu::actions::markers::insertMarkerAtCursor(&state);
+
+    REQUIRE(session.document.getMarkers().size() == 1);
+    REQUIRE(session.document.getMarkers()[0].frame == 2);
+    REQUIRE(state.getActiveViewState().selectedMarkerId ==
+            session.document.getMarkers()[0].id);
+
+    state.undo();
+    REQUIRE(session.document.getMarkers().empty());
+
+    state.redo();
+    REQUIRE(session.document.getMarkers().size() == 1);
+
+    const uint64_t markerId = session.document.getMarkers()[0].id;
+    cupuacu::actions::markers::deleteMarker(&state, markerId);
+    REQUIRE(session.document.getMarkers().empty());
+
+    state.undo();
+    REQUIRE(session.document.getMarkers().size() == 1);
+    REQUIRE(session.document.getMarkers()[0].id == markerId);
 }
 
 TEST_CASE("SetSampleValue undoable changes one sample and restores it", "[actions]")

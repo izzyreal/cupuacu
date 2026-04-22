@@ -1,0 +1,114 @@
+#include <catch2/catch_test_macros.hpp>
+
+#include "Document.hpp"
+
+TEST_CASE("Document markers are assigned stable ids and clamped to bounds",
+          "[document][markers]")
+{
+    cupuacu::Document document;
+    document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 100);
+
+    const uint64_t introId = document.addMarker(12, "Intro");
+    const uint64_t outroId = document.addMarker(999, "Outro");
+
+    REQUIRE(introId == 1);
+    REQUIRE(outroId == 2);
+    REQUIRE(document.getMarkers().size() == 2);
+    REQUIRE(document.getMarkers()[0] ==
+            cupuacu::DocumentMarker{
+                .id = introId,
+                .frame = 12,
+                .label = "Intro",
+            });
+    REQUIRE(document.getMarkers()[1] ==
+            cupuacu::DocumentMarker{
+                .id = outroId,
+                .frame = 100,
+                .label = "Outro",
+            });
+}
+
+TEST_CASE("Document marker edits preserve identity", "[document][markers]")
+{
+    cupuacu::Document document;
+    document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 100);
+
+    const uint64_t markerId = document.addMarker(20, "Verse");
+
+    REQUIRE(document.setMarkerFrame(markerId, 44));
+    REQUIRE(document.setMarkerLabel(markerId, "Hook"));
+    REQUIRE_FALSE(document.setMarkerFrame(9999, 12));
+    REQUIRE_FALSE(document.setMarkerLabel(9999, "Missing"));
+
+    REQUIRE(document.getMarkers().size() == 1);
+    REQUIRE(document.getMarkers()[0] ==
+            cupuacu::DocumentMarker{
+                .id = markerId,
+                .frame = 44,
+                .label = "Hook",
+            });
+}
+
+TEST_CASE("Document markers follow insert and remove frame edits",
+          "[document][markers]")
+{
+    cupuacu::Document document;
+    document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 100);
+
+    const uint64_t earlyId = document.addMarker(10, "A");
+    const uint64_t middleId = document.addMarker(40, "B");
+    const uint64_t lateId = document.addMarker(90, "C");
+
+    document.insertFrames(30, 5);
+
+    REQUIRE(document.getMarkers()[0].frame == 10);
+    REQUIRE(document.getMarkers()[1].frame == 45);
+    REQUIRE(document.getMarkers()[2].frame == 95);
+
+    document.removeFrames(20, 30);
+
+    REQUIRE(document.getMarkers().size() == 3);
+    REQUIRE(document.getMarkers()[0] ==
+            cupuacu::DocumentMarker{
+                .id = earlyId,
+                .frame = 10,
+                .label = "A",
+            });
+    REQUIRE(document.getMarkers()[1] ==
+            cupuacu::DocumentMarker{
+                .id = middleId,
+                .frame = 20,
+                .label = "B",
+            });
+    REQUIRE(document.getMarkers()[2] ==
+            cupuacu::DocumentMarker{
+                .id = lateId,
+                .frame = 65,
+                .label = "C",
+            });
+}
+
+TEST_CASE("Replacing document markers normalizes ids and clears on initialize",
+          "[document][markers]")
+{
+    cupuacu::Document document;
+    document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 50);
+
+    document.replaceMarkers({
+        cupuacu::DocumentMarker{.id = 0, .frame = -10, .label = "Start"},
+        cupuacu::DocumentMarker{.id = 42, .frame = 80, .label = "End"},
+    });
+
+    REQUIRE(document.getMarkers().size() == 2);
+    REQUIRE(document.getMarkers()[0].id == 1);
+    REQUIRE(document.getMarkers()[0].frame == 0);
+    REQUIRE(document.getMarkers()[1].id == 42);
+    REQUIRE(document.getMarkers()[1].frame == 50);
+
+    const uint64_t nextId = document.addMarker(25, "Middle");
+    REQUIRE(nextId == 43);
+
+    document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 10);
+    REQUIRE(document.getMarkers().empty());
+    REQUIRE(document.addMarker(3, "New") == 1);
+}

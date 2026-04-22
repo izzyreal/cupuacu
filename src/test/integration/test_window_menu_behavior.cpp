@@ -442,7 +442,7 @@ TEST_CASE("Menu integration undo and redo actions reflect undo stack state",
     REQUIRE(topLevelMenus.size() == 6);
     auto *editMenu = topLevelMenus[1];
     auto editSubMenus = cupuacu::test::integration::menuChildren(editMenu);
-    REQUIRE(editSubMenus.size() == 6);
+    REQUIRE(editSubMenus.size() == 7);
     auto *undoMenu = editSubMenus[0];
     auto *redoMenu = editSubMenus[1];
 

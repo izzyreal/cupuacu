@@ -5,6 +5,8 @@
 #include "FileIo.hpp"
 #include "OverwritePreservation.hpp"
 #include "SndfilePath.hpp"
+#include "aiff/AiffMarkerMetadata.hpp"
+#include "wav/WavMarkerMetadata.hpp"
 
 #include <sndfile.hh>
 
@@ -70,6 +72,25 @@ namespace cupuacu::file
 
         // Done with file
         sf_close(snd);
+
+        try
+        {
+            const int majorFormat = sfinfo.format & SF_FORMAT_TYPEMASK;
+            if (majorFormat == SF_FORMAT_WAV)
+            {
+                doc.replaceMarkers(
+                    cupuacu::file::wav::markers::readMarkers(session.currentFile));
+            }
+            else if (majorFormat == SF_FORMAT_AIFF)
+            {
+                doc.replaceMarkers(
+                    cupuacu::file::aiff::markers::readMarkers(session.currentFile));
+            }
+        }
+        catch (...)
+        {
+            doc.clearMarkers();
+        }
 
         if (sampleFormat == SampleFormat::PCM_S8 ||
             sampleFormat == SampleFormat::PCM_S16 ||

@@ -3,6 +3,7 @@
 #include "audio/AudioDevices.hpp"
 #include "Component.hpp"
 
+#include <optional>
 #include <vector>
 
 namespace cupuacu
@@ -14,6 +15,7 @@ namespace cupuacu::gui
 {
     class Waveforms;
     class TriangleMarker;
+    class DocumentMarkerHandle;
     class OpaqueRect;
     class Timeline;
     class ScrollBar;
@@ -73,6 +75,7 @@ namespace cupuacu::gui
         bool isSelectionInteractionActive() const;
         void syncLivePlaybackRange(bool selectionActive,
                                    SelectedChannels selectedChannels);
+        void rebuildDocumentMarkerHandles() const;
         bool shouldRefreshMarkerBounds(bool consumedRecordedAudio,
                                        bool followedTransport,
                                        bool selectionActive,
@@ -86,12 +89,16 @@ namespace cupuacu::gui
         TriangleMarker *selStartBot;
         TriangleMarker *selEndTop;
         TriangleMarker *selEndBot;
+        mutable std::vector<DocumentMarkerHandle *> documentMarkerTopHandles;
+        mutable std::vector<DocumentMarkerHandle *> documentMarkerBottomHandles;
         int64_t lastDrawnCursor = -1;
         bool lastSelectionIsActive = true;
         int64_t lastSampleOffset = -1;
         double lastSamplesPerPixel = 0.0;
         int64_t lastSelectionStart = -1;
         int64_t lastSelectionEnd = -1;
+        uint64_t lastMarkerDataVersion = 0;
+        std::optional<uint64_t> lastSelectedMarkerId;
         bool lastPlaybackLoopEnabled = false;
         uint64_t lastPlaybackUpdateStart = 0;
         uint64_t lastPlaybackUpdateEnd = 0;

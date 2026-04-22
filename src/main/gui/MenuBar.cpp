@@ -28,6 +28,7 @@
 #include "actions/audio/Cut.hpp"
 #include "actions/audio/Paste.hpp"
 #include "actions/audio/EditCommands.hpp"
+#include "actions/markers/EditCommands.hpp"
 
 #include <filesystem>
 #include <memory>
@@ -116,7 +117,11 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
             actions::showExportAudioDialog(state,
                                            cupuacu::PendingSaveAsMode::Generic);
         });
-    saveAsMenu->setTooltipText(buildSaveAsTooltipText());
+    saveAsMenu->setTooltipText(
+        [&]
+        {
+            return buildSaveAsTooltipText(state);
+        });
     saveAsMenu->setAvailability(
         [&]
         {
@@ -129,7 +134,11 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
             actions::showExportAudioDialog(
                 state, cupuacu::PendingSaveAsMode::Preserving);
         });
-    preservingSaveAsMenu->setTooltipText(buildPreservingSaveAsTooltipText());
+    preservingSaveAsMenu->setTooltipText(
+        [&]
+        {
+            return buildPreservingSaveAsTooltipText(state);
+        });
     preservingSaveAsMenu->setAvailability(
         [&]
         {
@@ -205,7 +214,11 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
         {
             actions::overwrite(state);
         });
-    overwriteMenu->setTooltipText(buildOverwriteTooltipText());
+    overwriteMenu->setTooltipText(
+        [&]
+        {
+            return buildOverwriteTooltipText(state);
+        });
     overwriteMenu->setAvailability(
         [&]
         {
@@ -218,7 +231,10 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
                                  actions::overwritePreserving(state);
                              });
     preservingOverwriteMenu->setTooltipText(
-        buildPreservingOverwriteTooltipText());
+        [&]
+        {
+            return buildPreservingOverwriteTooltipText(state);
+        });
     preservingOverwriteMenu->setAvailability(
         [&]
         {
@@ -357,6 +373,18 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
         [&]
         {
             return isPasteAvailable(state);
+        });
+
+    auto *insertMarkerMenu = editMenu->addSubMenu(
+        state, "Insert marker",
+        [&]
+        {
+            actions::markers::insertMarkerAtCursor(state);
+        });
+    insertMarkerMenu->setIsAvailable(
+        [&]
+        {
+            return actions::hasActiveDocument(state);
         });
 
     effectsMenu->addSubMenu(state, "Reverse",

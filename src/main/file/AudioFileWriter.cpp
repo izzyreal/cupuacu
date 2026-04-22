@@ -3,6 +3,8 @@
 #include "AudioExport.hpp"
 #include "FileIo.hpp"
 #include "SndfilePath.hpp"
+#include "aiff/AiffMarkerMetadata.hpp"
+#include "wav/WavMarkerMetadata.hpp"
 
 #include <sndfile.h>
 
@@ -153,6 +155,17 @@ void cupuacu::file::AudioFileWriter::writeFile(
             {
                 throw cupuacu::file::detail::makeIoFailure(
                     "Failed to write all audio frames", writeDetail);
+            }
+
+            if (settings.majorFormat == SF_FORMAT_WAV)
+            {
+                cupuacu::file::wav::markers::rewriteFileWithMarkers(
+                    temporaryPath, document.getMarkers());
+            }
+            else if (settings.majorFormat == SF_FORMAT_AIFF)
+            {
+                cupuacu::file::aiff::markers::rewriteFileWithMarkers(
+                    temporaryPath, document.getMarkers());
             }
         });
 }

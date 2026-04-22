@@ -8,6 +8,7 @@
 #include "gui/Waveform.hpp"
 #include "gui/ExportAudioDialogWindow.hpp"
 #include "gui/GenerateSilenceDialogWindow.hpp"
+#include "gui/MarkerEditorDialogWindow.hpp"
 #include "gui/NewFileDialogWindow.hpp"
 #include "gui/OptionsWindow.hpp"
 #include "actions/Undoable.hpp"
@@ -72,6 +73,12 @@ void cupuacu::destroyGenerateSilenceDialogWindow(
 
 void cupuacu::destroyExportAudioDialogWindow(
     gui::ExportAudioDialogWindow *dialog)
+{
+    delete dialog;
+}
+
+void cupuacu::destroyMarkerEditorDialogWindow(
+    gui::MarkerEditorDialogWindow *dialog)
 {
     delete dialog;
 }

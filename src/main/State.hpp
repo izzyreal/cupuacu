@@ -39,6 +39,7 @@ namespace cupuacu
         class NewFileDialogWindow;
         class GenerateSilenceDialogWindow;
         class ExportAudioDialogWindow;
+        class MarkerEditorDialogWindow;
         class Component;
         class Waveform;
     } // namespace gui
@@ -59,6 +60,7 @@ namespace cupuacu
     void destroyNewFileDialogWindow(gui::NewFileDialogWindow *);
     void destroyGenerateSilenceDialogWindow(gui::GenerateSilenceDialogWindow *);
     void destroyExportAudioDialogWindow(gui::ExportAudioDialogWindow *);
+    void destroyMarkerEditorDialogWindow(gui::MarkerEditorDialogWindow *);
 
     enum class PendingSaveAsMode
     {
@@ -100,6 +102,9 @@ namespace cupuacu
         std::unique_ptr<gui::ExportAudioDialogWindow,
                         void (*)(gui::ExportAudioDialogWindow *)>
             exportAudioDialogWindow{nullptr, destroyExportAudioDialogWindow};
+        std::unique_ptr<gui::MarkerEditorDialogWindow,
+                        void (*)(gui::MarkerEditorDialogWindow *)>
+            markerEditorDialogWindow{nullptr, destroyMarkerEditorDialogWindow};
         std::unique_ptr<effects::AmplifyFadeDialog,
                         void (*)(effects::AmplifyFadeDialog *)>
             amplifyFadeDialog{nullptr, destroyAmplifyFadeDialog};
@@ -116,6 +121,8 @@ namespace cupuacu
         PendingSaveAsMode pendingSaveAsMode = PendingSaveAsMode::Generic;
         std::function<void(const std::string &, const std::string &)>
             errorReporter;
+        std::function<bool(const std::string &, const std::string &)>
+            confirmationReporter;
         std::optional<std::pair<std::string, std::string>>
             pendingStartupWarning;
         gui::Window *modalWindow = nullptr;

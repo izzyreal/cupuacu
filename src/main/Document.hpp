@@ -7,10 +7,20 @@
 #include "gui/WaveformCache.hpp"
 
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace cupuacu
 {
+    struct DocumentMarker
+    {
+        uint64_t id = 0;
+        int64_t frame = 0;
+        std::string label;
+
+        bool operator==(const DocumentMarker &) const = default;
+    };
+
     class Document
     {
     public:
@@ -31,11 +41,16 @@ namespace cupuacu
         SampleFormat format = SampleFormat::Unknown;
         uint64_t preservationSourceId = 0;
         uint64_t waveformDataVersion = 0;
+        uint64_t markerDataVersion = 0;
+        uint64_t nextMarkerId = 1;
         std::vector<gui::WaveformCache> waveformCache =
             std::vector<gui::WaveformCache>(2);
+        std::vector<DocumentMarker> markers;
 
         void syncWaveformCacheToChannelCount(int64_t channelCount);
         void resetWaveformCacheToChannelCount(int64_t channelCount);
+        int64_t clampMarkerFrame(int64_t frame) const;
+        void normalizeMarkers();
 
     public:
         void initialize(SampleFormat sampleFormatToUse,
@@ -49,6 +64,7 @@ namespace cupuacu
 
         int getSampleRate() const;
         uint64_t getWaveformDataVersion() const;
+        uint64_t getMarkerDataVersion() const;
         int64_t getFrameCount() const;
         int64_t getChannelCount() const;
 
@@ -75,6 +91,13 @@ namespace cupuacu
         void assignSegment(const AudioSegment &segment);
         void writeSegment(int64_t startFrame, const AudioSegment &segment,
                           bool shouldMarkDirty = false);
+        const std::vector<DocumentMarker> &getMarkers() const;
+        uint64_t addMarker(int64_t frame, std::string label = {});
+        bool removeMarker(uint64_t id);
+        bool setMarkerFrame(uint64_t id, int64_t frame);
+        bool setMarkerLabel(uint64_t id, std::string label);
+        void replaceMarkers(std::vector<DocumentMarker> markersToUse);
+        void clearMarkers();
         void markCurrentStateAsSavedSource();
     };
 } // namespace cupuacu

@@ -8,7 +8,9 @@
 #include "TestPaths.hpp"
 #include "actions/DocumentLifecycle.hpp"
 #include "file/SndfilePath.hpp"
+#include "file/aiff/AiffMarkerMetadata.hpp"
 #include "file/file_loading.hpp"
+#include "file/wav/WavMarkerMetadata.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/DocumentSessionWindow.hpp"
 #include "gui/Gui.hpp"
@@ -334,6 +336,8 @@ TEST_CASE("Startup restore reapplies persisted zoom offset and selection",
     ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-startup-restore-view"));
     const auto validPath = cleanup.path() / "view.wav";
     writeTestWav(validPath, 32000, 1, {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f});
+    cupuacu::file::wav::markers::rewriteFileWithMarkers(
+        validPath, {{.id = 1, .frame = 0, .label = "Native"}} );
 
     cupuacu::test::StateWithTestPaths state{};
     cupuacu::persistence::PersistedSessionState persistedState{};
@@ -344,6 +348,10 @@ TEST_CASE("Startup restore reapplies persisted zoom offset and selection",
             .sampleOffset = 2,
             .selectionStart = 1,
             .selectionEndExclusive = 5,
+            .markers = {
+                {.id = 4, .frame = 2, .label = "Transient"},
+                {.id = 7, .frame = 99, .label = "Tail"},
+            },
         },
     };
     persistedState.openFiles = {validPath.string()};
@@ -360,4 +368,11 @@ TEST_CASE("Startup restore reapplies persisted zoom offset and selection",
     REQUIRE(session.selection.isActive());
     REQUIRE(session.selection.getStartInt() == 1);
     REQUIRE(session.selection.getEndExclusiveInt() == 5);
+    REQUIRE(session.document.getMarkers().size() == 2);
+    REQUIRE(session.document.getMarkers()[0].id == 4);
+    REQUIRE(session.document.getMarkers()[0].frame == 2);
+    REQUIRE(session.document.getMarkers()[0].label == "Transient");
+    REQUIRE(session.document.getMarkers()[1].id == 7);
+    REQUIRE(session.document.getMarkers()[1].frame == 6);
+    REQUIRE(session.document.getMarkers()[1].label == "Tail");
 }

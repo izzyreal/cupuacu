@@ -11,10 +11,12 @@
 #include "file/SndfilePath.hpp"
 #include "gui/DropdownMenu.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
+#include "gui/DocumentMarkerHandle.hpp"
 #include "gui/EventHandling.hpp"
 #include "gui/GenerateSilenceDialogWindow.hpp"
 #include "gui/Gui.hpp"
 #include "gui/LabeledField.hpp"
+#include "gui/MarkerEditorDialogWindow.hpp"
 #include "gui/NewFileDialogWindow.hpp"
 #include "gui/SamplePoint.hpp"
 #include "gui/StatusBar.hpp"
@@ -218,6 +220,63 @@ namespace
         }
     }
 
+    cupuacu::gui::MouseEvent componentMouseEvent(
+        cupuacu::gui::Component *component, const cupuacu::gui::MouseEventType type,
+        const uint8_t clicks = 1, const bool leftDown = true)
+    {
+        REQUIRE(component != nullptr);
+        const auto bounds = component->getAbsoluteBounds();
+        const int x = bounds.x + std::max(1, bounds.w / 2);
+        const int y = bounds.y + std::max(1, bounds.h / 2);
+        return cupuacu::gui::MouseEvent{
+            type,
+            x,
+            y,
+            static_cast<float>(x),
+            static_cast<float>(y),
+            0.0f,
+            0.0f,
+            cupuacu::gui::MouseButtonState{leftDown, false, false},
+            clicks};
+    }
+
+    void clickComponentThroughWindow(cupuacu::gui::Window *window,
+                                     cupuacu::gui::Component *component,
+                                     const uint8_t clicks = 1)
+    {
+        REQUIRE(window != nullptr);
+        REQUIRE(component != nullptr);
+        REQUIRE(window->handleMouseEvent(
+            componentMouseEvent(component, cupuacu::gui::DOWN, clicks, true)));
+        REQUIRE(window->handleMouseEvent(
+            componentMouseEvent(component, cupuacu::gui::UP, clicks, true)));
+    }
+
+    void moveMouseOverComponent(cupuacu::gui::Window *window,
+                                cupuacu::gui::Component *component)
+    {
+        REQUIRE(window != nullptr);
+        REQUIRE(component != nullptr);
+        REQUIRE(window->handleMouseEvent(
+            componentMouseEvent(component, cupuacu::gui::MOVE, 0, false)));
+    }
+
+    cupuacu::gui::DocumentMarkerHandle *findTopMarkerHandle(
+        cupuacu::gui::Component *root, const uint64_t markerId)
+    {
+        return cupuacu::test::integration::findByNameRecursive<
+            cupuacu::gui::DocumentMarkerHandle>(
+            root, "DocumentMarkerHandle:Top:" + std::to_string(markerId));
+    }
+
+    std::vector<cupuacu::gui::TextInput *> findTextInputs(
+        cupuacu::gui::Component *root)
+    {
+        std::vector<cupuacu::gui::TextInput *> result;
+        collectRecursive(root, result);
+        return result;
+    }
+
     void sendKeyDown(cupuacu::gui::Window *window, const SDL_Scancode scancode)
     {
         REQUIRE(window != nullptr);
@@ -227,6 +286,23 @@ namespace
         event.key.windowID = window->getId();
         event.key.scancode = scancode;
         window->handleEvent(event);
+    }
+
+    cupuacu::gui::Window *openMarkerEditorOrSkip(cupuacu::State &state,
+                                                 cupuacu::gui::Window *mainWindow,
+                                                 cupuacu::gui::Component *handle)
+    {
+        REQUIRE(mainWindow != nullptr);
+        REQUIRE(handle != nullptr);
+
+        clickComponentThroughWindow(mainWindow, handle, 2);
+        if (state.markerEditorDialogWindow == nullptr || state.modalWindow == nullptr)
+        {
+            SKIP("Marker editor dialog window unavailable in this SDL environment");
+        }
+
+        REQUIRE(state.markerEditorDialogWindow->isOpen());
+        return state.modalWindow;
     }
 
     class ScopedDirCleanup
@@ -1519,4 +1595,165 @@ TEST_CASE("Triangle marker integration updates cursor and selection while draggi
         cupuacu::gui::MOVE, 0, 0, 120.0f, 0.0f, 0.0f, 0.0f,
         cupuacu::gui::MouseButtonState{true, false, false}, 0}));
     REQUIRE(state.getActiveDocumentSession().selection.getStartInt() != 300);
+}
+
+TEST_CASE("Document marker integration opens editor on mouse up and clears capture",
+          "[integration]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    createBuiltSessionUi(&state, 128);
+
+    auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
+    auto *root = mainWindow ? mainWindow->getRootComponent() : nullptr;
+    auto *mainView = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::MainView>(root, "MainView");
+    REQUIRE(mainView != nullptr);
+
+    const uint64_t markerId =
+        state.getActiveDocumentSession().document.addMarker(10, "Kick");
+    mainView->updateTriangleMarkerBounds();
+
+    auto *handle = findTopMarkerHandle(root, markerId);
+    REQUIRE(handle != nullptr);
+
+    REQUIRE(mainWindow->handleMouseEvent(
+        componentMouseEvent(handle, cupuacu::gui::DOWN, 2, true)));
+    REQUIRE((state.markerEditorDialogWindow == nullptr ||
+             !state.markerEditorDialogWindow->isOpen()));
+    REQUIRE(state.getActiveUndoables().empty());
+
+    REQUIRE(mainWindow->handleMouseEvent(
+        componentMouseEvent(handle, cupuacu::gui::UP, 2, true)));
+    if (state.markerEditorDialogWindow == nullptr)
+    {
+        SKIP("Marker editor dialog window unavailable in this SDL environment");
+    }
+    REQUIRE(state.markerEditorDialogWindow != nullptr);
+    REQUIRE(state.markerEditorDialogWindow->isOpen());
+    REQUIRE(state.getActiveUndoables().empty());
+}
+
+TEST_CASE("Closing marker editor restores main window hover updates",
+          "[integration]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    createBuiltSessionUi(&state, 128);
+
+    auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
+    auto *root = mainWindow ? mainWindow->getRootComponent() : nullptr;
+    auto *mainView = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::MainView>(root, "MainView");
+    auto *underlay = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::WaveformsUnderlay>(root, "WaveformsUnderlay");
+    REQUIRE(mainView != nullptr);
+    REQUIRE(underlay != nullptr);
+
+    const uint64_t markerId =
+        state.getActiveDocumentSession().document.addMarker(10, "Kick");
+    mainView->updateTriangleMarkerBounds();
+
+    auto *handle = findTopMarkerHandle(root, markerId);
+    REQUIRE(handle != nullptr);
+
+    auto *dialogWindow = openMarkerEditorOrSkip(state, mainWindow, handle);
+    sendKeyDown(dialogWindow, SDL_SCANCODE_ESCAPE);
+    processPendingSdlWindowEvents(&state);
+
+    REQUIRE_FALSE(state.markerEditorDialogWindow->isOpen());
+    REQUIRE(state.modalWindow == nullptr);
+
+    moveMouseOverComponent(mainWindow, handle);
+    REQUIRE(mainWindow->getComponentUnderMouse() == handle);
+    REQUIRE(handle->getTooltipText() == "Marker at 10\nKick");
+
+    moveMouseOverComponent(mainWindow, underlay);
+    REQUIRE(mainWindow->getComponentUnderMouse() != nullptr);
+    REQUIRE(mainWindow->getComponentUnderMouse() != handle);
+}
+
+TEST_CASE("Marker editor integration applies name and position as one undoable",
+          "[integration]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    createBuiltSessionUi(&state, 128);
+
+    auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
+    auto *root = mainWindow ? mainWindow->getRootComponent() : nullptr;
+    auto *mainView = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::MainView>(root, "MainView");
+    REQUIRE(mainView != nullptr);
+
+    const uint64_t markerId =
+        state.getActiveDocumentSession().document.addMarker(10, "Kick");
+    mainView->updateTriangleMarkerBounds();
+
+    auto *handle = findTopMarkerHandle(root, markerId);
+    REQUIRE(handle != nullptr);
+    auto *dialogWindow = openMarkerEditorOrSkip(state, mainWindow, handle);
+    auto *dialogRoot = dialogWindow->getRootComponent();
+    REQUIRE(dialogRoot != nullptr);
+
+    auto inputs = findTextInputs(dialogRoot);
+    REQUIRE(inputs.size() == 2);
+    inputs[0]->setText("Snare");
+    inputs[1]->setText("24");
+
+    auto *okButton = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::TextButton>(dialogRoot, "TextButton:OK");
+    REQUIRE(okButton != nullptr);
+    clickComponentThroughWindow(dialogWindow, okButton);
+
+    const auto &marker = state.getActiveDocumentSession().document.getMarkers()[0];
+    REQUIRE(marker.id == markerId);
+    REQUIRE(marker.frame == 24);
+    REQUIRE(marker.label == "Snare");
+    REQUIRE(state.getUndoDescription() == "Edit marker");
+
+    state.undo();
+    REQUIRE(state.getActiveDocumentSession().document.getMarkers()[0].frame == 10);
+    REQUIRE(state.getActiveDocumentSession().document.getMarkers()[0].label ==
+            "Kick");
+
+    state.redo();
+    REQUIRE(state.getActiveDocumentSession().document.getMarkers()[0].frame == 24);
+    REQUIRE(state.getActiveDocumentSession().document.getMarkers()[0].label ==
+            "Snare");
+}
+
+TEST_CASE("Marker editor integration delete is undoable one marker at a time",
+          "[integration]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    createBuiltSessionUi(&state, 128);
+
+    auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
+    auto *root = mainWindow ? mainWindow->getRootComponent() : nullptr;
+    auto *mainView = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::MainView>(root, "MainView");
+    REQUIRE(mainView != nullptr);
+
+    const uint64_t markerId =
+        state.getActiveDocumentSession().document.addMarker(10, "Kick");
+    mainView->updateTriangleMarkerBounds();
+
+    auto *handle = findTopMarkerHandle(root, markerId);
+    REQUIRE(handle != nullptr);
+    auto *dialogWindow = openMarkerEditorOrSkip(state, mainWindow, handle);
+    auto *dialogRoot = dialogWindow->getRootComponent();
+    REQUIRE(dialogRoot != nullptr);
+
+    auto *deleteButton = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::TextButton>(dialogRoot, "TextButton:Delete");
+    REQUIRE(deleteButton != nullptr);
+    clickComponentThroughWindow(dialogWindow, deleteButton);
+
+    REQUIRE(state.getActiveDocumentSession().document.getMarkers().empty());
+    REQUIRE(state.getUndoDescription() == "Delete marker");
+
+    state.undo();
+    REQUIRE(state.getActiveDocumentSession().document.getMarkers().size() == 1);
+    REQUIRE(state.getActiveDocumentSession().document.getMarkers()[0].id == markerId);
+    REQUIRE(state.getActiveDocumentSession().document.getMarkers()[0].frame == 10);
+    REQUIRE(state.getActiveDocumentSession().document.getMarkers()[0].label ==
+            "Kick");
 }

@@ -1,4 +1,5 @@
 #include "AudioExport.hpp"
+#include "MarkerPersistence.hpp"
 
 #include <sndfile.h>
 
@@ -617,6 +618,43 @@ cupuacu::file::describeExportSettings(const AudioExportSettings &settings)
                 std::lround(*settings.compressionLevel * 100.0));
             description += " / quality " + std::to_string(percent) + "%";
         }
+    }
+
+    return description;
+}
+
+std::string cupuacu::file::describeExportSettings(
+    const AudioExportSettings &settings, const cupuacu::Document &document)
+{
+    std::string description = describeExportSettings(settings);
+    const auto markerAssessment =
+        cupuacu::file::assessMarkerPersistenceForSettings(document, settings);
+
+    if (!description.empty())
+    {
+        description += "\n";
+    }
+
+    switch (markerAssessment.fidelity)
+    {
+        case cupuacu::file::MarkerPersistenceFidelity::Exact:
+            description += "Markers: native support, exact round-trip.";
+            break;
+        case cupuacu::file::MarkerPersistenceFidelity::Lossy:
+            description += "Markers: native support, but some marker data may be truncated.";
+            break;
+        case cupuacu::file::MarkerPersistenceFidelity::Unsupported:
+        default:
+            if (markerAssessment.requiresSidecarOrSessionFallback)
+            {
+                description +=
+                    "Markers: no native support; Cupuacu fallback persistence is needed to keep markers.";
+            }
+            else
+            {
+                description += "Markers: no native support.";
+            }
+            break;
     }
 
     return description;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../actions/DocumentLifecycle.hpp"
+#include "../file/MarkerPersistence.hpp"
 #include "../file/SaveWritePlan.hpp"
 #include "Menu.hpp"
 
@@ -67,6 +68,59 @@ namespace cupuacu::gui
                "current document path.";
     }
 
+    inline std::string
+    markerPersistenceTooltipSuffix(const cupuacu::file::MarkerPersistenceAssessment &assessment)
+    {
+        switch (assessment.fidelity)
+        {
+            case cupuacu::file::MarkerPersistenceFidelity::Exact:
+                return "Markers: native support, exact round-trip.";
+            case cupuacu::file::MarkerPersistenceFidelity::Lossy:
+                return "Markers: native support, but some marker data may be truncated.";
+            case cupuacu::file::MarkerPersistenceFidelity::Unsupported:
+            default:
+                if (assessment.requiresSidecarOrSessionFallback)
+                {
+                    return "Markers: no native support; Cupuacu fallback persistence is needed to keep markers.";
+                }
+                return "Markers: no native support.";
+        }
+    }
+
+    inline std::optional<cupuacu::file::AudioExportSettings>
+    currentOrDefaultSaveSettings(const cupuacu::State *state)
+    {
+        if (!state)
+        {
+            return std::nullopt;
+        }
+
+        const auto &session = state->getActiveDocumentSession();
+        if (session.currentFileExportSettings.has_value())
+        {
+            return session.currentFileExportSettings;
+        }
+        if (session.currentFile.empty())
+        {
+            return std::nullopt;
+        }
+
+        return cupuacu::file::defaultExportSettingsForPath(
+            session.currentFile, session.document.getSampleFormat());
+    }
+
+    inline std::string buildSaveAsTooltipText(const cupuacu::State *state)
+    {
+        std::string tooltip = buildSaveAsTooltipText();
+        if (!state || state->getActiveDocumentSession().document.getMarkers().empty())
+        {
+            return tooltip;
+        }
+
+        tooltip += "\n\nMarkers: outcome depends on the chosen export format.";
+        return tooltip;
+    }
+
     inline std::string buildPreservingSaveAsTooltipText()
     {
         return "Write a new file in preservation mode, keeping unchanged "
@@ -75,10 +129,45 @@ namespace cupuacu::gui
                "latest opened or saved file as the reference.";
     }
 
+    inline std::string buildPreservingSaveAsTooltipText(const cupuacu::State *state)
+    {
+        std::string tooltip = buildPreservingSaveAsTooltipText();
+        if (!state || state->getActiveDocumentSession().document.getMarkers().empty())
+        {
+            return tooltip;
+        }
+
+        tooltip += "\n\nMarkers: outcome depends on the chosen export format.";
+        return tooltip;
+    }
+
     inline std::string buildOverwriteTooltipText()
     {
         return "Rewrite the current file at its existing path using the "
                "current export settings.";
+    }
+
+    inline std::string buildOverwriteTooltipText(const cupuacu::State *state)
+    {
+        std::string tooltip = buildOverwriteTooltipText();
+        if (!state || state->getActiveDocumentSession().document.getMarkers().empty())
+        {
+            return tooltip;
+        }
+
+        const auto settings = currentOrDefaultSaveSettings(state);
+        if (!settings.has_value())
+        {
+            tooltip +=
+                "\n\nMarkers: outcome depends on the writable target format.";
+            return tooltip;
+        }
+
+        tooltip += "\n\n" + markerPersistenceTooltipSuffix(
+                                 cupuacu::file::assessMarkerPersistenceForSettings(
+                                     state->getActiveDocumentSession().document,
+                                     *settings));
+        return tooltip;
     }
 
     inline std::string buildPreservingOverwriteTooltipText()
@@ -86,6 +175,34 @@ namespace cupuacu::gui
         return "Rewrite the current file in preservation mode, keeping "
                "unchanged source audio bytes intact where possible for "
                "supported preserving formats.";
+    }
+
+    inline std::string
+    buildPreservingOverwriteTooltipText(const cupuacu::State *state)
+    {
+        std::string tooltip = buildPreservingOverwriteTooltipText();
+        if (!state || state->getActiveDocumentSession().document.getMarkers().empty())
+        {
+            return tooltip;
+        }
+
+        const auto settings = currentOrDefaultSaveSettings(state);
+        if (!settings.has_value())
+        {
+            tooltip +=
+                "\n\nMarkers: outcome depends on the writable target format.";
+            return tooltip;
+        }
+
+        const auto plan =
+            cupuacu::file::SaveWritePlanner::planPreservingOverwrite(state,
+                                                                     *settings);
+        if (plan.markerPersistence.has_value())
+        {
+            tooltip += "\n\n" +
+                       markerPersistenceTooltipSuffix(*plan.markerPersistence);
+        }
+        return tooltip;
     }
 
     inline MenuAvailability

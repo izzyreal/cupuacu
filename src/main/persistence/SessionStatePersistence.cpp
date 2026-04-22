@@ -12,7 +12,7 @@ namespace cupuacu::persistence
 {
     namespace
     {
-        constexpr int kFormatVersion = 3;
+        constexpr int kFormatVersion = 4;
 
         std::vector<std::string> filterFiles(const std::vector<std::string> &files)
         {
@@ -79,6 +79,54 @@ namespace cupuacu::persistence
             return true;
         }
 
+        bool loadMarkers(const nlohmann::json &json,
+                         std::vector<PersistedDocumentMarker> &markers)
+        {
+            markers.clear();
+            if (!json.contains("markers"))
+            {
+                return true;
+            }
+            if (!json.at("markers").is_array())
+            {
+                return false;
+            }
+
+            for (const auto &entry : json.at("markers"))
+            {
+                if (!entry.is_object() || !entry.contains("frame") ||
+                    !entry.at("frame").is_number_integer())
+                {
+                    return false;
+                }
+
+                PersistedDocumentMarker marker{};
+                marker.frame = entry.at("frame").get<int64_t>();
+
+                if (entry.contains("id"))
+                {
+                    if (!entry.at("id").is_number_unsigned())
+                    {
+                        return false;
+                    }
+                    marker.id = entry.at("id").get<uint64_t>();
+                }
+
+                if (entry.contains("label"))
+                {
+                    if (!entry.at("label").is_string())
+                    {
+                        return false;
+                    }
+                    marker.label = entry.at("label").get<std::string>();
+                }
+
+                markers.push_back(std::move(marker));
+            }
+
+            return true;
+        }
+
         std::optional<std::vector<PersistedOpenDocumentState>> loadOpenDocuments(
             const nlohmann::json &json)
         {
@@ -112,7 +160,8 @@ namespace cupuacu::persistence
                     !loadOptionalInt64(entry, "selectionStart",
                                        documentState.selectionStart) ||
                     !loadOptionalInt64(entry, "selectionEndExclusive",
-                                       documentState.selectionEndExclusive))
+                                       documentState.selectionEndExclusive) ||
+                    !loadMarkers(entry, documentState.markers))
                 {
                     return std::nullopt;
                 }
@@ -155,7 +204,8 @@ namespace cupuacu::persistence
         }
 
         const int version = json.value("version", 0);
-        if (version != 1 && version != 2 && version != kFormatVersion)
+        if (version != 1 && version != 2 && version != 3 &&
+            version != kFormatVersion)
         {
             return {};
         }
@@ -280,6 +330,26 @@ namespace cupuacu::persistence
             {
                 entry["selectionEndExclusive"] =
                     *documentState.selectionEndExclusive;
+            }
+            if (!documentState.markers.empty())
+            {
+                nlohmann::json markersJson = nlohmann::json::array();
+                for (const auto &marker : documentState.markers)
+                {
+                    nlohmann::json markerJson{
+                        {"frame", marker.frame},
+                    };
+                    if (marker.id != 0)
+                    {
+                        markerJson["id"] = marker.id;
+                    }
+                    if (!marker.label.empty())
+                    {
+                        markerJson["label"] = marker.label;
+                    }
+                    markersJson.push_back(std::move(markerJson));
+                }
+                entry["markers"] = std::move(markersJson);
             }
             openDocumentsJson.push_back(std::move(entry));
         }

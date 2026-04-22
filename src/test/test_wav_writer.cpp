@@ -15,6 +15,7 @@
 #include "file/SampleQuantization.hpp"
 #include "file/SndfilePath.hpp"
 #include "file/file_loading.hpp"
+#include "file/wav/WavMarkerMetadata.hpp"
 #include "file/wav/WavParser.hpp"
 #include "file/wav/WavPreservationSupport.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
@@ -666,6 +667,29 @@ TEST_CASE("WAV parser exposes chunk table for PCM16 file", "[file]")
     REQUIRE(parsed.chunks.size() == 4);
 }
 
+TEST_CASE("Loading WAV imports native cue markers into Document", "[file]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-wav-load-markers"));
+    const auto wavPath = cleanup.path() / "markers.wav";
+    writePcm16WavFile(wavPath, 44100, 1, {1000, 2000, 3000, 4000});
+    cupuacu::file::wav::markers::rewriteFileWithMarkers(
+        wavPath, {{.id = 11, .frame = 1, .label = "One"},
+                  {.id = 12, .frame = 3, .label = "Three"}});
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = wavPath.string();
+    cupuacu::file::loadSampleData(&state);
+
+    const auto &markers = state.getActiveDocumentSession().document.getMarkers();
+    REQUIRE(markers.size() == 2);
+    REQUIRE(markers[0].id == 11);
+    REQUIRE(markers[0].frame == 1);
+    REQUIRE(markers[0].label == "One");
+    REQUIRE(markers[1].id == 12);
+    REQUIRE(markers[1].frame == 3);
+    REQUIRE(markers[1].label == "Three");
+}
+
 TEST_CASE("WAV preservation support reports supported for valid PCM16 overwrite",
           "[file]")
 {
@@ -1200,7 +1224,18 @@ TEST_CASE("Overwrite patches only one mono float32 sample in place", "[file]")
     const auto updatedBytes = readBytes(wavPath);
     const auto differingOffsets =
         findDifferingByteOffsets(originalBytes, updatedBytes);
-    REQUIRE(differingOffsets.size() == sizeof(float));
+    const auto parsed = cupuacu::file::wav::WavParser::parseFile(wavPath);
+    const auto *dataChunk = parsed.findChunk("data");
+    REQUIRE(dataChunk != nullptr);
+    const std::size_t sampleOffset =
+        dataChunk->payloadOffset + (2 * sizeof(float));
+    REQUIRE_FALSE(differingOffsets.empty());
+    REQUIRE(differingOffsets.size() <= sizeof(float));
+    for (const auto offset : differingOffsets)
+    {
+        REQUIRE(offset >= sampleOffset);
+        REQUIRE(offset < sampleOffset + sizeof(float));
+    }
 }
 
 TEST_CASE("Overwrite patches only one stereo channel sample in place", "[file]")
@@ -1763,6 +1798,60 @@ TEST_CASE("Save as writes a new WAV file and updates active file state", "[file]
     REQUIRE(frames[5] == Catch::Approx(0.25f).margin(1.0f / 32767.0f));
 }
 
+TEST_CASE("Save as writes native WAV markers", "[file]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-wav-save-markers"));
+    const auto wavPath = cleanup.path() / "saved_markers.wav";
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto &document = state.getActiveDocumentSession().document;
+    document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 4);
+    document.setSample(0, 0, 0.1f, false);
+    document.setSample(0, 1, 0.2f, false);
+    document.setSample(0, 2, 0.3f, false);
+    document.setSample(0, 3, 0.4f, false);
+    document.addMarker(1, "Attack");
+    document.addMarker(3, "Tail");
+
+    REQUIRE(cupuacu::actions::saveAs(&state, wavPath.string()));
+
+    const auto markers = cupuacu::file::wav::markers::readMarkers(wavPath);
+    REQUIRE(markers.size() == 2);
+    REQUIRE(markers[0].frame == 1);
+    REQUIRE(markers[0].label == "Attack");
+    REQUIRE(markers[1].frame == 3);
+    REQUIRE(markers[1].label == "Tail");
+}
+
+TEST_CASE("Preserving overwrite updates WAV markers after trim", "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-wav-overwrite-markers"));
+    const auto wavPath = cleanup.path() / "overwrite_markers.wav";
+    writePcm16WavFile(wavPath, 44100, 1, {1000, 2000, 3000, 4000, 5000, 6000});
+    cupuacu::file::wav::markers::rewriteFileWithMarkers(
+        wavPath, {{.id = 21, .frame = 1, .label = "A"},
+                  {.id = 22, .frame = 4, .label = "B"}});
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().setCurrentFile(wavPath.string());
+    cupuacu::file::loadSampleData(&state);
+    state.getActiveDocumentSession().selection.setHighest(
+        static_cast<double>(state.getActiveDocumentSession().document.getFrameCount()));
+    state.getActiveDocumentSession().selection.setValue1(1.0);
+    state.getActiveDocumentSession().selection.setValue2(5.0);
+    state.addAndDoUndoable(
+        std::make_shared<cupuacu::actions::audio::Trim>(&state, 1, 4));
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
+
+    const auto markers = cupuacu::file::wav::markers::readMarkers(wavPath);
+    REQUIRE(markers.size() == 2);
+    REQUIRE(markers[0].frame == 0);
+    REQUIRE(markers[0].label == "A");
+    REQUIRE(markers[1].frame == 3);
+    REQUIRE(markers[1].label == "B");
+}
+
 TEST_CASE("Preserving save as writes against the reference and updates it",
           "[file]")
 {
@@ -1868,6 +1957,100 @@ TEST_CASE("Save as reports failure without mutating session state", "[file]")
     REQUIRE_FALSE(std::filesystem::exists(requestedPath));
 }
 
+TEST_CASE("Save as warns before lossy marker persistence and can be canceled",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-save-warning-lossy-cancel"));
+    const auto outputPath = cleanup.path() / "lossy_markers.aiff";
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto &document = state.getActiveDocumentSession().document;
+    document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 4);
+    document.setSample(0, 0, 0.1f, false);
+    document.addMarker(1, std::string(300, 'x'));
+
+    std::string promptTitle;
+    std::string promptMessage;
+    state.confirmationReporter =
+        [&](const std::string &title, const std::string &message)
+    {
+        promptTitle = title;
+        promptMessage = message;
+        return false;
+    };
+
+    const auto settings = cupuacu::file::defaultExportSettingsForPath(
+        outputPath, document.getSampleFormat());
+    REQUIRE(settings.has_value());
+    REQUIRE_FALSE(cupuacu::actions::saveAs(&state, outputPath.string(), *settings));
+    REQUIRE(promptTitle == "Marker save warning");
+    REQUIRE(promptMessage.find("may be truncated") != std::string::npos);
+    REQUIRE_FALSE(std::filesystem::exists(outputPath));
+}
+
+TEST_CASE("Save as warns before unsupported marker persistence and can be canceled",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-save-warning-unsupported-cancel"));
+    const auto outputPath = cleanup.path() / "unsupported_markers.flac";
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto &document = state.getActiveDocumentSession().document;
+    document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 4);
+    document.setSample(0, 0, 0.1f, false);
+    document.addMarker(1, "Kick");
+
+    std::string promptTitle;
+    std::string promptMessage;
+    state.confirmationReporter =
+        [&](const std::string &title, const std::string &message)
+    {
+        promptTitle = title;
+        promptMessage = message;
+        return false;
+    };
+
+    const auto settings = cupuacu::file::defaultExportSettingsForPath(
+        outputPath, document.getSampleFormat());
+    REQUIRE(settings.has_value());
+    REQUIRE_FALSE(cupuacu::actions::saveAs(&state, outputPath.string(), *settings));
+    REQUIRE(promptTitle == "Marker save warning");
+    REQUIRE(promptMessage.find("will not store markers in the audio file") !=
+            std::string::npos);
+    REQUIRE_FALSE(std::filesystem::exists(outputPath));
+}
+
+TEST_CASE("Save as proceeds after accepting lossy marker warning", "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-save-warning-lossy-accept"));
+    const auto outputPath = cleanup.path() / "lossy_markers_accept.aiff";
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto &document = state.getActiveDocumentSession().document;
+    document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 4);
+    document.setSample(0, 0, 0.1f, false);
+    document.setSample(0, 1, 0.2f, false);
+    document.addMarker(1, std::string(300, 'x'));
+
+    int promptCount = 0;
+    state.confirmationReporter =
+        [&](const std::string &, const std::string &)
+    {
+        ++promptCount;
+        return true;
+    };
+
+    const auto settings = cupuacu::file::defaultExportSettingsForPath(
+        outputPath, document.getSampleFormat());
+    REQUIRE(settings.has_value());
+    REQUIRE(cupuacu::actions::saveAs(&state, outputPath.string(), *settings));
+    REQUIRE(promptCount == 1);
+    REQUIRE(std::filesystem::exists(outputPath));
+}
+
 TEST_CASE("Overwrite reports failure instead of throwing on invalid target",
           "[file]")
 {
@@ -1903,6 +2086,131 @@ TEST_CASE("Overwrite reports failure instead of throwing on invalid target",
     REQUIRE_FALSE(cupuacu::actions::overwritePreserving(&state));
     REQUIRE(reportedMessage.find(invalidTarget.string()) != std::string::npos);
     REQUIRE(std::filesystem::is_directory(invalidTarget));
+}
+
+TEST_CASE("Overwrite warns before unsupported marker persistence and can be canceled",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-overwrite-warning-unsupported-cancel"));
+    const auto outputPath = cleanup.path() / "unsupported_overwrite.flac";
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto &session = state.getActiveDocumentSession();
+    auto &document = session.document;
+    document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 4);
+    document.setSample(0, 0, 0.1f, false);
+    document.addMarker(1, "Kick");
+    session.currentFile = outputPath.string();
+    session.currentFileExportSettings = cupuacu::file::AudioExportSettings{
+        .container = cupuacu::file::AudioExportContainer::FLAC,
+        .codec = cupuacu::file::AudioExportCodec::FLAC,
+        .majorFormat = SF_FORMAT_FLAC,
+        .subtype = SF_FORMAT_PCM_16,
+        .containerLabel = "FLAC",
+        .codecLabel = "FLAC",
+        .encodingLabel = "16-bit FLAC",
+        .extension = "flac",
+    };
+
+    std::string promptTitle;
+    std::string promptMessage;
+    state.confirmationReporter =
+        [&](const std::string &title, const std::string &message)
+    {
+        promptTitle = title;
+        promptMessage = message;
+        return false;
+    };
+
+    REQUIRE_FALSE(cupuacu::actions::overwrite(&state));
+    REQUIRE(promptTitle == "Marker save warning");
+    REQUIRE(promptMessage.find("will not store markers in the audio file") !=
+            std::string::npos);
+    REQUIRE_FALSE(std::filesystem::exists(outputPath));
+}
+
+TEST_CASE("Preserving overwrite warns before lossy marker persistence and can be canceled",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-overwrite-warning-lossy-cancel"));
+    const auto aiffPath = cleanup.path() / "lossy_overwrite.aiff";
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto &session = state.getActiveDocumentSession();
+    auto &document = session.document;
+    document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 4);
+    document.setSample(0, 0, 0.1f, false);
+    document.setSample(0, 1, 0.2f, false);
+    document.setSample(0, 2, 0.3f, false);
+    document.setSample(0, 3, 0.4f, false);
+    const auto settings = cupuacu::file::AudioExportSettings{
+        .container = cupuacu::file::AudioExportContainer::AIFF,
+        .codec = cupuacu::file::AudioExportCodec::PCM,
+        .majorFormat = SF_FORMAT_AIFF,
+        .subtype = SF_FORMAT_PCM_16,
+        .containerLabel = "AIFF",
+        .codecLabel = "PCM",
+        .encodingLabel = "16-bit PCM",
+        .extension = "aiff",
+    };
+    REQUIRE(cupuacu::actions::saveAs(&state, aiffPath.string(), settings));
+
+    cupuacu::file::loadSampleData(&state);
+    session.document.addMarker(1, std::string(300, 'x'));
+
+    std::string promptTitle;
+    std::string promptMessage;
+    state.confirmationReporter =
+        [&](const std::string &title, const std::string &message)
+    {
+        promptTitle = title;
+        promptMessage = message;
+        return false;
+    };
+
+    REQUIRE_FALSE(cupuacu::actions::overwritePreserving(&state));
+    REQUIRE(promptTitle == "Marker save warning");
+    REQUIRE(promptMessage.find("may be truncated") != std::string::npos);
+}
+
+TEST_CASE("Overwrite proceeds after accepting unsupported marker warning",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-overwrite-warning-unsupported-accept"));
+    const auto outputPath = cleanup.path() / "unsupported_overwrite_accept.flac";
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto &session = state.getActiveDocumentSession();
+    auto &document = session.document;
+    document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 4);
+    document.setSample(0, 0, 0.1f, false);
+    document.addMarker(1, "Kick");
+    session.currentFile = outputPath.string();
+    session.currentFileExportSettings = cupuacu::file::AudioExportSettings{
+        .container = cupuacu::file::AudioExportContainer::FLAC,
+        .codec = cupuacu::file::AudioExportCodec::FLAC,
+        .majorFormat = SF_FORMAT_FLAC,
+        .subtype = SF_FORMAT_PCM_16,
+        .containerLabel = "FLAC",
+        .codecLabel = "FLAC",
+        .encodingLabel = "16-bit FLAC",
+        .extension = "flac",
+    };
+
+    int promptCount = 0;
+    state.confirmationReporter =
+        [&](const std::string &, const std::string &)
+    {
+        ++promptCount;
+        return true;
+    };
+
+    REQUIRE(cupuacu::actions::overwrite(&state));
+    REQUIRE(promptCount == 1);
+    REQUIRE(std::filesystem::exists(outputPath));
 }
 
 TEST_CASE("Default export settings preserve ALAC depth preferences", "[file]")
@@ -2038,4 +2346,108 @@ TEST_CASE("Export settings description includes MP3 bitrate when selected",
     const auto description = cupuacu::file::describeExportSettings(settings);
     REQUIRE(description.find("CBR") != std::string::npos);
     REQUIRE(description.find("192 kbps") != std::string::npos);
+}
+
+TEST_CASE("Export settings description includes exact marker support for WAV",
+          "[file]")
+{
+    cupuacu::Document document;
+    document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 16);
+    document.addMarker(4, "Kick");
+
+    cupuacu::file::AudioExportSettings settings{
+        .container = cupuacu::file::AudioExportContainer::WAV,
+        .codec = cupuacu::file::AudioExportCodec::PCM,
+        .majorFormat = SF_FORMAT_WAV,
+        .subtype = SF_FORMAT_PCM_16,
+        .containerLabel = "WAV",
+        .codecLabel = "PCM",
+        .encodingLabel = "16-bit PCM",
+        .extension = "wav",
+    };
+
+    const auto description =
+        cupuacu::file::describeExportSettings(settings, document);
+    REQUIRE(description.find("Markers: native support, exact round-trip.") !=
+            std::string::npos);
+}
+
+TEST_CASE("Export settings description includes lossy marker warning for AIFF",
+          "[file]")
+{
+    cupuacu::Document document;
+    document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 16);
+    document.addMarker(4, std::string(300, 'x'));
+
+    cupuacu::file::AudioExportSettings settings{
+        .container = cupuacu::file::AudioExportContainer::AIFF,
+        .codec = cupuacu::file::AudioExportCodec::PCM,
+        .majorFormat = SF_FORMAT_AIFF,
+        .subtype = SF_FORMAT_PCM_16,
+        .containerLabel = "AIFF",
+        .codecLabel = "PCM",
+        .encodingLabel = "16-bit PCM",
+        .extension = "aiff",
+    };
+
+    const auto description =
+        cupuacu::file::describeExportSettings(settings, document);
+    REQUIRE(description.find(
+                "Markers: native support, but some marker data may be truncated.") !=
+            std::string::npos);
+}
+
+TEST_CASE(
+    "Export settings description includes unsupported marker fallback warning",
+    "[file]")
+{
+    cupuacu::Document document;
+    document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 16);
+    document.addMarker(4, "Kick");
+
+    cupuacu::file::AudioExportSettings settings{
+        .container = cupuacu::file::AudioExportContainer::FLAC,
+        .codec = cupuacu::file::AudioExportCodec::FLAC,
+        .majorFormat = SF_FORMAT_FLAC,
+        .subtype = SF_FORMAT_PCM_16,
+        .containerLabel = "FLAC",
+        .codecLabel = "FLAC",
+        .encodingLabel = "16-bit FLAC",
+        .extension = "flac",
+    };
+
+    const auto description =
+        cupuacu::file::describeExportSettings(settings, document);
+    REQUIRE(description.find(
+                "Markers: no native support; Cupuacu fallback persistence is needed to keep markers.") !=
+            std::string::npos);
+}
+
+TEST_CASE("Save write plan carries marker persistence assessment", "[file]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    auto &document = state.getActiveDocumentSession().document;
+    document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 16);
+    document.addMarker(4, std::string(300, 'x'));
+    state.getActiveDocumentSession().currentFile = "/tmp/reference.aiff";
+    state.getActiveDocumentSession().currentFileExportSettings =
+        cupuacu::file::AudioExportSettings{
+            .container = cupuacu::file::AudioExportContainer::AIFF,
+            .codec = cupuacu::file::AudioExportCodec::PCM,
+            .majorFormat = SF_FORMAT_AIFF,
+            .subtype = SF_FORMAT_PCM_16,
+            .containerLabel = "AIFF",
+            .codecLabel = "PCM",
+            .encodingLabel = "16-bit PCM",
+            .extension = "aiff",
+        };
+    state.getActiveDocumentSession().setPreservationReference(
+        "/tmp/reference.aiff",
+        state.getActiveDocumentSession().currentFileExportSettings);
+
+    const auto plan = cupuacu::file::SaveWritePlanner::planPreservingSaveAs(
+        &state, *state.getActiveDocumentSession().currentFileExportSettings);
+    REQUIRE(plan.markerPersistence.has_value());
+    REQUIRE(plan.markerPersistence->fidelity ==
+            cupuacu::file::MarkerPersistenceFidelity::Lossy);
 }

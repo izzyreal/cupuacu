@@ -304,6 +304,15 @@ namespace cupuacu::actions
                 documentState.selectionEndExclusive =
                     tab.session.selection.getEndExclusiveInt();
             }
+            for (const auto &marker : tab.session.document.getMarkers())
+            {
+                documentState.markers.push_back(
+                    cupuacu::persistence::PersistedDocumentMarker{
+                        .id = marker.id,
+                        .frame = marker.frame,
+                        .label = marker.label,
+                    });
+            }
 
             persisted.openDocuments.push_back(documentState);
             persisted.openFiles.push_back(tab.session.currentFile);
@@ -759,6 +768,17 @@ namespace cupuacu::actions
                 session.selection.setValue2(endExclusive);
             }
         }
+        std::vector<cupuacu::DocumentMarker> markers;
+        markers.reserve(documentState.markers.size());
+        for (const auto &marker : documentState.markers)
+        {
+            markers.push_back(cupuacu::DocumentMarker{
+                .id = marker.id,
+                .frame = marker.frame,
+                .label = marker.label,
+            });
+        }
+        session.document.replaceMarkers(std::move(markers));
 
         if (documentState.samplesPerPixel.has_value() &&
             *documentState.samplesPerPixel > 0.0)

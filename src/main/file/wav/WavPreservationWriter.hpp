@@ -3,6 +3,7 @@
 #include "../../State.hpp"
 #include "../ChunkedPreservationRewrite.hpp"
 #include "../PcmPreservationIO.hpp"
+#include "WavMarkerMetadata.hpp"
 #include "WavParser.hpp"
 #include "WavPreservationSupport.hpp"
 
@@ -251,6 +252,10 @@ namespace cupuacu::file::wav
                 output.write(encodedSamples.data(),
                              static_cast<std::streamsize>(dataSize));
             }
+            if ((dataSize & 1u) != 0u)
+            {
+                output.put('\0');
+            }
         }
 
         static void copySuffix(std::istream &input, std::ostream &output,
@@ -301,6 +306,71 @@ namespace cupuacu::file::wav
             }
         }
 
+        static bool hasMarkerChunks(std::istream &input, const ParsedFile &parsed)
+        {
+            return std::any_of(parsed.chunks.begin(), parsed.chunks.end(),
+                               [&](const ChunkInfo &chunk)
+                               { return markers::isMarkerChunk(input, chunk); });
+        }
+
+        static void rewriteWholeFileWithMarkers(
+            cupuacu::State *state, const std::filesystem::path &referencePath,
+            const std::filesystem::path &outputPath, const ParsedFile &parsed)
+        {
+            cupuacu::file::writeFileAtomically(
+                outputPath,
+                [&](const std::filesystem::path &temporaryPath)
+                {
+                    auto input = cupuacu::file::preservation::openInputFileStream(
+                        referencePath);
+                    auto output = cupuacu::file::preservation::openOutputFileStream(
+                        temporaryPath);
+
+                    cupuacu::file::preservation::copyByteRange(
+                        input, output, 0, 12, "Failed to copy WAV header");
+
+                    bool insertedMarkers = false;
+                    for (const auto &chunk : parsed.chunks)
+                    {
+                        if (!insertedMarkers &&
+                            (markers::isMarkerChunk(input, chunk) ||
+                             std::memcmp(chunk.id, "data", 4) == 0))
+                        {
+                            markers::writeMarkerChunks(
+                                output,
+                                state->getActiveDocumentSession().document.getMarkers());
+                            insertedMarkers = true;
+                        }
+
+                        if (markers::isMarkerChunk(input, chunk))
+                        {
+                            continue;
+                        }
+
+                        if (std::memcmp(chunk.id, "data", 4) == 0)
+                        {
+                            writeDataChunk(state, input, output, parsed);
+                            continue;
+                        }
+
+                        cupuacu::file::preservation::copyByteRange(
+                            input, output, chunk.headerOffset,
+                            8 + chunk.paddedPayloadSize,
+                            "Failed to copy WAV chunk");
+                    }
+
+                    if (!insertedMarkers)
+                    {
+                        markers::writeMarkerChunks(
+                            output,
+                            state->getActiveDocumentSession().document.getMarkers());
+                    }
+
+                    updateRiffSizeField(output, parsed);
+                    output.flush();
+                });
+        }
+
     public:
         static void writePreservingWavFile(
             cupuacu::State *state, const std::filesystem::path &referencePath,
@@ -320,27 +390,40 @@ namespace cupuacu::file::wav
             }
             const ParsedFile parsed = WavParser::parseFile(referencePath);
 
-            if (referencePath == outputPath && canPatchDataChunkInPlace(state, parsed))
+            const bool markersRequireRewrite =
+                !state->getActiveDocumentSession().document.getMarkers().empty();
+
+            if (!markersRequireRewrite)
             {
-                patchDataChunkInPlace(state, referencePath);
+                if (referencePath == outputPath &&
+                    canPatchDataChunkInPlace(state, parsed))
+                {
+                    patchDataChunkInPlace(state, referencePath);
+                    return;
+                }
+
+                cupuacu::file::preservation::rewriteChunkPreserving(
+                    referencePath, outputPath,
+                    [&](std::istream &input, std::ostream &output)
+                    {
+                        copyPrefix(input, output, parsed);
+                    },
+                    [&](std::istream &input, std::ostream &output)
+                    {
+                        writeDataChunk(state, input, output, parsed);
+                    },
+                    [&](std::istream &input, std::ostream &output)
+                    {
+                        copySuffix(input, output, parsed);
+                    },
+                    [&](std::ostream &output)
+                    {
+                        updateRiffSizeField(output, parsed);
+                    });
                 return;
             }
 
-            cupuacu::file::preservation::rewriteChunkPreserving(
-                referencePath, outputPath,
-                [&](std::istream &input, std::ostream &output)
-                {
-                    copyPrefix(input, output, parsed);
-                },
-                [&](std::istream &input, std::ostream &output)
-                {
-                    writeDataChunk(state, input, output, parsed);
-                },
-                [&](std::istream &input, std::ostream &output)
-                {
-                    copySuffix(input, output, parsed);
-                },
-                [&](std::ostream &output) { updateRiffSizeField(output, parsed); });
+            rewriteWholeFileWithMarkers(state, referencePath, outputPath, parsed);
         }
 
         static void overwritePreservingWavFile(cupuacu::State *state)

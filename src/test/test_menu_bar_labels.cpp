@@ -460,6 +460,27 @@ TEST_CASE(
             "Rewrite the current file in preservation mode, keeping unchanged "
             "source audio bytes intact where possible for supported "
             "preserving formats.");
+
+    state.getActiveDocumentSession().document.addMarker(1, "Kick");
+
+    REQUIRE(saveAsEntry->getTooltipText() ==
+            "Write the active document to a new file and make that file the "
+            "current document path.\n\nMarkers: outcome depends on the chosen "
+            "export format.");
+    REQUIRE(preservingSaveAsEntry->getTooltipText() ==
+            "Write a new file in preservation mode, keeping unchanged source "
+            "audio bytes intact where possible for supported preserving "
+            "formats and using the latest opened or saved file as the "
+            "reference.\n\nMarkers: outcome depends on the chosen export "
+            "format.");
+    REQUIRE(overwriteEntry->getTooltipText() ==
+            "Rewrite the current file at its existing path using the current "
+            "export settings.\n\nMarkers: native support, exact round-trip.");
+    REQUIRE(preservingOverwriteEntry->getTooltipText() ==
+            "Rewrite the current file in preservation mode, keeping unchanged "
+            "source audio bytes intact where possible for supported "
+            "preserving formats.\n\nMarkers: native support, exact "
+            "round-trip.");
 }
 
 TEST_CASE(
@@ -472,7 +493,7 @@ TEST_CASE(
     auto *menuBar = makeMenuBar(&state, root);
     auto *editMenu = menuChildren(menuBar)[1];
     auto editEntries = menuChildren(editMenu);
-    REQUIRE(editEntries.size() == 6);
+    REQUIRE(editEntries.size() == 7);
 
     auto &session = state.getActiveDocumentSession();
     auto &doc = session.document;
@@ -525,6 +546,14 @@ TEST_CASE(
     REQUIRE(session.selection.getLengthInt() == 3);
     REQUIRE(doc.getSample(0, 1) == Catch::Approx(0.2f));
     REQUIRE(doc.getSample(0, 3) == Catch::Approx(0.4f));
+
+    session.selection.reset();
+    session.cursor = 2;
+    auto *insertMarkerEntry = editEntries[6];
+    insertMarkerEntry->mouseDown(leftMouseDown());
+    REQUIRE(doc.getMarkers().size() == 1);
+    REQUIRE(doc.getMarkers()[0].frame == 2);
+    REQUIRE(state.getActiveViewState().selectedMarkerId == doc.getMarkers()[0].id);
 }
 
 TEST_CASE("MenuBar file overwrite action rewrites the current file",

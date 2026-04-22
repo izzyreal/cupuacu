@@ -9,6 +9,7 @@
 #include "MouseEvent.hpp"
 #include "Waveform.hpp"
 #include "TriangleMarker.hpp"
+#include "DocumentMarkerHandle.hpp"
 #include "keyboard_handling.hpp"
 #include "../actions/DocumentTabs.hpp"
 #include "../ResourceUtil.hpp"
@@ -154,6 +155,8 @@ namespace cupuacu::gui
         else if (dynamic_cast<const ControlPointHandle *>(
                      window->getComponentUnderMouse()) ||
                  dynamic_cast<const TriangleMarker *>(
+                     window->getComponentUnderMouse()) ||
+                 dynamic_cast<const DocumentMarkerHandle *>(
                      window->getComponentUnderMouse()))
         {
             newCursor = cursors.pointerCursor;

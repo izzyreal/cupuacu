@@ -34,5 +34,6 @@ namespace cupuacu::gui
         SelectedChannels hoveringOverChannels = SelectedChannels::BOTH;
         double samplesToScroll = 0.0;
         std::optional<HoveredSampleInfo> sampleValueUnderMouseCursor;
+        std::optional<uint64_t> selectedMarkerId;
     };
 } // namespace cupuacu::gui

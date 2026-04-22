@@ -588,7 +588,8 @@ namespace cupuacu::gui
     {
         if (const auto settings = selectedSettings(); settings.has_value())
         {
-            detailsLabel->setText(file::describeExportSettings(*settings));
+            detailsLabel->setText(file::describeExportSettings(
+                *settings, state->getActiveDocumentSession().document));
             return;
         }
 

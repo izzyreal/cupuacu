@@ -36,6 +36,7 @@ bool WaveformsUnderlay::mouseDown(const MouseEvent &e)
     auto &viewState = state->getActiveViewState();
 
     lastNumClicks = e.numClicks;
+    viewState.selectedMarkerId.reset();
 
     handleChannelSelection(e.mouseYi, true);
 

@@ -1091,6 +1091,8 @@ void Waveform::onDraw(SDL_Renderer *renderer)
 
     drawHighlight(renderer);
 
+    drawMarkers(renderer);
+
     drawCursor(renderer);
 
     drawPlaybackPosition(renderer);
@@ -1125,6 +1127,40 @@ void Waveform::drawCursor(SDL_Renderer *renderer) const
         for (int i = yInterval; i < getHeight(); i += yInterval)
         {
             SDL_RenderPoint(renderer, marker.x, i);
+        }
+    }
+}
+
+void Waveform::drawMarkers(SDL_Renderer *renderer) const
+{
+    const auto &session = state->getActiveDocumentSession();
+    const auto &viewState = state->getActiveViewState();
+    const auto &markers = session.document.getMarkers();
+
+    for (const auto &marker : markers)
+    {
+        const auto markerPlan = planWaveformCursorMarker(
+            false, marker.frame, viewState.sampleOffset, viewState.samplesPerPixel,
+            getWidth());
+        if (!markerPlan.visible)
+        {
+            continue;
+        }
+
+        const bool isSelected = viewState.selectedMarkerId == marker.id;
+        if (isSelected)
+        {
+            SDL_SetRenderDrawColor(renderer, 255, 115, 0, 255);
+        }
+        else
+        {
+            SDL_SetRenderDrawColor(renderer, 230, 77, 26, 255);
+        }
+
+        const int yInterval = 10 * (1.f / state->pixelScale);
+        for (int y = yInterval; y < getHeight(); y += yInterval)
+        {
+            SDL_RenderPoint(renderer, markerPlan.x, y);
         }
     }
 }

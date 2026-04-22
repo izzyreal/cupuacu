@@ -2,6 +2,7 @@
 
 #include "../State.hpp"
 #include "AudioExport.hpp"
+#include "MarkerPersistence.hpp"
 #include "OverwritePreservation.hpp"
 #include "PreservationBackend.hpp"
 
@@ -21,6 +22,7 @@ namespace cupuacu::file
     {
         SaveWriteMode mode = SaveWriteMode::GenericRewrite;
         std::optional<std::string> preservationUnavailableReason;
+        std::optional<MarkerPersistenceAssessment> markerPersistence;
     };
 
     class SaveWritePlanner
@@ -32,13 +34,22 @@ namespace cupuacu::file
         {
             const auto preservation =
                 cupuacu::file::OverwritePreservation::assessActiveSession(state);
+            const auto markerPersistence =
+                state == nullptr
+                    ? std::optional<MarkerPersistenceAssessment>(std::nullopt)
+                    : std::optional<MarkerPersistenceAssessment>(
+                          cupuacu::file::assessMarkerPersistenceForSettings(
+                              state->getActiveDocumentSession().document,
+                              settings));
             if (!preservation.available)
             {
                 return {.mode = SaveWriteMode::PreservationRequiredButUnavailable,
-                        .preservationUnavailableReason = preservation.reason};
+                        .preservationUnavailableReason = preservation.reason,
+                        .markerPersistence = markerPersistence};
             }
 
-            return {.mode = SaveWriteMode::OverwritePreservingRewrite};
+            return {.mode = SaveWriteMode::OverwritePreservingRewrite,
+                    .markerPersistence = markerPersistence};
         }
 
         [[nodiscard]] static SaveWritePlan
@@ -48,18 +59,24 @@ namespace cupuacu::file
             if (state == nullptr)
             {
                 return {.mode = SaveWriteMode::PreservationRequiredButUnavailable,
-                        .preservationUnavailableReason = "State is null"};
+                        .preservationUnavailableReason = "State is null",
+                        .markerPersistence = std::nullopt};
             }
 
             const auto support =
                 cupuacu::file::assessPreservationAgainstReference(state, settings);
+            const auto markerPersistence =
+                cupuacu::file::assessMarkerPersistenceForSettings(
+                    state->getActiveDocumentSession().document, settings);
             if (!support.available)
             {
                 return {.mode = SaveWriteMode::PreservationRequiredButUnavailable,
-                        .preservationUnavailableReason = support.reason};
+                        .preservationUnavailableReason = support.reason,
+                        .markerPersistence = markerPersistence};
             }
 
-            return {.mode = SaveWriteMode::OverwritePreservingRewrite};
+            return {.mode = SaveWriteMode::OverwritePreservingRewrite,
+                    .markerPersistence = markerPersistence};
         }
     };
 } // namespace cupuacu::file

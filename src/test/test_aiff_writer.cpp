@@ -11,6 +11,7 @@
 #include "file/SaveWritePlan.hpp"
 #include "file/SampleQuantization.hpp"
 #include "file/SndfilePath.hpp"
+#include "file/aiff/AiffMarkerMetadata.hpp"
 #include "file/aiff/AiffPreservationSupport.hpp"
 #include "file/aiff/AiffParser.hpp"
 #include "file/file_loading.hpp"
@@ -544,6 +545,29 @@ TEST_CASE("Overwrite preserves non-audio AIFF chunks around SSND", "[file]")
     REQUIRE(readChunkBytes(aiffPath, "ANNO") == originalAnnoChunk);
 }
 
+TEST_CASE("Loading AIFF imports native MARK markers into Document", "[file]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-aiff-load-markers"));
+    const auto aiffPath = cleanup.path() / "markers.aiff";
+    writePcm16AiffFile(aiffPath, 44100, 1, {1000, 2000, 3000, 4000});
+    cupuacu::file::aiff::markers::rewriteFileWithMarkers(
+        aiffPath, {{.id = 5, .frame = 1, .label = "One"},
+                   {.id = 9, .frame = 3, .label = "Three"}});
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().currentFile = aiffPath.string();
+    cupuacu::file::loadSampleData(&state);
+
+    const auto &markers = state.getActiveDocumentSession().document.getMarkers();
+    REQUIRE(markers.size() == 2);
+    REQUIRE(markers[0].id == 5);
+    REQUIRE(markers[0].frame == 1);
+    REQUIRE(markers[0].label == "One");
+    REQUIRE(markers[1].id == 9);
+    REQUIRE(markers[1].frame == 3);
+    REQUIRE(markers[1].label == "Three");
+}
+
 TEST_CASE("Overwrite after length change keeps AIFF sizes and chunk order consistent",
           "[file]")
 {
@@ -966,4 +990,61 @@ TEST_CASE("Preserving AIFF save as writes against the reference and updates it",
     REQUIRE(readChunkOrder(outputPath) == originalOrder);
     REQUIRE(readChunkBytes(outputPath, "NAME") == originalNameChunk);
     REQUIRE(readChunkBytes(outputPath, "ANNO") == originalAnnoChunk);
+}
+
+TEST_CASE("Save as writes native AIFF markers", "[file]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-aiff-save-markers"));
+    const auto aiffPath = cleanup.path() / "saved_markers.aiff";
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto &document = state.getActiveDocumentSession().document;
+    document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 4);
+    document.setSample(0, 0, 0.1f, false);
+    document.setSample(0, 1, 0.2f, false);
+    document.setSample(0, 2, 0.3f, false);
+    document.setSample(0, 3, 0.4f, false);
+    document.addMarker(1, "Attack");
+    document.addMarker(3, "Tail");
+
+    const auto settings = cupuacu::file::defaultExportSettingsForPath(
+        aiffPath.string(), document.getSampleFormat());
+    REQUIRE(settings.has_value());
+    REQUIRE(cupuacu::actions::saveAs(&state, aiffPath.string(), *settings));
+
+    const auto markers = cupuacu::file::aiff::markers::readMarkers(aiffPath);
+    REQUIRE(markers.size() == 2);
+    REQUIRE(markers[0].frame == 1);
+    REQUIRE(markers[0].label == "Attack");
+    REQUIRE(markers[1].frame == 3);
+    REQUIRE(markers[1].label == "Tail");
+}
+
+TEST_CASE("Preserving overwrite updates AIFF markers after trim", "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-aiff-overwrite-markers"));
+    const auto aiffPath = cleanup.path() / "overwrite_markers.aiff";
+    writePcm16AiffFile(aiffPath, 44100, 1, {1000, 2000, 3000, 4000, 5000, 6000});
+    cupuacu::file::aiff::markers::rewriteFileWithMarkers(
+        aiffPath, {{.id = 31, .frame = 1, .label = "A"},
+                   {.id = 32, .frame = 4, .label = "B"}});
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().setCurrentFile(aiffPath.string());
+    cupuacu::file::loadSampleData(&state);
+    state.getActiveDocumentSession().selection.setHighest(
+        static_cast<double>(state.getActiveDocumentSession().document.getFrameCount()));
+    state.getActiveDocumentSession().selection.setValue1(1.0);
+    state.getActiveDocumentSession().selection.setValue2(5.0);
+    state.addAndDoUndoable(
+        std::make_shared<cupuacu::actions::audio::Trim>(&state, 1, 4));
+    REQUIRE(cupuacu::actions::overwritePreserving(&state));
+
+    const auto markers = cupuacu::file::aiff::markers::readMarkers(aiffPath);
+    REQUIRE(markers.size() == 2);
+    REQUIRE(markers[0].frame == 0);
+    REQUIRE(markers[0].label == "A");
+    REQUIRE(markers[1].frame == 3);
+    REQUIRE(markers[1].label == "B");
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../SampleFormat.hpp"
+#include "../Document.hpp"
 
 #include <filesystem>
 #include <optional>
@@ -104,6 +105,8 @@ namespace cupuacu::file
     defaultBitrateKbpsForSettings(const AudioExportSettings &settings,
                                   int sampleRate);
     std::string describeExportSettings(const AudioExportSettings &settings);
+    std::string describeExportSettings(const AudioExportSettings &settings,
+                                       const cupuacu::Document &document);
 
     cupuacu::SampleFormat sampleFormatForSndfileFormat(int sndfileFormat);
 

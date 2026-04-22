@@ -26,6 +26,27 @@ namespace cupuacu
                              gui::WaveformCache{});
     }
 
+    int64_t Document::clampMarkerFrame(const int64_t frame) const
+    {
+        return std::clamp(frame, int64_t{0}, getFrameCount());
+    }
+
+    void Document::normalizeMarkers()
+    {
+        uint64_t maxExistingId = 0;
+        for (auto &marker : markers)
+        {
+            if (marker.id == 0)
+            {
+                marker.id = nextMarkerId++;
+            }
+            marker.frame = clampMarkerFrame(marker.frame);
+            maxExistingId = std::max(maxExistingId, marker.id);
+        }
+
+        nextMarkerId = std::max(nextMarkerId, maxExistingId + 1);
+    }
+
     void Document::initialize(const SampleFormat sampleFormatToUse,
                               const uint32_t sampleRateToUse,
                               const uint32_t channelCount,
@@ -45,7 +66,10 @@ namespace cupuacu
                      : std::make_shared<cupuacu::audio::AudioBuffer>();
         buffer->resize(channelCount, frameCount);
         ++waveformDataVersion;
+        ++markerDataVersion;
         resetWaveformCacheToChannelCount(channelCount);
+        markers.clear();
+        nextMarkerId = 1;
     }
 
     gui::WaveformCache &Document::getWaveformCache(const int channel)
@@ -71,6 +95,11 @@ namespace cupuacu
     uint64_t Document::getWaveformDataVersion() const
     {
         return waveformDataVersion;
+    }
+
+    uint64_t Document::getMarkerDataVersion() const
+    {
+        return markerDataVersion;
     }
 
     int64_t Document::getFrameCount() const
@@ -111,6 +140,20 @@ namespace cupuacu
         {
             waveformCache[ch].applyInsert(frameIndex, numFrames);
         }
+
+        if (numFrames <= 0)
+        {
+            return;
+        }
+
+        for (auto &marker : markers)
+        {
+            if (marker.frame >= frameIndex)
+            {
+                marker.frame += numFrames;
+            }
+        }
+        ++markerDataVersion;
     }
 
     void Document::removeFrames(int64_t frameIndex, int64_t numFrames)
@@ -122,6 +165,30 @@ namespace cupuacu
         {
             waveformCache[ch].applyErase(frameIndex, frameIndex + numFrames);
         }
+
+        if (numFrames <= 0)
+        {
+            normalizeMarkers();
+            return;
+        }
+
+        const int64_t removedEnd = frameIndex + numFrames;
+        for (auto &marker : markers)
+        {
+            if (marker.frame >= removedEnd)
+            {
+                marker.frame -= numFrames;
+                continue;
+            }
+
+            if (marker.frame >= frameIndex)
+            {
+                marker.frame = frameIndex;
+            }
+        }
+
+        normalizeMarkers();
+        ++markerDataVersion;
     }
 
     void Document::invalidateWaveformSamples(int64_t startSample,
@@ -255,6 +322,79 @@ namespace cupuacu
                 }
             }
         }
+    }
+
+    const std::vector<DocumentMarker> &Document::getMarkers() const
+    {
+        return markers;
+    }
+
+    uint64_t Document::addMarker(const int64_t frame, std::string label)
+    {
+        const uint64_t id = nextMarkerId++;
+        markers.push_back(DocumentMarker{
+            .id = id,
+            .frame = clampMarkerFrame(frame),
+            .label = std::move(label),
+        });
+        ++markerDataVersion;
+        return id;
+    }
+
+    bool Document::removeMarker(const uint64_t id)
+    {
+        const auto beforeSize = markers.size();
+        markers.erase(std::remove_if(markers.begin(), markers.end(),
+                                     [&](const DocumentMarker &marker)
+                                     { return marker.id == id; }),
+                      markers.end());
+        const bool changed = markers.size() != beforeSize;
+        if (changed)
+        {
+            ++markerDataVersion;
+        }
+        return changed;
+    }
+
+    bool Document::setMarkerFrame(const uint64_t id, const int64_t frame)
+    {
+        for (auto &marker : markers)
+        {
+            if (marker.id == id)
+            {
+                marker.frame = clampMarkerFrame(frame);
+                ++markerDataVersion;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool Document::setMarkerLabel(const uint64_t id, std::string label)
+    {
+        for (auto &marker : markers)
+        {
+            if (marker.id == id)
+            {
+                marker.label = std::move(label);
+                ++markerDataVersion;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void Document::replaceMarkers(std::vector<DocumentMarker> markersToUse)
+    {
+        markers = std::move(markersToUse);
+        normalizeMarkers();
+        ++markerDataVersion;
+    }
+
+    void Document::clearMarkers()
+    {
+        markers.clear();
+        ++markerDataVersion;
     }
 
     void Document::markCurrentStateAsSavedSource()

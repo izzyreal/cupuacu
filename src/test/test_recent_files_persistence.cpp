@@ -121,6 +121,18 @@ TEST_CASE("Session state persistence round-trips open files and active index",
             .cursor = 9,
             .selectionStart = 3,
             .selectionEndExclusive = 11,
+            .markers = {
+                {
+                    .id = 7,
+                    .frame = 5,
+                    .label = "Start",
+                },
+                {
+                    .id = 9,
+                    .frame = 42,
+                    .label = "Chop",
+                },
+            },
         },
         {
             .filePath = "/tmp/open-b.wav",
@@ -142,6 +154,13 @@ TEST_CASE("Session state persistence round-trips open files and active index",
     REQUIRE(loaded.openDocuments[0].cursor == 9);
     REQUIRE(loaded.openDocuments[0].selectionStart == 3);
     REQUIRE(loaded.openDocuments[0].selectionEndExclusive == 11);
+    REQUIRE(loaded.openDocuments[0].markers.size() == 2);
+    REQUIRE(loaded.openDocuments[0].markers[0].id == 7);
+    REQUIRE(loaded.openDocuments[0].markers[0].frame == 5);
+    REQUIRE(loaded.openDocuments[0].markers[0].label == "Start");
+    REQUIRE(loaded.openDocuments[0].markers[1].id == 9);
+    REQUIRE(loaded.openDocuments[0].markers[1].frame == 42);
+    REQUIRE(loaded.openDocuments[0].markers[1].label == "Chop");
     REQUIRE(loaded.openDocuments[1].filePath == "/tmp/open-b.wav");
     REQUIRE(loaded.openDocuments[1].samplesPerPixel == Catch::Approx(4.0));
     REQUIRE(loaded.openDocuments[1].sampleOffset == 29);
@@ -279,11 +298,18 @@ TEST_CASE("Persisted open session state captures open file tabs and the active f
     state.tabs[0].session.selection.setHighest(64.0);
     state.tabs[0].session.selection.setValue1(5.0);
     state.tabs[0].session.selection.setValue2(14.0);
+    state.tabs[0].session.document.initialize(
+        cupuacu::SampleFormat::PCM_S16, 44100, 1, 64);
+    state.tabs[0].session.document.addMarker(6, "Kick");
+    state.tabs[0].session.document.addMarker(28, "Snare");
     state.tabs[1].session.currentFile.clear();
     state.tabs[2].session.currentFile = "/tmp/open-b.wav";
     state.tabs[2].viewState.samplesPerPixel = 1.25;
     state.tabs[2].viewState.sampleOffset = 7;
     state.tabs[2].session.cursor = 4;
+    state.tabs[2].session.document.initialize(
+        cupuacu::SampleFormat::PCM_S16, 44100, 1, 32);
+    state.tabs[2].session.document.addMarker(3, "Hit");
     state.activeTabIndex = 2;
 
     const auto persisted = cupuacu::actions::buildPersistedOpenSessionState(&state);
@@ -294,11 +320,19 @@ TEST_CASE("Persisted open session state captures open file tabs and the active f
     REQUIRE(persisted.openDocuments[0].cursor == 12);
     REQUIRE(persisted.openDocuments[0].selectionStart == 5);
     REQUIRE(persisted.openDocuments[0].selectionEndExclusive == 14);
+    REQUIRE(persisted.openDocuments[0].markers.size() == 2);
+    REQUIRE(persisted.openDocuments[0].markers[0].frame == 6);
+    REQUIRE(persisted.openDocuments[0].markers[0].label == "Kick");
+    REQUIRE(persisted.openDocuments[0].markers[1].frame == 28);
+    REQUIRE(persisted.openDocuments[0].markers[1].label == "Snare");
     REQUIRE(persisted.openDocuments[1].filePath == "/tmp/open-b.wav");
     REQUIRE(persisted.openDocuments[1].samplesPerPixel == Catch::Approx(1.25));
     REQUIRE(persisted.openDocuments[1].sampleOffset == 7);
     REQUIRE(persisted.openDocuments[1].cursor == 4);
     REQUIRE_FALSE(persisted.openDocuments[1].selectionStart.has_value());
+    REQUIRE(persisted.openDocuments[1].markers.size() == 1);
+    REQUIRE(persisted.openDocuments[1].markers[0].frame == 3);
+    REQUIRE(persisted.openDocuments[1].markers[0].label == "Hit");
     REQUIRE(persisted.openFiles ==
             std::vector<std::string>{"/tmp/open-a.wav", "/tmp/open-b.wav"});
     REQUIRE(persisted.activeOpenFileIndex == 1);
@@ -376,10 +410,24 @@ TEST_CASE("Persisted open document state restores per-document cursor",
     cupuacu::persistence::PersistedOpenDocumentState documentState{};
     documentState.filePath = "/tmp/open-a.wav";
     documentState.cursor = 42;
+    documentState.markers = {
+        {.id = 3, .frame = -10, .label = "Head"},
+        {.id = 8, .frame = 120, .label = "Tail"},
+    };
 
     cupuacu::actions::applyPersistedOpenDocumentState(&state, documentState);
 
     REQUIRE(state.getActiveDocumentSession().cursor == 42);
+    REQUIRE(state.getActiveDocumentSession().document.getMarkers().size() == 2);
+    REQUIRE(state.getActiveDocumentSession().document.getMarkers()[0].id == 3);
+    REQUIRE(state.getActiveDocumentSession().document.getMarkers()[0].frame == 0);
+    REQUIRE(state.getActiveDocumentSession().document.getMarkers()[0].label ==
+            "Head");
+    REQUIRE(state.getActiveDocumentSession().document.getMarkers()[1].id == 8);
+    REQUIRE(state.getActiveDocumentSession().document.getMarkers()[1].frame ==
+            100);
+    REQUIRE(state.getActiveDocumentSession().document.getMarkers()[1].label ==
+            "Tail");
 }
 
 TEST_CASE("Primary-modifier Q does not apply horizontal zoom-out",

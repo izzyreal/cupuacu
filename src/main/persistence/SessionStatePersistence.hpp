@@ -8,6 +8,13 @@
 
 namespace cupuacu::persistence
 {
+    struct PersistedDocumentMarker
+    {
+        uint64_t id = 0;
+        int64_t frame = 0;
+        std::string label;
+    };
+
     struct PersistedOpenDocumentState
     {
         std::string filePath;
@@ -16,6 +23,7 @@ namespace cupuacu::persistence
         std::optional<int64_t> cursor;
         std::optional<int64_t> selectionStart;
         std::optional<int64_t> selectionEndExclusive;
+        std::vector<PersistedDocumentMarker> markers;
     };
 
     struct PersistedSessionState

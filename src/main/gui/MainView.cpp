@@ -7,6 +7,7 @@
 #include "Waveform.hpp"
 #include "WaveformsUnderlay.hpp"
 #include "TriangleMarker.hpp"
+#include "DocumentMarkerHandle.hpp"
 #include "OpaqueRect.hpp"
 #include "ScrollBar.hpp"
 #include "Timeline.hpp"
@@ -31,6 +32,30 @@ namespace
     int computeScrollBarHeightForScale(const cupuacu::State *state)
     {
         return cupuacu::gui::scaleUi(state, 14.0f);
+    }
+
+    bool documentMarkerHandlesMatch(
+        const std::vector<cupuacu::gui::DocumentMarkerHandle *> &topHandles,
+        const std::vector<cupuacu::gui::DocumentMarkerHandle *> &bottomHandles,
+        const std::vector<cupuacu::DocumentMarker> &markers)
+    {
+        if (topHandles.size() != markers.size() ||
+            bottomHandles.size() != markers.size())
+        {
+            return false;
+        }
+
+        for (std::size_t index = 0; index < markers.size(); ++index)
+        {
+            if (!topHandles[index] || !bottomHandles[index] ||
+                topHandles[index]->getMarkerId() != markers[index].id ||
+                bottomHandles[index]->getMarkerId() != markers[index].id)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 } // namespace
 
@@ -504,7 +529,10 @@ bool MainView::shouldRefreshMarkerBounds(const bool consumedRecordedAudio,
            viewState.samplesPerPixel != lastSamplesPerPixel ||
            viewState.sampleOffset != lastSampleOffset ||
            selectionStart != lastSelectionStart ||
-           selectionEnd != lastSelectionEnd || consumedRecordedAudio ||
+           selectionEnd != lastSelectionEnd ||
+           session.document.getMarkerDataVersion() != lastMarkerDataVersion ||
+           viewState.selectedMarkerId != lastSelectedMarkerId ||
+           consumedRecordedAudio ||
            followedTransport;
 }
 
@@ -521,6 +549,8 @@ void MainView::rememberMarkerInputs(const bool selectionActive,
     lastSampleOffset = viewState.sampleOffset;
     lastSelectionStart = selectionStart;
     lastSelectionEnd = selectionEnd;
+    lastMarkerDataVersion = session.document.getMarkerDataVersion();
+    lastSelectedMarkerId = viewState.selectedMarkerId;
 }
 
 MainView::MainView(State *state) : Component(state, "MainView")
@@ -586,6 +616,8 @@ MainView::MainView(State *state) : Component(state, "MainView")
         state, TriangleMarkerType::SelectionStartBottom);
     selEndBot = borders[1]->emplaceChild<TriangleMarker>(
         state, TriangleMarkerType::SelectionEndBottom);
+
+    rebuildDocumentMarkerHandles();
 }
 
 void MainView::onDraw(SDL_Renderer *renderer)
@@ -646,6 +678,13 @@ void MainView::updateTriangleMarkerBounds() const
 
     const auto sampleOffset = viewState.sampleOffset;
     const auto samplesPerPixel = viewState.samplesPerPixel;
+    const auto &markers = session.document.getMarkers();
+
+    if (!documentMarkerHandlesMatch(documentMarkerTopHandles,
+                                    documentMarkerBottomHandles, markers))
+    {
+        rebuildDocumentMarkerHandles();
+    }
 
     if (samplesPerPixel <= 0.0 || waveforms->getWidth() <= 0)
     {
@@ -655,6 +694,14 @@ void MainView::updateTriangleMarkerBounds() const
         selStartBot->setVisible(false);
         selEndTop->setVisible(false);
         selEndBot->setVisible(false);
+        for (auto *handle : documentMarkerTopHandles)
+        {
+            handle->setVisible(false);
+        }
+        for (auto *handle : documentMarkerBottomHandles)
+        {
+            handle->setVisible(false);
+        }
         return;
     }
 
@@ -752,6 +799,52 @@ void MainView::updateTriangleMarkerBounds() const
             cursorTop->setVisible(false);
             cursorBottom->setVisible(false);
         }
+    }
+
+    const auto borderWidthInt = static_cast<int>(borderWidth);
+    const int markerWidth = std::max(1, static_cast<int>(triHeight * 2.0f));
+    const int markerHeight = std::max(1, static_cast<int>(triHeight));
+    const int topMarkerY = scrollBarHeight;
+
+    for (std::size_t index = 0; index < markers.size(); ++index)
+    {
+        const int32_t xPos = Waveform::getXPosForSampleIndex(
+            markers[index].frame, sampleOffset, samplesPerPixel);
+        const bool visible = xPos >= 0 && xPos <= waveforms->getWidth();
+
+        auto *topHandle = documentMarkerTopHandles[index];
+        auto *bottomHandle = documentMarkerBottomHandles[index];
+        topHandle->setVisible(visible);
+        bottomHandle->setVisible(visible);
+        if (!visible)
+        {
+            continue;
+        }
+
+        const int markerX = xPos + borderWidthInt - markerWidth / 2;
+        topHandle->setBounds(markerX, topMarkerY, markerWidth, markerHeight);
+        bottomHandle->setBounds(markerX, 0, markerWidth, markerHeight);
+    }
+}
+
+void MainView::rebuildDocumentMarkerHandles() const
+{
+    borders[0]->removeChildrenOfType<DocumentMarkerHandle>();
+    borders[1]->removeChildrenOfType<DocumentMarkerHandle>();
+    documentMarkerTopHandles.clear();
+    documentMarkerBottomHandles.clear();
+
+    const auto &markers = state->getActiveDocumentSession().document.getMarkers();
+    documentMarkerTopHandles.reserve(markers.size());
+    documentMarkerBottomHandles.reserve(markers.size());
+    for (const auto &marker : markers)
+    {
+        documentMarkerTopHandles.push_back(
+            borders[0]->emplaceChild<DocumentMarkerHandle>(
+                state, marker.id, DocumentMarkerHandleEdge::Top));
+        documentMarkerBottomHandles.push_back(
+            borders[1]->emplaceChild<DocumentMarkerHandle>(
+                state, marker.id, DocumentMarkerHandleEdge::Bottom));
     }
 }
 
