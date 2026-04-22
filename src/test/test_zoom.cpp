@@ -1,6 +1,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include "actions/ViewPolicyPlanning.hpp"
 #include "actions/ZoomPlanning.hpp"
 
 TEST_CASE("Reset zoom plan derives samples-per-pixel from waveform width",
@@ -75,4 +76,22 @@ TEST_CASE("Zoom selection plan rejects inactive and empty selections", "[gui]")
         cupuacu::actions::planZoomSelection(true, 0, 100, 250).changed);
     REQUIRE_FALSE(
         cupuacu::actions::planZoomSelection(true, 200, 100, 0).changed);
+}
+
+TEST_CASE("Duration change view policy resets zoom when restored view is wider than document",
+          "[gui]")
+{
+    const auto plan =
+        cupuacu::actions::planDurationChangeViewPolicy(1000, 300.0, 4.0);
+
+    REQUIRE(plan.shouldResetZoomToFillWidth);
+}
+
+TEST_CASE("Duration change view policy preserves zoom when restored view still fits document",
+          "[gui]")
+{
+    const auto plan =
+        cupuacu::actions::planDurationChangeViewPolicy(1000, 250.0, 4.0);
+
+    REQUIRE_FALSE(plan.shouldResetZoomToFillWidth);
 }

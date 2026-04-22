@@ -12,6 +12,7 @@
 #include "../persistence/RecentFilesPersistence.hpp"
 #include "../persistence/SessionStatePersistence.hpp"
 #include "Play.hpp"
+#include "ViewPolicy.hpp"
 #include "Zoom.hpp"
 
 #include <SDL3/SDL.h>
@@ -789,6 +790,7 @@ namespace cupuacu::actions
             if (state->mainDocumentSessionWindow)
             {
                 updateSampleOffset(state, sampleOffset);
+                applyDurationChangeViewPolicy(state);
             }
             else
             {
