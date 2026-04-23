@@ -2,6 +2,7 @@
 
 #include "State.hpp"
 
+#include "gui/SnapPlanning.hpp"
 #include "gui/TriangleMarkerInteractionPlanning.hpp"
 #include "gui/Window.hpp"
 
@@ -126,20 +127,47 @@ bool TriangleMarker::mouseMove(const MouseEvent &e)
     {
         case TriangleMarkerType::CursorTop:
         case TriangleMarkerType::CursorBottom:
-            updateCursorPos(state, newSamplePos);
+        {
+            const int64_t rawFrame = std::clamp(
+                static_cast<int64_t>(std::llround(newSamplePos)), int64_t{0},
+                session.document.getFrameCount());
+            const int64_t snappedFrame = snapSamplePosition(
+                state, rawFrame, std::nullopt, false, std::nullopt,
+                viewState.sampleOffset,
+                viewState.samplesPerPixel, Waveform::getWaveformWidth(state));
+            updateCursorPos(state, snappedFrame);
             break;
+        }
         case TriangleMarkerType::SelectionStartTop:
         case TriangleMarkerType::SelectionStartBottom:
+        {
+            const int64_t rawFrame = std::clamp(
+                static_cast<int64_t>(std::llround(newSamplePos)), int64_t{0},
+                session.document.getFrameCount());
+            const int64_t snappedFrame = snapSamplePosition(
+                state, rawFrame, std::nullopt, true, SnapSelectionEdge::Start,
+                viewState.sampleOffset, viewState.samplesPerPixel,
+                Waveform::getWaveformWidth(state));
             session.selection.setValue1(planTriangleMarkerSelectionValue(
-                newSamplePos, session.selection.getEndExclusiveInt(),
+                snappedFrame, session.selection.getEndExclusiveInt(),
                 selectionWasActive));
             break;
+        }
         case TriangleMarkerType::SelectionEndTop:
         case TriangleMarkerType::SelectionEndBottom:
+        {
+            const int64_t rawFrame = std::clamp(
+                static_cast<int64_t>(std::llround(newSamplePos)), int64_t{0},
+                session.document.getFrameCount());
+            const int64_t snappedFrame = snapSamplePosition(
+                state, rawFrame, std::nullopt, true, SnapSelectionEdge::End,
+                viewState.sampleOffset, viewState.samplesPerPixel,
+                Waveform::getWaveformWidth(state));
             session.selection.setValue2(planTriangleMarkerSelectionValue(
-                newSamplePos, session.selection.getStartInt(),
+                snappedFrame, session.selection.getStartInt(),
                 selectionWasActive));
             break;
+        }
     }
 
     return true;

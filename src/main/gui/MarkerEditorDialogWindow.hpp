@@ -10,40 +10,56 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <vector>
 
 namespace cupuacu::gui
 {
     class MarkerEditorDialogWindow
     {
     public:
-        explicit MarkerEditorDialogWindow(State *stateToUse, uint64_t markerIdToUse);
+        explicit MarkerEditorDialogWindow(
+            State *stateToUse,
+            std::optional<uint64_t> initialMarkerIdToUse = std::nullopt);
         ~MarkerEditorDialogWindow();
 
         bool isOpen() const;
         void raise() const;
-        uint64_t getMarkerId() const
+
+        std::optional<uint64_t> getMarkerId() const
         {
-            return markerId;
+            return selectedMarkerId;
         }
+        void selectMarker(std::optional<uint64_t> markerIdToSelect);
 
     private:
         State *state = nullptr;
-        uint64_t markerId = 0;
+        std::optional<uint64_t> selectedMarkerId;
         std::unique_ptr<Window> window;
         OpaqueRect *background = nullptr;
+        OpaqueRect *sidebarBackground = nullptr;
+        Component *sidebarList = nullptr;
+        Label *emptySidebarLabel = nullptr;
+        TextButton *addButton = nullptr;
         Label *nameLabel = nullptr;
         Label *positionLabel = nullptr;
         TextInput *nameInput = nullptr;
         TextInput *positionInput = nullptr;
-        TextButton *cancelButton = nullptr;
+        Label *emptyStateLabel = nullptr;
+        TextButton *closeButton = nullptr;
         TextButton *deleteButton = nullptr;
-        TextButton *okButton = nullptr;
+        TextButton *applyButton = nullptr;
+        mutable uint64_t lastMarkerDataVersion = 0;
+        mutable std::vector<TextButton *> markerButtons;
 
         void requestClose();
         void detachFromState();
         void layoutComponents() const;
         std::optional<int64_t> parsedFrame() const;
+        void rebuildMarkerButtons();
+        void syncFromSelectedMarker();
+        void syncSidebarButtons() const;
         void applyChanges();
         void deleteMarker();
+        void addMarker();
     };
 } // namespace cupuacu::gui

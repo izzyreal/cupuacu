@@ -351,6 +351,8 @@ namespace cupuacu::actions
             ++openFileIndex;
         }
 
+        persisted.snapEnabled = state->snapEnabled;
+
         return persisted;
     }
 
@@ -847,6 +849,7 @@ namespace cupuacu::actions
         const auto plan = planStartupDocumentRestore(
             persistedRecentFiles, persistedSessionState);
         state->recentFiles = plan.recentFiles;
+        state->snapEnabled = persistedSessionState.snapEnabled;
 
         if (!plan.openFiles.empty())
         {

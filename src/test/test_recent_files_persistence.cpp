@@ -142,6 +142,7 @@ TEST_CASE("Session state persistence round-trips open files and active index",
     };
     state.openFiles = {"/tmp/open-a.wav", "/tmp/open-b.wav"};
     state.activeOpenFileIndex = 1;
+    state.snapEnabled = true;
     state.windowWidth = 1111;
     state.windowHeight = 777;
     state.windowX = -320;
@@ -171,6 +172,7 @@ TEST_CASE("Session state persistence round-trips open files and active index",
     REQUIRE(loaded.openFiles ==
             std::vector<std::string>{"/tmp/open-a.wav", "/tmp/open-b.wav"});
     REQUIRE(loaded.activeOpenFileIndex == 1);
+    REQUIRE(loaded.snapEnabled);
     REQUIRE(loaded.windowWidth == 1111);
     REQUIRE(loaded.windowHeight == 777);
     REQUIRE(loaded.windowX == -320);
@@ -348,6 +350,7 @@ TEST_CASE("Persisted open session state captures open file tabs and the active f
         cupuacu::SampleFormat::PCM_S16, 44100, 1, 32);
     state.tabs[2].session.document.addMarker(3, "Hit");
     state.activeTabIndex = 2;
+    state.snapEnabled = true;
 
     const auto persisted = cupuacu::actions::buildPersistedOpenSessionState(&state);
     REQUIRE(persisted.openDocuments.size() == 2);
@@ -373,6 +376,7 @@ TEST_CASE("Persisted open session state captures open file tabs and the active f
     REQUIRE(persisted.openFiles ==
             std::vector<std::string>{"/tmp/open-a.wav", "/tmp/open-b.wav"});
     REQUIRE(persisted.activeOpenFileIndex == 1);
+    REQUIRE(persisted.snapEnabled);
 }
 
 TEST_CASE("Persisted recent files and session state save to separate files",
@@ -419,6 +423,7 @@ TEST_CASE("Persisted session state saves updated zoom and offset for an open doc
     state.tabs[0].viewState.samplesPerPixel = 4.0;
     state.tabs[0].viewState.sampleOffset = 1602;
     state.tabs[0].session.cursor = 321;
+    state.snapEnabled = true;
 
     cupuacu::actions::persistSessionState(&state);
 
@@ -432,6 +437,7 @@ TEST_CASE("Persisted session state saves updated zoom and offset for an open doc
     REQUIRE(loadedSession.openDocuments[0].sampleOffset ==
             1602);
     REQUIRE(loadedSession.openDocuments[0].cursor == 321);
+    REQUIRE(loadedSession.snapEnabled);
 }
 
 TEST_CASE("Persisted open document state restores per-document cursor",

@@ -3,6 +3,7 @@
 #include "Waveform.hpp"
 #include "WaveformsUnderlayPlanning.hpp"
 #include "WaveformRefresh.hpp"
+#include "SnapPlanning.hpp"
 #include "Window.hpp"
 #include <algorithm>
 #include <cmath>
@@ -51,11 +52,11 @@ bool WaveformsUnderlay::mouseDown(const MouseEvent &e)
 
     if (e.numClicks >= 2)
     {
-        double startSample = 0.0;
-        double endSample = 0.0;
-        if (!planWaveformsUnderlayVisibleRangeSelection(
-                doc.getFrameCount(), viewState.sampleOffset, samplesPerPixel,
-                getWidth(), startSample, endSample))
+        draggedSelectionEdge.reset();
+        int64_t startSample = 0;
+        int64_t endSample = 0;
+        if (!planSnappedVisibleRangeSelection(state, e.mouseXf, startSample,
+                                              endSample))
         {
             return false;
         }
@@ -72,8 +73,8 @@ bool WaveformsUnderlay::mouseDown(const MouseEvent &e)
     const bool shiftPressed =
         keyboard[SDL_SCANCODE_LSHIFT] || keyboard[SDL_SCANCODE_RSHIFT];
 
-    const double samplePos = planWaveformsUnderlaySamplePosition(
-        viewState.sampleOffset, samplesPerPixel, e.mouseXf);
+    const int64_t samplePos =
+        planSnappedMouseSamplePosition(state, e.mouseXf, true);
 
     if (shiftPressed)
     {
@@ -84,17 +85,20 @@ bool WaveformsUnderlay::mouseDown(const MouseEvent &e)
 
         if (samplePos < selectionCenter)
         {
+            draggedSelectionEdge = SnapSelectionEdge::Start;
             session.selection.setValue1(end);
             session.selection.setValue2(samplePos);
         }
         else
         {
+            draggedSelectionEdge = SnapSelectionEdge::End;
             session.selection.setValue1(start);
             session.selection.setValue2(samplePos);
         }
     }
     else
     {
+        draggedSelectionEdge = SnapSelectionEdge::End;
         session.selection.reset();
         session.selection.setValue1(samplePos);
         session.cursor = session.selection.getStartInt();
@@ -173,9 +177,15 @@ bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
 
     if (lastNumClicks == 1)
     {
-        applyWaveformsUnderlayDraggedSelection(
-            session.selection, viewState.sampleOffset,
-            viewState.samplesPerPixel, e.mouseXi);
+        const int64_t snappedSamplePos =
+            planSnappedMouseSamplePosition(state, e.mouseXf, true,
+                                          draggedSelectionEdge);
+        const bool selectionWasActive = session.selection.isActive();
+        session.selection.setValue2(snappedSamplePos);
+        if (selectionWasActive && !session.selection.isActive())
+        {
+            session.selection.setValue2(snappedSamplePos + 1.0);
+        }
     }
 
     markAllWaveformsDirty();
@@ -186,6 +196,7 @@ bool WaveformsUnderlay::mouseUp(const MouseEvent &e)
 {
     auto &viewState = state->getActiveViewState();
     viewState.samplesToScroll = 0.0f;
+    draggedSelectionEdge.reset();
 
     return true;
 }

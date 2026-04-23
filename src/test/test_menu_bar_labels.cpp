@@ -14,6 +14,7 @@
 #include "gui/Menu.hpp"
 #include "gui/MenuBar.hpp"
 #include "gui/MenuBarPlanning.hpp"
+#include "gui/MarkerEditorDialogWindow.hpp"
 #include "gui/Window.hpp"
 
 #include <sndfile.h>
@@ -493,7 +494,7 @@ TEST_CASE(
     auto *menuBar = makeMenuBar(&state, root);
     auto *editMenu = menuChildren(menuBar)[1];
     auto editEntries = menuChildren(editMenu);
-    REQUIRE(editEntries.size() == 7);
+    REQUIRE(editEntries.size() == 9);
 
     auto &session = state.getActiveDocumentSession();
     auto &doc = session.document;
@@ -554,6 +555,70 @@ TEST_CASE(
     REQUIRE(doc.getMarkers().size() == 1);
     REQUIRE(doc.getMarkers()[0].frame == 2);
     REQUIRE(state.getActiveViewState().selectedMarkerId == doc.getMarkers()[0].id);
+
+    auto *editMarkersEntry = editEntries[7];
+    editMarkersEntry->mouseDown(leftMouseDown());
+    REQUIRE(state.markerEditorDialogWindow != nullptr);
+    REQUIRE(state.markerEditorDialogWindow->getMarkerId() ==
+            doc.getMarkers()[0].id);
+}
+
+TEST_CASE("MenuBar view menu toggles snap and persists it", "[gui][persistence]")
+{
+    const auto rootPath =
+        cupuacu::test::makeUniqueTestRoot("menu-view-snap-persist");
+    cupuacu::test::StateWithTestPaths state{rootPath};
+    RootComponent root(&state);
+    auto *menuBar = makeMenuBar(&state, root);
+    auto *viewMenu = menuChildren(menuBar)[2];
+    auto viewEntries = menuChildren(viewMenu);
+    REQUIRE(viewEntries.size() == 6);
+    REQUIRE(viewEntries[5]->getMenuName() == "[ ] Snap");
+    REQUIRE_FALSE(state.snapEnabled);
+
+    viewEntries[5]->mouseDown(leftMouseDown());
+    REQUIRE(state.snapEnabled);
+    REQUIRE(viewEntries[5]->getMenuName() == "[x] Snap");
+
+    const auto loadedSession =
+        cupuacu::persistence::SessionStatePersistence::load(
+            state.paths->sessionStatePath());
+    REQUIRE(loadedSession.snapEnabled);
+}
+
+TEST_CASE("MenuBar split by markers creates one new document per marker gap",
+          "[gui]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    RootComponent root(&state);
+    auto *menuBar = makeMenuBar(&state, root);
+    auto *editMenu = menuChildren(menuBar)[1];
+    auto editEntries = menuChildren(editMenu);
+    REQUIRE(editEntries.size() == 9);
+
+    auto &session = state.getActiveDocumentSession();
+    auto &doc = session.document;
+    doc.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 12);
+    for (int i = 0; i < 12; ++i)
+    {
+        doc.setSample(0, i, static_cast<float>(i + 1), false);
+    }
+    doc.addMarker(2, "A");
+    doc.addMarker(5, "B");
+    doc.addMarker(9, "C");
+
+    auto *splitByMarkersEntry = editEntries[8];
+    splitByMarkersEntry->mouseDown(leftMouseDown());
+
+    REQUIRE(state.tabs.size() == 3);
+    REQUIRE(state.tabs[1].session.document.getFrameCount() == 3);
+    REQUIRE(state.tabs[2].session.document.getFrameCount() == 4);
+    REQUIRE(state.tabs[1].session.document.getSample(0, 0) == Catch::Approx(3.0f));
+    REQUIRE(state.tabs[1].session.document.getSample(0, 2) == Catch::Approx(5.0f));
+    REQUIRE(state.tabs[2].session.document.getSample(0, 0) == Catch::Approx(6.0f));
+    REQUIRE(state.tabs[2].session.document.getSample(0, 3) == Catch::Approx(9.0f));
+    REQUIRE(state.tabs[1].session.document.getMarkers().size() == 2);
+    REQUIRE(state.tabs[2].session.document.getMarkers().size() == 2);
 }
 
 TEST_CASE("MenuBar file overwrite action rewrites the current file",

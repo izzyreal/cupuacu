@@ -29,6 +29,8 @@
 #include "actions/audio/Paste.hpp"
 #include "actions/audio/EditCommands.hpp"
 #include "actions/markers/EditCommands.hpp"
+#include "actions/markers/Dialogs.hpp"
+#include "actions/markers/Split.hpp"
 
 #include <filesystem>
 #include <memory>
@@ -271,6 +273,17 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
                          {
                              actions::zoomInVertically(state, 1);
                          });
+    viewMenu->addSubMenu(
+        state,
+        [this]() -> std::string
+        {
+            return std::string(state->snapEnabled ? "[x] " : "[ ] ") + "Snap";
+        },
+        [&]
+        {
+            state->snapEnabled = !state->snapEnabled;
+            actions::persistSessionState(state);
+        });
 
     generateMenu->addSubMenu(
         state, "Silence",
@@ -385,6 +398,32 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
         [&]
         {
             return actions::hasActiveDocument(state);
+        });
+
+    auto *editMarkersMenu = editMenu->addSubMenu(
+        state, "Markers",
+        [&]
+        {
+            actions::markers::showMarkerEditorDialog(state);
+        });
+    editMarkersMenu->setIsAvailable(
+        [&]
+        {
+            return actions::hasActiveDocument(state);
+        });
+
+    auto *splitByMarkersMenu = editMenu->addSubMenu(
+        state, "Split by markers",
+        [&]
+        {
+            actions::markers::splitByMarkers(state);
+        });
+    splitByMarkersMenu->setIsAvailable(
+        [&]
+        {
+            const auto &document = state->getActiveDocumentSession().document;
+            return actions::hasActiveDocument(state) &&
+                   document.getMarkers().size() >= 2;
         });
 
     effectsMenu->addSubMenu(state, "Reverse",

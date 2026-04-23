@@ -31,6 +31,7 @@ namespace cupuacu::persistence
         std::vector<PersistedOpenDocumentState> openDocuments;
         std::vector<std::string> openFiles;
         int activeOpenFileIndex = -1;
+        bool snapEnabled = false;
         std::optional<int> windowWidth;
         std::optional<int> windowHeight;
         std::optional<int> windowX;

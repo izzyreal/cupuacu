@@ -4,6 +4,7 @@
 #include "../actions/markers/EditCommands.hpp"
 
 #include "MainViewAccess.hpp"
+#include "SnapPlanning.hpp"
 #include "Waveform.hpp"
 #include "Window.hpp"
 
@@ -129,9 +130,12 @@ bool DocumentMarkerHandle::mouseMove(const MouseEvent &event)
     const double samplePosition = Waveform::getDoubleSampleIndexForXPos(
         mouseParentX - dragMouseOffsetParentX, viewState.sampleOffset,
         viewState.samplesPerPixel);
-    const int64_t frame = std::clamp(
+    const int64_t rawFrame = std::clamp(
         static_cast<int64_t>(std::llround(samplePosition)), int64_t{0},
         state->getActiveDocumentSession().document.getFrameCount());
+    const int64_t frame = snapSamplePosition(
+        state, rawFrame, markerId, true, std::nullopt, viewState.sampleOffset,
+        viewState.samplesPerPixel, Waveform::getWaveformWidth(state));
 
     state->getActiveDocumentSession().document.setMarkerFrame(markerId, frame);
     marker->marker.frame = frame;

@@ -79,6 +79,7 @@ namespace cupuacu
         gui::OptionsSection lastSelectedOptionsSection =
             gui::OptionsSection::Audio;
         bool loopPlaybackEnabled = false;
+        bool snapEnabled = false;
         uint64_t playbackRangeStart = 0;
         uint64_t playbackRangeEnd = 0;
         std::vector<DocumentTab> tabs{DocumentTab{}};

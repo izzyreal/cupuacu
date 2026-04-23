@@ -179,18 +179,18 @@ namespace cupuacu::actions::markers
         }
     };
 
-    inline void insertMarkerAtCursor(State *state)
+    inline uint64_t insertMarkerAtCursor(State *state)
     {
         if (!state)
         {
-            return;
+            return 0;
         }
 
         auto &session = state->getActiveDocumentSession();
         if (session.document.getChannelCount() <= 0 ||
             session.document.getSampleRate() <= 0)
         {
-            return;
+            return 0;
         }
 
         const uint64_t markerId = nextMarkerIdForInsert(session.document);
@@ -208,9 +208,12 @@ namespace cupuacu::actions::markers
         };
         state->addAndDoUndoable(std::make_shared<SetMarkerState>(
             state, oldState, newState, "Insert marker"));
+        return markerId;
     }
 
-    inline void deleteMarker(State *state, const uint64_t markerId)
+    inline void deleteMarker(
+        State *state, const uint64_t markerId,
+        const std::optional<uint64_t> nextSelectedMarkerId = std::nullopt)
     {
         if (!state)
         {
@@ -223,7 +226,8 @@ namespace cupuacu::actions::markers
             return;
         }
 
-        const auto newState = missingMarkerSnapshot(markerId, std::nullopt);
+        const auto newState =
+            missingMarkerSnapshot(markerId, nextSelectedMarkerId);
         state->addAndDoUndoable(std::make_shared<SetMarkerState>(
             state, *oldState, newState, "Delete marker"));
     }

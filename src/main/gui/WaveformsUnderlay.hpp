@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Component.hpp"
+#include "SnapPlanning.hpp"
 
 namespace cupuacu::gui
 {
@@ -27,6 +28,7 @@ namespace cupuacu::gui
         double horizontalWheelPendingPixels = 0.0;
         double horizontalWheelRemainder = 0.0;
         uint64_t lastHorizontalWheelEventTicks = 0;
+        std::optional<SnapSelectionEdge> draggedSelectionEdge;
 
         bool applyPendingHorizontalWheelScroll();
 

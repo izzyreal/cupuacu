@@ -12,7 +12,7 @@ namespace cupuacu::persistence
 {
     namespace
     {
-        constexpr int kFormatVersion = 6;
+        constexpr int kFormatVersion = 7;
 
         std::vector<std::string> filterFiles(const std::vector<std::string> &files)
         {
@@ -91,6 +91,21 @@ namespace cupuacu::persistence
                 return false;
             }
             value = json.at(key).get<double>();
+            return true;
+        }
+
+        bool loadOptionalBool(const nlohmann::json &json, const char *key,
+                              bool &value)
+        {
+            if (!json.contains(key))
+            {
+                return true;
+            }
+            if (!json.at(key).is_boolean())
+            {
+                return false;
+            }
+            value = json.at(key).get<bool>();
             return true;
         }
 
@@ -220,8 +235,7 @@ namespace cupuacu::persistence
 
         const int version = json.value("version", 0);
         if (version != 1 && version != 2 && version != 3 && version != 4 &&
-            version != 5 &&
-            version != kFormatVersion)
+            version != 5 && version != 6 && version != kFormatVersion)
         {
             return {};
         }
@@ -267,7 +281,8 @@ namespace cupuacu::persistence
         if (!loadOptionalInt(json, "windowWidth", state.windowWidth) ||
             !loadOptionalInt(json, "windowHeight", state.windowHeight) ||
             !loadOptionalInt(json, "windowX", state.windowX) ||
-            !loadOptionalInt(json, "windowY", state.windowY))
+            !loadOptionalInt(json, "windowY", state.windowY) ||
+            !loadOptionalBool(json, "snapEnabled", state.snapEnabled))
         {
             return {};
         }
@@ -390,6 +405,7 @@ namespace cupuacu::persistence
             {"version", kFormatVersion},
             {"openDocuments", openDocumentsJson},
             {"activeOpenFileIndex", activeOpenFileIndex},
+            {"snapEnabled", state.snapEnabled},
         };
 
         nlohmann::json outputJson = json;
