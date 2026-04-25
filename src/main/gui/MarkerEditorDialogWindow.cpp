@@ -371,8 +371,6 @@ namespace cupuacu::gui
         {
             return;
         }
-
-        syncFromSelectedMarker();
         if (!selectedMarkerId.has_value())
         {
             return;

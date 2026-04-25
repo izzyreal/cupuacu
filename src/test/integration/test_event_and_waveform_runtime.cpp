@@ -1739,10 +1739,10 @@ TEST_CASE("Marker editor integration applies name and position as one undoable",
     inputs[0]->setText("Snare");
     inputs[1]->setText("24");
 
-    auto *okButton = cupuacu::test::integration::findByNameRecursive<
-        cupuacu::gui::TextButton>(dialogRoot, "TextButton:OK");
-    REQUIRE(okButton != nullptr);
-    clickComponentThroughWindow(dialogWindow, okButton);
+    auto *applyButton = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::TextButton>(dialogRoot, "TextButton:Apply");
+    REQUIRE(applyButton != nullptr);
+    clickComponentThroughWindow(dialogWindow, applyButton);
 
     const auto &marker = state.getActiveDocumentSession().document.getMarkers()[0];
     REQUIRE(marker.id == markerId);

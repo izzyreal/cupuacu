@@ -90,6 +90,45 @@ namespace
         return tempRoot / (prefix + "-fallback");
     }
 
+    std::optional<cupuacu::file::AudioExportSettings>
+    findWritableUnsupportedMarkerSettings(const cupuacu::Document &document)
+    {
+        const auto formats = cupuacu::file::probeAvailableExportFormats();
+        for (const auto &format : formats)
+        {
+            for (const auto &encoding : format.encodings)
+            {
+                cupuacu::file::AudioExportSettings settings{
+                    .container = format.container,
+                    .codec = format.codec,
+                    .majorFormat = format.majorFormat,
+                    .subtype = encoding.subtype,
+                    .containerLabel = format.containerLabel,
+                    .codecLabel = format.codecLabel,
+                    .encodingLabel = encoding.label,
+                    .extension = encoding.extension,
+                };
+                settings.compressionLevel =
+                    cupuacu::file::defaultCompressionLevelForCodec(format.codec);
+                settings.bitrateMode =
+                    cupuacu::file::defaultBitrateModeForCodec(format.codec);
+                settings.bitrateKbps = cupuacu::file::defaultBitrateKbpsForSettings(
+                    settings, document.getSampleRate());
+
+                const auto assessment =
+                    cupuacu::file::assessMarkerPersistenceForSettings(document,
+                                                                     settings);
+                if (assessment.fidelity ==
+                    cupuacu::file::MarkerPersistenceFidelity::Unsupported)
+                {
+                    return settings;
+                }
+            }
+        }
+
+        return std::nullopt;
+    }
+
     void appendByte(std::vector<uint8_t> &bytes, const uint8_t value)
     {
         bytes.push_back(value);
@@ -2180,7 +2219,8 @@ TEST_CASE("Overwrite proceeds after accepting unsupported marker warning",
 {
     ScopedDirCleanup cleanup(
         makeUniqueTempDir("cupuacu-test-overwrite-warning-unsupported-accept"));
-    const auto outputPath = cleanup.path() / "unsupported_overwrite_accept.flac";
+    const auto outputBasePath =
+        cleanup.path() / "unsupported_overwrite_accept";
 
     cupuacu::test::StateWithTestPaths state{};
     auto &session = state.getActiveDocumentSession();
@@ -2188,17 +2228,18 @@ TEST_CASE("Overwrite proceeds after accepting unsupported marker warning",
     document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 4);
     document.setSample(0, 0, 0.1f, false);
     document.addMarker(1, "Kick");
+    const auto settings = findWritableUnsupportedMarkerSettings(document);
+    if (!settings.has_value())
+    {
+        SUCCEED("No writable export format with unsupported marker persistence "
+                "is available in this build.");
+        return;
+    }
+
+    const auto outputPath =
+        cupuacu::file::normalizeExportPath(outputBasePath, *settings);
     session.currentFile = outputPath.string();
-    session.currentFileExportSettings = cupuacu::file::AudioExportSettings{
-        .container = cupuacu::file::AudioExportContainer::FLAC,
-        .codec = cupuacu::file::AudioExportCodec::FLAC,
-        .majorFormat = SF_FORMAT_FLAC,
-        .subtype = SF_FORMAT_PCM_16,
-        .containerLabel = "FLAC",
-        .codecLabel = "FLAC",
-        .encodingLabel = "16-bit FLAC",
-        .extension = "flac",
-    };
+    session.currentFileExportSettings = *settings;
 
     int promptCount = 0;
     state.confirmationReporter =

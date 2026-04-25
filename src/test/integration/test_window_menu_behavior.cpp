@@ -401,7 +401,7 @@ TEST_CASE("Menu integration opens submenus and switches siblings on hover",
     auto fileSubMenus = cupuacu::test::integration::menuChildren(fileMenu);
     auto viewSubMenus = cupuacu::test::integration::menuChildren(viewMenu);
     REQUIRE(fileSubMenus.size() == 9);
-    REQUIRE(viewSubMenus.size() == 5);
+    REQUIRE(viewSubMenus.size() == 6);
 
     fileMenu->mouseDown(cupuacu::test::integration::leftMouseDown());
     REQUIRE(fileMenu->isOpen());
@@ -442,7 +442,7 @@ TEST_CASE("Menu integration undo and redo actions reflect undo stack state",
     REQUIRE(topLevelMenus.size() == 6);
     auto *editMenu = topLevelMenus[1];
     auto editSubMenus = cupuacu::test::integration::menuChildren(editMenu);
-    REQUIRE(editSubMenus.size() == 7);
+    REQUIRE(editSubMenus.size() == 9);
     auto *undoMenu = editSubMenus[0];
     auto *redoMenu = editSubMenus[1];
 
