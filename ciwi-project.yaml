@@ -40,7 +40,7 @@ pipelines:
           - run: CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true CCACHE_COMPILERCHECK=content cmake --build build/linux-amd64 --config Release --target Cupuacu cupuacu-tests
           - test:
               name: cupuacu-tests
-              command: SDL_VIDEODRIVER=offscreen ./build/linux-amd64/cupuacu-tests --reporter JUnit --out build/linux-amd64/result-junit.xml
+              command: ALSA_CONFIG_PATH=docker/integration/linux/alsa.conf SDL_VIDEODRIVER=offscreen SDL_RENDER_DRIVER=software CUPUACU_SUPPRESS_PORTAUDIO_ERRORS=1 ./build/linux-amd64/cupuacu-tests --reporter JUnit --out build/linux-amd64/result-junit.xml
               format: junit-xml
               report: build/linux-amd64/result-junit.xml
           - run: if command -v ccache >/dev/null 2>&1; then ccache --show-stats; else echo "ccache not found"; fi
