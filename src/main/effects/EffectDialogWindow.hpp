@@ -217,7 +217,6 @@ namespace cupuacu::effects
                 return;
             }
 
-            state->windows.push_back(window.get());
             cupuacu::gui::attachSecondaryWindow(state, window.get(), true);
 
             auto rootComponent = std::make_unique<cupuacu::gui::Component>(

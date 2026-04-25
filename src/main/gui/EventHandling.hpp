@@ -16,6 +16,30 @@
 
 namespace cupuacu::gui
 {
+    struct ModalInteractionBlockPlan
+    {
+        bool block = false;
+        bool raiseModal = false;
+    };
+
+    inline ModalInteractionBlockPlan planModalInteractionBlock(
+        const Uint32 eventType)
+    {
+        switch (eventType)
+        {
+            case SDL_EVENT_MOUSE_MOTION:
+                return {.block = true, .raiseModal = false};
+            case SDL_EVENT_MOUSE_BUTTON_DOWN:
+            case SDL_EVENT_MOUSE_BUTTON_UP:
+            case SDL_EVENT_MOUSE_WHEEL:
+            case SDL_EVENT_KEY_DOWN:
+            case SDL_EVENT_TEXT_INPUT:
+                return {.block = true, .raiseModal = true};
+            default:
+                return {};
+        }
+    }
+
     struct CursorSet
     {
         SDL_Cursor *defaultCursor = nullptr;
@@ -303,22 +327,17 @@ namespace cupuacu::gui
             }
         }
 
-        switch (event->type)
+        const auto plan = planModalInteractionBlock(event->type);
+        if (plan.block)
         {
-            case SDL_EVENT_MOUSE_MOTION:
-            case SDL_EVENT_MOUSE_BUTTON_DOWN:
-            case SDL_EVENT_MOUSE_BUTTON_UP:
-            case SDL_EVENT_MOUSE_WHEEL:
-            case SDL_EVENT_KEY_DOWN:
-            case SDL_EVENT_TEXT_INPUT:
-                if (state->modalWindow->getSdlWindow())
-                {
-                    SDL_RaiseWindow(state->modalWindow->getSdlWindow());
-                }
-                return true;
-            default:
-                return false;
+            if (plan.raiseModal && state->modalWindow->getSdlWindow())
+            {
+                SDL_RaiseWindow(state->modalWindow->getSdlWindow());
+            }
+            return true;
         }
+
+        return false;
     }
 
     inline SDL_AppResult handleAppEvent(State *state, SDL_Event *event)

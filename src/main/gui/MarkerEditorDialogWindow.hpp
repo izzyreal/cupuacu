@@ -24,6 +24,7 @@ namespace cupuacu::gui
 
         bool isOpen() const;
         void raise() const;
+        void refreshFromDocument();
 
         std::optional<uint64_t> getMarkerId() const
         {

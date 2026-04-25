@@ -3,6 +3,8 @@
 #include "LabelPlanning.hpp"
 #include "text.hpp"
 
+#include <cmath>
+
 using namespace cupuacu::gui;
 
 Label::Label(State *state, const std::string &textToUse)
@@ -25,7 +27,7 @@ Label::~Label()
     }
 }
 
-void Label::updateTexture(SDL_Renderer *renderer)
+void Label::updateTexture(SDL_Renderer *renderer, const int availableWidth)
 {
     if (cachedTexture)
     {
@@ -41,8 +43,32 @@ void Label::updateTexture(SDL_Renderer *renderer)
     }
 
     const SDL_Color textColor = {255, 255, 255, opacity};
-    SDL_Surface *surf =
-        TTF_RenderText_Blended(font, text.c_str(), text.size(), textColor);
+    const std::string renderedText =
+        overflowMode == TextOverflowMode::Ellipsis
+            ? ellipsizeTextToWidth(
+                  text, availableWidth,
+                  [fontPointSize](const std::string &value)
+                  {
+                      return cupuacu::gui::measureText(value, fontPointSize)
+                          .first;
+                  })
+            : text;
+    textTruncated = renderedText != text;
+    if (renderedText.empty())
+    {
+        cachedW = 0;
+        cachedH = 0;
+        cachedText = text;
+        cachedRenderedText = renderedText;
+        cachedPointSize = fontPointSize;
+        cachedOpacity = opacity;
+        cachedAvailableWidth = availableWidth;
+        cachedOverflowMode = overflowMode;
+        return;
+    }
+
+    SDL_Surface *surf = TTF_RenderText_Blended(
+        font, renderedText.c_str(), renderedText.size(), textColor);
     if (!surf)
     {
         return;
@@ -54,20 +80,28 @@ void Label::updateTexture(SDL_Renderer *renderer)
     SDL_DestroySurface(surf);
 
     cachedText = text;
+    cachedRenderedText = renderedText;
     cachedPointSize = fontPointSize;
     cachedOpacity = opacity;
+    cachedAvailableWidth = availableWidth;
+    cachedOverflowMode = overflowMode;
 }
 
 void Label::onDraw(SDL_Renderer *renderer)
 {
     const uint8_t fontPointSize = getEffectiveFontSize();
+    const float marginScaled = margin * getCanvasSpaceScale(state);
+    const int availableWidth = std::max(
+        0, static_cast<int>(std::floor(getLocalBoundsF().w - marginScaled * 2)));
 
     // Rebuild texture if needed
     if (shouldRebuildLabelTexture(cachedTexture, cachedText, text,
                                   cachedPointSize, fontPointSize,
-                                  cachedOpacity, opacity))
+                                  cachedOpacity, opacity) ||
+        cachedAvailableWidth != availableWidth ||
+        cachedOverflowMode != overflowMode)
     {
-        updateTexture(renderer);
+        updateTexture(renderer, availableWidth);
     }
 
     if (!cachedTexture)
@@ -75,7 +109,6 @@ void Label::onDraw(SDL_Renderer *renderer)
         return;
     }
 
-    const float marginScaled = margin * getCanvasSpaceScale(state);
     const SDL_FRect contentRect = planLabelContentRect(
         getLocalBoundsF(), marginScaled, centerVertically, cachedH);
     const SDL_FRect destRect = planLabelDestRect(

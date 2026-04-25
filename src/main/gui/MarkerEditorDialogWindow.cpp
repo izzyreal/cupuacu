@@ -18,6 +18,27 @@ namespace
     constexpr int kWindowHeight = 420;
     constexpr SDL_Color kSidebarColor{34, 34, 34, 255};
     constexpr SDL_Color kSidebarActiveColor{74, 110, 170, 255};
+
+    class MarkerEditorRootComponent final : public cupuacu::gui::Component
+    {
+    public:
+        MarkerEditorRootComponent(cupuacu::State *stateToUse,
+                                  cupuacu::gui::MarkerEditorDialogWindow *ownerToUse)
+            : Component(stateToUse, "MarkerEditorDialogRoot"), owner(ownerToUse)
+        {
+        }
+
+        void timerCallback() override
+        {
+            if (owner)
+            {
+                owner->refreshFromDocument();
+            }
+        }
+
+    private:
+        cupuacu::gui::MarkerEditorDialogWindow *owner = nullptr;
+    };
 }
 
 namespace cupuacu::gui
@@ -33,7 +54,7 @@ namespace cupuacu::gui
 
         window = std::make_unique<Window>(
             state, "Edit markers", kWindowWidth, kWindowHeight,
-            SDL_WINDOW_HIGH_PIXEL_DENSITY);
+            SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
         if (!window || !window->isOpen())
         {
             return;
@@ -41,7 +62,7 @@ namespace cupuacu::gui
 
         attachSecondaryWindow(state, window.get(), true);
 
-        auto root = std::make_unique<Component>(state, "MarkerEditorDialogRoot");
+        auto root = std::make_unique<MarkerEditorRootComponent>(state, this);
         root->setVisible(true);
 
         background = root->emplaceChild<OpaqueRect>(state, Colors::background);
@@ -137,6 +158,27 @@ namespace cupuacu::gui
         }
     }
 
+    void MarkerEditorDialogWindow::refreshFromDocument()
+    {
+        if (!state)
+        {
+            return;
+        }
+
+        const auto markerDataVersion =
+            state->getActiveDocumentSession().document.getMarkerDataVersion();
+        if (markerDataVersion == lastMarkerDataVersion)
+        {
+            return;
+        }
+
+        syncFromSelectedMarker();
+        if (window)
+        {
+            window->renderFrameIfDirty();
+        }
+    }
+
     void MarkerEditorDialogWindow::requestClose()
     {
         if (!window || !window->isOpen())
@@ -171,7 +213,7 @@ namespace cupuacu::gui
         const int height = static_cast<int>(canvasHeight);
         const int padding = scaleUi(state, 16.0f);
         const int gap = std::max(6, scaleUi(state, 8.0f));
-        const int sidebarWidth = std::max(scaleUi(state, 220.0f),
+        const int sidebarWidth = std::max(scaleUi(state, 300.0f),
                                           scaleUi(state, 180.0f));
         const int labelWidth = scaleUi(state, 120.0f);
         const int rowHeight = scaleUi(state, 42.0f);
@@ -224,6 +266,8 @@ namespace cupuacu::gui
         applyButton->setVisible(hasSelection);
         emptyStateLabel->setVisible(!hasSelection);
         emptySidebarLabel->setVisible(markerButtons.empty());
+
+        syncSidebarButtons();
     }
 
     std::optional<int64_t> MarkerEditorDialogWindow::parsedFrame() const
@@ -265,6 +309,9 @@ namespace cupuacu::gui
                 sidebarList->emplaceChild<TextButton>(state, "Marker");
             button->setTriggerOnMouseUp(true);
             button->setFontSize(state->menuFontSize);
+            button->setLabelCenterHorizontally(false);
+            button->setLabelMargin(4);
+            button->setLabelOverflowMode(TextOverflowMode::Ellipsis);
             button->setOnPress(
                 [this, markerId = marker.id]()
                 {
@@ -348,6 +395,7 @@ namespace cupuacu::gui
                 label += "  Marker " + std::to_string(index + 1);
             }
             button->setText(label);
+            button->setTooltipTextForTruncatedLabel(label);
             button->setForcedFillColor(
                 selectedMarkerId.has_value() && *selectedMarkerId == marker.id
                     ? std::optional<SDL_Color>{kSidebarActiveColor}

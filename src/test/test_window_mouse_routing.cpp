@@ -4,6 +4,7 @@
 #include "gui/WindowEventPlanning.hpp"
 #include "gui/WindowMouseRouting.hpp"
 #include "gui/WindowResizePlanning.hpp"
+#include "gui/EventHandling.hpp"
 
 TEST_CASE("Window mouse routing helper plans hover and capture transitions",
           "[gui]")
@@ -196,6 +197,27 @@ TEST_CASE("Window event planning supports button, wheel, key, and unsupported ev
     unsupported.type = SDL_EVENT_FINGER_DOWN;
     REQUIRE_FALSE(cupuacu::gui::getWindowEventWindowId(unsupported).has_value());
     REQUIRE_FALSE(cupuacu::gui::draftWindowMouseEvent(unsupported).valid);
+}
+
+TEST_CASE("Modal interaction blocking raises only for deliberate interaction",
+          "[gui]")
+{
+    auto plan =
+        cupuacu::gui::planModalInteractionBlock(SDL_EVENT_MOUSE_MOTION);
+    REQUIRE(plan.block);
+    REQUIRE_FALSE(plan.raiseModal);
+
+    plan = cupuacu::gui::planModalInteractionBlock(SDL_EVENT_MOUSE_BUTTON_DOWN);
+    REQUIRE(plan.block);
+    REQUIRE(plan.raiseModal);
+
+    plan = cupuacu::gui::planModalInteractionBlock(SDL_EVENT_KEY_DOWN);
+    REQUIRE(plan.block);
+    REQUIRE(plan.raiseModal);
+
+    plan = cupuacu::gui::planModalInteractionBlock(SDL_EVENT_WINDOW_RESIZED);
+    REQUIRE_FALSE(plan.block);
+    REQUIRE_FALSE(plan.raiseModal);
 }
 
 TEST_CASE("Window event handling plan covers window and mouse event branches",

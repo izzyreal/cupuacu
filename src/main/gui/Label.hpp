@@ -9,6 +9,11 @@
 
 namespace cupuacu::gui
 {
+    enum class TextOverflowMode
+    {
+        Clip,
+        Ellipsis,
+    };
 
     class Label : public Component
     {
@@ -18,16 +23,21 @@ namespace cupuacu::gui
         bool centerVertically = true;
         float margin = 0;
         int pointSize = 8;
+        TextOverflowMode overflowMode = TextOverflowMode::Clip;
+        bool textTruncated = false;
 
         // --- cache ---
         SDL_Texture *cachedTexture = nullptr;
         int cachedW = 0;
         int cachedH = 0;
         std::string cachedText;
+        std::string cachedRenderedText;
         int cachedPointSize = 0;
         int cachedOpacity = 0;
+        int cachedAvailableWidth = 0;
+        TextOverflowMode cachedOverflowMode = TextOverflowMode::Clip;
 
-        void updateTexture(SDL_Renderer *renderer);
+        void updateTexture(SDL_Renderer *renderer, int availableWidth);
 
         uint8_t opacity = 255;
 
@@ -69,6 +79,19 @@ namespace cupuacu::gui
         {
             centerHorizontally = centerHorizontallyToUse;
             setDirty();
+        }
+        void setOverflowMode(const TextOverflowMode overflowModeToUse)
+        {
+            if (overflowMode == overflowModeToUse)
+            {
+                return;
+            }
+            overflowMode = overflowModeToUse;
+            setDirty();
+        }
+        bool isTextTruncated() const
+        {
+            return textTruncated;
         }
 
         void onDraw(SDL_Renderer *renderer) override;

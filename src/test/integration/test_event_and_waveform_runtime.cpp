@@ -35,6 +35,7 @@
 #include <filesystem>
 #include <memory>
 #include <random>
+#include <string>
 #include <system_error>
 #include <vector>
 
@@ -274,6 +275,23 @@ namespace
     {
         std::vector<cupuacu::gui::TextInput *> result;
         collectRecursive(root, result);
+        return result;
+    }
+
+    std::vector<cupuacu::gui::TextButton *> findMarkerSidebarButtons(
+        cupuacu::gui::Component *root)
+    {
+        std::vector<cupuacu::gui::TextButton *> buttons;
+        collectRecursive(root, buttons);
+
+        std::vector<cupuacu::gui::TextButton *> result;
+        for (auto *button : buttons)
+        {
+            if (button && button->getComponentName() == "TextButton:Marker")
+            {
+                result.push_back(button);
+            }
+        }
         return result;
     }
 
@@ -1759,6 +1777,48 @@ TEST_CASE("Marker editor integration applies name and position as one undoable",
     REQUIRE(state.getActiveDocumentSession().document.getMarkers()[0].frame == 24);
     REQUIRE(state.getActiveDocumentSession().document.getMarkers()[0].label ==
             "Snare");
+}
+
+TEST_CASE("Marker editor integration lists and refreshes sidebar markers",
+          "[integration]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    createBuiltSessionUi(&state, 256);
+
+    auto &document = state.getActiveDocumentSession().document;
+    document.addMarker(10, "Kick");
+    document.addMarker(20, "Snare");
+    const std::string longLabel(120, 'x');
+    document.addMarker(30, longLabel);
+
+    state.markerEditorDialogWindow.reset(
+        new cupuacu::gui::MarkerEditorDialogWindow(&state));
+    if (!state.markerEditorDialogWindow ||
+        !state.markerEditorDialogWindow->isOpen() || !state.modalWindow)
+    {
+        SKIP("Marker editor dialog window unavailable in this SDL environment");
+    }
+
+    auto *dialogWindow = state.modalWindow;
+    REQUIRE((SDL_GetWindowFlags(dialogWindow->getSdlWindow()) &
+             SDL_WINDOW_RESIZABLE) != 0);
+    dialogWindow->renderFrame();
+
+    auto markerButtons =
+        findMarkerSidebarButtons(dialogWindow->getRootComponent());
+    REQUIRE(markerButtons.size() == 3);
+    for (auto *button : markerButtons)
+    {
+        REQUIRE(button->getWidth() > 0);
+        REQUIRE(button->getHeight() > 0);
+    }
+    REQUIRE(markerButtons.back()->getTooltipText() ==
+            "30  " + longLabel);
+
+    document.addMarker(40, "Hat");
+    state.markerEditorDialogWindow->refreshFromDocument();
+    markerButtons = findMarkerSidebarButtons(dialogWindow->getRootComponent());
+    REQUIRE(markerButtons.size() == 4);
 }
 
 TEST_CASE("Marker editor integration delete is undoable one marker at a time",

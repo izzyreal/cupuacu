@@ -10,6 +10,8 @@
 
 #include <SDL3/SDL.h>
 
+#include <string>
+
 TEST_CASE("RoundedRect planning clamps radius and computes core rects", "[gui]")
 {
     const SDL_FRect rect{10.0f, 20.0f, 30.0f, 12.0f};
@@ -74,6 +76,29 @@ TEST_CASE("Label planning derives rebuild and destination layout decisions",
         cupuacu::gui::planLabelDestRect(content, 10, 8, true, 2);
     REQUIRE(snapped.x == Catch::Approx(15.0f));
     REQUIRE(snapped.y == Catch::Approx(6.0f));
+}
+
+TEST_CASE("Label planning ellipsizes text without splitting UTF-8 codepoints",
+          "[gui]")
+{
+    const auto measureOnePerByte =
+        [](const std::string &value)
+    {
+        return static_cast<int>(value.size());
+    };
+
+    REQUIRE(cupuacu::gui::ellipsizeTextToWidth("Marker", 6,
+                                               measureOnePerByte) == "Marker");
+    REQUIRE(cupuacu::gui::ellipsizeTextToWidth("Marker label", 8,
+                                               measureOnePerByte) == "Marke...");
+    REQUIRE(cupuacu::gui::ellipsizeTextToWidth("Marker", 2,
+                                               measureOnePerByte)
+                .empty());
+
+    const std::string utf8Text = "M\xc3\xa4rker";
+    const auto ellipsized =
+        cupuacu::gui::ellipsizeTextToWidth(utf8Text, 5, measureOnePerByte);
+    REQUIRE(ellipsized == "M...");
 }
 
 TEST_CASE("Helpers geometry utilities cover subtract and fill helpers", "[gui]")

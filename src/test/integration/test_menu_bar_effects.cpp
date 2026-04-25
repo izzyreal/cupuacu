@@ -26,6 +26,7 @@
 #include "gui/WaveformSamplePointPlanning.hpp"
 #include "gui/Window.hpp"
 
+#include <algorithm>
 #include <memory>
 
 using Catch::Approx;
@@ -157,6 +158,8 @@ TEST_CASE(
     REQUIRE(state.amplifyFadeDialog != nullptr);
     REQUIRE(state.amplifyFadeDialog->isOpen());
     REQUIRE(state.modalWindow == state.amplifyFadeDialog->getWindow());
+    REQUIRE(std::count(state.windows.begin(), state.windows.end(),
+                       state.amplifyFadeDialog->getWindow()) == 1);
 
     REQUIRE(state.amplifyEnvelopeDialog == nullptr);
     REQUIRE(harness.amplifyEnvelopeMenu->mouseDown(
