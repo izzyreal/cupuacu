@@ -19,11 +19,11 @@
 #include <sndfile.h>
 
 #include <algorithm>
-#include <bit>
 #include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <random>
@@ -34,6 +34,13 @@
 
 namespace
 {
+    std::uint32_t float32Bits(const float value)
+    {
+        std::uint32_t bits = 0;
+        std::memcpy(&bits, &value, sizeof(bits));
+        return bits;
+    }
+
     class ScopedDirCleanup
     {
     public:
@@ -328,8 +335,7 @@ namespace
         appendBe32(ssndChunk, 0);
         for (const auto sample : interleavedSamples)
         {
-            const auto bits = std::bit_cast<std::uint32_t>(sample);
-            appendBe32(ssndChunk, bits);
+            appendBe32(ssndChunk, float32Bits(sample));
         }
         appendChunk(aiffBytes, "SSND", ssndChunk);
 

@@ -24,9 +24,9 @@
 #include <sndfile.h>
 
 #include <algorithm>
-#include <bit>
 #include <chrono>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <random>
@@ -37,6 +37,13 @@
 
 namespace
 {
+    std::uint32_t float32Bits(const float value)
+    {
+        std::uint32_t bits = 0;
+        std::memcpy(&bits, &value, sizeof(bits));
+        return bits;
+    }
+
     class ScopedDirCleanup
     {
     public:
@@ -314,8 +321,7 @@ namespace
         dataChunk.reserve(interleavedSamples.size() * sizeof(float));
         for (const float sample : interleavedSamples)
         {
-            const auto bits = std::bit_cast<std::uint32_t>(sample);
-            appendLe32(dataChunk, bits);
+            appendLe32(dataChunk, float32Bits(sample));
         }
         appendChunk(wavBytes, "data", dataChunk);
 

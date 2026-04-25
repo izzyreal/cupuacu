@@ -8,9 +8,9 @@
 #include "AiffPreservationSupport.hpp"
 
 #include <array>
-#include <bit>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -105,7 +105,8 @@ namespace cupuacu::file::aiff
 
         static std::vector<char> encodeFloat32Be(const float value)
         {
-            const auto bits = std::bit_cast<std::uint32_t>(value);
+            std::uint32_t bits = 0;
+            std::memcpy(&bits, &value, sizeof(bits));
             return {static_cast<char>((bits >> 24) & 0xffu),
                     static_cast<char>((bits >> 16) & 0xffu),
                     static_cast<char>((bits >> 8) & 0xffu),

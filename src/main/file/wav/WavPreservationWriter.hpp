@@ -9,8 +9,8 @@
 
 #include <algorithm>
 #include <array>
-#include <bit>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -113,7 +113,8 @@ namespace cupuacu::file::wav
 
         static std::vector<char> encodeFloat32Le(const float value)
         {
-            const auto bits = std::bit_cast<std::uint32_t>(value);
+            std::uint32_t bits = 0;
+            std::memcpy(&bits, &value, sizeof(bits));
             return {static_cast<char>(bits & 0xffu),
                     static_cast<char>((bits >> 8) & 0xffu),
                     static_cast<char>((bits >> 16) & 0xffu),
