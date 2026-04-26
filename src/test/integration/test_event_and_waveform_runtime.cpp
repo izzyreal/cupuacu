@@ -715,7 +715,14 @@ TEST_CASE("Async startup document restore reopens tabs and restores active view"
     const auto firstPath = cleanup.path() / "first.wav";
     const auto secondPath = cleanup.path() / "second.wav";
     writeTestWav(firstPath, 44100, 1, {0.1f, 0.2f, 0.3f});
-    writeTestWav(secondPath, 32000, 2, {0.4f, -0.4f, 0.5f, -0.5f});
+    std::vector<float> secondFrames(8192u * 2u);
+    for (std::size_t frame = 0; frame < secondFrames.size() / 2u; ++frame)
+    {
+        secondFrames[frame * 2u] = (frame % 2u == 0u) ? 0.4f : 0.5f;
+        secondFrames[frame * 2u + 1u] =
+            (frame % 2u == 0u) ? -0.4f : -0.5f;
+    }
+    writeTestWav(secondPath, 32000, 2, secondFrames);
 
     cupuacu::test::StateWithTestPaths state{};
     createBuiltEmptySessionUi(&state, 800, 400);

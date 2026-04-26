@@ -10,6 +10,7 @@
 #include "effects/RemoveSilenceEffect.hpp"
 #include "effects/ReverseEffect.hpp"
 #include "State.hpp"
+#include "actions/effects/BackgroundEffect.hpp"
 #include "SelectedChannels.hpp"
 #include "audio/AudioDevices.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
@@ -27,7 +28,9 @@
 #include "gui/Window.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <memory>
+#include <thread>
 
 using Catch::Approx;
 
@@ -116,6 +119,22 @@ namespace
         {
             cupuacu::gui::handleAppEvent(state, &event);
         }
+    }
+
+    void drainPendingEffectWork(cupuacu::State *state)
+    {
+        for (int attempt = 0; attempt < 5000; ++attempt)
+        {
+            cupuacu::actions::effects::processPendingEffectWork(state);
+            if (!state->backgroundEffectJob)
+            {
+                cupuacu::actions::effects::processPendingEffectWork(state);
+                return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+
+        FAIL("Timed out waiting for background effect work");
     }
 
     SDL_Event makeMouseButtonEvent(const Uint32 type,
@@ -477,6 +496,7 @@ TEST_CASE(
     auto harness = createEffectsMenuHarness(&state);
     REQUIRE(harness.reverseMenu->mouseDown(
         cupuacu::test::integration::leftMouseDown()));
+    drainPendingEffectWork(&state);
 
     REQUIRE(state.modalWindow == nullptr);
     REQUIRE(state.getActiveUndoables().size() == 1);
@@ -656,6 +676,7 @@ TEST_CASE(
 
     clickButton(fadeOutButton);
     clickButton(applyButton);
+    drainPendingEffectWork(&state);
 
     REQUIRE(state.getActiveUndoables().size() == 1);
     REQUIRE(state.modalWindow == nullptr);
@@ -731,6 +752,7 @@ TEST_CASE("AmplifyFade dialog treats Enter as Apply", "[integration]")
 
     sendKeyDown(state.amplifyFadeDialog->getWindow(), SDL_SCANCODE_RETURN);
     processPendingSdlWindowEvents(&state);
+    drainPendingEffectWork(&state);
 
     REQUIRE(state.getActiveUndoables().size() == 1);
     REQUIRE(state.modalWindow == nullptr);
