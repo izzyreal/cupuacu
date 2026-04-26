@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <iosfwd>
 #include <vector>
 
 namespace cupuacu::file::m4a
@@ -29,4 +30,5 @@ namespace cupuacu::file::m4a
     [[nodiscard]] M4aParsedAlacFile parseAlacM4a(const Bytes &bytes);
     [[nodiscard]] M4aParsedAlacFile
     parseAlacM4aFile(const std::filesystem::path &path);
+    [[nodiscard]] M4aParsedAlacFile parseAlacM4aFile(std::ifstream &input);
 } // namespace cupuacu::file::m4a

@@ -14,25 +14,91 @@ namespace cupuacu::file::m4a
 {
     namespace
     {
-        Bytes collectPacketBytes(const Bytes &bytes,
-                                 const M4aParsedAlacFile &parsed)
+        class BufferedPacketReader
         {
-            Bytes packetBytes;
-            for (std::size_t i = 0; i < parsed.packetSizes.size(); ++i)
+        public:
+            BufferedPacketReader(std::ifstream &inputToUse,
+                                 const std::filesystem::path &pathToRead,
+                                 const std::uint64_t totalBytesToRead,
+                                 M4aReadProgressCallback progressCallbackToUse)
+                : input(inputToUse),
+                  path(pathToRead),
+                  totalBytes(totalBytesToRead),
+                  progressCallback(std::move(progressCallbackToUse))
             {
-                const auto offset = parsed.packetOffsets[i];
-                const auto size = parsed.packetSizes[i];
-                if (offset > bytes.size() || size > bytes.size() - offset)
-                {
-                    throw std::runtime_error("ALAC packet extends past file");
-                }
-                packetBytes.insert(
-                    packetBytes.end(),
-                    bytes.begin() + static_cast<std::ptrdiff_t>(offset),
-                    bytes.begin() + static_cast<std::ptrdiff_t>(offset + size));
             }
-            return packetBytes;
-        }
+
+            bool readPacket(const std::uint64_t packetOffset,
+                            const std::uint32_t packetSize,
+                            std::vector<std::uint8_t> &packetBytes)
+            {
+                if (packetOffset > totalBytes ||
+                    packetSize > totalBytes - packetOffset)
+                {
+                    return false;
+                }
+
+                ensureBufferCovers(packetOffset, packetSize);
+                const auto offsetInBuffer = static_cast<std::size_t>(
+                    packetOffset - bufferOffset);
+                std::copy(buffer.begin() +
+                              static_cast<std::ptrdiff_t>(offsetInBuffer),
+                          buffer.begin() +
+                              static_cast<std::ptrdiff_t>(offsetInBuffer +
+                                                          packetSize),
+                          packetBytes.begin());
+                return true;
+            }
+
+        private:
+            void ensureBufferCovers(const std::uint64_t packetOffset,
+                                    const std::uint32_t packetSize)
+            {
+                if (packetOffset >= bufferOffset)
+                {
+                    const auto offsetInBuffer = packetOffset - bufferOffset;
+                    if (offsetInBuffer <= buffer.size() &&
+                        packetSize <= buffer.size() - offsetInBuffer)
+                    {
+                        return;
+                    }
+                }
+
+                constexpr std::uint64_t kReadChunkBytes = 4u * 1024u * 1024u;
+                const auto readOffset = packetOffset;
+                const auto readSize = std::min<std::uint64_t>(
+                    totalBytes - readOffset,
+                    std::max<std::uint64_t>(packetSize, kReadChunkBytes));
+                buffer.resize(static_cast<std::size_t>(readSize));
+
+                input.clear();
+                input.seekg(static_cast<std::streamoff>(readOffset),
+                            std::ios::beg);
+                input.read(reinterpret_cast<char *>(buffer.data()),
+                           static_cast<std::streamsize>(readSize));
+                if (input.gcount() != static_cast<std::streamsize>(readSize))
+                {
+                    throw std::runtime_error("Failed to read M4A packet: " +
+                                             path.string());
+                }
+
+                bufferOffset = readOffset;
+                if (progressCallback)
+                {
+                    progressCallback(
+                        std::min<std::uint64_t>(totalBytes,
+                                                readOffset + readSize),
+                        totalBytes);
+                }
+            }
+
+            std::ifstream &input;
+            const std::filesystem::path &path;
+            std::uint64_t totalBytes = 0;
+            M4aReadProgressCallback progressCallback;
+            std::vector<std::uint8_t> buffer;
+            std::uint64_t bufferOffset = 0;
+        };
 
         cupuacu::SampleFormat sampleFormatForBitDepth(
             const std::uint16_t bitDepth)
@@ -51,6 +117,99 @@ namespace cupuacu::file::m4a
             }
         }
     } // namespace
+
+    M4aAlacFileInfo streamAlacM4aFile(
+        const std::filesystem::path &path,
+        M4aDecodedPcmBlockCallback decodedPcmBlockCallback,
+        M4aAlacFileInfoCallback fileInfoCallback,
+        cupuacu::file::alac::DecodeProgressCallback progressCallback,
+        M4aReadProgressCallback readProgressCallback)
+    {
+        if (!decodedPcmBlockCallback)
+        {
+            throw std::runtime_error("Missing M4A ALAC decode sink");
+        }
+
+        std::ifstream input(path, std::ios::binary | std::ios::ate);
+        if (!input)
+        {
+            throw std::runtime_error("Failed to open M4A file: " + path.string());
+        }
+
+        const auto endPosition = input.tellg();
+        if (endPosition < 0)
+        {
+            throw std::runtime_error("Failed to measure M4A file: " +
+                                     path.string());
+        }
+        const auto totalBytes = static_cast<std::uint64_t>(endPosition);
+        if (readProgressCallback)
+        {
+            readProgressCallback(0, totalBytes);
+        }
+
+        input.clear();
+        input.seekg(0, std::ios::beg);
+        const auto parsed = parseAlacM4aFile(input);
+        if (parsed.bitDepth != 16 && parsed.bitDepth != 24 &&
+            parsed.bitDepth != 32)
+        {
+            throw std::runtime_error(
+                "Only 16, 24, and 32-bit ALAC M4A files are currently supported");
+        }
+
+        const M4aAlacFileInfo fileInfo{
+            .sampleRate = parsed.sampleRate,
+            .channels = parsed.channels,
+            .bitDepth = parsed.bitDepth,
+            .frameCount = parsed.frameCount,
+            .sampleFormat = sampleFormatForBitDepth(parsed.bitDepth),
+            .markers = parsed.markers,
+        };
+        if (fileInfoCallback)
+        {
+            fileInfoCallback(fileInfo);
+        }
+
+        BufferedPacketReader packetReader(input, path, totalBytes,
+                                          readProgressCallback);
+        const auto ok = cupuacu::file::alac::streamDecodedPcmPackets(
+            {
+                .sampleRate = parsed.sampleRate,
+                .channels = parsed.channels,
+                .bitsPerSample = parsed.bitDepth,
+                .framesPerPacket = parsed.framesPerPacket,
+                .frameCount = parsed.frameCount,
+                .magicCookie = parsed.magicCookie,
+                .packetFrameCounts = parsed.packetFrameCounts,
+            },
+            parsed.packetOffsets, parsed.packetSizes,
+            [&packetReader](const std::uint64_t packetOffset,
+                            const std::uint32_t packetSize,
+                            std::vector<std::uint8_t> &packetBytes)
+            { return packetReader.readPacket(packetOffset, packetSize,
+                                             packetBytes); },
+            [&](const std::uint8_t *interleavedPcmBytes,
+                const std::uint32_t pcmByteCount,
+                const std::uint32_t frameCount)
+            {
+                decodedPcmBlockCallback(interleavedPcmBytes, pcmByteCount,
+                                        frameCount, parsed.channels,
+                                        parsed.bitDepth);
+                return true;
+            },
+            std::move(progressCallback));
+        if (!ok)
+        {
+            throw std::runtime_error("Failed to decode ALAC M4A packets");
+        }
+        if (readProgressCallback)
+        {
+            readProgressCallback(totalBytes, totalBytes);
+        }
+
+        return fileInfo;
+    }
 
     M4aAlacPcmData readAlacM4a(
         const Bytes &bytes,
@@ -74,7 +233,7 @@ namespace cupuacu::file::m4a
                 .magicCookie = parsed.magicCookie,
                 .packetFrameCounts = parsed.packetFrameCounts,
             },
-            collectPacketBytes(bytes, parsed), parsed.packetSizes,
+            bytes, parsed.packetOffsets, parsed.packetSizes,
             std::move(progressCallback));
         if (!decoded.has_value())
         {
@@ -106,49 +265,27 @@ namespace cupuacu::file::m4a
         cupuacu::file::alac::DecodeProgressCallback progressCallback,
         M4aReadProgressCallback readProgressCallback)
     {
-        std::ifstream input(path, std::ios::binary | std::ios::ate);
-        if (!input)
-        {
-            throw std::runtime_error("Failed to open M4A file: " + path.string());
-        }
-
-        const auto endPosition = input.tellg();
-        if (endPosition < 0)
-        {
-            throw std::runtime_error("Failed to measure M4A file: " +
-                                     path.string());
-        }
-        const auto totalBytes = static_cast<std::uint64_t>(endPosition);
-        input.seekg(0, std::ios::beg);
-
-        Bytes bytes;
-        bytes.resize(static_cast<std::size_t>(totalBytes));
-        constexpr std::size_t kReadBlockBytes = 1024u * 1024u;
-        std::uint64_t bytesRead = 0;
-        if (readProgressCallback)
-        {
-            readProgressCallback(0, totalBytes);
-        }
-        while (bytesRead < totalBytes)
-        {
-            const auto bytesToRead = std::min<std::uint64_t>(
-                kReadBlockBytes, totalBytes - bytesRead);
-            input.read(
-                reinterpret_cast<char *>(bytes.data() +
-                                          static_cast<std::size_t>(bytesRead)),
-                static_cast<std::streamsize>(bytesToRead));
-            if (input.gcount() <= 0)
+        M4aAlacPcmData audio;
+        const auto info = streamAlacM4aFile(
+            path,
+            [&audio](const std::uint8_t *interleavedPcmBytes,
+                     const std::uint32_t pcmByteCount,
+                     const std::uint32_t,
+                     const std::uint16_t,
+                     const std::uint16_t)
             {
-                throw std::runtime_error("Failed to read M4A file: " +
-                                         path.string());
-            }
-            bytesRead += static_cast<std::uint64_t>(input.gcount());
-            if (readProgressCallback)
-            {
-                readProgressCallback(bytesRead, totalBytes);
-            }
-        }
-
-        return readAlacM4a(bytes, std::move(progressCallback));
+                audio.interleavedPcmBytes.insert(
+                    audio.interleavedPcmBytes.end(), interleavedPcmBytes,
+                    interleavedPcmBytes +
+                        static_cast<std::ptrdiff_t>(pcmByteCount));
+            },
+            {}, std::move(progressCallback), std::move(readProgressCallback));
+        audio.sampleRate = info.sampleRate;
+        audio.channels = info.channels;
+        audio.bitDepth = info.bitDepth;
+        audio.frameCount = info.frameCount;
+        audio.sampleFormat = info.sampleFormat;
+        audio.markers = std::move(info.markers);
+        return audio;
     }
 } // namespace cupuacu::file::m4a

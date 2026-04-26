@@ -1,6 +1,9 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
+#include <thread>
+
 #include "TestPaths.hpp"
 #include "actions/effects/BackgroundEffect.hpp"
 #include "effects/RemoveSilenceEffect.hpp"
@@ -19,6 +22,7 @@ namespace
             {
                 return;
             }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
 
         FAIL("Timed out waiting for background remove silence work");

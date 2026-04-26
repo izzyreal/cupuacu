@@ -107,6 +107,70 @@ namespace cupuacu::file
             }
         }
 
+        static void convertNativePcm16BlockToFloat(
+            const std::uint8_t *pcmBytes,
+            const std::size_t sampleCount,
+            float *output)
+        {
+            for (std::size_t i = 0; i < sampleCount; ++i)
+            {
+                std::int16_t value = 0;
+                std::memcpy(&value, pcmBytes + i * sizeof(std::int16_t),
+                            sizeof(value));
+                output[i] = static_cast<float>(value) / 32768.0f;
+            }
+        }
+
+        static void convertNativePcm24BlockToFloat(
+            const std::uint8_t *pcmBytes,
+            const std::size_t sampleCount,
+            float *output)
+        {
+            for (std::size_t i = 0; i < sampleCount; ++i)
+            {
+                const auto offset = i * 3u;
+                std::uint32_t value = 0;
+                if (nativeLittleEndian())
+                {
+                    value = static_cast<std::uint32_t>(pcmBytes[offset]) |
+                            (static_cast<std::uint32_t>(pcmBytes[offset + 1])
+                             << 8u) |
+                            (static_cast<std::uint32_t>(pcmBytes[offset + 2])
+                             << 16u);
+                }
+                else
+                {
+                    value = static_cast<std::uint32_t>(pcmBytes[offset + 2]) |
+                            (static_cast<std::uint32_t>(pcmBytes[offset + 1])
+                             << 8u) |
+                            (static_cast<std::uint32_t>(pcmBytes[offset])
+                             << 16u);
+                }
+                if ((value & 0x00800000u) != 0u)
+                {
+                    value |= 0xff000000u;
+                }
+                output[i] = static_cast<float>(
+                    static_cast<double>(static_cast<std::int32_t>(value)) /
+                    8388608.0);
+            }
+        }
+
+        static void convertNativePcm32BlockToFloat(
+            const std::uint8_t *pcmBytes,
+            const std::size_t sampleCount,
+            float *output)
+        {
+            for (std::size_t i = 0; i < sampleCount; ++i)
+            {
+                std::int32_t value = 0;
+                std::memcpy(&value, pcmBytes + i * sizeof(std::int32_t),
+                            sizeof(value));
+                output[i] = static_cast<float>(
+                    static_cast<double>(value) / 2147483648.0);
+            }
+        }
+
         static float normalizedPcmToFloat(const std::int32_t value,
                                           const std::uint16_t bitDepth)
         {
@@ -179,20 +243,76 @@ namespace cupuacu::file
             }
             int lastDecodePercent = -1;
             int lastReadPercent = -1;
-            const auto audio = cupuacu::file::m4a::readAlacM4aFile(
+            bool decodeStarted = false;
+            LoadedAudioFile result;
+            auto &doc = result.document;
+            std::uint32_t totalFramesLoaded = 0;
+            std::vector<float> interleaved;
+            cupuacu::file::m4a::M4aAlacFileInfo fileInfo;
+            fileInfo = cupuacu::file::m4a::streamAlacM4aFile(
                 path,
-                [progress, path, &lastDecodePercent](
+                [&doc, &interleaved, &totalFramesLoaded](
+                    const std::uint8_t *interleavedPcmBytes,
+                    const std::uint32_t pcmByteCount,
+                    const std::uint32_t frameCount,
+                    const std::uint16_t channels,
+                    const std::uint16_t bitDepth)
+                {
+                    const auto sampleCount = static_cast<std::size_t>(frameCount) *
+                                             static_cast<std::size_t>(channels);
+                    interleaved.resize(sampleCount);
+                    switch (bitDepth)
+                    {
+                        case 16:
+                            convertNativePcm16BlockToFloat(
+                                interleavedPcmBytes, sampleCount,
+                                interleaved.data());
+                            break;
+                        case 24:
+                            convertNativePcm24BlockToFloat(
+                                interleavedPcmBytes, sampleCount,
+                                interleaved.data());
+                            break;
+                        case 32:
+                            convertNativePcm32BlockToFloat(
+                                interleavedPcmBytes, sampleCount,
+                                interleaved.data());
+                            break;
+                        default:
+                            throw std::runtime_error(
+                                "Unsupported ALAC M4A bit depth");
+                    }
+
+                    doc.writeInterleavedFloatBlock(totalFramesLoaded,
+                                                   interleaved.data(),
+                                                   frameCount, channels, false);
+                    totalFramesLoaded += frameCount;
+                },
+                [&doc, &result, &path](const cupuacu::file::m4a::M4aAlacFileInfo
+                                           &streamInfo)
+                {
+                    result.exportSettings = inferExportSettingsForFile(
+                        path,
+                        CUPUACU_FORMAT_M4A |
+                            (streamInfo.bitDepth == 24
+                                 ? CUPUACU_FORMAT_ALAC_24
+                                 : streamInfo.bitDepth == 32
+                                       ? CUPUACU_FORMAT_ALAC_32
+                                       : CUPUACU_FORMAT_ALAC_16),
+                        streamInfo.sampleFormat);
+                    doc.initialize(streamInfo.sampleFormat,
+                                   streamInfo.sampleRate, streamInfo.channels,
+                                   streamInfo.frameCount);
+                },
+                [progress, path, &lastDecodePercent, &decodeStarted](
                     const std::uint32_t decodedFrames,
                     const std::uint32_t totalFrames)
                 {
-                    if (!progress)
+                    if (!progress || totalFrames == 0)
                     {
                         return;
                     }
-                    if (totalFrames == 0)
-                    {
-                        return;
-                    }
+                    decodeStarted = true;
                     const int percent = static_cast<int>(
                         std::clamp<double>(
                             static_cast<double>(decodedFrames) /
@@ -208,18 +328,17 @@ namespace cupuacu::file
                         path + " (decoding ALAC " + std::to_string(percent) +
                             "%)",
                         0.05 +
-                        std::clamp<double>(
-                            static_cast<double>(decodedFrames) /
-                                static_cast<double>(totalFrames),
-                            0.0, 1.0) *
-                            0.80
-                    );
+                            std::clamp<double>(
+                                static_cast<double>(decodedFrames) /
+                                    static_cast<double>(totalFrames),
+                                0.0, 1.0) *
+                                0.95);
                 },
-                [progress, path, &lastReadPercent](
+                [progress, path, &lastReadPercent, &decodeStarted](
                     const std::uint64_t bytesRead,
                     const std::uint64_t totalBytes)
                 {
-                    if (!progress || totalBytes == 0)
+                    if (!progress || totalBytes == 0 || decodeStarted)
                     {
                         return;
                     }
@@ -243,78 +362,11 @@ namespace cupuacu::file
                             0.0, 1.0) *
                             0.05);
                 });
-            LoadedAudioFile result;
-            auto &doc = result.document;
-            result.exportSettings = inferExportSettingsForFile(
-                path,
-                CUPUACU_FORMAT_M4A |
-                    (audio.bitDepth == 24
-                         ? CUPUACU_FORMAT_ALAC_24
-                         : audio.bitDepth == 32 ? CUPUACU_FORMAT_ALAC_32
-                                                : CUPUACU_FORMAT_ALAC_16),
-                audio.sampleFormat);
-
-            doc.initialize(audio.sampleFormat, audio.sampleRate,
-                           audio.channels, audio.frameCount);
-
-            const auto expectedSamples =
-                static_cast<std::size_t>(audio.frameCount) * audio.channels;
-            const auto expectedBytes =
-                expectedSamples *
-                static_cast<std::size_t>((audio.bitDepth + 7u) / 8u);
-            if (audio.interleavedPcmBytes.size() != expectedBytes)
+            if (totalFramesLoaded != fileInfo.frameCount)
             {
                 throw std::runtime_error("Decoded ALAC M4A sample count mismatch");
             }
-
-            constexpr std::uint32_t kLoadBlockFrames = 65536;
-            std::vector<float> interleaved(
-                static_cast<std::size_t>(kLoadBlockFrames) * audio.channels);
-            std::uint32_t totalFramesLoaded = 0;
-            while (totalFramesLoaded < audio.frameCount)
-            {
-                const auto framesThisBlock = std::min<std::uint32_t>(
-                    kLoadBlockFrames, audio.frameCount - totalFramesLoaded);
-                for (std::uint32_t frame = 0; frame < framesThisBlock; ++frame)
-                {
-                    for (std::uint16_t ch = 0; ch < audio.channels; ++ch)
-                    {
-                        const auto sampleIndex =
-                            (static_cast<std::size_t>(totalFramesLoaded) +
-                             frame) *
-                                audio.channels +
-                            static_cast<std::size_t>(ch);
-                        interleaved[static_cast<std::size_t>(frame) *
-                                        audio.channels +
-                                    static_cast<std::size_t>(ch)] =
-                            normalizedPcmToFloat(
-                                readNativePcmSample(audio.interleavedPcmBytes,
-                                                    sampleIndex,
-                                                    audio.bitDepth),
-                                audio.bitDepth);
-                    }
-                }
-
-                doc.writeInterleavedFloatBlock(totalFramesLoaded,
-                                               interleaved.data(),
-                                               framesThisBlock, audio.channels,
-                                               false);
-                totalFramesLoaded += framesThisBlock;
-                const double conversionProgress =
-                    audio.frameCount > 0
-                        ? std::clamp<double>(
-                              static_cast<double>(totalFramesLoaded) /
-                                  static_cast<double>(audio.frameCount),
-                              0.0, 1.0)
-                        : 1.0;
-                if (progress)
-                {
-                    progress(detail::formatLoadProgressDetail(
-                                 path, totalFramesLoaded, audio.frameCount),
-                             0.85 + conversionProgress * 0.15);
-                }
-            }
-            doc.replaceMarkers(audio.markers);
+            doc.replaceMarkers(std::move(fileInfo.markers));
             doc.markCurrentStateAsSavedSource();
             return result;
         }

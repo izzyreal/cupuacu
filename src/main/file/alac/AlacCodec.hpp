@@ -64,6 +64,14 @@ namespace cupuacu::file::alac
     using DecodeProgressCallback =
         std::function<void(std::uint32_t decodedFrames,
                            std::uint32_t totalFrames)>;
+    using PacketReadCallback =
+        std::function<bool(std::uint64_t packetOffset,
+                           std::uint32_t packetSize,
+                           std::vector<std::uint8_t> &packetBytes)>;
+    using DecodedPacketCallback =
+        std::function<bool(const std::uint8_t *interleavedPcmBytes,
+                           std::uint32_t pcmByteCount,
+                           std::uint32_t decodedFrames)>;
 
     [[nodiscard]] std::uint32_t defaultFramesPerPacket();
     [[nodiscard]] std::uint32_t maxChannels();
@@ -79,9 +87,34 @@ namespace cupuacu::file::alac
                      const std::vector<std::uint8_t> &packetBytes,
                      const std::vector<std::uint32_t> &packetSizes,
                      DecodeProgressCallback progressCallback = {});
+    [[nodiscard]] std::optional<AlacDecodedPcm>
+    decodePcmPackets(const AlacDecodingParameters &parameters,
+                     const std::vector<std::uint8_t> &sourceBytes,
+                     const std::vector<std::uint64_t> &packetOffsets,
+                     const std::vector<std::uint32_t> &packetSizes,
+                     DecodeProgressCallback progressCallback = {});
+    [[nodiscard]] std::optional<AlacDecodedPcm>
+    decodePcmPackets(const AlacDecodingParameters &parameters,
+                     const std::vector<std::uint64_t> &packetOffsets,
+                     const std::vector<std::uint32_t> &packetSizes,
+                     PacketReadCallback packetReadCallback,
+                     DecodeProgressCallback progressCallback = {});
+    [[nodiscard]] bool
+    streamDecodedPcmPackets(const AlacDecodingParameters &parameters,
+                            const std::vector<std::uint64_t> &packetOffsets,
+                            const std::vector<std::uint32_t> &packetSizes,
+                            PacketReadCallback packetReadCallback,
+                            DecodedPacketCallback decodedPacketCallback,
+                            DecodeProgressCallback progressCallback = {});
     [[nodiscard]] std::optional<AlacDecodedPcm16>
     decodePcm16Packets(const AlacDecodingParameters &parameters,
                        const std::vector<std::uint8_t> &packetBytes,
+                       const std::vector<std::uint32_t> &packetSizes,
+                       DecodeProgressCallback progressCallback = {});
+    [[nodiscard]] std::optional<AlacDecodedPcm16>
+    decodePcm16Packets(const AlacDecodingParameters &parameters,
+                       const std::vector<std::uint8_t> &sourceBytes,
+                       const std::vector<std::uint64_t> &packetOffsets,
                        const std::vector<std::uint32_t> &packetSizes,
                        DecodeProgressCallback progressCallback = {});
 } // namespace cupuacu::file::alac

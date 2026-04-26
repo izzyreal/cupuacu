@@ -230,3 +230,117 @@ TEST_CASE("ALAC codec decodes encoded PCM packets", "[alac]")
             std::vector<std::uint32_t>{
                 cupuacu::file::alac::defaultFramesPerPacket(), frames});
 }
+
+TEST_CASE("ALAC codec decodes packets from scattered source offsets", "[alac]")
+{
+    const auto frames = cupuacu::file::alac::defaultFramesPerPacket() + 1;
+    const auto pcm = makeStereoPcm16(frames);
+    const auto encoded = cupuacu::file::alac::encodePcmPackets(
+        {
+            .sampleRate = 44100,
+            .channels = 2,
+            .bitsPerSample = 16,
+            .framesPerPacket = cupuacu::file::alac::defaultFramesPerPacket(),
+        },
+        pcm);
+    REQUIRE(encoded.has_value());
+    REQUIRE(encoded->packetSizes.size() == 2);
+
+    std::vector<std::uint8_t> sourceBytes{0xaa, 0xbb, 0xcc};
+    std::vector<std::uint64_t> packetOffsets;
+    packetOffsets.reserve(encoded->packetSizes.size());
+    for (std::size_t i = 0; i < encoded->packetSizes.size(); ++i)
+    {
+        packetOffsets.push_back(sourceBytes.size());
+        const auto packetStart = encoded->bytes.begin() +
+                                 static_cast<std::ptrdiff_t>(
+                                     i == 0 ? 0 : encoded->packetSizes[0]);
+        const auto packetEnd =
+            packetStart +
+            static_cast<std::ptrdiff_t>(encoded->packetSizes[i]);
+        sourceBytes.insert(sourceBytes.end(), packetStart, packetEnd);
+        sourceBytes.push_back(0xee);
+    }
+
+    const auto decoded = cupuacu::file::alac::decodePcm16Packets(
+        {
+            .sampleRate = encoded->cookie.sampleRate,
+            .channels = encoded->cookie.channels,
+            .bitsPerSample = encoded->cookie.bitDepth,
+            .framesPerPacket = encoded->framesPerPacket,
+            .frameCount = encoded->frameCount,
+            .magicCookie = encoded->cookie.bytes,
+            .packetFrameCounts =
+                {cupuacu::file::alac::defaultFramesPerPacket(), 1},
+        },
+        sourceBytes, packetOffsets, encoded->packetSizes);
+
+    REQUIRE(decoded.has_value());
+    REQUIRE(decoded->interleavedSamples == readNativeI16Samples(pcm));
+}
+
+TEST_CASE("ALAC codec decodes packets via packet reader callback", "[alac]")
+{
+    const auto frames = cupuacu::file::alac::defaultFramesPerPacket() + 1;
+    const auto pcm = makeStereoPcm16(frames);
+    const auto encoded = cupuacu::file::alac::encodePcmPackets(
+        {
+            .sampleRate = 44100,
+            .channels = 2,
+            .bitsPerSample = 16,
+            .framesPerPacket = cupuacu::file::alac::defaultFramesPerPacket(),
+        },
+        pcm);
+    REQUIRE(encoded.has_value());
+    REQUIRE(encoded->packetSizes.size() == 2);
+
+    std::vector<std::uint8_t> sourceBytes{0x10, 0x20, 0x30};
+    std::vector<std::uint64_t> packetOffsets;
+    packetOffsets.reserve(encoded->packetSizes.size());
+    std::size_t packetStartOffset = 0;
+    for (const auto packetSize : encoded->packetSizes)
+    {
+        packetOffsets.push_back(sourceBytes.size());
+        sourceBytes.insert(
+            sourceBytes.end(),
+            encoded->bytes.begin() +
+                static_cast<std::ptrdiff_t>(packetStartOffset),
+            encoded->bytes.begin() +
+                static_cast<std::ptrdiff_t>(packetStartOffset + packetSize));
+        packetStartOffset += packetSize;
+        sourceBytes.push_back(0xff);
+    }
+
+    const auto decoded = cupuacu::file::alac::decodePcmPackets(
+        {
+            .sampleRate = encoded->cookie.sampleRate,
+            .channels = encoded->cookie.channels,
+            .bitsPerSample = encoded->cookie.bitDepth,
+            .framesPerPacket = encoded->framesPerPacket,
+            .frameCount = encoded->frameCount,
+            .magicCookie = encoded->cookie.bytes,
+            .packetFrameCounts =
+                {cupuacu::file::alac::defaultFramesPerPacket(), 1},
+        },
+        packetOffsets, encoded->packetSizes,
+        [&sourceBytes](const std::uint64_t packetOffset,
+                       const std::uint32_t packetSize,
+                       std::vector<std::uint8_t> &packetBytes)
+        {
+            if (packetOffset > sourceBytes.size() ||
+                packetSize > sourceBytes.size() - packetOffset)
+            {
+                return false;
+            }
+
+            std::copy(sourceBytes.begin() +
+                          static_cast<std::ptrdiff_t>(packetOffset),
+                      sourceBytes.begin() +
+                          static_cast<std::ptrdiff_t>(packetOffset + packetSize),
+                      packetBytes.begin());
+            return true;
+        });
+
+    REQUIRE(decoded.has_value());
+    REQUIRE(decoded->interleavedPcmBytes == pcm);
+}
