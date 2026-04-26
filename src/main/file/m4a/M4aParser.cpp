@@ -243,57 +243,139 @@ namespace cupuacu::file::m4a
             return packetFrameCounts;
         }
 
-        std::uint64_t parseSingleChunkOffset(const Bytes &bytes,
-                                             const AtomView &stbl)
+        std::vector<std::uint64_t> parseChunkOffsets(const Bytes &bytes,
+                                                     const AtomView &stbl)
         {
             if (const auto stco = findChild(bytes, stbl, "stco"))
             {
                 requireRange(bytes, stco->payloadOffset, 8, "Truncated stco atom");
                 const auto entryCount = readBe32(bytes, stco->payloadOffset + 4);
-                if (entryCount != 1)
-                {
-                    throw std::runtime_error(
-                        "Only single-chunk ALAC M4A files are currently supported");
-                }
-                requireRange(bytes, stco->payloadOffset + 8, 4,
+                requireRange(bytes, stco->payloadOffset + 8,
+                             static_cast<std::uint64_t>(entryCount) * 4u,
                              "Truncated stco entry table");
-                return readBe32(bytes, stco->payloadOffset + 8);
+                std::vector<std::uint64_t> chunkOffsets;
+                chunkOffsets.reserve(entryCount);
+                for (std::uint32_t i = 0; i < entryCount; ++i)
+                {
+                    chunkOffsets.push_back(
+                        readBe32(bytes, stco->payloadOffset + 8u + i * 4u));
+                }
+                return chunkOffsets;
             }
 
             const auto co64 = requireChild(bytes, stbl, "co64");
             requireRange(bytes, co64.payloadOffset, 8, "Truncated co64 atom");
             const auto entryCount = readBe32(bytes, co64.payloadOffset + 4);
-            if (entryCount != 1)
-            {
-                throw std::runtime_error(
-                    "Only single-chunk ALAC M4A files are currently supported");
-            }
-            requireRange(bytes, co64.payloadOffset + 8, 8,
+            requireRange(bytes, co64.payloadOffset + 8,
+                         static_cast<std::uint64_t>(entryCount) * 8u,
                          "Truncated co64 entry table");
-            return readBe64(bytes, co64.payloadOffset + 8);
+            std::vector<std::uint64_t> chunkOffsets;
+            chunkOffsets.reserve(entryCount);
+            for (std::uint32_t i = 0; i < entryCount; ++i)
+            {
+                chunkOffsets.push_back(
+                    readBe64(bytes, co64.payloadOffset + 8u + i * 8u));
+            }
+            return chunkOffsets;
         }
 
-        void validateSingleChunkTable(const Bytes &bytes,
-                                      const AtomView &stsc,
-                                      const std::size_t packetCount)
+        struct SampleToChunkEntry
+        {
+            std::uint32_t firstChunk = 0;
+            std::uint32_t samplesPerChunk = 0;
+            std::uint32_t sampleDescriptionIndex = 0;
+        };
+
+        std::vector<SampleToChunkEntry>
+        parseSampleToChunkEntries(const Bytes &bytes, const AtomView &stsc)
         {
             requireRange(bytes, stsc.payloadOffset, 8, "Truncated stsc atom");
             const auto entryCount = readBe32(bytes, stsc.payloadOffset + 4);
-            if (entryCount != 1)
+            requireRange(bytes, stsc.payloadOffset + 8,
+                         static_cast<std::uint64_t>(entryCount) * 12u,
+                         "Truncated stsc entry table");
+
+            std::vector<SampleToChunkEntry> entries;
+            entries.reserve(entryCount);
+            std::uint32_t previousFirstChunk = 0;
+            for (std::uint32_t i = 0; i < entryCount; ++i)
             {
-                throw std::runtime_error(
-                    "Only single-entry stsc ALAC M4A files are currently supported");
+                const auto entryOffset = stsc.payloadOffset + 8u + i * 12u;
+                const auto firstChunk = readBe32(bytes, entryOffset);
+                const auto samplesPerChunk = readBe32(bytes, entryOffset + 4);
+                const auto sampleDescriptionIndex =
+                    readBe32(bytes, entryOffset + 8);
+                if (firstChunk == 0 || samplesPerChunk == 0 ||
+                    sampleDescriptionIndex == 0)
+                {
+                    throw std::runtime_error("Invalid stsc entry");
+                }
+                if (i != 0 && firstChunk <= previousFirstChunk)
+                {
+                    throw std::runtime_error("stsc entries must be ordered");
+                }
+                previousFirstChunk = firstChunk;
+                entries.push_back({.firstChunk = firstChunk,
+                                   .samplesPerChunk = samplesPerChunk,
+                                   .sampleDescriptionIndex =
+                                       sampleDescriptionIndex});
+            }
+            return entries;
+        }
+
+        std::vector<std::uint64_t>
+        buildSampleOffsets(const Bytes &bytes,
+                           const AtomView &stbl,
+                           const std::vector<std::uint32_t> &sampleSizes)
+        {
+            if (sampleSizes.empty())
+            {
+                return {};
             }
 
-            requireRange(bytes, stsc.payloadOffset + 8, 12,
-                         "Truncated stsc entry table");
-            const auto firstChunk = readBe32(bytes, stsc.payloadOffset + 8);
-            const auto samplesPerChunk = readBe32(bytes, stsc.payloadOffset + 12);
-            if (firstChunk != 1 || samplesPerChunk != packetCount)
+            const auto stsc = requireChild(bytes, stbl, "stsc");
+            const auto entries = parseSampleToChunkEntries(bytes, stsc);
+            const auto chunkOffsets = parseChunkOffsets(bytes, stbl);
+            if (entries.empty())
+            {
+                throw std::runtime_error("Sample-to-chunk table is empty");
+            }
+            if (chunkOffsets.empty())
+            {
+                throw std::runtime_error("Chunk-offset table is empty");
+            }
+
+            std::vector<std::uint64_t> sampleOffsets;
+            sampleOffsets.reserve(sampleSizes.size());
+
+            std::size_t entryIndex = 0;
+            std::size_t sampleIndex = 0;
+            for (std::size_t chunkIndex = 0; chunkIndex < chunkOffsets.size();
+                 ++chunkIndex)
+            {
+                while (entryIndex + 1 < entries.size() &&
+                       chunkIndex + 1 >= entries[entryIndex + 1].firstChunk)
+                {
+                    ++entryIndex;
+                }
+
+                std::uint64_t sampleOffset = chunkOffsets[chunkIndex];
+                const auto samplesPerChunk = entries[entryIndex].samplesPerChunk;
+                for (std::uint32_t i = 0;
+                     i < samplesPerChunk && sampleIndex < sampleSizes.size();
+                     ++i, ++sampleIndex)
+                {
+                    sampleOffsets.push_back(sampleOffset);
+                    sampleOffset += sampleSizes[sampleIndex];
+                }
+            }
+
+            if (sampleOffsets.size() != sampleSizes.size())
             {
                 throw std::runtime_error(
-                    "Only one contiguous ALAC packet chunk is currently supported");
+                    "Chunk tables do not cover all ALAC packets");
             }
+            return sampleOffsets;
         }
 
         M4aParsedAlacFile parseSampleDescription(const Bytes &bytes,
@@ -373,6 +455,30 @@ namespace cupuacu::file::m4a
                                          type);
             }
             return *it;
+        }
+
+        std::string parseHandlerType(const Bytes &bytes, const AtomView &trak);
+
+        AtomView requireTrackByHandler(const Bytes &bytes,
+                                       const AtomView &moov,
+                                       const std::string &handlerType)
+        {
+            const auto children =
+                childrenInRange(bytes, moov.payloadOffset,
+                                moov.payloadOffset + moov.payloadSize);
+            for (const auto &child : children)
+            {
+                if (child.type != "trak")
+                {
+                    continue;
+                }
+                if (parseHandlerType(bytes, child) == handlerType)
+                {
+                    return child;
+                }
+            }
+            throw std::runtime_error("Required M4A track missing for handler: " +
+                                     handlerType);
         }
 
         std::uint32_t parseTrackId(const Bytes &bytes, const AtomView &trak)
@@ -518,16 +624,22 @@ namespace cupuacu::file::m4a
                         throw std::runtime_error(
                             "M4A chapter timing table does not match sample table");
                     }
-                    const auto chunkOffset = parseSingleChunkOffset(bytes, stbl);
+                    const auto sampleOffsets =
+                        buildSampleOffsets(bytes, stbl, sampleSizes);
+                    if (sampleOffsets.size() != sampleSizes.size())
+                    {
+                        throw std::runtime_error(
+                            "M4A chapter sample table does not match offsets");
+                    }
 
                     std::vector<cupuacu::DocumentMarker> markers;
                     markers.reserve(sampleSizes.size());
-                    std::uint64_t sampleOffset = chunkOffset;
                     std::uint64_t frame =
                         parseInitialEmptyEditDuration(bytes, trak);
                     for (std::size_t i = 0; i < sampleSizes.size(); ++i)
                     {
                         const auto sampleSize = sampleSizes[i];
+                        const auto sampleOffset = sampleOffsets[i];
                         requireRange(bytes, sampleOffset, sampleSize,
                                      "M4A chapter sample extends past file");
 
@@ -554,7 +666,6 @@ namespace cupuacu::file::m4a
                             });
                         }
                         frame += durations[i];
-                        sampleOffset += sampleSize;
                     }
                     return markers;
                 }
@@ -567,13 +678,12 @@ namespace cupuacu::file::m4a
     {
         const auto mdat = requireTopLevel(bytes, "mdat");
         const auto moov = requireTopLevel(bytes, "moov");
-        const auto audioTrack = requireChild(bytes, moov, "trak");
+        const auto audioTrack = requireTrackByHandler(bytes, moov, "soun");
         const auto stbl = requireNested(
             bytes, audioTrack, {"mdia", "minf", "stbl"});
 
         const auto stsd = requireChild(bytes, stbl, "stsd");
         const auto stts = requireChild(bytes, stbl, "stts");
-        const auto stsc = requireChild(bytes, stbl, "stsc");
         const auto stsz = requireChild(bytes, stbl, "stsz");
 
         auto parsed = parseSampleDescription(bytes, stsd);
@@ -589,28 +699,19 @@ namespace cupuacu::file::m4a
         {
             throw std::runtime_error("M4A timing table does not match packet table");
         }
-        validateSingleChunkTable(bytes, stsc, parsed.packetSizes.size());
 
         parsed.mdatPayloadOffset = mdat.payloadOffset;
         parsed.mdatPayloadSize = mdat.payloadSize;
-        const auto firstPacketOffset = parseSingleChunkOffset(bytes, stbl);
-        if (firstPacketOffset < parsed.mdatPayloadOffset ||
-            firstPacketOffset > parsed.mdatPayloadOffset + parsed.mdatPayloadSize)
-        {
-            throw std::runtime_error("ALAC packet chunk offset is outside mdat");
-        }
-
-        parsed.packetOffsets.reserve(parsed.packetSizes.size());
-        auto packetOffset = firstPacketOffset;
+        parsed.packetOffsets = buildSampleOffsets(bytes, stbl, parsed.packetSizes);
         const auto mdatEnd = parsed.mdatPayloadOffset + parsed.mdatPayloadSize;
-        for (const auto packetSize : parsed.packetSizes)
+        for (std::size_t i = 0; i < parsed.packetSizes.size(); ++i)
         {
+            const auto packetOffset = parsed.packetOffsets[i];
+            const auto packetSize = parsed.packetSizes[i];
             if (packetOffset > mdatEnd || packetSize > mdatEnd - packetOffset)
             {
                 throw std::runtime_error("ALAC packet extends outside mdat");
             }
-            parsed.packetOffsets.push_back(packetOffset);
-            packetOffset += packetSize;
         }
 
         parsed.markers = parseChapterMarkers(bytes, moov, audioTrack);
