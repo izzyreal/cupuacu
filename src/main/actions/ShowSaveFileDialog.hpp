@@ -2,23 +2,55 @@
 #include <SDL3/SDL.h>
 
 #include "../file/AudioExport.hpp"
+#include "PlatformSaveFileDialog.hpp"
 #include "Save.hpp"
 
 #include "../State.hpp"
 
+#include <filesystem>
 #include <string>
 
 namespace cupuacu::actions
 {
+    namespace detail
+    {
+        inline std::string defaultSaveLocation(
+            cupuacu::State *state, const file::AudioExportSettings &settings)
+        {
+            if (!state)
+            {
+                return {};
+            }
+
+            const auto &session = state->getActiveDocumentSession();
+            if (!session.currentFile.empty())
+            {
+                return file::normalizeExportPath(session.currentFile, settings)
+                    .string();
+            }
+            if (!session.preservationReferenceFile.empty())
+            {
+                return file::normalizeExportPath(session.preservationReferenceFile,
+                                                 settings)
+                    .string();
+            }
+
+            const char *home = SDL_GetUserFolder(SDL_FOLDER_HOME);
+            if (!home)
+            {
+                return {};
+            }
+
+            auto path = std::filesystem::path(home) / "Untitled";
+            return file::normalizeExportPath(path, settings).string();
+        }
+    } // namespace detail
+
     static SDL_Window *getSaveFileDialogParentWindow(cupuacu::State *state)
     {
         if (!state)
         {
             return nullptr;
-        }
-        if (state->modalWindow && state->modalWindow->isOpen())
-        {
-            return state->modalWindow->getSdlWindow();
         }
         if (state->mainDocumentSessionWindow &&
             state->mainDocumentSessionWindow->getWindow() &&
@@ -45,11 +77,19 @@ namespace cupuacu::actions
 
         if (!filelist)
         {
+            if (state)
+            {
+                state->pendingSaveAsMarkerWarningConfirmed = false;
+            }
             SDL_Log("An error occured: %s", SDL_GetError());
             return;
         }
         else if (!*filelist)
         {
+            if (state)
+            {
+                state->pendingSaveAsMarkerWarningConfirmed = false;
+            }
             SDL_Log("The user did not select any file.");
             SDL_Log("Most likely, the dialog was canceled.");
             return;
@@ -57,16 +97,28 @@ namespace cupuacu::actions
 
         if (!state || !settings.has_value())
         {
+            if (state)
+            {
+                state->pendingSaveAsMarkerWarningConfirmed = false;
+            }
             return;
         }
 
         if (mode == cupuacu::PendingSaveAsMode::Preserving)
         {
             actions::saveAsPreserving(state, *filelist, *settings);
+            if (state)
+            {
+                state->pendingSaveAsMarkerWarningConfirmed = false;
+            }
             return;
         }
 
         actions::saveAs(state, *filelist, *settings);
+        if (state)
+        {
+            state->pendingSaveAsMarkerWarningConfirmed = false;
+        }
     }
 
     static void showSaveFileDialog(cupuacu::State *state,
@@ -77,13 +129,25 @@ namespace cupuacu::actions
             return;
         }
 
+        if (!detail::confirmMarkerPersistenceIfNeeded(state, settings))
+        {
+            return;
+        }
+
         state->pendingSaveAsExportSettings = settings;
-        const char *defaultLocation =
-            !state->getActiveDocumentSession().currentFile.empty()
-                ? state->getActiveDocumentSession().currentFile.c_str()
-                : SDL_GetUserFolder(SDL_FOLDER_HOME);
+        state->pendingSaveAsMarkerWarningConfirmed = true;
+        const auto defaultLocation =
+            detail::defaultSaveLocation(state, settings);
+        if (showPlatformSaveFileDialog(saveFileDialogCallback, state,
+                                       getSaveFileDialogParentWindow(state),
+                                       defaultLocation))
+        {
+            return;
+        }
+
         SDL_ShowSaveFileDialog(
             saveFileDialogCallback, state, getSaveFileDialogParentWindow(state),
-            nullptr, 0, defaultLocation);
+            nullptr, 0,
+            defaultLocation.empty() ? nullptr : defaultLocation.c_str());
     }
 } // namespace cupuacu::actions

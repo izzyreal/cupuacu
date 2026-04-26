@@ -346,7 +346,8 @@ namespace cupuacu::actions
 
         const auto normalizedPath =
             file::normalizeExportPath(absoluteFilePath, settings);
-        if (!detail::confirmMarkerPersistenceIfNeeded(state, settings))
+        if (!state->pendingSaveAsMarkerWarningConfirmed &&
+            !detail::confirmMarkerPersistenceIfNeeded(state, settings))
         {
             return false;
         }
@@ -388,7 +389,8 @@ namespace cupuacu::actions
                     "Preserving save as is unavailable"));
             return false;
         }
-        if (!detail::confirmMarkerPersistenceIfNeeded(state, settings))
+        if (!state->pendingSaveAsMarkerWarningConfirmed &&
+            !detail::confirmMarkerPersistenceIfNeeded(state, settings))
         {
             return false;
         }

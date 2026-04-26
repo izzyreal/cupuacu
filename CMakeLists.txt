@@ -6,10 +6,15 @@ include(cmake/ResourceBundling.cmake)
 include(cmake/ClangFormat.cmake)
 include(cmake/ThreadSanitizer.cmake)
 include(cmake/FetchContentCache.cmake)
+include(TestBigEndian)
 
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" CUPUACU_PROJECT_VERSION_RAW)
 string(STRIP "${CUPUACU_PROJECT_VERSION_RAW}" CUPUACU_PROJECT_VERSION)
 project(Cupuacu VERSION "${CUPUACU_PROJECT_VERSION}")
+if(APPLE)
+    enable_language(OBJCXX)
+endif()
+test_big_endian(CUPUACU_TARGET_BIG_ENDIAN)
 
 option(CUPUACU_BUILD_CCACHE_ENABLED "Enable compiler cache integration via find_package(ccache)" OFF)
 if(CUPUACU_BUILD_CCACHE_ENABLED)
@@ -84,6 +89,47 @@ AddDependency(readerwriterqueue "readerwriterqueue" "${CMAKE_SOURCE_DIR}/deps/re
 AddDependency(portaudio "portaudio" "${CMAKE_SOURCE_DIR}/deps/portaudio" "https://github.com/PortAudio/portaudio.git" "master")
 AddDependency(PlatformFolders "PlatformFolders" "${CMAKE_SOURCE_DIR}/deps/PlatformFolders" "https://github.com/sago007/PlatformFolders.git" "master")
 AddDependency(spdlog "spdlog" "${CMAKE_SOURCE_DIR}/deps/spdlog" "https://github.com/gabime/spdlog.git" "v1.15.3")
+fetchcontent_declare_cached_git_source_only(
+    alac
+    "alac"
+    "${CMAKE_SOURCE_DIR}/deps/alac"
+    "https://github.com/macosforge/alac.git"
+    "master"
+)
+FetchContent_GetProperties(alac)
+if(NOT alac_POPULATED)
+    FetchContent_Populate(alac)
+endif()
+file(GLOB CUPUACU_ALAC_CODEC_SOURCES CONFIGURE_DEPENDS
+    "${alac_SOURCE_DIR}/codec/*.c"
+    "${alac_SOURCE_DIR}/codec/*.cpp"
+)
+if(NOT CUPUACU_ALAC_CODEC_SOURCES)
+    message(FATAL_ERROR "ALAC codec sources not found under ${alac_SOURCE_DIR}/codec")
+endif()
+add_library(alac_codec STATIC ${CUPUACU_ALAC_CODEC_SOURCES})
+target_include_directories(alac_codec PUBLIC "${alac_SOURCE_DIR}/codec")
+set_target_properties(alac_codec PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_compile_definitions(alac_codec PRIVATE
+    copy20ToPredictor=cupuacu_alac_copy20ToPredictor
+    copy24ToPredictor=cupuacu_alac_copy24ToPredictor
+    copyPredictorTo20=cupuacu_alac_copyPredictorTo20
+    copyPredictorTo24=cupuacu_alac_copyPredictorTo24
+    copyPredictorTo24Shift=cupuacu_alac_copyPredictorTo24Shift
+    copyPredictorTo32=cupuacu_alac_copyPredictorTo32
+    copyPredictorTo32Shift=cupuacu_alac_copyPredictorTo32Shift
+    mix16=cupuacu_alac_mix16
+    mix20=cupuacu_alac_mix20
+    mix24=cupuacu_alac_mix24
+    mix32=cupuacu_alac_mix32
+    unmix16=cupuacu_alac_unmix16
+    unmix20=cupuacu_alac_unmix20
+    unmix24=cupuacu_alac_unmix24
+    unmix32=cupuacu_alac_unmix32
+)
+if(NOT CUPUACU_TARGET_BIG_ENDIAN)
+    target_compile_definitions(alac_codec PUBLIC TARGET_RT_LITTLE_ENDIAN=1)
+endif()
 target_include_directories(platform_folders INTERFACE
     $<BUILD_INTERFACE:${PlatformFolders_SOURCE_DIR}>
 )
@@ -103,6 +149,11 @@ set(CUPUACU_SHARED_SOURCES
     src/main/Logger.cpp
     src/main/file/AudioExport.cpp
     src/main/file/AudioFileWriter.cpp
+    src/main/file/alac/AlacCodec.cpp
+    src/main/file/m4a/M4aAtoms.cpp
+    src/main/file/m4a/M4aAlacReader.cpp
+    src/main/file/m4a/M4aAlacWriter.cpp
+    src/main/file/m4a/M4aParser.cpp
     src/main/persistence/AudioDevicePropertiesPersistence.cpp
     src/main/persistence/DisplayPropertiesPersistence.cpp
     src/main/persistence/RecentFilesPersistence.cpp
@@ -147,6 +198,12 @@ set(CUPUACU_SHARED_SOURCES
     src/main/actions/Record.cpp
 )
 
+if(APPLE)
+    list(APPEND CUPUACU_SHARED_SOURCES
+        src/main/actions/CocoaSaveFileDialog.mm
+    )
+endif()
+
 set(CUPUACU_TEST_SOURCES
     src/test/TestSdlTtfGuard.cpp
     src/test/test_playback_range.cpp
@@ -156,6 +213,10 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_session_loading.cpp
     src/test/test_aiff_writer.cpp
     src/test/test_wav_writer.cpp
+    src/test/test_alac_codec.cpp
+    src/test/test_m4a_atoms.cpp
+    src/test/test_m4a_parser.cpp
+    src/test/test_m4a_writer.cpp
     src/test/test_overwrite_preservation_mutation.cpp
     src/test/test_audio_device_properties_persistence.cpp
     src/test/test_display_properties_persistence.cpp
@@ -234,6 +295,7 @@ target_link_libraries(cupuacu_deps INTERFACE
     SDL3_ttf::SDL3_ttf
     SndFile::sndfile
     portaudio
+    alac_codec
     platform_folders
     spdlog::spdlog
     nlohmann_json::nlohmann_json

@@ -60,6 +60,11 @@ function(fetchcontent_resolve_source dep_key cache_subdir default_path repositor
 endfunction()
 
 function(fetchcontent_try_prepare_git_source dep_name source_dir repository git_tag)
+  set(_require_cmake ON)
+  if(ARGC GREATER 4)
+    set(_require_cmake "${ARGV4}")
+  endif()
+
   set(_needs_init OFF)
   if(EXISTS "${source_dir}/.git")
     fetchcontent_run_git(_fetch_result _fetch_output _fetch_error -C "${source_dir}" fetch --depth 1 origin "${git_tag}")
@@ -111,12 +116,17 @@ function(fetchcontent_try_prepare_git_source dep_name source_dir repository git_
     message(FATAL_ERROR "FetchContent ${dep_name}: git clean failed in ${source_dir}: ${_clean_error}")
   endif()
 
-  if(NOT EXISTS "${source_dir}/CMakeLists.txt")
+  if(_require_cmake AND NOT EXISTS "${source_dir}/CMakeLists.txt")
     message(FATAL_ERROR "FetchContent ${dep_name}: prepared cache source is missing CMakeLists.txt at ${source_dir}")
   endif()
 endfunction()
 
 function(fetchcontent_prepare_cached_git_source dep_name source_dir repository git_tag)
+  set(_require_cmake ON)
+  if(ARGC GREATER 4)
+    set(_require_cmake "${ARGV4}")
+  endif()
+
   if(NOT GIT_FOUND)
     message(FATAL_ERROR "Git is required to prepare FetchContent cache for ${dep_name}")
   endif()
@@ -134,7 +144,7 @@ function(fetchcontent_prepare_cached_git_source dep_name source_dir repository g
     message(FATAL_ERROR "FetchContent ${dep_name}: failed to acquire cache lock ${_lock_path}: ${_lock_result}")
   endif()
 
-  fetchcontent_try_prepare_git_source("${dep_name}" "${source_dir}" "${repository}" "${git_tag}")
+  fetchcontent_try_prepare_git_source("${dep_name}" "${source_dir}" "${repository}" "${git_tag}" "${_require_cmake}")
   message(STATUS "FetchContent ${dep_name}: prepared cached source ${source_dir}")
 endfunction()
 
@@ -165,6 +175,44 @@ function(fetchcontent_declare_cached_git dep_name cache_subdir default_path repo
       set(${_dep_override_var} "${_source_dir}" PARENT_SCOPE)
       message(STATUS "FetchContent ${dep_name}: prepared source ${_source_dir}")
     endif()
+  endif()
+
+  FetchContent_Declare(${dep_name}
+    GIT_REPOSITORY "${repository}"
+    GIT_TAG "${_git_tag}"
+    SOURCE_DIR "${_source_dir}"
+    ${ARGN}
+  )
+  set("${dep_name}_FETCHCONTENT_SOURCE_DIR" "${_source_dir}" PARENT_SCOPE)
+  set("${dep_name}_FETCHCONTENT_GIT_TAG" "${_git_tag}" PARENT_SCOPE)
+  set("${dep_name}_FETCHCONTENT_SOURCE_HASH" "${_source_hash}" PARENT_SCOPE)
+endfunction()
+
+function(fetchcontent_declare_cached_git_source_only dep_name cache_subdir default_path repository git_ref)
+  fetchcontent_resolve_source(
+    "${dep_name}"
+    "${cache_subdir}"
+    "${default_path}"
+    "${repository}"
+    "${git_ref}"
+    _source_dir
+    _git_tag
+    _source_hash
+  )
+
+  string(TOUPPER "${dep_name}" _dep_upper)
+  set(_dep_override_var "FETCHCONTENT_SOURCE_DIR_${_dep_upper}")
+  if(NOT "${FETCHCONTENT_CACHE_ROOT}" STREQUAL "")
+    fetchcontent_prepare_cached_git_source("${dep_name}" "${_source_dir}" "${repository}" "${_git_tag}" OFF)
+    set(${_dep_override_var} "${_source_dir}" PARENT_SCOPE)
+  elseif(IS_DIRECTORY "${_source_dir}")
+    if(EXISTS "${_source_dir}/.git")
+      message(STATUS "FetchContent ${dep_name}: preparing source-only dependency ${_source_dir}")
+      fetchcontent_try_prepare_git_source("${dep_name}" "${_source_dir}" "${repository}" "${_git_tag}" OFF)
+    else()
+      message(STATUS "FetchContent ${dep_name}: reusing source-only dependency ${_source_dir}")
+    endif()
+    set(${_dep_override_var} "${_source_dir}" PARENT_SCOPE)
   endif()
 
   FetchContent_Declare(${dep_name}

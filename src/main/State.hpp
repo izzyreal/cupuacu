@@ -120,6 +120,7 @@ namespace cupuacu
             removeSilenceDialog{nullptr, destroyRemoveSilenceDialog};
         std::optional<file::AudioExportSettings> pendingSaveAsExportSettings;
         PendingSaveAsMode pendingSaveAsMode = PendingSaveAsMode::Generic;
+        bool pendingSaveAsMarkerWarningConfirmed = false;
         std::function<void(const std::string &, const std::string &)>
             errorReporter;
         std::function<bool(const std::string &, const std::string &)>

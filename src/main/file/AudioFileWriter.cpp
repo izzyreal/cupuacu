@@ -4,6 +4,7 @@
 #include "FileIo.hpp"
 #include "SndfilePath.hpp"
 #include "aiff/AiffMarkerMetadata.hpp"
+#include "m4a/M4aAlacWriter.hpp"
 #include "wav/WavMarkerMetadata.hpp"
 
 #include <sndfile.h>
@@ -96,6 +97,13 @@ void cupuacu::file::AudioFileWriter::writeFile(
 
     const auto &session = state->getActiveDocumentSession();
     const auto &document = session.document;
+
+    if (cupuacu::file::isNativeM4aAlacExportSettings(settings))
+    {
+        cupuacu::file::m4a::writeAlacM4aFile(document, outputPath);
+        return;
+    }
+
     const int channels = document.getChannelCount();
     const int sampleRate = document.getSampleRate();
 

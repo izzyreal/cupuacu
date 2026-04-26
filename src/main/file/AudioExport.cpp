@@ -58,6 +58,9 @@ namespace
         {"24-bit ALAC", SF_FORMAT_ALAC_24, "caf"},
         {"32-bit ALAC", SF_FORMAT_ALAC_32, "caf"},
     };
+    constexpr CandidateEncoding kM4aEncodings[] = {
+        {"16-bit ALAC", cupuacu::file::CUPUACU_FORMAT_ALAC, "m4a"},
+    };
     constexpr CandidateEncoding kFlacEncodings[] = {
         {"16-bit FLAC", SF_FORMAT_PCM_16, "flac"},
         {"24-bit FLAC", SF_FORMAT_PCM_24, "flac"},
@@ -91,6 +94,13 @@ namespace
          SF_FORMAT_CAF,
          kCafEncodings,
          std::size(kCafEncodings)},
+        {AudioExportContainer::M4A,
+         AudioExportCodec::ALAC,
+         "M4A",
+         "ALAC",
+         cupuacu::file::CUPUACU_FORMAT_M4A,
+         kM4aEncodings,
+         std::size(kM4aEncodings)},
         {AudioExportContainer::FLAC,
          AudioExportCodec::FLAC,
          "FLAC",
@@ -125,6 +135,7 @@ namespace
     constexpr const char *kWavOpenExtensions[] = {"wav"};
     constexpr const char *kAiffOpenExtensions[] = {"aiff", "aif", "aifc"};
     constexpr const char *kCafOpenExtensions[] = {"caf"};
+    constexpr const char *kM4aOpenExtensions[] = {"m4a", "mp4"};
     constexpr const char *kFlacOpenExtensions[] = {"flac"};
     constexpr const char *kOggOpenExtensions[] = {"ogg", "oga"};
     constexpr const char *kMpegOpenExtensions[] = {"mp3"};
@@ -136,6 +147,8 @@ namespace
          std::size(kAiffOpenExtensions)},
         {SF_FORMAT_CAF, "CAF audio", kCafOpenExtensions,
          std::size(kCafOpenExtensions)},
+        {cupuacu::file::CUPUACU_FORMAT_M4A, "M4A ALAC audio",
+         kM4aOpenExtensions, std::size(kM4aOpenExtensions)},
         {SF_FORMAT_FLAC, "FLAC audio", kFlacOpenExtensions,
          std::size(kFlacOpenExtensions)},
         {SF_FORMAT_OGG, "OGG audio", kOggOpenExtensions,
@@ -146,6 +159,13 @@ namespace
 
     bool isFormatWritable(const int combinedFormat)
     {
+        if (combinedFormat ==
+            (cupuacu::file::CUPUACU_FORMAT_M4A |
+             cupuacu::file::CUPUACU_FORMAT_ALAC))
+        {
+            return true;
+        }
+
         SF_INFO info{};
         info.frames = 0;
         info.channels = 2;
@@ -222,6 +242,10 @@ namespace
                         return SF_FORMAT_PCM_16;
                 }
             case AudioExportCodec::ALAC:
+                if (option.container == AudioExportContainer::M4A)
+                {
+                    return cupuacu::file::CUPUACU_FORMAT_ALAC;
+                }
                 switch (documentFormat)
                 {
                     case cupuacu::SampleFormat::PCM_S24:
@@ -665,6 +689,13 @@ cupuacu::file::sampleFormatForSndfileFormat(const int sndfileFormat)
 {
     const int subtype = sndfileFormat & SF_FORMAT_SUBMASK;
 
+    if (sndfileFormat ==
+        (cupuacu::file::CUPUACU_FORMAT_M4A |
+         cupuacu::file::CUPUACU_FORMAT_ALAC))
+    {
+        return cupuacu::SampleFormat::PCM_S16;
+    }
+
     switch (subtype)
     {
         case SF_FORMAT_PCM_S8:
@@ -773,4 +804,13 @@ bool cupuacu::file::isOverwritePreservingWavRewriteCandidate(
             settings.subtype == SF_FORMAT_PCM_S8 ||
             settings.subtype == SF_FORMAT_PCM_16 ||
             settings.subtype == SF_FORMAT_FLOAT);
+}
+
+bool cupuacu::file::isNativeM4aAlacExportSettings(
+    const AudioExportSettings &settings)
+{
+    return settings.container == AudioExportContainer::M4A &&
+           settings.codec == AudioExportCodec::ALAC &&
+           settings.majorFormat == CUPUACU_FORMAT_M4A &&
+           settings.subtype == CUPUACU_FORMAT_ALAC;
 }
