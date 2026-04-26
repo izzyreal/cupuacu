@@ -6,6 +6,7 @@
 #include "../TestPaths.hpp"
 
 #include "State.hpp"
+#include "actions/BackgroundOpen.hpp"
 #include "actions/DocumentLifecycle.hpp"
 #include "actions/ZoomPlanning.hpp"
 #include "file/SndfilePath.hpp"
@@ -37,6 +38,7 @@
 #include <random>
 #include <string>
 #include <system_error>
+#include <thread>
 #include <vector>
 
 namespace
@@ -400,6 +402,22 @@ namespace
         sf_close(file);
         REQUIRE(written == frameCount);
     }
+
+    void drainPendingOpenWork(cupuacu::State *state)
+    {
+        for (int attempt = 0; attempt < 5000; ++attempt)
+        {
+            cupuacu::actions::processPendingOpenWork(state);
+            if (!state->backgroundOpenJob && state->pendingOpenFiles.empty())
+            {
+                cupuacu::actions::processPendingOpenWork(state);
+                return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+
+        FAIL("Timed out waiting for background open work");
+    }
 } // namespace
 
 TEST_CASE("Keyboard integration zooms to selection and scrolls horizontally",
@@ -687,6 +705,53 @@ TEST_CASE("Startup document restore integration reopens multiple file-backed tab
     REQUIRE(state.tabs[1].session.currentFile == secondPath.string());
     REQUIRE(state.tabs[1].session.document.getSampleRate() == 22050);
     REQUIRE(state.getActiveDocumentSession().currentFile == secondPath.string());
+}
+
+TEST_CASE("Async startup document restore reopens tabs and restores active view",
+          "[integration]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-startup-restore-async"));
+    const auto firstPath = cleanup.path() / "first.wav";
+    const auto secondPath = cleanup.path() / "second.wav";
+    writeTestWav(firstPath, 44100, 1, {0.1f, 0.2f, 0.3f});
+    writeTestWav(secondPath, 32000, 2, {0.4f, -0.4f, 0.5f, -0.5f});
+
+    cupuacu::test::StateWithTestPaths state{};
+    createBuiltEmptySessionUi(&state, 800, 400);
+
+    cupuacu::persistence::PersistedSessionState persistedState{};
+    persistedState.openDocuments = {
+        {.filePath = firstPath.string(), .cursor = 1},
+        {.filePath = secondPath.string(),
+         .cursor = 2,
+         .samplesPerPixel = 1.5,
+         .sampleOffset = 1},
+    };
+    persistedState.openFiles = {firstPath.string(), secondPath.string()};
+    persistedState.activeOpenFileIndex = 1;
+
+    cupuacu::actions::restoreStartupDocument(
+        &state, {secondPath.string(), firstPath.string()}, persistedState,
+        true);
+
+    REQUIRE(state.startupRestore.active);
+    REQUIRE(state.pendingOpenFiles.size() == 2);
+    REQUIRE(state.getActiveDocumentSession().currentFile.empty());
+
+    drainPendingOpenWork(&state);
+
+    REQUIRE_FALSE(state.startupRestore.active);
+    REQUIRE(state.tabs.size() == 2);
+    REQUIRE(state.activeTabIndex == 1);
+    REQUIRE(state.tabs[0].session.currentFile == firstPath.string());
+    REQUIRE(state.tabs[0].session.cursor == 1);
+    REQUIRE(state.tabs[1].session.currentFile == secondPath.string());
+    REQUIRE(state.tabs[1].session.cursor == 2);
+    REQUIRE(state.getActiveViewState().samplesPerPixel == Catch::Approx(1.5));
+    REQUIRE(state.getActiveViewState().sampleOffset == 1);
+    REQUIRE(state.recentFiles ==
+            std::vector<std::string>{secondPath.string(), firstPath.string()});
 }
 
 TEST_CASE("Startup document restore integration skips unreadable existing paths",

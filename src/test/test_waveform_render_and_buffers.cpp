@@ -204,6 +204,22 @@ TEST_CASE("LabeledField marks itself dirty only when the displayed value changes
     REQUIRE(field.isDirty());
 }
 
+TEST_CASE("Waveform tolerates a temporary channel mismatch during transitions",
+          "[gui][waveform]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    state.getActiveDocumentSession().document.initialize(
+        cupuacu::SampleFormat::Unknown, 0, 0, 0);
+    state.getActiveViewState().samplesPerPixel = 0.5;
+
+    cupuacu::gui::Waveform waveform(&state, 0);
+    waveform.setVisible(true);
+    waveform.setBounds(0, 0, 200, 80);
+
+    REQUIRE_NOTHROW(waveform.updateSamplePoints());
+    REQUIRE(waveform.getChildren().empty());
+}
+
 TEST_CASE("ScrollBar vertical drag updates value and non-left clicks are ignored",
           "[gui]")
 {

@@ -11,6 +11,7 @@
 #include "gui/DocumentSessionWindow.hpp"
 #include "gui/OptionsSection.hpp"
 #include "gui/VuMeterScale.hpp"
+#include "persistence/SessionStatePersistence.hpp"
 
 #include <cstdint>
 #include <functional>
@@ -29,6 +30,7 @@ namespace cupuacu
 
     namespace actions
     {
+        class BackgroundOpenJob;
         struct CustomDataSource;
         class Undoable;
     } // namespace actions
@@ -61,6 +63,7 @@ namespace cupuacu
     void destroyGenerateSilenceDialogWindow(gui::GenerateSilenceDialogWindow *);
     void destroyExportAudioDialogWindow(gui::ExportAudioDialogWindow *);
     void destroyMarkerEditorDialogWindow(gui::MarkerEditorDialogWindow *);
+    void destroyBackgroundOpenJob(actions::BackgroundOpenJob *);
 
     enum class PendingSaveAsMode
     {
@@ -68,8 +71,48 @@ namespace cupuacu
         Preserving,
     };
 
+    enum class PendingOpenKind
+    {
+        UserOpen,
+        StartupRestore,
+    };
+
+    struct PendingOpenRequest
+    {
+        PendingOpenKind kind = PendingOpenKind::UserOpen;
+        std::string path;
+        int targetTabIndex = -1;
+        bool updateRecentFiles = true;
+        std::optional<persistence::PersistedOpenDocumentState>
+            persistedDocumentState;
+    };
+
+    struct StartupRestoreFailure
+    {
+        std::string path;
+        std::string reason;
+    };
+
+    struct StartupRestoreStatus
+    {
+        bool active = false;
+        int remaining = 0;
+        int activeOpenFileIndex = -1;
+        int restoredActiveTabIndex = -1;
+        bool shouldPersistState = false;
+        std::vector<StartupRestoreFailure> failures;
+    };
+
     struct State
     {
+        struct LongTaskStatus
+        {
+            bool active = false;
+            std::string title;
+            std::string detail;
+            std::optional<double> progress;
+        };
+
         std::shared_ptr<audio::AudioDevices> audioDevices;
         std::unique_ptr<Paths> paths = std::make_unique<Paths>();
         uint8_t menuFontSize = 30;
@@ -127,7 +170,14 @@ namespace cupuacu
             confirmationReporter;
         std::optional<std::pair<std::string, std::string>>
             pendingStartupWarning;
+        std::deque<PendingOpenRequest> pendingOpenFiles;
+        StartupRestoreStatus startupRestore;
+        std::unique_ptr<actions::BackgroundOpenJob,
+                        void (*)(actions::BackgroundOpenJob *)>
+            backgroundOpenJob{nullptr, destroyBackgroundOpenJob};
         gui::Window *modalWindow = nullptr;
+        LongTaskStatus longTask;
+        bool mainWindowInitialFrameRendered = false;
 
         ~State();
 

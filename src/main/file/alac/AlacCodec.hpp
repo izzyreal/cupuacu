@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <vector>
 
@@ -60,6 +61,10 @@ namespace cupuacu::file::alac
         std::uint32_t frameCount = 0;
     };
 
+    using DecodeProgressCallback =
+        std::function<void(std::uint32_t decodedFrames,
+                           std::uint32_t totalFrames)>;
+
     [[nodiscard]] std::uint32_t defaultFramesPerPacket();
     [[nodiscard]] std::uint32_t maxChannels();
     [[nodiscard]] bool isSupportedEncoding(
@@ -72,9 +77,11 @@ namespace cupuacu::file::alac
     [[nodiscard]] std::optional<AlacDecodedPcm>
     decodePcmPackets(const AlacDecodingParameters &parameters,
                      const std::vector<std::uint8_t> &packetBytes,
-                     const std::vector<std::uint32_t> &packetSizes);
+                     const std::vector<std::uint32_t> &packetSizes,
+                     DecodeProgressCallback progressCallback = {});
     [[nodiscard]] std::optional<AlacDecodedPcm16>
     decodePcm16Packets(const AlacDecodingParameters &parameters,
                        const std::vector<std::uint8_t> &packetBytes,
-                       const std::vector<std::uint32_t> &packetSizes);
+                       const std::vector<std::uint32_t> &packetSizes,
+                       DecodeProgressCallback progressCallback = {});
 } // namespace cupuacu::file::alac

@@ -88,6 +88,19 @@ uint8_t Waveform::getChannelIndex() const
     return channelIndex;
 }
 
+bool Waveform::hasRenderableChannel() const
+{
+    if (!state)
+    {
+        return false;
+    }
+
+    const auto &document = state->getActiveDocumentSession().document;
+    return channelIndex < document.getChannelCount() &&
+           document.getFrameCount() > 0 &&
+           document.getAudioBuffer() != nullptr;
+}
+
 void Waveform::resized()
 {
     invalidateBaseTexture();
@@ -645,6 +658,11 @@ int getYPosForSampleValue(const float sampleValue,
 
 std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
 {
+    if (!hasRenderableChannel())
+    {
+        return {};
+    }
+
     const auto &session = state->getActiveDocumentSession();
     const auto &doc = session.document;
     const auto &viewState = state->getActiveViewState();
@@ -746,6 +764,11 @@ void Waveform::drawLinearSelection(SDL_Renderer *renderer,
 
 void Waveform::renderSmoothWaveform(SDL_Renderer *renderer) const
 {
+    if (!hasRenderableChannel())
+    {
+        return;
+    }
+
     const auto &session = state->getActiveDocumentSession();
     const auto &doc = session.document;
     const auto &viewState = state->getActiveViewState();
@@ -845,6 +868,11 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
                                         int xEndExclusive, int widthToUse,
                                         int64_t sampleOffset) const
 {
+    if (!hasRenderableChannel())
+    {
+        return;
+    }
+
     auto &session = state->getActiveDocumentSession();
     auto &doc = session.document;
     const auto &viewState = state->getActiveViewState();

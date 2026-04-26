@@ -2,9 +2,10 @@
 
 #include "SampleProvenance.hpp"
 
-#include <vector>
-#include <span>
+#include <algorithm>
 #include <cstdint>
+#include <span>
+#include <vector>
 
 namespace cupuacu::audio
 {
@@ -110,6 +111,19 @@ namespace cupuacu::audio
 
         std::span<const float> getImmutableChannelData(int64_t channel) const
         {
+            if (channel < 0 || channel >= static_cast<int64_t>(channels.size()))
+            {
+                return {};
+            }
+            return channels[channel];
+        }
+
+        std::span<float> getMutableChannelData(int64_t channel)
+        {
+            if (channel < 0 || channel >= static_cast<int64_t>(channels.size()))
+            {
+                return {};
+            }
             return channels[channel];
         }
     };

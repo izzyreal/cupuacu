@@ -7,6 +7,7 @@
 #include "MenuLayoutPlanning.hpp"
 #include "StatusBar.hpp"
 #include "MainView.hpp"
+#include "LongTaskOverlay.hpp"
 #include "TabStrip.hpp"
 #include "TransportButtonsContainer.hpp"
 #include "UiScale.hpp"
@@ -135,6 +136,9 @@ void cupuacu::gui::buildComponents(State *state, Window *window)
     auto menuBar = std::make_unique<MenuBar>(state);
     auto *menuBarPtr = overlayLayerPtr->addChild(menuBar);
 
+    auto longTaskOverlay = std::make_unique<LongTaskOverlay>(state);
+    overlayLayerPtr->addChild(longTaskOverlay);
+
     window->setRootComponent(std::move(rootComponent));
     window->setContentLayer(contentLayerPtr);
     window->setOverlayLayer(overlayLayerPtr);
@@ -196,9 +200,12 @@ void cupuacu::gui::resizeComponents(State *state, Window *window)
             contentLayer);
     auto *statusBar =
         findDirectChildOfType<cupuacu::gui::StatusBar>(contentLayer);
+    auto *longTaskOverlay =
+        findDirectChildOfType<cupuacu::gui::LongTaskOverlay>(
+            window->getOverlayLayer());
 
     if (!mainView || !tabStrip || !vuMeterContainer || !transportButtonsContainer ||
-        !statusBar)
+        !statusBar || !longTaskOverlay)
     {
         return;
     }
@@ -224,6 +231,7 @@ void cupuacu::gui::resizeComponents(State *state, Window *window)
 
     statusBar->setBounds(statusBarRect.x, statusBarRect.y, statusBarRect.w,
                          statusBarRect.h);
+    longTaskOverlay->setBounds(0, 0, newCanvasW, newCanvasH);
 
     window->getRootComponent()->setDirty();
 

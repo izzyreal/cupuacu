@@ -15,6 +15,7 @@
 #include "gui/WindowPlacementPlanning.hpp"
 #include "gui/UiScale.hpp"
 #include "gui/Window.hpp"
+#include "actions/BackgroundOpen.hpp"
 #include "actions/DocumentLifecycle.hpp"
 
 #include <cstdint>
@@ -185,7 +186,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     cupuacu::gui::buildComponents(state, mainWindow);
 
     cupuacu::actions::restoreStartupDocument(
-        state, persistedRecentFiles, persistedSessionState);
+        state, persistedRecentFiles, persistedSessionState, true);
 
     if (state->getActiveDocumentSession().currentFile.empty())
     {
@@ -193,6 +194,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     }
 
     mainWindow->renderFrame();
+    state->mainWindowInitialFrameRendered = true;
     if (state->pendingStartupWarning.has_value())
     {
         const auto [title, message] = *state->pendingStartupWarning;
@@ -206,6 +208,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
     cupuacu::State *state = (cupuacu::State *)appstate;
+    cupuacu::actions::processPendingOpenWork(state);
+
     for (auto *window : state->windows)
     {
         if (window && window->isOpen() && window->getRootComponent())
@@ -268,6 +272,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
         state->paths->displayPropertiesPath(),
         {.pixelScale = state->pixelScale, .vuMeterScale = state->vuMeterScale});
     state->generateSilenceDialogWindow.reset();
+    state->backgroundOpenJob.reset();
     state->newFileDialogWindow.reset();
     state->optionsWindow.reset();
     state->mainDocumentSessionWindow.reset();

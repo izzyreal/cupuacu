@@ -2,6 +2,7 @@
 
 #include "EffectTargeting.hpp"
 
+#include "LongTask.hpp"
 #include "actions/Undoable.hpp"
 #include "gui/MainViewAccess.hpp"
 #include "gui/Waveform.hpp"
@@ -155,6 +156,7 @@ namespace cupuacu::effects
             return;
         }
 
+        cupuacu::LongTaskScope longTask(state, "Applying effect", "Reverse");
         state->addAndDoUndoable(std::make_shared<ReverseUndoable>(state));
     }
 } // namespace cupuacu::effects

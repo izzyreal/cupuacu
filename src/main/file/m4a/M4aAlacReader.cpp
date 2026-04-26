@@ -6,7 +6,9 @@
 #include <cstddef>
 #include <fstream>
 #include <iterator>
+#include <algorithm>
 #include <stdexcept>
+#include <utility>
 
 namespace cupuacu::file::m4a
 {
@@ -50,7 +52,9 @@ namespace cupuacu::file::m4a
         }
     } // namespace
 
-    M4aAlacPcmData readAlacM4a(const Bytes &bytes)
+    M4aAlacPcmData readAlacM4a(
+        const Bytes &bytes,
+        cupuacu::file::alac::DecodeProgressCallback progressCallback)
     {
         const auto parsed = parseAlacM4a(bytes);
         if (parsed.bitDepth != 16 && parsed.bitDepth != 24 &&
@@ -70,7 +74,8 @@ namespace cupuacu::file::m4a
                 .magicCookie = parsed.magicCookie,
                 .packetFrameCounts = parsed.packetFrameCounts,
             },
-            collectPacketBytes(bytes, parsed), parsed.packetSizes);
+            collectPacketBytes(bytes, parsed), parsed.packetSizes,
+            std::move(progressCallback));
         if (!decoded.has_value())
         {
             throw std::runtime_error("Failed to decode ALAC M4A packets");
@@ -96,16 +101,54 @@ namespace cupuacu::file::m4a
         };
     }
 
-    M4aAlacPcmData readAlacM4aFile(const std::filesystem::path &path)
+    M4aAlacPcmData readAlacM4aFile(
+        const std::filesystem::path &path,
+        cupuacu::file::alac::DecodeProgressCallback progressCallback,
+        M4aReadProgressCallback readProgressCallback)
     {
-        std::ifstream input(path, std::ios::binary);
+        std::ifstream input(path, std::ios::binary | std::ios::ate);
         if (!input)
         {
             throw std::runtime_error("Failed to open M4A file: " + path.string());
         }
 
-        const Bytes bytes{std::istreambuf_iterator<char>(input),
-                          std::istreambuf_iterator<char>()};
-        return readAlacM4a(bytes);
+        const auto endPosition = input.tellg();
+        if (endPosition < 0)
+        {
+            throw std::runtime_error("Failed to measure M4A file: " +
+                                     path.string());
+        }
+        const auto totalBytes = static_cast<std::uint64_t>(endPosition);
+        input.seekg(0, std::ios::beg);
+
+        Bytes bytes;
+        bytes.resize(static_cast<std::size_t>(totalBytes));
+        constexpr std::size_t kReadBlockBytes = 1024u * 1024u;
+        std::uint64_t bytesRead = 0;
+        if (readProgressCallback)
+        {
+            readProgressCallback(0, totalBytes);
+        }
+        while (bytesRead < totalBytes)
+        {
+            const auto bytesToRead = std::min<std::uint64_t>(
+                kReadBlockBytes, totalBytes - bytesRead);
+            input.read(
+                reinterpret_cast<char *>(bytes.data() +
+                                          static_cast<std::size_t>(bytesRead)),
+                static_cast<std::streamsize>(bytesToRead));
+            if (input.gcount() <= 0)
+            {
+                throw std::runtime_error("Failed to read M4A file: " +
+                                         path.string());
+            }
+            bytesRead += static_cast<std::uint64_t>(input.gcount());
+            if (readProgressCallback)
+            {
+                readProgressCallback(bytesRead, totalBytes);
+            }
+        }
+
+        return readAlacM4a(bytes, std::move(progressCallback));
     }
 } // namespace cupuacu::file::m4a

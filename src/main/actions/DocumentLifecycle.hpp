@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../Document.hpp"
+#include "../LongTask.hpp"
 #include "../Paths.hpp"
 #include "../SampleFormat.hpp"
 #include "../State.hpp"
@@ -215,6 +216,14 @@ namespace cupuacu::actions
             }
             if (state)
             {
+                if (state->mainWindowInitialFrameRendered &&
+                    SDL_WasInit(SDL_INIT_VIDEO) != 0)
+                {
+                    SDL_ShowSimpleMessageBox(
+                        SDL_MESSAGEBOX_WARNING, title.c_str(),
+                        message.c_str(), getDocumentIoParentWindow(state));
+                    return;
+                }
                 state->pendingStartupWarning = std::make_pair(title, message);
                 return;
             }
@@ -456,6 +465,8 @@ namespace cupuacu::actions
             return;
         }
 
+        cupuacu::LongTaskScope longTask(
+            state, "Autosaving document", "Preserving unsaved changes");
         if (!cupuacu::persistence::saveDocumentAutosaveSnapshot(
                 session.autosaveSnapshotPath, session))
         {
@@ -728,6 +739,8 @@ namespace cupuacu::actions
             failureReason,
             [&]
             {
+                cupuacu::LongTaskScope longTask(
+                    state, "Opening file", absoluteFilePath);
                 prepareForDocumentTransition(state);
                 state->getActiveDocumentSession().setCurrentFile(absoluteFilePath);
                 cupuacu::file::loadSampleData(state);
@@ -950,7 +963,8 @@ namespace cupuacu::actions
     inline void restoreStartupDocument(
         cupuacu::State *state,
         const std::vector<std::string> &persistedRecentFiles,
-        const cupuacu::persistence::PersistedSessionState &persistedSessionState)
+        const cupuacu::persistence::PersistedSessionState &persistedSessionState,
+        const bool useAsyncFileRestore = false)
     {
         if (!state)
         {
@@ -961,6 +975,38 @@ namespace cupuacu::actions
             persistedRecentFiles, persistedSessionState);
         state->recentFiles = plan.recentFiles;
         state->snapEnabled = persistedSessionState.snapEnabled;
+
+        const bool hasAutosaveSnapshotRestore = std::any_of(
+            plan.openDocuments.begin(), plan.openDocuments.end(),
+            [](const auto &documentState)
+            {
+                return !documentState.autosaveSnapshotPath.empty() &&
+                       std::filesystem::exists(
+                           documentState.autosaveSnapshotPath);
+            });
+        if (useAsyncFileRestore && !plan.openFiles.empty() &&
+            !hasAutosaveSnapshotRestore)
+        {
+            state->startupRestore = cupuacu::StartupRestoreStatus{
+                .active = true,
+                .remaining = static_cast<int>(plan.openFiles.size()),
+                .activeOpenFileIndex = plan.activeOpenFileIndex,
+                .restoredActiveTabIndex = -1,
+                .shouldPersistState = plan.shouldPersistState,
+                .failures = {},
+            };
+            for (size_t index = 0; index < plan.openFiles.size(); ++index)
+            {
+                state->pendingOpenFiles.push_back(cupuacu::PendingOpenRequest{
+                    .kind = cupuacu::PendingOpenKind::StartupRestore,
+                    .path = plan.openFiles[index],
+                    .targetTabIndex = static_cast<int>(index),
+                    .updateRecentFiles = false,
+                    .persistedDocumentState = plan.openDocuments[index],
+                });
+            }
+            return;
+        }
 
         if (!plan.openFiles.empty())
         {
@@ -976,6 +1022,11 @@ namespace cupuacu::actions
                 {
                     if (index == 0 || prepareTabForOpenedDocument(state))
                     {
+                        cupuacu::LongTaskScope longTask(
+                            state, "Restoring document",
+                            documentState.filePath.empty()
+                                ? "Unsaved document"
+                                : documentState.filePath);
                         prepareForDocumentTransition(state);
                         loaded =
                             cupuacu::persistence::loadDocumentAutosaveSnapshot(

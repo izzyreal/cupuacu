@@ -201,6 +201,7 @@ TEST_CASE("ALAC codec decodes encoded PCM packets", "[alac]")
         pcm);
     REQUIRE(encoded.has_value());
     REQUIRE(encoded->packetSizes.size() == 2);
+    std::vector<std::uint32_t> progressFrames;
 
     const auto decoded = cupuacu::file::alac::decodePcm16Packets(
         {
@@ -213,11 +214,19 @@ TEST_CASE("ALAC codec decodes encoded PCM packets", "[alac]")
             .packetFrameCounts =
                 {cupuacu::file::alac::defaultFramesPerPacket(), 1},
         },
-        encoded->bytes, encoded->packetSizes);
+        encoded->bytes, encoded->packetSizes,
+        [&progressFrames](const std::uint32_t decodedFrames,
+                          const std::uint32_t)
+        {
+            progressFrames.push_back(decodedFrames);
+        });
 
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->sampleRate == 44100);
     REQUIRE(decoded->channels == 2);
     REQUIRE(decoded->frameCount == frames);
     REQUIRE(decoded->interleavedSamples == readNativeI16Samples(pcm));
+    REQUIRE(progressFrames ==
+            std::vector<std::uint32_t>{
+                cupuacu::file::alac::defaultFramesPerPacket(), frames});
 }

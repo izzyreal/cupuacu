@@ -22,6 +22,7 @@
 #include "gui/Helpers.hpp"
 
 #include "actions/ShowOpenFileDialog.hpp"
+#include "actions/BackgroundOpen.hpp"
 #include "actions/Save.hpp"
 #include "actions/audio/Copy.hpp"
 #include "actions/audio/Trim.hpp"
@@ -187,7 +188,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
                     return;
                 }
 
-                actions::loadFileIntoNewTab(state, path);
+                actions::queueOpenFile(state, path);
             });
         entry->setIsAvailable(
             [this, index]()

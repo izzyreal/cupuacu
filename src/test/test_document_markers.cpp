@@ -112,3 +112,27 @@ TEST_CASE("Replacing document markers normalizes ids and clears on initialize",
     REQUIRE(document.getMarkers().empty());
     REQUIRE(document.addMarker(3, "New") == 1);
 }
+
+TEST_CASE("Document writes interleaved float blocks with one waveform version bump",
+          "[document][samples]")
+{
+    cupuacu::Document document;
+    document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 4);
+
+    const auto versionBeforeWrite = document.getWaveformDataVersion();
+    const float interleaved[] = {
+        0.25f, -0.25f,
+        0.5f, -0.5f,
+        0.75f, -0.75f,
+    };
+
+    document.writeInterleavedFloatBlock(1, interleaved, 3, 2, false);
+
+    REQUIRE(document.getSample(0, 0) == 0.0f);
+    REQUIRE(document.getSample(1, 0) == 0.0f);
+    REQUIRE(document.getSample(0, 1) == 0.25f);
+    REQUIRE(document.getSample(1, 1) == -0.25f);
+    REQUIRE(document.getSample(0, 3) == 0.75f);
+    REQUIRE(document.getSample(1, 3) == -0.75f);
+    REQUIRE(document.getWaveformDataVersion() == versionBeforeWrite + 1);
+}

@@ -11,6 +11,7 @@
 #include "gui/MarkerEditorDialogWindow.hpp"
 #include "gui/NewFileDialogWindow.hpp"
 #include "gui/OptionsWindow.hpp"
+#include "actions/BackgroundOpen.hpp"
 #include "actions/Undoable.hpp"
 #include "actions/DocumentLifecycle.hpp"
 #include "file/OverwritePreservation.hpp"
@@ -82,6 +83,11 @@ void cupuacu::destroyMarkerEditorDialogWindow(
     gui::MarkerEditorDialogWindow *dialog)
 {
     delete dialog;
+}
+
+void cupuacu::destroyBackgroundOpenJob(actions::BackgroundOpenJob *job)
+{
+    delete job;
 }
 
 cupuacu::State::~State() = default;

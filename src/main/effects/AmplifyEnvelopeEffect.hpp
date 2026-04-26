@@ -1,5 +1,6 @@
 #pragma once
 
+#include "LongTask.hpp"
 #include "EffectDialogWindow.hpp"
 #include "EffectSettings.hpp"
 #include "EffectTargeting.hpp"
@@ -407,6 +408,8 @@ namespace cupuacu::effects
         }
 
         sanitizeAmplifyEnvelopeSettings(settings);
+        cupuacu::LongTaskScope longTask(state, "Applying effect",
+                                        "Amplify Envelope");
         state->addAndDoUndoable(std::make_shared<AmplifyEnvelopeUndoable>(
             state, std::move(settings)));
     }

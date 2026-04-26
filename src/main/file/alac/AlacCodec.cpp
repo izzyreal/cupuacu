@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstring>
 #include <limits>
+#include <utility>
 
 namespace cupuacu::file::alac
 {
@@ -292,7 +293,8 @@ namespace cupuacu::file::alac
     std::optional<AlacDecodedPcm>
     decodePcmPackets(const AlacDecodingParameters &parameters,
                      const std::vector<std::uint8_t> &packetBytes,
-                     const std::vector<std::uint32_t> &packetSizes)
+                     const std::vector<std::uint32_t> &packetSizes,
+                     DecodeProgressCallback progressCallback)
     {
         if (parameters.sampleRate == 0 || parameters.channels == 0 ||
             parameters.channels > maxChannels() ||
@@ -391,6 +393,10 @@ namespace cupuacu::file::alac
 
             decodedFrames += decodedPacketFrames;
             packetByteOffset += packetSize;
+            if (progressCallback)
+            {
+                progressCallback(decodedFrames, parameters.frameCount);
+            }
         }
 
         if (packetByteOffset != packetBytes.size() ||
@@ -407,7 +413,8 @@ namespace cupuacu::file::alac
     std::optional<AlacDecodedPcm16>
     decodePcm16Packets(const AlacDecodingParameters &parameters,
                        const std::vector<std::uint8_t> &packetBytes,
-                       const std::vector<std::uint32_t> &packetSizes)
+                       const std::vector<std::uint32_t> &packetSizes,
+                       DecodeProgressCallback progressCallback)
     {
         if (parameters.bitsPerSample != 16)
         {
@@ -415,7 +422,8 @@ namespace cupuacu::file::alac
         }
 
         const auto decodedBytes =
-            decodePcmPackets(parameters, packetBytes, packetSizes);
+            decodePcmPackets(parameters, packetBytes, packetSizes,
+                             std::move(progressCallback));
         if (!decodedBytes.has_value() ||
             decodedBytes->interleavedPcmBytes.size() % sizeof(std::int16_t) != 0)
         {

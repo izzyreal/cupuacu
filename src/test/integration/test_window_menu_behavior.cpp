@@ -3,6 +3,7 @@
 #include "IntegrationTestHelpers.hpp"
 
 #include "State.hpp"
+#include "actions/BackgroundOpen.hpp"
 #include "actions/DocumentLifecycle.hpp"
 #include "actions/Undoable.hpp"
 #include "file/SndfilePath.hpp"
@@ -28,6 +29,7 @@
 #include <memory>
 #include <random>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace
@@ -1198,6 +1200,17 @@ TEST_CASE("File menu integration opens a recent file into the active session",
     REQUIRE(recentMenu->mouseDown(cupuacu::test::integration::leftMouseDown()));
     REQUIRE(recentFileEntry->mouseDown(
         cupuacu::test::integration::leftMouseDown()));
+
+    for (int attempt = 0; attempt < 200; ++attempt)
+    {
+        cupuacu::actions::processPendingOpenWork(&state);
+        if (state.pendingOpenFiles.empty() && !state.backgroundOpenJob &&
+            state.getActiveDocumentSession().currentFile == wavPath.string())
+        {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
 
     REQUIRE(state.getActiveDocumentSession().currentFile == wavPath.string());
     REQUIRE(state.getActiveDocumentSession().document.getSampleRate() == 22050);

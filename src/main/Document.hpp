@@ -71,6 +71,11 @@ namespace cupuacu
         float getSample(int64_t channel, int64_t frame) const;
         void setSample(int64_t channel, int64_t frame, float value,
                        bool shouldMarkDirty = true);
+        void writeInterleavedFloatBlock(int64_t startFrame,
+                                        const float *interleaved,
+                                        int64_t frameCount,
+                                        int64_t channelCount,
+                                        bool shouldMarkDirty = false);
 
         void resizeBuffer(int64_t channels, int64_t frames);
 

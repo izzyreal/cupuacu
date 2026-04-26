@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../LongTask.hpp"
 #include "../State.hpp"
 #include "../file/AudioExport.hpp"
 #include "../file/MarkerPersistence.hpp"
@@ -251,6 +252,8 @@ namespace cupuacu::actions
             state, "Save", session.currentFile,
             [&]
             {
+                cupuacu::LongTaskScope longTask(
+                    state, "Saving file", session.currentFile);
                 file::AudioFileWriter::writeFile(state, session.currentFile,
                                                  *settings);
             });
@@ -309,6 +312,8 @@ namespace cupuacu::actions
             state, "Preserving overwrite", session.currentFile,
             [&]
             {
+                cupuacu::LongTaskScope longTask(
+                    state, "Saving file", session.currentFile);
                 file::overwritePreservingCurrentFile(state, *settings);
             });
         if (!ok)
@@ -358,6 +363,8 @@ namespace cupuacu::actions
             state, "Save", normalizedPath.string(),
             [&]
             {
+                cupuacu::LongTaskScope longTask(
+                    state, "Saving file", normalizedPath.string());
                 file::AudioFileWriter::writeFile(state, normalizedPath, settings);
             });
         if (!ok)
@@ -402,6 +409,8 @@ namespace cupuacu::actions
             state, "Preserving save as", normalizedPath.string(),
             [&]
             {
+                cupuacu::LongTaskScope longTask(
+                    state, "Saving file", normalizedPath.string());
                 const auto &session = state->getActiveDocumentSession();
                 const auto referencePath =
                     !session.preservationReferenceFile.empty()

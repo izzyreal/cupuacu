@@ -237,6 +237,7 @@ namespace cupuacu::gui
 
         std::vector<std::unique_ptr<SamplePoint>> computeSamplePoints();
 
+        bool hasRenderableChannel() const;
         void invalidateBaseTexture() const;
         bool ensureBaseTexture(SDL_Renderer *) const;
         BaseTextureCacheKey computeBaseTextureCacheKey() const;

@@ -3,6 +3,7 @@
 #include "EffectDialogWindow.hpp"
 #include "EffectSettings.hpp"
 #include "EffectTargeting.hpp"
+#include "LongTask.hpp"
 
 #include "actions/audio/DurationMutationUndoable.hpp"
 #include "file/SampleQuantization.hpp"
@@ -685,6 +686,8 @@ namespace cupuacu::effects
             return;
         }
 
+        cupuacu::LongTaskScope longTask(state, "Applying effect",
+                                        "Remove silence");
         const auto runs = planSilenceRemoval(
             document, targetChannels, startFrame, frameCount,
             currentThresholdAbsolute(state, settings),

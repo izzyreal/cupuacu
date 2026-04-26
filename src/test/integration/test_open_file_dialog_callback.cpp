@@ -3,6 +3,7 @@
 #include "IntegrationTestHelpers.hpp"
 
 #include "State.hpp"
+#include "actions/BackgroundOpen.hpp"
 #include "actions/ShowOpenFileDialog.hpp"
 #include "file/SndfilePath.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
@@ -10,7 +11,9 @@
 #include <sndfile.h>
 
 #include <chrono>
+#include <thread>
 #include <cstdint>
+#include <deque>
 #include <filesystem>
 #include <random>
 #include <string>
@@ -99,7 +102,7 @@ namespace
     }
 } // namespace
 
-TEST_CASE("Open file dialog callback loads the selected file into the session",
+TEST_CASE("Open file dialog callback queues the selected file",
           "[integration]")
 {
     cupuacu::test::ensureSdlTtfInitialized();
@@ -131,31 +134,18 @@ TEST_CASE("Open file dialog callback loads the selected file into the session",
 
     cupuacu::actions::fileDialogCallback(&state, selectedFiles, 0);
 
-    REQUIRE(state.tabs.size() == 2);
-    REQUIRE(state.activeTabIndex == 1);
-    REQUIRE(state.tabs[0].session.currentFile == "before.wav");
-    REQUIRE(state.tabs[0].viewState.verticalZoom == 4);
-    REQUIRE(state.tabs[0].viewState.sampleOffset == 9);
-
-    auto &session = state.getActiveDocumentSession();
-    auto &viewState = state.getActiveViewState();
-    REQUIRE(session.currentFile == pathString);
-    REQUIRE(session.document.getSampleRate() == 22050);
-    REQUIRE(session.document.getChannelCount() == 2);
-    REQUIRE(session.document.getFrameCount() == 3);
-    REQUIRE_FALSE(session.selection.isActive());
-    REQUIRE(session.cursor == 0);
-    REQUIRE(viewState.verticalZoom == 1);
-    REQUIRE(viewState.sampleOffset == 0);
-    REQUIRE(viewState.samplesToScroll == 0);
-    REQUIRE(viewState.selectedChannels == cupuacu::SelectedChannels::BOTH);
-    REQUIRE(state.waveforms.size() == 2);
-    REQUIRE(std::string(SDL_GetWindowTitle(
-                state.mainDocumentSessionWindow->getWindow()->getSdlWindow())) ==
-            pathString);
+    REQUIRE(state.pendingOpenFiles.size() == 1);
+    REQUIRE(state.pendingOpenFiles.front().kind ==
+            cupuacu::PendingOpenKind::UserOpen);
+    REQUIRE(state.pendingOpenFiles.front().path == pathString);
+    REQUIRE(state.pendingOpenFiles.front().updateRecentFiles);
+    REQUIRE(state.tabs.size() == 1);
+    REQUIRE(state.getActiveDocumentSession().currentFile == "before.wav");
+    REQUIRE(state.getActiveViewState().verticalZoom == 4);
+    REQUIRE(state.getActiveViewState().sampleOffset == 9);
 }
 
-TEST_CASE("Open file dialog callback loads multiple selected files into tabs",
+TEST_CASE("Open file dialog callback queues multiple selected files",
           "[integration]")
 {
     cupuacu::test::ensureSdlTtfInitialized();
@@ -178,24 +168,53 @@ TEST_CASE("Open file dialog callback loads multiple selected files into tabs",
 
     cupuacu::actions::fileDialogCallback(&state, selectedFiles, 0);
 
-    REQUIRE(state.tabs.size() == 3);
-    REQUIRE(state.activeTabIndex == 2);
+    REQUIRE(state.pendingOpenFiles.size() == 2);
+    REQUIRE(state.pendingOpenFiles[0].kind ==
+            cupuacu::PendingOpenKind::UserOpen);
+    REQUIRE(state.pendingOpenFiles[0].path == firstPathString);
+    REQUIRE(state.pendingOpenFiles[1].kind ==
+            cupuacu::PendingOpenKind::UserOpen);
+    REQUIRE(state.pendingOpenFiles[1].path == secondPathString);
+    REQUIRE(state.tabs.size() == 1);
+    REQUIRE(state.recentFiles.empty());
+}
 
-    REQUIRE(state.tabs[0].session.document.getFrameCount() == 32);
+TEST_CASE("Pending open work loads queued dialog files asynchronously",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
 
-    REQUIRE(state.tabs[1].session.currentFile == firstPathString);
-    REQUIRE(state.tabs[1].session.document.getSampleRate() == 44100);
-    REQUIRE(state.tabs[1].session.document.getChannelCount() == 1);
-    REQUIRE(state.tabs[1].session.document.getFrameCount() == 2);
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-open-async"));
+    const auto wavPath = cleanup.path() / "async.wav";
+    writeTestWav(wavPath, 32000, 2,
+                 {0.125f, -0.125f, 0.25f, -0.25f});
 
-    REQUIRE(state.getActiveDocumentSession().currentFile == secondPathString);
-    REQUIRE(state.getActiveDocumentSession().document.getSampleRate() == 22050);
-    REQUIRE(state.getActiveDocumentSession().document.getChannelCount() == 2);
+    cupuacu::test::StateWithTestPaths state{};
+    auto sessionUi =
+        cupuacu::test::integration::createSessionUi(&state, 32, false, 1);
+
+    const std::string pathString = wavPath.string();
+    const char *selectedFiles[] = {pathString.c_str(), nullptr};
+    cupuacu::actions::fileDialogCallback(&state, selectedFiles, 0);
+
+    for (int attempt = 0; attempt < 200; ++attempt)
+    {
+        cupuacu::actions::processPendingOpenWork(&state);
+        if (state.pendingOpenFiles.empty() && !state.backgroundOpenJob &&
+            state.getActiveDocumentSession().currentFile == pathString)
+        {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    REQUIRE(state.pendingOpenFiles.empty());
+    REQUIRE_FALSE(state.backgroundOpenJob);
+    REQUIRE(state.getActiveDocumentSession().currentFile == pathString);
+    REQUIRE(state.getActiveDocumentSession().document.getSampleRate() == 32000);
     REQUIRE(state.getActiveDocumentSession().document.getFrameCount() == 2);
-
-    REQUIRE(state.recentFiles.size() == 2);
-    REQUIRE(state.recentFiles[0] == secondPathString);
-    REQUIRE(state.recentFiles[1] == firstPathString);
+    REQUIRE(state.getActiveDocumentSession().document.getSample(0, 1) == 0.25f);
+    REQUIRE(state.recentFiles == std::vector<std::string>{pathString});
 }
 
 TEST_CASE("Open file dialog callback leaves state unchanged when canceled",

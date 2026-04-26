@@ -3,6 +3,7 @@
 #include "audio/PreservationTrackingAudioBuffer.hpp"
 
 #include <algorithm>
+#include <cstddef>
 
 namespace cupuacu
 {
@@ -121,6 +122,62 @@ namespace cupuacu
                              const bool shouldMarkDirty)
     {
         buffer->setSample(channel, frame, value, shouldMarkDirty);
+        ++waveformDataVersion;
+    }
+
+    void Document::writeInterleavedFloatBlock(const int64_t startFrame,
+                                              const float *interleaved,
+                                              const int64_t frameCount,
+                                              const int64_t channelCount,
+                                              const bool shouldMarkDirty)
+    {
+        if (!interleaved || startFrame < 0 || frameCount <= 0 ||
+            channelCount <= 0)
+        {
+            return;
+        }
+
+        const auto writableFrames = std::min<int64_t>(
+            frameCount, std::max<int64_t>(0, getFrameCount() - startFrame));
+        const auto writableChannels =
+            std::min<int64_t>(channelCount, getChannelCount());
+        if (writableFrames <= 0 || writableChannels <= 0)
+        {
+            return;
+        }
+
+        if (shouldMarkDirty)
+        {
+            for (int64_t frame = 0; frame < writableFrames; ++frame)
+            {
+                for (int64_t channel = 0; channel < writableChannels; ++channel)
+                {
+                    setSample(channel, startFrame + frame,
+                              interleaved[static_cast<std::size_t>(frame) *
+                                              static_cast<std::size_t>(
+                                                  channelCount) +
+                                          static_cast<std::size_t>(channel)],
+                              true);
+                }
+            }
+            return;
+        }
+
+        for (int64_t channel = 0; channel < writableChannels; ++channel)
+        {
+            auto channelData = buffer->getMutableChannelData(channel);
+            if (channelData.empty())
+            {
+                continue;
+            }
+            for (int64_t frame = 0; frame < writableFrames; ++frame)
+            {
+                channelData[static_cast<std::size_t>(startFrame + frame)] =
+                    interleaved[static_cast<std::size_t>(frame) *
+                                    static_cast<std::size_t>(channelCount) +
+                                static_cast<std::size_t>(channel)];
+            }
+        }
         ++waveformDataVersion;
     }
 

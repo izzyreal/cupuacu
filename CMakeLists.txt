@@ -146,6 +146,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/Document.cpp
     src/main/State.cpp
     src/main/Paths.cpp
+    src/main/LongTask.cpp
     src/main/Logger.cpp
     src/main/file/AudioExport.cpp
     src/main/file/AudioFileWriter.cpp
@@ -195,6 +196,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/gui/MenuBar.cpp
     src/main/gui/TooltipController.cpp
     src/main/gui/Window.cpp
+    src/main/actions/BackgroundOpen.cpp
     src/main/actions/Play.cpp
     src/main/actions/Record.cpp
 )
@@ -228,6 +230,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_marker_persistence.cpp
     src/test/test_sample_quantization.cpp
     src/test/test_audio_callback_core.cpp
+    src/test/test_long_task.cpp
     src/test/test_action_undoables.cpp
     src/test/test_amplify_envelope_effect.cpp
     src/test/test_audio_devices_orchestration.cpp

@@ -4,6 +4,7 @@
 #include "EffectSettings.hpp"
 #include "EffectTargeting.hpp"
 
+#include "LongTask.hpp"
 #include "audio/AudioProcessor.hpp"
 #include "actions/Undoable.hpp"
 #include "gui/MainViewAccess.hpp"
@@ -218,6 +219,8 @@ namespace cupuacu::effects
             return;
         }
 
+        cupuacu::LongTaskScope longTask(state, "Applying effect",
+                                        "Amplify/Fade");
         state->addAndDoUndoable(
             std::make_shared<AmplifyFadeUndoable>(state, settings));
     }

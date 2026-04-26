@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../State.hpp"
+#include "../LongTask.hpp"
 #include "AudioExport.hpp"
 #include "FileIo.hpp"
 #include "OverwritePreservation.hpp"
@@ -17,12 +18,23 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <functional>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 namespace cupuacu::file
 {
+    struct LoadedAudioFile
+    {
+        Document document;
+        std::optional<AudioExportSettings> exportSettings;
+    };
+
+    using LoadProgressCallback =
+        std::function<void(const std::string &, std::optional<double>)>;
+
     namespace detail
     {
         static bool hasM4aExtension(const std::filesystem::path &path)
@@ -114,43 +126,133 @@ namespace cupuacu::file
             }
         }
 
-        static void finalizeLoadedSession(cupuacu::State *state,
-                                          const bool canMarkSavedSource)
+        static std::string formatLoadProgressDetail(
+            const std::string &path, const sf_count_t framesRead,
+            const sf_count_t totalFrames)
         {
-            auto &session = state->getActiveDocumentSession();
-            if (canMarkSavedSource)
+            if (totalFrames <= 0)
             {
-                session.document.markCurrentStateAsSavedSource();
+                return path;
             }
-            cupuacu::file::OverwritePreservation::refreshActiveSession(state);
 
-            session.selection.reset();
-            session.cursor = 0;
-            session.syncSelectionAndCursorToDocumentLength();
+            const int percent = static_cast<int>(
+                std::clamp<double>(
+                    static_cast<double>(framesRead) /
+                        static_cast<double>(totalFrames),
+                    0.0, 1.0) *
+                100.0);
+            return path + " (" + std::to_string(percent) + "%)";
         }
 
-        static bool loadNativeAlacM4aIfApplicable(cupuacu::State *state)
+        static void updateLoadProgress(const LoadProgressCallback &progress,
+                                       const std::string &path,
+                                       const sf_count_t framesRead,
+                                       const sf_count_t totalFrames)
         {
-            auto &session = state->getActiveDocumentSession();
-            if (!hasM4aExtension(session.currentFile))
+            if (!progress)
             {
-                return false;
+                return;
+            }
+            const std::optional<double> progressValue =
+                totalFrames > 0
+                    ? std::optional<double>{
+                          std::clamp<double>(
+                              static_cast<double>(framesRead) /
+                                  static_cast<double>(totalFrames),
+                              0.0, 1.0)}
+                    : std::nullopt;
+            progress(formatLoadProgressDetail(path, framesRead, totalFrames),
+                     progressValue);
+        }
+
+        static std::optional<LoadedAudioFile> loadNativeAlacM4aIfApplicable(
+            const std::string &path, const LoadProgressCallback &progress)
+        {
+            if (!hasM4aExtension(path))
+            {
+                return std::nullopt;
             }
 
-            const auto audio =
-                cupuacu::file::m4a::readAlacM4aFile(session.currentFile);
-            auto &doc = session.document;
-            session.currentFileExportSettings =
-                inferExportSettingsForFile(session.currentFile,
-                                           CUPUACU_FORMAT_M4A |
-                                               (audio.bitDepth == 24
-                                                    ? CUPUACU_FORMAT_ALAC_24
-                                                    : audio.bitDepth == 32
-                                                          ? CUPUACU_FORMAT_ALAC_32
-                                                          : CUPUACU_FORMAT_ALAC_16),
-                                           audio.sampleFormat);
-            session.setPreservationReference(session.currentFile,
-                                             session.currentFileExportSettings);
+            if (progress)
+            {
+                progress(path + " (reading file)", 0.0);
+            }
+            int lastDecodePercent = -1;
+            int lastReadPercent = -1;
+            const auto audio = cupuacu::file::m4a::readAlacM4aFile(
+                path,
+                [progress, path, &lastDecodePercent](
+                    const std::uint32_t decodedFrames,
+                    const std::uint32_t totalFrames)
+                {
+                    if (!progress)
+                    {
+                        return;
+                    }
+                    if (totalFrames == 0)
+                    {
+                        return;
+                    }
+                    const int percent = static_cast<int>(
+                        std::clamp<double>(
+                            static_cast<double>(decodedFrames) /
+                                static_cast<double>(totalFrames),
+                            0.0, 1.0) *
+                        100.0);
+                    if (percent == lastDecodePercent && decodedFrames < totalFrames)
+                    {
+                        return;
+                    }
+                    lastDecodePercent = percent;
+                    progress(
+                        path + " (decoding ALAC " + std::to_string(percent) +
+                            "%)",
+                        0.05 +
+                        std::clamp<double>(
+                            static_cast<double>(decodedFrames) /
+                                static_cast<double>(totalFrames),
+                            0.0, 1.0) *
+                            0.80
+                    );
+                },
+                [progress, path, &lastReadPercent](
+                    const std::uint64_t bytesRead,
+                    const std::uint64_t totalBytes)
+                {
+                    if (!progress || totalBytes == 0)
+                    {
+                        return;
+                    }
+                    const int percent = static_cast<int>(
+                        std::clamp<double>(
+                            static_cast<double>(bytesRead) /
+                                static_cast<double>(totalBytes),
+                            0.0, 1.0) *
+                        100.0);
+                    if (percent == lastReadPercent && bytesRead < totalBytes)
+                    {
+                        return;
+                    }
+                    lastReadPercent = percent;
+                    progress(
+                        path + " (reading file " + std::to_string(percent) +
+                            "%)",
+                        std::clamp<double>(
+                            static_cast<double>(bytesRead) /
+                                static_cast<double>(totalBytes),
+                            0.0, 1.0) *
+                            0.05);
+                });
+            LoadedAudioFile result;
+            auto &doc = result.document;
+            result.exportSettings = inferExportSettingsForFile(
+                path,
+                CUPUACU_FORMAT_M4A |
+                    (audio.bitDepth == 24
+                         ? CUPUACU_FORMAT_ALAC_24
+                         : audio.bitDepth == 32 ? CUPUACU_FORMAT_ALAC_32
+                                                : CUPUACU_FORMAT_ALAC_16),
+                audio.sampleFormat);
 
             doc.initialize(audio.sampleFormat, audio.sampleRate,
                            audio.channels, audio.frameCount);
@@ -165,43 +267,71 @@ namespace cupuacu::file
                 throw std::runtime_error("Decoded ALAC M4A sample count mismatch");
             }
 
-            for (std::uint32_t frame = 0; frame < audio.frameCount; ++frame)
+            constexpr std::uint32_t kLoadBlockFrames = 65536;
+            std::vector<float> interleaved(
+                static_cast<std::size_t>(kLoadBlockFrames) * audio.channels);
+            std::uint32_t totalFramesLoaded = 0;
+            while (totalFramesLoaded < audio.frameCount)
             {
-                for (std::uint16_t ch = 0; ch < audio.channels; ++ch)
+                const auto framesThisBlock = std::min<std::uint32_t>(
+                    kLoadBlockFrames, audio.frameCount - totalFramesLoaded);
+                for (std::uint32_t frame = 0; frame < framesThisBlock; ++frame)
                 {
-                    const auto sampleIndex =
-                        static_cast<std::size_t>(frame) * audio.channels +
-                        static_cast<std::size_t>(ch);
-                    doc.setSample(ch, frame,
-                                  normalizedPcmToFloat(
-                                      readNativePcmSample(
-                                          audio.interleavedPcmBytes,
-                                          sampleIndex, audio.bitDepth),
-                                      audio.bitDepth),
-                                  false);
+                    for (std::uint16_t ch = 0; ch < audio.channels; ++ch)
+                    {
+                        const auto sampleIndex =
+                            (static_cast<std::size_t>(totalFramesLoaded) +
+                             frame) *
+                                audio.channels +
+                            static_cast<std::size_t>(ch);
+                        interleaved[static_cast<std::size_t>(frame) *
+                                        audio.channels +
+                                    static_cast<std::size_t>(ch)] =
+                            normalizedPcmToFloat(
+                                readNativePcmSample(audio.interleavedPcmBytes,
+                                                    sampleIndex,
+                                                    audio.bitDepth),
+                                audio.bitDepth);
+                    }
+                }
+
+                doc.writeInterleavedFloatBlock(totalFramesLoaded,
+                                               interleaved.data(),
+                                               framesThisBlock, audio.channels,
+                                               false);
+                totalFramesLoaded += framesThisBlock;
+                const double conversionProgress =
+                    audio.frameCount > 0
+                        ? std::clamp<double>(
+                              static_cast<double>(totalFramesLoaded) /
+                                  static_cast<double>(audio.frameCount),
+                              0.0, 1.0)
+                        : 1.0;
+                if (progress)
+                {
+                    progress(detail::formatLoadProgressDetail(
+                                 path, totalFramesLoaded, audio.frameCount),
+                             0.85 + conversionProgress * 0.15);
                 }
             }
             doc.replaceMarkers(audio.markers);
-            finalizeLoadedSession(state, true);
-            return true;
+            doc.markCurrentStateAsSavedSource();
+            return result;
         }
     } // namespace detail
 
-    static void loadSampleData(cupuacu::State *state)
+    static LoadedAudioFile loadAudioFile(
+        const std::string &path, const LoadProgressCallback &progress = {})
     {
-        auto &session = state->getActiveDocumentSession();
-        auto &doc = session.document;
-
-        if (detail::loadNativeAlacM4aIfApplicable(state))
+        if (auto loaded = detail::loadNativeAlacM4aIfApplicable(path, progress))
         {
-            return;
+            return std::move(*loaded);
         }
 
         // Prepare SF_INFO
         SF_INFO sfinfo{};
         SNDFILE *snd =
-            openSndfile(std::filesystem::path(session.currentFile), SFM_READ,
-                        &sfinfo);
+            openSndfile(std::filesystem::path(path), SFM_READ, &sfinfo);
         if (!snd)
         {
             std::string detail = sf_strerror(nullptr);
@@ -209,8 +339,8 @@ namespace cupuacu::file
             {
                 detail = detail::describeErrno(errno);
             }
-            throw std::runtime_error("Failed to open file: " +
-                                     session.currentFile + ": " + detail);
+            throw std::runtime_error("Failed to open file: " + path + ": " +
+                                     detail);
         }
 
         const SampleFormat sampleFormat =
@@ -219,31 +349,38 @@ namespace cupuacu::file
         int channels = sfinfo.channels;
         sf_count_t frames = sfinfo.frames;
 
-        session.currentFileExportSettings =
-            inferExportSettingsForFile(session.currentFile, sfinfo.format,
-                                       sampleFormat);
-        session.setPreservationReference(session.currentFile,
-                                         session.currentFileExportSettings);
+        LoadedAudioFile result;
+        auto &doc = result.document;
+        result.exportSettings =
+            inferExportSettingsForFile(path, sfinfo.format, sampleFormat);
 
         doc.initialize(sampleFormat, sfinfo.samplerate, channels, frames);
 
-        // Read into interleaved float buffer
-        std::vector<float> interleaved(frames * channels);
-        sf_count_t framesRead = sf_readf_float(snd, interleaved.data(), frames);
-        if (framesRead <= 0)
+        constexpr sf_count_t kLoadBlockFrames = 65536;
+        std::vector<float> interleaved(
+            static_cast<std::size_t>(kLoadBlockFrames) *
+            static_cast<std::size_t>(channels));
+        sf_count_t totalFramesRead = 0;
+        detail::updateLoadProgress(progress, path, 0, frames);
+        while (totalFramesRead < frames)
         {
-            const std::string detail = sf_strerror(snd);
-            sf_close(snd);
-            throw std::runtime_error("Failed to read samples from file: " +
-                                     session.currentFile + ": " + detail);
-        }
-
-        for (sf_count_t i = 0; i < framesRead; ++i)
-        {
-            for (int ch = 0; ch < channels; ++ch)
+            const sf_count_t framesToRead =
+                std::min<sf_count_t>(kLoadBlockFrames, frames - totalFramesRead);
+            const sf_count_t framesRead =
+                sf_readf_float(snd, interleaved.data(), framesToRead);
+            if (framesRead <= 0)
             {
-                doc.setSample(ch, i, interleaved[i * channels + ch], false);
+                const std::string detail = sf_strerror(snd);
+                sf_close(snd);
+                throw std::runtime_error("Failed to read samples from file: " +
+                                         path + ": " + detail);
             }
+
+            doc.writeInterleavedFloatBlock(totalFramesRead, interleaved.data(),
+                                           framesRead, channels, false);
+
+            totalFramesRead += framesRead;
+            detail::updateLoadProgress(progress, path, totalFramesRead, frames);
         }
 
         // Done with file
@@ -255,12 +392,12 @@ namespace cupuacu::file
             if (majorFormat == SF_FORMAT_WAV)
             {
                 doc.replaceMarkers(
-                    cupuacu::file::wav::markers::readMarkers(session.currentFile));
+                    cupuacu::file::wav::markers::readMarkers(path));
             }
             else if (majorFormat == SF_FORMAT_AIFF)
             {
                 doc.replaceMarkers(
-                    cupuacu::file::aiff::markers::readMarkers(session.currentFile));
+                    cupuacu::file::aiff::markers::readMarkers(path));
             }
         }
         catch (...)
@@ -274,10 +411,33 @@ namespace cupuacu::file
         {
             doc.markCurrentStateAsSavedSource();
         }
-        cupuacu::file::OverwritePreservation::refreshActiveSession(state);
+        return result;
+    }
 
+    static void commitLoadedAudioFile(cupuacu::DocumentSession &session,
+                                      const std::string &path,
+                                      LoadedAudioFile loaded)
+    {
+        session.currentFileExportSettings = loaded.exportSettings;
+        session.setPreservationReference(path, session.currentFileExportSettings);
+        session.document = std::move(loaded.document);
         session.selection.reset();
         session.cursor = 0;
         session.syncSelectionAndCursorToDocumentLength();
+    }
+
+    static void loadSampleData(cupuacu::State *state)
+    {
+        auto &session = state->getActiveDocumentSession();
+        const auto path = session.currentFile;
+        auto loaded = loadAudioFile(
+            path,
+            [state](const std::string &detail,
+                    const std::optional<double> progress)
+            {
+                cupuacu::updateLongTask(state, detail, progress, true);
+            });
+        commitLoadedAudioFile(session, path, std::move(loaded));
+        cupuacu::file::OverwritePreservation::refreshActiveSession(state);
     }
 } // namespace cupuacu::file

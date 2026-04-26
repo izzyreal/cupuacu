@@ -2,7 +2,7 @@
 #include <SDL3/SDL.h>
 
 #include "../file/AudioExport.hpp"
-#include "DocumentLifecycle.hpp"
+#include "BackgroundOpen.hpp"
 
 #include "../State.hpp"
 
@@ -107,7 +107,7 @@ namespace cupuacu::actions
         auto *state = (cupuacu::State *)userdata;
         while (*filelist)
         {
-            actions::loadFileIntoNewTab(state, *filelist);
+            queueOpenFile(state, *filelist);
             ++filelist;
         }
     }
