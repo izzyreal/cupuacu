@@ -2098,6 +2098,32 @@ TEST_CASE("Preserving save as writes against the reference and updates it",
     REQUIRE(readChunkBytes(outputPath, "LIST") == originalListChunk);
 }
 
+TEST_CASE("Preserving save as keeps untouched WAV byte-identical", "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-preserving-save-as-untouched"));
+    const auto sourcePath = cleanup.path() / "source.wav";
+    const auto outputPath = cleanup.path() / "copy.wav";
+
+    writePcm16WavFile(sourcePath, 44100, 2,
+                      {100, -100, 200, -200, 300, -300, 400, -400},
+                      {'p', 'r', 'e', '!'}, {'p', 'o', 's', 't'});
+    const auto originalBytes = readBytes(sourcePath);
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto &session = state.getActiveDocumentSession();
+    session.currentFile = sourcePath.string();
+    cupuacu::file::loadSampleData(&state);
+
+    const auto settings = cupuacu::file::defaultExportSettingsForPath(
+        outputPath, session.document.getSampleFormat());
+    REQUIRE(settings.has_value());
+
+    REQUIRE(cupuacu::actions::saveAsPreserving(&state, outputPath.string(),
+                                               *settings));
+    REQUIRE(readBytes(outputPath) == originalBytes);
+}
+
 TEST_CASE("Save as normalizes the output extension to the selected format",
           "[file]")
 {

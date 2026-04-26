@@ -147,6 +147,59 @@ namespace cupuacu::file::wav
             return encoded;
         }
 
+        static void copyOriginalSampleSpan(std::istream &input,
+                                           std::ostream &output,
+                                           const ParsedFile &parsed,
+                                           const std::int64_t startChannel,
+                                           const std::int64_t startFrame,
+                                           const std::size_t sampleCount)
+        {
+            if (sampleCount == 0)
+            {
+                return;
+            }
+
+            const auto *dataChunk = parsed.findChunk("data");
+            if (dataChunk == nullptr)
+            {
+                throw std::runtime_error("data chunk not found");
+            }
+
+            const auto startSampleIndex =
+                startFrame * static_cast<std::int64_t>(parsed.channelCount) +
+                startChannel;
+            const auto byteOffset = static_cast<std::streamoff>(
+                dataChunk->payloadOffset +
+                startSampleIndex * static_cast<std::int64_t>(
+                                       sampleByteWidth(parsed.sampleFormat)));
+            std::size_t remainingBytes =
+                sampleCount * sampleByteWidth(parsed.sampleFormat);
+
+            input.clear();
+            input.seekg(byteOffset, std::ios::beg);
+
+            std::array<char, 64 * 1024> buffer{};
+            while (remainingBytes > 0)
+            {
+                const auto chunkBytes = std::min<std::size_t>(remainingBytes,
+                                                              buffer.size());
+                if (!input.read(buffer.data(),
+                                static_cast<std::streamsize>(chunkBytes)))
+                {
+                    throw std::runtime_error(
+                        "Failed to read original WAV sample bytes");
+                }
+
+                output.write(buffer.data(),
+                             static_cast<std::streamsize>(chunkBytes));
+                if (!output)
+                {
+                    throw std::runtime_error("Failed to write WAV sample bytes");
+                }
+                remainingBytes -= chunkBytes;
+            }
+        }
+
         static void patchSamplesInPlace(
             const cupuacu::Document::ReadLease &document, std::fstream &io,
             const ParsedFile &parsed,
@@ -227,40 +280,111 @@ namespace cupuacu::file::wav
             const std::string &progressDetail = {})
         {
             output.write("data", 4);
+            const std::uint32_t dataSize = expectedDataSizeBytes(document);
+            output.write(reinterpret_cast<const char *>(&dataSize), 4);
 
-            const auto encodedSamples =
-                cupuacu::file::preservation::buildEncodedSamples(
-                    document, input,
-                    sampleByteWidth(document.getSampleFormat()),
-                    static_cast<std::size_t>(document.getChannelCount()),
-                    [&](std::istream &sourceInput, const std::int64_t channel,
-                        const std::int64_t frame)
+            const std::size_t channelCount =
+                static_cast<std::size_t>(document.getChannelCount());
+            const std::size_t frames =
+                static_cast<std::size_t>(document.getFrameCount());
+            constexpr std::size_t progressStrideFrames = 16384;
+            cupuacu::file::preservation::publishPreservationProgress(
+                progress, progressDetail, 0, frames, 0.05, 0.95);
+
+            bool haveOriginalSpan = false;
+            std::int64_t originalSpanStartChannel = 0;
+            std::int64_t originalSpanStartFrame = 0;
+            std::int64_t previousOriginalSampleIndex = -1;
+            std::size_t originalSpanSampleCount = 0;
+            const auto flushOriginalSpan = [&]
+            {
+                if (!haveOriginalSpan)
+                {
+                    return;
+                }
+
+                copyOriginalSampleSpan(input, output, parsed,
+                                       originalSpanStartChannel,
+                                       originalSpanStartFrame,
+                                       originalSpanSampleCount);
+                haveOriginalSpan = false;
+                originalSpanSampleCount = 0;
+                previousOriginalSampleIndex = -1;
+            };
+
+            for (std::size_t frame = 0; frame < frames; ++frame)
+            {
+                for (std::size_t channel = 0; channel < channelCount; ++channel)
+                {
+                    const auto channelIndex = static_cast<std::int64_t>(channel);
+                    const auto frameIndex = static_cast<std::int64_t>(frame);
+                    const auto provenance =
+                        document.getSampleProvenance(channelIndex, frameIndex);
+                    const bool canCopyOriginal =
+                        !document.isDirty(channelIndex, frameIndex) &&
+                        provenance.sourceId == document.getPreservationSourceId() &&
+                        provenance.frameIndex >= 0;
+
+                    if (canCopyOriginal)
                     {
-                        return readOriginalSampleBytes(sourceInput, parsed, channel,
-                                                       frame);
-                    },
-                    [&](const float sample)
-                    {
-                        if (document.getSampleFormat() ==
-                            cupuacu::SampleFormat::FLOAT32)
+                        const auto originalSampleIndex =
+                            provenance.frameIndex *
+                                static_cast<std::int64_t>(channelCount) +
+                            channelIndex;
+                        if (haveOriginalSpan &&
+                            originalSampleIndex ==
+                                previousOriginalSampleIndex + 1)
                         {
-                            return encodeFloat32Le(sample);
+                            ++originalSpanSampleCount;
+                            previousOriginalSampleIndex = originalSampleIndex;
+                            continue;
                         }
+
+                        flushOriginalSpan();
+                        haveOriginalSpan = true;
+                        originalSpanStartChannel = channelIndex;
+                        originalSpanStartFrame = provenance.frameIndex;
+                        previousOriginalSampleIndex = originalSampleIndex;
+                        originalSpanSampleCount = 1;
+                        continue;
+                    }
+
+                    flushOriginalSpan();
+
+                    const float sample = document.getSample(channelIndex, frameIndex);
+                    if (document.getSampleFormat() ==
+                        cupuacu::SampleFormat::FLOAT32)
+                    {
+                        const auto encoded = encodeFloat32Le(sample);
+                        output.write(encoded.data(),
+                                     static_cast<std::streamsize>(encoded.size()));
+                    }
+                    else
+                    {
                         const auto quantized = quantizeIntegerPcmSample(
                             document.getSampleFormat(), sample, false);
-                        return encodeSampleBytes(document.getSampleFormat(),
-                                                 quantized);
-                    },
-                    progress, progressDetail, 0.05, 0.95);
+                        const auto encoded =
+                            encodeSampleBytes(document.getSampleFormat(),
+                                              quantized);
+                        output.write(encoded.data(),
+                                     static_cast<std::streamsize>(encoded.size()));
+                    }
 
-            const std::uint32_t dataSize = static_cast<std::uint32_t>(
-                encodedSamples.size());
-            output.write(reinterpret_cast<const char *>(&dataSize), 4);
-            if (dataSize > 0)
-            {
-                output.write(encodedSamples.data(),
-                             static_cast<std::streamsize>(dataSize));
+                    if (!output)
+                    {
+                        throw std::runtime_error("Failed to write WAV sample bytes");
+                    }
+                }
+
+                if ((frame + 1) % progressStrideFrames == 0 || frame + 1 == frames)
+                {
+                    cupuacu::file::preservation::publishPreservationProgress(
+                        progress, progressDetail, frame + 1, frames, 0.05, 0.95);
+                }
             }
+
+            flushOriginalSpan();
+
             if ((dataSize & 1u) != 0u)
             {
                 output.put('\0');
