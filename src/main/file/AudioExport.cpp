@@ -59,7 +59,9 @@ namespace
         {"32-bit ALAC", SF_FORMAT_ALAC_32, "caf"},
     };
     constexpr CandidateEncoding kM4aEncodings[] = {
-        {"16-bit ALAC", cupuacu::file::CUPUACU_FORMAT_ALAC, "m4a"},
+        {"16-bit ALAC", cupuacu::file::CUPUACU_FORMAT_ALAC_16, "m4a"},
+        {"24-bit ALAC", cupuacu::file::CUPUACU_FORMAT_ALAC_24, "m4a"},
+        {"32-bit ALAC", cupuacu::file::CUPUACU_FORMAT_ALAC_32, "m4a"},
     };
     constexpr CandidateEncoding kFlacEncodings[] = {
         {"16-bit FLAC", SF_FORMAT_PCM_16, "flac"},
@@ -161,7 +163,13 @@ namespace
     {
         if (combinedFormat ==
             (cupuacu::file::CUPUACU_FORMAT_M4A |
-             cupuacu::file::CUPUACU_FORMAT_ALAC))
+             cupuacu::file::CUPUACU_FORMAT_ALAC_16) ||
+            combinedFormat ==
+                (cupuacu::file::CUPUACU_FORMAT_M4A |
+                 cupuacu::file::CUPUACU_FORMAT_ALAC_24) ||
+            combinedFormat ==
+                (cupuacu::file::CUPUACU_FORMAT_M4A |
+                 cupuacu::file::CUPUACU_FORMAT_ALAC_32))
         {
             return true;
         }
@@ -244,7 +252,20 @@ namespace
             case AudioExportCodec::ALAC:
                 if (option.container == AudioExportContainer::M4A)
                 {
-                    return cupuacu::file::CUPUACU_FORMAT_ALAC;
+                    switch (documentFormat)
+                    {
+                        case cupuacu::SampleFormat::PCM_S24:
+                        case cupuacu::SampleFormat::FLOAT32:
+                        case cupuacu::SampleFormat::FLOAT64:
+                            return cupuacu::file::CUPUACU_FORMAT_ALAC_24;
+                        case cupuacu::SampleFormat::PCM_S32:
+                            return cupuacu::file::CUPUACU_FORMAT_ALAC_32;
+                        case cupuacu::SampleFormat::PCM_S8:
+                        case cupuacu::SampleFormat::PCM_S16:
+                        case cupuacu::SampleFormat::Unknown:
+                        default:
+                            return cupuacu::file::CUPUACU_FORMAT_ALAC_16;
+                    }
                 }
                 switch (documentFormat)
                 {
@@ -691,9 +712,21 @@ cupuacu::file::sampleFormatForSndfileFormat(const int sndfileFormat)
 
     if (sndfileFormat ==
         (cupuacu::file::CUPUACU_FORMAT_M4A |
-         cupuacu::file::CUPUACU_FORMAT_ALAC))
+         cupuacu::file::CUPUACU_FORMAT_ALAC_16))
     {
         return cupuacu::SampleFormat::PCM_S16;
+    }
+    if (sndfileFormat ==
+        (cupuacu::file::CUPUACU_FORMAT_M4A |
+         cupuacu::file::CUPUACU_FORMAT_ALAC_24))
+    {
+        return cupuacu::SampleFormat::PCM_S24;
+    }
+    if (sndfileFormat ==
+        (cupuacu::file::CUPUACU_FORMAT_M4A |
+         cupuacu::file::CUPUACU_FORMAT_ALAC_32))
+    {
+        return cupuacu::SampleFormat::PCM_S32;
     }
 
     switch (subtype)
@@ -758,6 +791,25 @@ cupuacu::file::inferExportSettingsForFile(const std::filesystem::path &path,
                                           const int sndfileFormat,
                                           const cupuacu::SampleFormat documentFormat)
 {
+    if (sndfileFormat ==
+        (cupuacu::file::CUPUACU_FORMAT_M4A |
+         cupuacu::file::CUPUACU_FORMAT_ALAC_16))
+    {
+        return makeSettings(kCandidateFormats[3], CUPUACU_FORMAT_ALAC_16);
+    }
+    if (sndfileFormat ==
+        (cupuacu::file::CUPUACU_FORMAT_M4A |
+         cupuacu::file::CUPUACU_FORMAT_ALAC_24))
+    {
+        return makeSettings(kCandidateFormats[3], CUPUACU_FORMAT_ALAC_24);
+    }
+    if (sndfileFormat ==
+        (cupuacu::file::CUPUACU_FORMAT_M4A |
+         cupuacu::file::CUPUACU_FORMAT_ALAC_32))
+    {
+        return makeSettings(kCandidateFormats[3], CUPUACU_FORMAT_ALAC_32);
+    }
+
     const int major = sndfileFormat & SF_FORMAT_TYPEMASK;
     const int subtype = sndfileFormat & SF_FORMAT_SUBMASK;
 
@@ -796,6 +848,22 @@ cupuacu::file::normalizeExportPath(const std::filesystem::path &path,
     return normalized;
 }
 
+std::uint32_t cupuacu::file::m4aAlacBitDepthForSettings(
+    const AudioExportSettings &settings)
+{
+    switch (settings.subtype)
+    {
+        case CUPUACU_FORMAT_ALAC_16:
+            return 16;
+        case CUPUACU_FORMAT_ALAC_24:
+            return 24;
+        case CUPUACU_FORMAT_ALAC_32:
+            return 32;
+        default:
+            return 0;
+    }
+}
+
 bool cupuacu::file::isOverwritePreservingWavRewriteCandidate(
     const AudioExportSettings &settings)
 {
@@ -812,5 +880,5 @@ bool cupuacu::file::isNativeM4aAlacExportSettings(
     return settings.container == AudioExportContainer::M4A &&
            settings.codec == AudioExportCodec::ALAC &&
            settings.majorFormat == CUPUACU_FORMAT_M4A &&
-           settings.subtype == CUPUACU_FORMAT_ALAC;
+           m4aAlacBitDepthForSettings(settings) != 0;
 }

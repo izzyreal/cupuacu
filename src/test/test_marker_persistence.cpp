@@ -121,6 +121,36 @@ TEST_CASE("Formats without native marker support require fallback when markers e
     REQUIRE(assessment.requiresSidecarOrSessionFallback);
 }
 
+TEST_CASE("M4A ALAC marker persistence contract reports native chapter support",
+          "[file][markers]")
+{
+    cupuacu::Document document;
+    document.initialize(cupuacu::SampleFormat::PCM_S24, 44100, 1, 16);
+    document.addMarker(4, "Kick");
+
+    const cupuacu::file::AudioExportSettings settings{
+        .container = cupuacu::file::AudioExportContainer::M4A,
+        .codec = cupuacu::file::AudioExportCodec::ALAC,
+        .majorFormat = cupuacu::file::CUPUACU_FORMAT_M4A,
+        .subtype = cupuacu::file::CUPUACU_FORMAT_ALAC_24,
+        .containerLabel = "M4A",
+        .codecLabel = "ALAC",
+        .encodingLabel = "24-bit ALAC",
+        .extension = "m4a",
+    };
+
+    const auto assessment =
+        cupuacu::file::assessMarkerPersistenceForSettings(document, settings);
+
+    REQUIRE(assessment.capabilities.kind ==
+            cupuacu::file::MarkerNativePersistenceKind::M4aChapterTrack);
+    REQUIRE(assessment.capabilities.preservesFramePosition);
+    REQUIRE(assessment.capabilities.preservesLabel);
+    REQUIRE(assessment.fidelity ==
+            cupuacu::file::MarkerPersistenceFidelity::Exact);
+    REQUIRE_FALSE(assessment.requiresSidecarOrSessionFallback);
+}
+
 TEST_CASE("Formats without native marker support do not require fallback when there are no markers",
           "[file][markers]")
 {

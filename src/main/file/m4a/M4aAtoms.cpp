@@ -1,5 +1,6 @@
 #include "M4aAtoms.hpp"
 
+#include <algorithm>
 #include <limits>
 #include <stdexcept>
 
@@ -18,6 +19,78 @@ namespace cupuacu::file::m4a
         void appendBytes(Bytes &bytes, const Bytes &payload)
         {
             bytes.insert(bytes.end(), payload.begin(), payload.end());
+        }
+
+        struct ChapterSample
+        {
+            std::uint32_t frame = 0;
+            std::uint32_t duration = 0;
+            Bytes bytes;
+        };
+
+        std::vector<ChapterSample> buildChapterSamples(
+            const std::vector<cupuacu::DocumentMarker> &markers,
+            const std::uint32_t frameCount)
+        {
+            std::vector<cupuacu::DocumentMarker> sortedMarkers = markers;
+            std::sort(sortedMarkers.begin(), sortedMarkers.end(),
+                      [](const cupuacu::DocumentMarker &left,
+                         const cupuacu::DocumentMarker &right)
+                      {
+                          if (left.frame != right.frame)
+                          {
+                              return left.frame < right.frame;
+                          }
+                          return left.id < right.id;
+                      });
+
+            std::vector<cupuacu::DocumentMarker> usableMarkers;
+            usableMarkers.reserve(sortedMarkers.size());
+            for (const auto &marker : sortedMarkers)
+            {
+                if (marker.frame < 0 ||
+                    marker.frame >= static_cast<std::int64_t>(frameCount))
+                {
+                    continue;
+                }
+                if (!usableMarkers.empty() &&
+                    usableMarkers.back().frame == marker.frame)
+                {
+                    continue;
+                }
+                usableMarkers.push_back(marker);
+            }
+
+            std::vector<ChapterSample> samples;
+            samples.reserve(usableMarkers.size());
+            for (std::size_t i = 0; i < usableMarkers.size(); ++i)
+            {
+                const auto startFrame =
+                    static_cast<std::uint32_t>(usableMarkers[i].frame);
+                const auto endFrame =
+                    i + 1 < usableMarkers.size()
+                        ? static_cast<std::uint32_t>(usableMarkers[i + 1].frame)
+                        : frameCount;
+                if (endFrame <= startFrame)
+                {
+                    continue;
+                }
+
+                const auto labelSize = std::min<std::size_t>(
+                    usableMarkers[i].label.size(),
+                    std::numeric_limits<std::uint16_t>::max());
+                Bytes sample;
+                appendBe16(sample, static_cast<std::uint16_t>(labelSize));
+                sample.insert(sample.end(), usableMarkers[i].label.begin(),
+                              usableMarkers[i].label.begin() +
+                                  static_cast<std::ptrdiff_t>(labelSize));
+                samples.push_back(ChapterSample{
+                    .frame = startFrame,
+                    .duration = endFrame - startFrame,
+                    .bytes = std::move(sample),
+                });
+            }
+            return samples;
         }
     } // namespace
 
@@ -274,7 +347,8 @@ namespace cupuacu::file::m4a
     }
 
     Bytes movieHeaderAtom(const std::uint32_t timescale,
-                          const std::uint32_t duration)
+                          const std::uint32_t duration,
+                          const std::uint32_t nextTrackId)
     {
         if (timescale == 0)
         {
@@ -304,12 +378,13 @@ namespace cupuacu::file::m4a
         {
             appendBe32(payload, 0);
         }
-        appendBe32(payload, 2);
+        appendBe32(payload, nextTrackId);
         return fullAtom("mvhd", 0, 0, payload);
     }
 
     Bytes trackHeaderAtom(const std::uint32_t trackId,
-                          const std::uint32_t duration)
+                          const std::uint32_t duration,
+                          const bool enabled)
     {
         if (trackId == 0)
         {
@@ -339,7 +414,7 @@ namespace cupuacu::file::m4a
         appendBe32(payload, 0x40000000u);
         appendBe32(payload, 0);
         appendBe32(payload, 0);
-        return fullAtom("tkhd", 0, 0x000007u, payload);
+        return fullAtom("tkhd", 0, enabled ? 0x000007u : 0x000000u, payload);
     }
 
     Bytes mediaHeaderAtom(const std::uint32_t timescale,
@@ -368,11 +443,11 @@ namespace cupuacu::file::m4a
         return fullAtom("smhd", 0, 0, payload);
     }
 
-    Bytes handlerReferenceAtom()
+    Bytes handlerReferenceAtom(const std::string_view handlerType)
     {
         Bytes payload;
         appendBe32(payload, 0);
-        appendFourCc(payload, "soun");
+        appendFourCc(payload, handlerType);
         appendBe32(payload, 0);
         appendBe32(payload, 0);
         appendBe32(payload, 0);
@@ -387,6 +462,62 @@ namespace cupuacu::file::m4a
         appendBe32(drefPayload, 1);
         appendBytes(drefPayload, url);
         return containerAtom("dinf", {fullAtom("dref", 0, 0, drefPayload)});
+    }
+
+    Bytes trackReferenceAtom(const std::uint32_t chapterTrackId)
+    {
+        Bytes chapterReference;
+        appendBe32(chapterReference, chapterTrackId);
+        return containerAtom("tref", {atom("chap", chapterReference)});
+    }
+
+    Bytes editListAtom(const std::uint32_t emptyDuration,
+                       const std::uint32_t mediaDuration)
+    {
+        Bytes payload;
+        const bool hasEmptyEdit = emptyDuration != 0;
+        appendBe32(payload, hasEmptyEdit ? 2u : 1u);
+        if (hasEmptyEdit)
+        {
+            appendBe32(payload, emptyDuration);
+            appendBe32(payload, 0xffffffffu);
+            appendBe32(payload, 0x00010000u);
+        }
+        appendBe32(payload, mediaDuration);
+        appendBe32(payload, 0);
+        appendBe32(payload, 0x00010000u);
+        return containerAtom("edts", {fullAtom("elst", 0, 0, payload)});
+    }
+
+    Bytes textMediaHeaderAtom()
+    {
+        return fullAtom("nmhd", 0, 0);
+    }
+
+    Bytes textSampleEntry()
+    {
+        Bytes payload;
+        payload.resize(6, 0);
+        appendBe16(payload, 1);
+        return atom("text", payload);
+    }
+
+    Bytes explicitTimeToSampleAtom(
+        const std::vector<std::uint32_t> &sampleDurations)
+    {
+        if (sampleDurations.empty())
+        {
+            return emptyTimeToSampleAtom();
+        }
+
+        Bytes payload;
+        appendBe32(payload, static_cast<std::uint32_t>(sampleDurations.size()));
+        for (const auto duration : sampleDurations)
+        {
+            appendBe32(payload, 1);
+            appendBe32(payload, duration);
+        }
+        return fullAtom("stts", 0, 0, payload);
     }
 
     Bytes sampleTableAtom(const AlacMovieDescription &description)
@@ -422,14 +553,64 @@ namespace cupuacu::file::m4a
     {
         return containerAtom("mdia", {mediaHeaderAtom(description.sampleRate,
                                                       description.frameCount),
-                                      handlerReferenceAtom(),
+                                      handlerReferenceAtom("soun"),
                                       mediaInformationAtom(description)});
     }
 
     Bytes trackAtom(const AlacMovieDescription &description)
     {
-        return containerAtom("trak", {trackHeaderAtom(1, description.frameCount),
-                                      mediaAtom(description)});
+        std::vector<Bytes> children{
+            trackHeaderAtom(1, description.frameCount, true)};
+        if (!description.chapterSampleSizes.empty())
+        {
+            children.push_back(trackReferenceAtom(2));
+        }
+        children.push_back(mediaAtom(description));
+        return containerAtom("trak", children);
+    }
+
+    Bytes chapterSampleTableAtom(const AlacMovieDescription &description)
+    {
+        return containerAtom(
+            "stbl",
+            {sampleDescriptionAtom({textSampleEntry()}),
+             explicitTimeToSampleAtom(description.chapterSampleDurations),
+             sampleToChunkAtom(static_cast<std::uint32_t>(
+                 description.chapterSampleSizes.size())),
+             sampleSizeAtom(description.chapterSampleSizes),
+             chunkOffsetAtom(description.chapterSampleSizes.empty()
+                                 ? std::vector<std::uint32_t>{}
+                                 : std::vector<std::uint32_t>{
+                                       description.chapterMdatPayloadOffset})});
+    }
+
+    Bytes chapterMediaInformationAtom(const AlacMovieDescription &description)
+    {
+        return containerAtom("minf", {textMediaHeaderAtom(),
+                                      dataInformationAtom(),
+                                      chapterSampleTableAtom(description)});
+    }
+
+    Bytes chapterMediaAtom(const AlacMovieDescription &description)
+    {
+        return containerAtom(
+            "mdia", {mediaHeaderAtom(description.sampleRate,
+                                     description.chapterMediaDuration),
+                     handlerReferenceAtom("text"),
+                     chapterMediaInformationAtom(description)});
+    }
+
+    Bytes chapterTrackAtom(const AlacMovieDescription &description)
+    {
+        std::vector<Bytes> children{
+            trackHeaderAtom(2, description.frameCount, false)};
+        if (description.chapterStartOffset != 0)
+        {
+            children.push_back(editListAtom(description.chapterStartOffset,
+                                            description.chapterMediaDuration));
+        }
+        children.push_back(chapterMediaAtom(description));
+        return containerAtom("trak", children);
     }
 
     Bytes movieAtom(const AlacMovieDescription &description)
@@ -439,14 +620,21 @@ namespace cupuacu::file::m4a
             throw std::invalid_argument("Invalid M4A movie description");
         }
 
-        return containerAtom("moov",
-                             {movieHeaderAtom(description.sampleRate,
-                                              description.frameCount),
-                              trackAtom(description)});
+        std::vector<Bytes> children{
+            movieHeaderAtom(description.sampleRate, description.frameCount,
+                            description.chapterSampleSizes.empty() ? 2u : 3u),
+            trackAtom(description),
+        };
+        if (!description.chapterSampleSizes.empty())
+        {
+            children.push_back(chapterTrackAtom(description));
+        }
+        return containerAtom("moov", children);
     }
 
     Bytes assembleAlacM4a(
-        const cupuacu::file::alac::AlacEncodedPackets &packets)
+        const cupuacu::file::alac::AlacEncodedPackets &packets,
+        const std::vector<cupuacu::DocumentMarker> &markers)
     {
         if (packets.cookie.bytes.empty() || packets.packetSizes.empty() ||
             packets.bytes.empty() || packets.frameCount == 0 ||
@@ -456,14 +644,42 @@ namespace cupuacu::file::m4a
         }
 
         const auto ftyp = ftypAtom();
-        const auto mdat = mdatAtom(packets.bytes);
+        const auto chapterSamples =
+            buildChapterSamples(markers, packets.frameCount);
+        Bytes mdatPayload = packets.bytes;
+        std::vector<std::uint32_t> chapterSampleSizes;
+        std::vector<std::uint32_t> chapterSampleDurations;
+        std::uint32_t chapterStartOffset = 0;
+        std::uint32_t chapterMediaDuration = 0;
+        chapterSampleSizes.reserve(chapterSamples.size());
+        chapterSampleDurations.reserve(chapterSamples.size());
+        if (!chapterSamples.empty())
+        {
+            chapterStartOffset = chapterSamples.front().frame;
+        }
+        for (const auto &chapter : chapterSamples)
+        {
+            chapterSampleSizes.push_back(
+                static_cast<std::uint32_t>(chapter.bytes.size()));
+            chapterSampleDurations.push_back(chapter.duration);
+            chapterMediaDuration += chapter.duration;
+            appendBytes(mdatPayload, chapter.bytes);
+        }
+        const auto mdat = mdatAtom(mdatPayload);
         const auto mdatPayloadOffset = static_cast<std::uint32_t>(ftyp.size() + 8);
+        const auto chapterMdatPayloadOffset = static_cast<std::uint32_t>(
+            mdatPayloadOffset + packets.bytes.size());
         const AlacMovieDescription description{
             .sampleRate = packets.cookie.sampleRate,
             .frameCount = packets.frameCount,
             .framesPerPacket = packets.framesPerPacket,
             .packetSizes = packets.packetSizes,
             .mdatPayloadOffset = mdatPayloadOffset,
+            .chapterSampleSizes = chapterSampleSizes,
+            .chapterSampleDurations = chapterSampleDurations,
+            .chapterMdatPayloadOffset = chapterMdatPayloadOffset,
+            .chapterStartOffset = chapterStartOffset,
+            .chapterMediaDuration = chapterMediaDuration,
             .sampleEntry =
                 {
                     .channels = packets.cookie.channels,

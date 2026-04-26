@@ -100,7 +100,9 @@ void cupuacu::file::AudioFileWriter::writeFile(
 
     if (cupuacu::file::isNativeM4aAlacExportSettings(settings))
     {
-        cupuacu::file::m4a::writeAlacM4aFile(document, outputPath);
+        cupuacu::file::m4a::writeAlacM4aFile(
+            document, outputPath,
+            cupuacu::file::m4aAlacBitDepthForSettings(settings));
         return;
     }
 

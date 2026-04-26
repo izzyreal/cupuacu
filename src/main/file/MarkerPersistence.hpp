@@ -17,6 +17,7 @@ namespace cupuacu::file
         None,
         WavCueAdtl,
         AiffMark,
+        M4aChapterTrack,
     };
 
     struct MarkerNativePersistenceCapabilities
@@ -70,6 +71,19 @@ namespace cupuacu::file
                 .preservesFramePosition = true,
                 .preservesLabel = true,
                 .maxLabelBytes = 255,
+            };
+        }
+
+        if (settings.container == AudioExportContainer::M4A &&
+            settings.codec == AudioExportCodec::ALAC &&
+            settings.majorFormat == CUPUACU_FORMAT_M4A &&
+            m4aAlacBitDepthForSettings(settings) != 0)
+        {
+            return {
+                .kind = MarkerNativePersistenceKind::M4aChapterTrack,
+                .preservesFramePosition = true,
+                .preservesLabel = true,
+                .maxLabelBytes = 65535,
             };
         }
 

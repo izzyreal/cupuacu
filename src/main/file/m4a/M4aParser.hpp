@@ -2,6 +2,8 @@
 
 #include "M4aAtoms.hpp"
 
+#include "../../Document.hpp"
+
 #include <cstdint>
 #include <filesystem>
 #include <vector>
@@ -21,6 +23,7 @@ namespace cupuacu::file::m4a
         std::vector<std::uint32_t> packetFrameCounts;
         std::vector<std::uint64_t> packetOffsets;
         Bytes magicCookie;
+        std::vector<cupuacu::DocumentMarker> markers;
     };
 
     [[nodiscard]] M4aParsedAlacFile parseAlacM4a(const Bytes &bytes);

@@ -14,18 +14,89 @@ namespace cupuacu::file::m4a
 {
     namespace
     {
-        constexpr std::uint32_t kAlacBitDepth = 16;
-
-        void appendNativeI16(std::vector<std::uint8_t> &bytes,
-                             const std::int16_t value)
+        [[nodiscard]] std::uint32_t bitDepthForDocument(
+            const cupuacu::Document &document)
         {
-            const auto *raw = reinterpret_cast<const std::uint8_t *>(&value);
-            bytes.push_back(raw[0]);
-            bytes.push_back(raw[1]);
+            switch (document.getSampleFormat())
+            {
+                case cupuacu::SampleFormat::PCM_S24:
+                case cupuacu::SampleFormat::FLOAT32:
+                case cupuacu::SampleFormat::FLOAT64:
+                    return 24;
+                case cupuacu::SampleFormat::PCM_S32:
+                    return 32;
+                case cupuacu::SampleFormat::PCM_S8:
+                case cupuacu::SampleFormat::PCM_S16:
+                case cupuacu::SampleFormat::Unknown:
+                default:
+                    return 16;
+            }
+        }
+
+        [[nodiscard]] bool nativeLittleEndian()
+        {
+            const std::uint16_t value = 1;
+            return *reinterpret_cast<const std::uint8_t *>(&value) == 1;
+        }
+
+        void appendNativePcm(std::vector<std::uint8_t> &bytes,
+                             const std::int64_t value,
+                             const std::uint32_t bitsPerSample)
+        {
+            const auto pcm = static_cast<std::int32_t>(value);
+            const auto *raw = reinterpret_cast<const std::uint8_t *>(&pcm);
+            switch (bitsPerSample)
+            {
+                case 16:
+                    bytes.push_back(raw[0]);
+                    bytes.push_back(raw[1]);
+                    break;
+                case 24:
+                    if (nativeLittleEndian())
+                    {
+                        bytes.push_back(raw[0]);
+                        bytes.push_back(raw[1]);
+                        bytes.push_back(raw[2]);
+                    }
+                    else
+                    {
+                        bytes.push_back(raw[1]);
+                        bytes.push_back(raw[2]);
+                        bytes.push_back(raw[3]);
+                    }
+                    break;
+                case 32:
+                    bytes.push_back(raw[0]);
+                    bytes.push_back(raw[1]);
+                    bytes.push_back(raw[2]);
+                    bytes.push_back(raw[3]);
+                    break;
+                default:
+                    throw std::invalid_argument(
+                        "Unsupported ALAC bit depth for M4A export");
+            }
+        }
+
+        [[nodiscard]] cupuacu::SampleFormat sampleFormatForBitDepth(
+            const std::uint32_t bitsPerSample)
+        {
+            switch (bitsPerSample)
+            {
+                case 16:
+                    return cupuacu::SampleFormat::PCM_S16;
+                case 24:
+                    return cupuacu::SampleFormat::PCM_S24;
+                case 32:
+                    return cupuacu::SampleFormat::PCM_S32;
+                default:
+                    throw std::invalid_argument(
+                        "Unsupported ALAC bit depth for M4A export");
+            }
         }
 
         std::vector<std::uint8_t>
-        makeInterleavedPcm16(const cupuacu::Document &document)
+        makeInterleavedPcm(const cupuacu::Document &document,
+                           const std::uint32_t bitsPerSample)
         {
             const auto channels = document.getChannelCount();
             const auto frames = document.getFrameCount();
@@ -40,16 +111,16 @@ namespace cupuacu::file::m4a
             std::vector<std::uint8_t> pcm;
             pcm.reserve(static_cast<std::size_t>(frames) *
                         static_cast<std::size_t>(channels) *
-                        sizeof(std::int16_t));
+                        static_cast<std::size_t>((bitsPerSample + 7u) / 8u));
             for (int64_t frame = 0; frame < frames; ++frame)
             {
                 for (int64_t channel = 0; channel < channels; ++channel)
                 {
                     const auto quantized =
                         cupuacu::file::quantizeIntegerPcmSample(
-                            cupuacu::SampleFormat::PCM_S16,
+                            sampleFormatForBitDepth(bitsPerSample),
                             document.getSample(channel, frame), false);
-                    appendNativeI16(pcm, static_cast<std::int16_t>(quantized));
+                    appendNativePcm(pcm, quantized, bitsPerSample);
                 }
             }
             return pcm;
@@ -57,7 +128,8 @@ namespace cupuacu::file::m4a
     } // namespace
 
     void writeAlacM4aFile(const cupuacu::Document &document,
-                          const std::filesystem::path &outputPath)
+                          const std::filesystem::path &outputPath,
+                          const std::uint32_t requestedBitDepth)
     {
         if (outputPath.empty())
         {
@@ -69,14 +141,17 @@ namespace cupuacu::file::m4a
                 "Document sample rate cannot be exported as M4A ALAC");
         }
 
-        const auto pcm = makeInterleavedPcm16(document);
+        const auto bitDepth =
+            requestedBitDepth == 0 ? bitDepthForDocument(document)
+                                   : requestedBitDepth;
+        const auto pcm = makeInterleavedPcm(document, bitDepth);
         const auto encoded = alac::encodePcmPackets(
             {
                 .sampleRate =
                     static_cast<std::uint32_t>(document.getSampleRate()),
                 .channels =
                     static_cast<std::uint32_t>(document.getChannelCount()),
-                .bitsPerSample = kAlacBitDepth,
+                .bitsPerSample = bitDepth,
                 .framesPerPacket = alac::defaultFramesPerPacket(),
             },
             pcm);
@@ -85,7 +160,7 @@ namespace cupuacu::file::m4a
             throw std::runtime_error("Failed to encode ALAC packets");
         }
 
-        const auto bytes = assembleAlacM4a(*encoded);
+        const auto bytes = assembleAlacM4a(*encoded, document.getMarkers());
         cupuacu::file::writeFileAtomically(
             outputPath,
             [&bytes](const std::filesystem::path &temporaryPath)

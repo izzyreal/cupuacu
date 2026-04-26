@@ -43,6 +43,15 @@ namespace cupuacu::file::alac
         std::vector<std::uint32_t> packetFrameCounts;
     };
 
+    struct AlacDecodedPcm
+    {
+        std::vector<std::uint8_t> interleavedPcmBytes;
+        std::uint32_t sampleRate = 0;
+        std::uint32_t channels = 0;
+        std::uint32_t bitsPerSample = 0;
+        std::uint32_t frameCount = 0;
+    };
+
     struct AlacDecodedPcm16
     {
         std::vector<std::int16_t> interleavedSamples;
@@ -60,6 +69,10 @@ namespace cupuacu::file::alac
     [[nodiscard]] std::optional<AlacEncodedPackets>
     encodePcmPackets(AlacEncodingParameters parameters,
                      const std::vector<std::uint8_t> &interleavedPcmBytes);
+    [[nodiscard]] std::optional<AlacDecodedPcm>
+    decodePcmPackets(const AlacDecodingParameters &parameters,
+                     const std::vector<std::uint8_t> &packetBytes,
+                     const std::vector<std::uint32_t> &packetSizes);
     [[nodiscard]] std::optional<AlacDecodedPcm16>
     decodePcm16Packets(const AlacDecodingParameters &parameters,
                        const std::vector<std::uint8_t> &packetBytes,

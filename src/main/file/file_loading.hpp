@@ -15,6 +15,7 @@
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <stdexcept>
 #include <string>
@@ -35,9 +36,82 @@ namespace cupuacu::file
             return extension == ".m4a" || extension == ".mp4";
         }
 
-        static float pcm16ToFloat(const std::int16_t value)
+        static bool nativeLittleEndian()
         {
-            return static_cast<float>(value) / 32768.0f;
+            const std::uint16_t value = 1;
+            return *reinterpret_cast<const std::uint8_t *>(&value) == 1;
+        }
+
+        static std::int32_t readNativePcmSample(
+            const std::vector<std::uint8_t> &bytes,
+            const std::size_t sampleIndex,
+            const std::uint16_t bitDepth)
+        {
+            const auto bytesPerSample = static_cast<std::size_t>(
+                (bitDepth + 7u) / 8u);
+            const auto offset = sampleIndex * bytesPerSample;
+            switch (bitDepth)
+            {
+                case 16:
+                {
+                    std::int16_t value = 0;
+                    std::memcpy(&value, bytes.data() + offset, sizeof(value));
+                    return value;
+                }
+                case 24:
+                {
+                    std::uint32_t value = 0;
+                    if (nativeLittleEndian())
+                    {
+                        value = static_cast<std::uint32_t>(bytes[offset]) |
+                                (static_cast<std::uint32_t>(bytes[offset + 1])
+                                 << 8u) |
+                                (static_cast<std::uint32_t>(bytes[offset + 2])
+                                 << 16u);
+                    }
+                    else
+                    {
+                        value = static_cast<std::uint32_t>(bytes[offset + 2]) |
+                                (static_cast<std::uint32_t>(bytes[offset + 1])
+                                 << 8u) |
+                                (static_cast<std::uint32_t>(bytes[offset])
+                                 << 16u);
+                    }
+                    if ((value & 0x00800000u) != 0u)
+                    {
+                        value |= 0xff000000u;
+                    }
+                    return static_cast<std::int32_t>(value);
+                }
+                case 32:
+                {
+                    std::int32_t value = 0;
+                    std::memcpy(&value, bytes.data() + offset, sizeof(value));
+                    return value;
+                }
+                default:
+                    throw std::runtime_error(
+                        "Unsupported ALAC M4A bit depth");
+            }
+        }
+
+        static float normalizedPcmToFloat(const std::int32_t value,
+                                          const std::uint16_t bitDepth)
+        {
+            switch (bitDepth)
+            {
+                case 16:
+                    return static_cast<float>(value) / 32768.0f;
+                case 24:
+                    return static_cast<float>(
+                               static_cast<double>(value) / 8388608.0);
+                case 32:
+                    return static_cast<float>(
+                               static_cast<double>(value) / 2147483648.0);
+                default:
+                    throw std::runtime_error(
+                        "Unsupported ALAC M4A bit depth");
+            }
         }
 
         static void finalizeLoadedSession(cupuacu::State *state,
@@ -69,17 +143,24 @@ namespace cupuacu::file
             session.currentFileExportSettings =
                 inferExportSettingsForFile(session.currentFile,
                                            CUPUACU_FORMAT_M4A |
-                                               CUPUACU_FORMAT_ALAC,
-                                           cupuacu::SampleFormat::PCM_S16);
+                                               (audio.bitDepth == 24
+                                                    ? CUPUACU_FORMAT_ALAC_24
+                                                    : audio.bitDepth == 32
+                                                          ? CUPUACU_FORMAT_ALAC_32
+                                                          : CUPUACU_FORMAT_ALAC_16),
+                                           audio.sampleFormat);
             session.setPreservationReference(session.currentFile,
                                              session.currentFileExportSettings);
 
-            doc.initialize(cupuacu::SampleFormat::PCM_S16, audio.sampleRate,
+            doc.initialize(audio.sampleFormat, audio.sampleRate,
                            audio.channels, audio.frameCount);
 
             const auto expectedSamples =
                 static_cast<std::size_t>(audio.frameCount) * audio.channels;
-            if (audio.interleavedPcm16Samples.size() != expectedSamples)
+            const auto expectedBytes =
+                expectedSamples *
+                static_cast<std::size_t>((audio.bitDepth + 7u) / 8u);
+            if (audio.interleavedPcmBytes.size() != expectedBytes)
             {
                 throw std::runtime_error("Decoded ALAC M4A sample count mismatch");
             }
@@ -92,12 +173,15 @@ namespace cupuacu::file
                         static_cast<std::size_t>(frame) * audio.channels +
                         static_cast<std::size_t>(ch);
                     doc.setSample(ch, frame,
-                                  pcm16ToFloat(
-                                      audio.interleavedPcm16Samples[sampleIndex]),
+                                  normalizedPcmToFloat(
+                                      readNativePcmSample(
+                                          audio.interleavedPcmBytes,
+                                          sampleIndex, audio.bitDepth),
+                                      audio.bitDepth),
                                   false);
                 }
             }
-            doc.clearMarkers();
+            doc.replaceMarkers(audio.markers);
             finalizeLoadedSession(state, true);
             return true;
         }

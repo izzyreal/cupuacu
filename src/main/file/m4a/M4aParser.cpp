@@ -374,14 +374,202 @@ namespace cupuacu::file::m4a
             }
             return *it;
         }
+
+        std::uint32_t parseTrackId(const Bytes &bytes, const AtomView &trak)
+        {
+            const auto tkhd = requireChild(bytes, trak, "tkhd");
+            requireRange(bytes, tkhd.payloadOffset, 20, "Truncated tkhd atom");
+            return readBe32(bytes, tkhd.payloadOffset + 12);
+        }
+
+        std::string parseHandlerType(const Bytes &bytes, const AtomView &trak)
+        {
+            const auto hdlr = requireNested(bytes, trak, {"mdia", "hdlr"});
+            requireRange(bytes, hdlr.payloadOffset, 12, "Truncated hdlr atom");
+            return readFourCc(bytes, hdlr.payloadOffset + 8);
+        }
+
+        std::vector<std::uint32_t> parseChapterTrackIds(
+            const Bytes &bytes,
+            const AtomView &trak)
+        {
+            const auto tref = findChild(bytes, trak, "tref");
+            if (!tref.has_value())
+            {
+                return {};
+            }
+
+            const auto chap = findChild(bytes, *tref, "chap");
+            if (!chap.has_value())
+            {
+                return {};
+            }
+
+            if ((chap->payloadSize % 4u) != 0u)
+            {
+                throw std::runtime_error("Invalid M4A chapter reference atom");
+            }
+
+            std::vector<std::uint32_t> trackIds;
+            for (std::uint64_t offset = chap->payloadOffset;
+                 offset < chap->payloadOffset + chap->payloadSize;
+                 offset += 4u)
+            {
+                trackIds.push_back(readBe32(bytes, offset));
+            }
+            return trackIds;
+        }
+
+        std::uint32_t parseInitialEmptyEditDuration(const Bytes &bytes,
+                                                    const AtomView &trak)
+        {
+            const auto edts = findChild(bytes, trak, "edts");
+            if (!edts.has_value())
+            {
+                return 0;
+            }
+            const auto elst = findChild(bytes, *edts, "elst");
+            if (!elst.has_value())
+            {
+                return 0;
+            }
+
+            requireRange(bytes, elst->payloadOffset, 8, "Truncated elst atom");
+            const auto version = readU8(bytes, elst->payloadOffset);
+            const auto entryCount = readBe32(bytes, elst->payloadOffset + 4);
+            if (entryCount == 0)
+            {
+                return 0;
+            }
+
+            if (version == 0)
+            {
+                requireRange(bytes, elst->payloadOffset + 8, 12,
+                             "Truncated elst entry");
+                const auto duration = readBe32(bytes, elst->payloadOffset + 8);
+                const auto mediaTime = readBe32(bytes, elst->payloadOffset + 12);
+                return mediaTime == 0xffffffffu ? duration : 0;
+            }
+
+            requireRange(bytes, elst->payloadOffset + 8, 20,
+                         "Truncated elst entry");
+            const auto duration = readBe64(bytes, elst->payloadOffset + 8);
+            const auto mediaTime = readBe64(bytes, elst->payloadOffset + 16);
+            if (mediaTime == std::numeric_limits<std::uint64_t>::max() &&
+                duration <= std::numeric_limits<std::uint32_t>::max())
+            {
+                return static_cast<std::uint32_t>(duration);
+            }
+            return 0;
+        }
+
+        std::vector<std::uint32_t> parseSampleDurations(const Bytes &bytes,
+                                                        const AtomView &stts)
+        {
+            requireRange(bytes, stts.payloadOffset, 8, "Truncated stts atom");
+            const auto entryCount = readBe32(bytes, stts.payloadOffset + 4);
+            requireRange(bytes, stts.payloadOffset + 8,
+                         static_cast<std::uint64_t>(entryCount) * 8u,
+                         "Truncated stts entry table");
+
+            std::vector<std::uint32_t> durations;
+            for (std::uint32_t i = 0; i < entryCount; ++i)
+            {
+                const auto entryOffset = stts.payloadOffset + 8u + i * 8u;
+                const auto sampleCount = readBe32(bytes, entryOffset);
+                const auto sampleDelta = readBe32(bytes, entryOffset + 4);
+                durations.insert(durations.end(), sampleCount, sampleDelta);
+            }
+            return durations;
+        }
+
+        std::vector<cupuacu::DocumentMarker> parseChapterMarkers(
+            const Bytes &bytes,
+            const AtomView &moov,
+            const AtomView &audioTrack)
+        {
+            const auto referencedTrackIds = parseChapterTrackIds(bytes, audioTrack);
+            if (referencedTrackIds.empty())
+            {
+                return {};
+            }
+
+            const auto tracks =
+                childrenInRange(bytes, moov.payloadOffset,
+                                moov.payloadOffset + moov.payloadSize);
+            for (const auto &trackId : referencedTrackIds)
+            {
+                for (const auto &trak : tracks)
+                {
+                    if (trak.type != "trak" || parseTrackId(bytes, trak) != trackId ||
+                        parseHandlerType(bytes, trak) != "text")
+                    {
+                        continue;
+                    }
+
+                    const auto stbl =
+                        requireNested(bytes, trak, {"mdia", "minf", "stbl"});
+                    const auto stts = requireChild(bytes, stbl, "stts");
+                    const auto stsz = requireChild(bytes, stbl, "stsz");
+                    const auto durations = parseSampleDurations(bytes, stts);
+                    const auto sampleSizes = parsePacketSizes(bytes, stsz);
+                    if (durations.size() != sampleSizes.size())
+                    {
+                        throw std::runtime_error(
+                            "M4A chapter timing table does not match sample table");
+                    }
+                    const auto chunkOffset = parseSingleChunkOffset(bytes, stbl);
+
+                    std::vector<cupuacu::DocumentMarker> markers;
+                    markers.reserve(sampleSizes.size());
+                    std::uint64_t sampleOffset = chunkOffset;
+                    std::uint64_t frame =
+                        parseInitialEmptyEditDuration(bytes, trak);
+                    for (std::size_t i = 0; i < sampleSizes.size(); ++i)
+                    {
+                        const auto sampleSize = sampleSizes[i];
+                        requireRange(bytes, sampleOffset, sampleSize,
+                                     "M4A chapter sample extends past file");
+
+                        std::string label;
+                        if (sampleSize >= 2)
+                        {
+                            const auto labelSize = std::min<std::uint32_t>(
+                                readBe16(bytes, sampleOffset), sampleSize - 2u);
+                            label.reserve(labelSize);
+                            for (std::uint32_t j = 0; j < labelSize; ++j)
+                            {
+                                label.push_back(static_cast<char>(
+                                    readU8(bytes, sampleOffset + 2u + j)));
+                            }
+                        }
+                        if (frame <=
+                            static_cast<std::uint64_t>(
+                                std::numeric_limits<std::int64_t>::max()))
+                        {
+                            markers.push_back(cupuacu::DocumentMarker{
+                                .id = static_cast<std::uint64_t>(markers.size() + 1),
+                                .frame = static_cast<std::int64_t>(frame),
+                                .label = std::move(label),
+                            });
+                        }
+                        frame += durations[i];
+                        sampleOffset += sampleSize;
+                    }
+                    return markers;
+                }
+            }
+            return {};
+        }
     } // namespace
 
     M4aParsedAlacFile parseAlacM4a(const Bytes &bytes)
     {
         const auto mdat = requireTopLevel(bytes, "mdat");
         const auto moov = requireTopLevel(bytes, "moov");
+        const auto audioTrack = requireChild(bytes, moov, "trak");
         const auto stbl = requireNested(
-            bytes, moov, {"trak", "mdia", "minf", "stbl"});
+            bytes, audioTrack, {"mdia", "minf", "stbl"});
 
         const auto stsd = requireChild(bytes, stbl, "stsd");
         const auto stts = requireChild(bytes, stbl, "stts");
@@ -424,6 +612,8 @@ namespace cupuacu::file::m4a
             parsed.packetOffsets.push_back(packetOffset);
             packetOffset += packetSize;
         }
+
+        parsed.markers = parseChapterMarkers(bytes, moov, audioTrack);
 
         return parsed;
     }

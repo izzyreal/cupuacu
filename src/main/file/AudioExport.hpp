@@ -92,7 +92,10 @@ namespace cupuacu::file
     };
 
     inline constexpr int CUPUACU_FORMAT_M4A = 0x4d344120;
-    inline constexpr int CUPUACU_FORMAT_ALAC = 0x616c6163;
+    inline constexpr int CUPUACU_FORMAT_ALAC_16 = 0x616c0010;
+    inline constexpr int CUPUACU_FORMAT_ALAC_24 = 0x616c0018;
+    inline constexpr int CUPUACU_FORMAT_ALAC_32 = 0x616c0020;
+    inline constexpr int CUPUACU_FORMAT_ALAC = CUPUACU_FORMAT_ALAC_16;
 
     std::vector<AudioExportFormatOption> probeAvailableExportFormats();
     std::vector<AudioOpenFormatOption> probeAvailableOpenFormats();
@@ -127,6 +130,8 @@ namespace cupuacu::file
     normalizeExportPath(const std::filesystem::path &path,
                         const AudioExportSettings &settings);
 
+    std::uint32_t m4aAlacBitDepthForSettings(
+        const AudioExportSettings &settings);
     bool isOverwritePreservingWavRewriteCandidate(
         const AudioExportSettings &settings);
     bool isNativeM4aAlacExportSettings(const AudioExportSettings &settings);

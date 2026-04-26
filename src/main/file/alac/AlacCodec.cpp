@@ -110,6 +110,12 @@ namespace cupuacu::file::alac
                    16u;
         }
 
+        [[nodiscard]] std::uint32_t bytesPerSample(
+            const std::uint32_t bitsPerSample)
+        {
+            return (bitsPerSample + 7u) / 8u;
+        }
+
         [[nodiscard]] bool decoderConfigMatches(
             const ALACDecoder &decoder,
             const AlacDecodingParameters &parameters)
@@ -283,14 +289,14 @@ namespace cupuacu::file::alac
         return encoded;
     }
 
-    std::optional<AlacDecodedPcm16>
-    decodePcm16Packets(const AlacDecodingParameters &parameters,
-                       const std::vector<std::uint8_t> &packetBytes,
-                       const std::vector<std::uint32_t> &packetSizes)
+    std::optional<AlacDecodedPcm>
+    decodePcmPackets(const AlacDecodingParameters &parameters,
+                     const std::vector<std::uint8_t> &packetBytes,
+                     const std::vector<std::uint32_t> &packetSizes)
     {
         if (parameters.sampleRate == 0 || parameters.channels == 0 ||
             parameters.channels > maxChannels() ||
-            parameters.bitsPerSample != 16 ||
+            alacFormatFlagForBits(parameters.bitsPerSample) == 0 ||
             parameters.framesPerPacket != defaultFramesPerPacket() ||
             parameters.frameCount == 0 || parameters.magicCookie.empty() ||
             packetBytes.empty() || packetSizes.empty() ||
@@ -317,16 +323,20 @@ namespace cupuacu::file::alac
             return std::nullopt;
         }
 
-        AlacDecodedPcm16 decoded{};
+        AlacDecodedPcm decoded{};
         decoded.sampleRate = parameters.sampleRate;
         decoded.channels = parameters.channels;
+        decoded.bitsPerSample = parameters.bitsPerSample;
         decoded.frameCount = parameters.frameCount;
-        decoded.interleavedSamples.reserve(totalSampleCount);
+        const auto outputBytesPerSample = bytesPerSample(parameters.bitsPerSample);
+        decoded.interleavedPcmBytes.reserve(totalSampleCount *
+                                            outputBytesPerSample);
 
         const auto maxPacketSampleCount =
             static_cast<std::size_t>(decoder.mConfig.frameLength) *
             static_cast<std::size_t>(parameters.channels);
-        std::vector<std::int16_t> packetOutput(maxPacketSampleCount);
+        std::vector<std::uint8_t> packetOutput(maxPacketSampleCount *
+                                               outputBytesPerSample);
 
         std::size_t packetByteOffset = 0;
         std::uint32_t decodedFrames = 0;
@@ -373,10 +383,11 @@ namespace cupuacu::file::alac
             const auto packetSampleCount =
                 static_cast<std::size_t>(decodedPacketFrames) *
                 static_cast<std::size_t>(parameters.channels);
-            decoded.interleavedSamples.insert(
-                decoded.interleavedSamples.end(), packetOutput.begin(),
+            const auto packetByteCount = packetSampleCount * outputBytesPerSample;
+            decoded.interleavedPcmBytes.insert(
+                decoded.interleavedPcmBytes.end(), packetOutput.begin(),
                 packetOutput.begin() +
-                    static_cast<std::ptrdiff_t>(packetSampleCount));
+                    static_cast<std::ptrdiff_t>(packetByteCount));
 
             decodedFrames += decodedPacketFrames;
             packetByteOffset += packetSize;
@@ -384,11 +395,42 @@ namespace cupuacu::file::alac
 
         if (packetByteOffset != packetBytes.size() ||
             decodedFrames != parameters.frameCount ||
-            decoded.interleavedSamples.size() != totalSampleCount)
+            decoded.interleavedPcmBytes.size() !=
+                totalSampleCount * outputBytesPerSample)
         {
             return std::nullopt;
         }
 
+        return decoded;
+    }
+
+    std::optional<AlacDecodedPcm16>
+    decodePcm16Packets(const AlacDecodingParameters &parameters,
+                       const std::vector<std::uint8_t> &packetBytes,
+                       const std::vector<std::uint32_t> &packetSizes)
+    {
+        if (parameters.bitsPerSample != 16)
+        {
+            return std::nullopt;
+        }
+
+        const auto decodedBytes =
+            decodePcmPackets(parameters, packetBytes, packetSizes);
+        if (!decodedBytes.has_value() ||
+            decodedBytes->interleavedPcmBytes.size() % sizeof(std::int16_t) != 0)
+        {
+            return std::nullopt;
+        }
+
+        AlacDecodedPcm16 decoded{};
+        decoded.sampleRate = decodedBytes->sampleRate;
+        decoded.channels = decodedBytes->channels;
+        decoded.frameCount = decodedBytes->frameCount;
+        decoded.interleavedSamples.resize(
+            decodedBytes->interleavedPcmBytes.size() / sizeof(std::int16_t));
+        std::memcpy(decoded.interleavedSamples.data(),
+                    decodedBytes->interleavedPcmBytes.data(),
+                    decodedBytes->interleavedPcmBytes.size());
         return decoded;
     }
 

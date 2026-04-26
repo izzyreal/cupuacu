@@ -31,18 +31,36 @@ namespace cupuacu::file::m4a
             }
             return packetBytes;
         }
+
+        cupuacu::SampleFormat sampleFormatForBitDepth(
+            const std::uint16_t bitDepth)
+        {
+            switch (bitDepth)
+            {
+                case 16:
+                    return cupuacu::SampleFormat::PCM_S16;
+                case 24:
+                    return cupuacu::SampleFormat::PCM_S24;
+                case 32:
+                    return cupuacu::SampleFormat::PCM_S32;
+                default:
+                    throw std::runtime_error(
+                        "Unsupported ALAC bit depth in M4A file");
+            }
+        }
     } // namespace
 
     M4aAlacPcmData readAlacM4a(const Bytes &bytes)
     {
         const auto parsed = parseAlacM4a(bytes);
-        if (parsed.bitDepth != 16)
+        if (parsed.bitDepth != 16 && parsed.bitDepth != 24 &&
+            parsed.bitDepth != 32)
         {
             throw std::runtime_error(
-                "Only 16-bit ALAC M4A files are currently supported");
+                "Only 16, 24, and 32-bit ALAC M4A files are currently supported");
         }
 
-        const auto decoded = cupuacu::file::alac::decodePcm16Packets(
+        const auto decoded = cupuacu::file::alac::decodePcmPackets(
             {
                 .sampleRate = parsed.sampleRate,
                 .channels = parsed.channels,
@@ -57,8 +75,11 @@ namespace cupuacu::file::m4a
         {
             throw std::runtime_error("Failed to decode ALAC M4A packets");
         }
-        if (decoded->interleavedSamples.size() !=
-            static_cast<std::size_t>(decoded->frameCount) * decoded->channels)
+        const auto bytesPerSample =
+            static_cast<std::size_t>((decoded->bitsPerSample + 7u) / 8u);
+        if (decoded->interleavedPcmBytes.size() !=
+            static_cast<std::size_t>(decoded->frameCount) * decoded->channels *
+                bytesPerSample)
         {
             throw std::runtime_error("Decoded ALAC M4A sample count mismatch");
         }
@@ -66,8 +87,12 @@ namespace cupuacu::file::m4a
         return {
             .sampleRate = decoded->sampleRate,
             .channels = static_cast<std::uint16_t>(decoded->channels),
+            .bitDepth = static_cast<std::uint16_t>(decoded->bitsPerSample),
             .frameCount = decoded->frameCount,
-            .interleavedPcm16Samples = decoded->interleavedSamples,
+            .sampleFormat = sampleFormatForBitDepth(
+                static_cast<std::uint16_t>(decoded->bitsPerSample)),
+            .interleavedPcmBytes = decoded->interleavedPcmBytes,
+            .markers = parsed.markers,
         };
     }
 

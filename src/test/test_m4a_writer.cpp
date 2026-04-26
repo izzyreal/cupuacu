@@ -8,6 +8,7 @@
 #include "file/file_loading.hpp"
 #include "file/m4a/M4aAlacWriter.hpp"
 #include "file/m4a/M4aAlacReader.hpp"
+#include "file/m4a/M4aParser.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -175,7 +176,7 @@ TEST_CASE("M4A ALAC export settings are available by default", "[m4a]")
     REQUIRE(settings->container == cupuacu::file::AudioExportContainer::M4A);
     REQUIRE(settings->codec == cupuacu::file::AudioExportCodec::ALAC);
     REQUIRE(settings->majorFormat == cupuacu::file::CUPUACU_FORMAT_M4A);
-    REQUIRE(settings->subtype == cupuacu::file::CUPUACU_FORMAT_ALAC);
+    REQUIRE(settings->subtype == cupuacu::file::CUPUACU_FORMAT_ALAC_24);
     REQUIRE(settings->extension == "m4a");
     REQUIRE(cupuacu::file::isNativeM4aAlacExportSettings(*settings));
 }
@@ -195,9 +196,10 @@ TEST_CASE("M4A ALAC export format is probed without libsndfile support",
 
     REQUIRE(it != formats.end());
     REQUIRE(it->majorFormat == cupuacu::file::CUPUACU_FORMAT_M4A);
-    REQUIRE(it->encodings.size() == 1);
-    REQUIRE(it->encodings.front().subtype ==
-            cupuacu::file::CUPUACU_FORMAT_ALAC);
+    REQUIRE(it->encodings.size() == 3);
+    REQUIRE(it->encodings[0].subtype == cupuacu::file::CUPUACU_FORMAT_ALAC_16);
+    REQUIRE(it->encodings[1].subtype == cupuacu::file::CUPUACU_FORMAT_ALAC_24);
+    REQUIRE(it->encodings[2].subtype == cupuacu::file::CUPUACU_FORMAT_ALAC_32);
     REQUIRE(it->encodings.front().extension == "m4a");
 }
 
@@ -252,15 +254,16 @@ TEST_CASE("M4A ALAC files are readable by the native loader", "[m4a]")
     const auto audio = cupuacu::file::m4a::readAlacM4aFile(outputPath);
     REQUIRE(audio.sampleRate == 44100);
     REQUIRE(audio.channels == 2);
+    REQUIRE(audio.bitDepth == 24);
     REQUIRE(audio.frameCount == 4);
-    REQUIRE(audio.interleavedPcm16Samples.size() == 8);
+    REQUIRE(audio.interleavedPcmBytes.size() == 24);
 
     cupuacu::State state;
     state.getActiveDocumentSession().currentFile = outputPath.string();
     cupuacu::file::loadSampleData(&state);
 
     const auto &session = state.getActiveDocumentSession();
-    REQUIRE(session.document.getSampleFormat() == cupuacu::SampleFormat::PCM_S16);
+    REQUIRE(session.document.getSampleFormat() == cupuacu::SampleFormat::PCM_S24);
     REQUIRE(session.document.getSampleRate() == 44100);
     REQUIRE(session.document.getChannelCount() == 2);
     REQUIRE(session.document.getFrameCount() == 4);
@@ -269,4 +272,88 @@ TEST_CASE("M4A ALAC files are readable by the native loader", "[m4a]")
             cupuacu::file::AudioExportContainer::M4A);
     REQUIRE(std::fabs(session.document.getSample(0, 3) - 0.75f) < 0.001f);
     REQUIRE(std::fabs(session.document.getSample(1, 3) + 0.75f) < 0.001f);
+}
+
+TEST_CASE("M4A ALAC writer preserves selected integer bit depths", "[m4a]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-m4a-bit-depths"));
+
+    const auto assertBitDepth =
+        [&](const cupuacu::SampleFormat format, const std::uint32_t bitDepth)
+    {
+        auto document = makeStereoDocument();
+        document.initialize(format, 44100, 2, 4);
+        document.setSample(0, 0, 0.0f, false);
+        document.setSample(1, 0, -0.1f, false);
+        document.setSample(0, 1, 0.25f, false);
+        document.setSample(1, 1, -0.25f, false);
+        document.setSample(0, 2, 0.5f, false);
+        document.setSample(1, 2, -0.5f, false);
+        document.setSample(0, 3, 0.75f, false);
+        document.setSample(1, 3, -0.75f, false);
+
+        const auto outputPath =
+            cleanup.get() / ("depth-" + std::to_string(bitDepth) + ".m4a");
+        cupuacu::file::m4a::writeAlacM4aFile(document, outputPath, bitDepth);
+
+        const auto audio = cupuacu::file::m4a::readAlacM4aFile(outputPath);
+        REQUIRE(audio.bitDepth == bitDepth);
+        REQUIRE(audio.sampleFormat == format);
+        REQUIRE(audio.interleavedPcmBytes.size() ==
+                static_cast<std::size_t>(audio.frameCount) * audio.channels *
+                    ((bitDepth + 7u) / 8u));
+
+        cupuacu::State state;
+        state.getActiveDocumentSession().currentFile = outputPath.string();
+        cupuacu::file::loadSampleData(&state);
+        const auto &loaded = state.getActiveDocumentSession().document;
+        REQUIRE(loaded.getSampleFormat() == format);
+        REQUIRE(std::fabs(loaded.getSample(0, 3) - 0.75f) < 0.001f);
+        REQUIRE(std::fabs(loaded.getSample(1, 3) + 0.75f) < 0.001f);
+    };
+
+    assertBitDepth(cupuacu::SampleFormat::PCM_S16, 16);
+    assertBitDepth(cupuacu::SampleFormat::PCM_S24, 24);
+    assertBitDepth(cupuacu::SampleFormat::PCM_S32, 32);
+}
+
+TEST_CASE("M4A ALAC writer round-trips markers as chapter track", "[m4a]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-m4a-chapters"));
+    const auto outputPath = cleanup.get() / "chapters.m4a";
+
+    auto document = makeStereoDocument();
+    document.addMarker(1, "Intro");
+    document.addMarker(3, "Hit");
+
+    cupuacu::file::m4a::writeAlacM4aFile(document, outputPath);
+
+    const auto bytes = readBytes(outputPath);
+    const auto ftypSize = readBe32(bytes, 0);
+    const auto mdatOffset = static_cast<std::size_t>(ftypSize);
+    const auto mdatSize = readBe32(bytes, mdatOffset);
+    const auto moovOffset = mdatOffset + mdatSize;
+    const auto audioTrakOffset = findChildOffset(bytes, moovOffset + 8, "trak");
+    const auto trefOffset = findChildOffset(bytes, audioTrakOffset + 8, "tref");
+    const auto chapOffset = findChildOffset(bytes, trefOffset + 8, "chap");
+    REQUIRE(readBe32(bytes, chapOffset + 8) == 2);
+
+    const auto parsed = cupuacu::file::m4a::parseAlacM4aFile(outputPath);
+    REQUIRE(parsed.markers.size() == 2);
+    REQUIRE(parsed.markers[0].frame == 1);
+    REQUIRE(parsed.markers[0].label == "Intro");
+    REQUIRE(parsed.markers[1].frame == 3);
+    REQUIRE(parsed.markers[1].label == "Hit");
+
+    cupuacu::State state;
+    state.getActiveDocumentSession().currentFile = outputPath.string();
+    cupuacu::file::loadSampleData(&state);
+    const auto &markers =
+        state.getActiveDocumentSession().document.getMarkers();
+    REQUIRE(markers.size() == 2);
+    REQUIRE(markers[0].frame == 1);
+    REQUIRE(markers[0].label == "Intro");
+    REQUIRE(markers[1].frame == 3);
+    REQUIRE(markers[1].label == "Hit");
 }
