@@ -84,7 +84,8 @@ namespace
 
 void cupuacu::file::AudioFileWriter::writeFile(
     cupuacu::State *state, const std::filesystem::path &outputPath,
-    const AudioExportSettings &settings)
+    const AudioExportSettings &settings,
+    WriteProgressCallback progress)
 {
     if (!state || outputPath.empty())
     {
@@ -95,14 +96,31 @@ void cupuacu::file::AudioFileWriter::writeFile(
         throw std::invalid_argument("Export settings are invalid");
     }
 
-    const auto &session = state->getActiveDocumentSession();
-    const auto &document = session.document;
+    const auto lease =
+        state->getActiveDocumentSession().document.acquireReadLease();
+    writeFile(lease, outputPath, settings, std::move(progress));
+}
+
+void cupuacu::file::AudioFileWriter::writeFile(
+    const cupuacu::Document::ReadLease &document,
+    const std::filesystem::path &outputPath,
+    const AudioExportSettings &settings,
+    WriteProgressCallback progress)
+{
+    if (outputPath.empty())
+    {
+        throw std::invalid_argument("Output path is empty");
+    }
+    if (!settings.isValid())
+    {
+        throw std::invalid_argument("Export settings are invalid");
+    }
 
     if (cupuacu::file::isNativeM4aAlacExportSettings(settings))
     {
         cupuacu::file::m4a::writeAlacM4aFile(
             document, outputPath,
-            cupuacu::file::m4aAlacBitDepthForSettings(settings));
+            cupuacu::file::m4aAlacBitDepthForSettings(settings), progress);
         return;
     }
 
@@ -142,26 +160,54 @@ void cupuacu::file::AudioFileWriter::writeFile(
             applyEncodingSettings(snd, sampleRate, settings);
 
             const sf_count_t frames = document.getFrameCount();
-            std::vector<float> interleaved(static_cast<std::size_t>(frames) *
-                                           static_cast<std::size_t>(channels));
-            for (sf_count_t frame = 0; frame < frames; ++frame)
+            constexpr sf_count_t chunkFrames = 65536;
+            std::vector<float> interleaved(
+                static_cast<std::size_t>(chunkFrames) *
+                static_cast<std::size_t>(channels));
+            sf_count_t totalWritten = 0;
+            if (progress)
             {
-                for (int channel = 0; channel < channels; ++channel)
-                {
-                    interleaved[static_cast<std::size_t>(frame) *
-                                    static_cast<std::size_t>(channels) +
-                                static_cast<std::size_t>(channel)] =
-                        document.getSample(channel, frame);
-                }
+                progress(outputPath.string(), 0.0);
             }
 
-            const sf_count_t written =
-                sf_writef_float(snd, interleaved.data(), frames);
+            for (sf_count_t startFrame = 0; startFrame < frames;
+                 startFrame += chunkFrames)
+            {
+                const sf_count_t framesToWrite =
+                    std::min(chunkFrames, frames - startFrame);
+                for (sf_count_t frame = 0; frame < framesToWrite; ++frame)
+                {
+                    for (int channel = 0; channel < channels; ++channel)
+                    {
+                        interleaved[static_cast<std::size_t>(frame) *
+                                        static_cast<std::size_t>(channels) +
+                                    static_cast<std::size_t>(channel)] =
+                            document.getSample(channel, startFrame + frame);
+                    }
+                }
+
+                const sf_count_t written =
+                    sf_writef_float(snd, interleaved.data(), framesToWrite);
+                totalWritten += written;
+                if (written != framesToWrite)
+                {
+                    break;
+                }
+                if (progress)
+                {
+                    progress(outputPath.string(),
+                             frames > 0
+                                 ? std::optional<double>(
+                                       static_cast<double>(totalWritten) /
+                                       static_cast<double>(frames))
+                                 : std::optional<double>(1.0));
+                }
+            }
             const std::string writeDetail = sf_strerror(snd);
             sf_write_sync(snd);
             sf_close(snd);
 
-            if (written != frames)
+            if (totalWritten != frames)
             {
                 throw cupuacu::file::detail::makeIoFailure(
                     "Failed to write all audio frames", writeDetail);

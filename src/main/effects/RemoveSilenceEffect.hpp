@@ -27,6 +27,13 @@
 #include <string>
 #include <vector>
 
+namespace cupuacu::actions::effects
+{
+    bool queueRemoveSilence(
+        cupuacu::State *state,
+        const ::cupuacu::effects::RemoveSilenceSettings &settings);
+}
+
 namespace cupuacu::effects
 {
     enum class RemoveSilenceMode
@@ -379,10 +386,51 @@ namespace cupuacu::effects
                               const int64_t relevantStartToUse,
                               const int64_t relevantLengthToUse)
             : DurationMutationUndoable(stateToUse),
+              tabIndex(stateToUse ? stateToUse->activeTabIndex : -1),
               runs(std::move(runsToRemove)), relevantStart(relevantStartToUse),
               originalRelevantLength(relevantLengthToUse)
         {
+            updateGui = [this]
+            {
+                if (!state || state->activeTabIndex != tabIndex)
+                {
+                    return;
+                }
+                afterDurationMutationUi();
+                cupuacu::actions::applyDurationChangeViewPolicy(state);
+            };
             captureRemovedSamples();
+        }
+
+        RemoveSilenceUndoable(
+            cupuacu::State *stateToUse, const int tabIndexToUse,
+            std::vector<SilenceRange> runsToRemove,
+            const int64_t relevantStartToUse,
+            const int64_t relevantLengthToUse,
+            std::vector<std::vector<std::vector<float>>> removedSamplesToUse,
+            const int64_t originalCursorToUse, const bool hadSelectionToUse)
+            : DurationMutationUndoable(stateToUse),
+              tabIndex(tabIndexToUse),
+              runs(std::move(runsToRemove)),
+              removedSamples(std::move(removedSamplesToUse)),
+              relevantStart(relevantStartToUse),
+              originalRelevantLength(relevantLengthToUse),
+              originalCursor(originalCursorToUse),
+              hadSelection(hadSelectionToUse)
+        {
+            updateGui = [this]
+            {
+                if (!state || state->activeTabIndex != tabIndex)
+                {
+                    return;
+                }
+                afterDurationMutationUi();
+                cupuacu::actions::applyDurationChangeViewPolicy(state);
+            };
+            for (const auto &run : runs)
+            {
+                removedFrameCount += run.frameCount;
+            }
         }
 
         void redo() override
@@ -392,7 +440,13 @@ namespace cupuacu::effects
                 return;
             }
 
-            auto &session = state->getActiveDocumentSession();
+            if (tabIndex < 0 || tabIndex >= static_cast<int>(state->tabs.size()))
+            {
+                return;
+            }
+
+            auto &session =
+                state->tabs[static_cast<std::size_t>(tabIndex)].session;
             auto &document = session.document;
             for (auto it = runs.rbegin(); it != runs.rend(); ++it)
             {
@@ -406,7 +460,7 @@ namespace cupuacu::effects
             session.syncSelectionAndCursorToDocumentLength();
             const int64_t newRelevantLength =
                 std::max<int64_t>(0, originalRelevantLength - removedFrameCount);
-            updateCursorPos(state, relevantStart);
+            session.cursor = relevantStart;
             if (hadSelection)
             {
                 session.selection.setValue1(relevantStart);
@@ -425,7 +479,13 @@ namespace cupuacu::effects
                 return;
             }
 
-            auto &session = state->getActiveDocumentSession();
+            if (tabIndex < 0 || tabIndex >= static_cast<int>(state->tabs.size()))
+            {
+                return;
+            }
+
+            auto &session =
+                state->tabs[static_cast<std::size_t>(tabIndex)].session;
             auto &document = session.document;
             const int64_t channelCount = document.getChannelCount();
             for (std::size_t runIndex = 0; runIndex < runs.size(); ++runIndex)
@@ -448,7 +508,7 @@ namespace cupuacu::effects
             }
             document.updateWaveformCache();
             session.syncSelectionAndCursorToDocumentLength();
-            updateCursorPos(state, originalCursor);
+            session.cursor = originalCursor;
             if (hadSelection)
             {
                 session.selection.setValue1(relevantStart);
@@ -485,6 +545,7 @@ namespace cupuacu::effects
         }
 
     private:
+        int tabIndex = -1;
         std::vector<SilenceRange> runs;
         std::vector<std::vector<std::vector<float>>> removedSamples;
         int64_t relevantStart = 0;
@@ -500,7 +561,13 @@ namespace cupuacu::effects
                 return;
             }
 
-            auto &session = state->getActiveDocumentSession();
+            if (tabIndex < 0 || tabIndex >= static_cast<int>(state->tabs.size()))
+            {
+                return;
+            }
+
+            auto &session =
+                state->tabs[static_cast<std::size_t>(tabIndex)].session;
             const auto &document = session.document;
             const int64_t channelCount = document.getChannelCount();
             originalCursor = session.cursor;
@@ -534,6 +601,7 @@ namespace cupuacu::effects
                                             const int64_t startFrameToUse,
                                             const int64_t frameCountToUse)
             : Undoable(stateToUse),
+              tabIndex(stateToUse ? stateToUse->activeTabIndex : -1),
               targetChannels(std::move(targetChannelsToUse)),
               runs(std::move(runsToRemove)), startFrame(startFrameToUse),
               frameCount(frameCountToUse)
@@ -541,6 +609,34 @@ namespace cupuacu::effects
             captureSamples();
             updateGui = [this]
             {
+                cupuacu::gui::Waveform::updateAllSamplePoints(state);
+                cupuacu::gui::Waveform::setAllWaveformsDirty(state);
+                cupuacu::gui::requestMainViewRefresh(state);
+            };
+        }
+
+        RemoveSilenceChannelCompactUndoable(
+            cupuacu::State *stateToUse, const int tabIndexToUse,
+            std::vector<int64_t> targetChannelsToUse,
+            std::vector<SilenceRange> runsToRemove,
+            const int64_t startFrameToUse, const int64_t frameCountToUse,
+            std::vector<std::vector<float>> oldSamplesToUse,
+            std::vector<std::vector<float>> newSamplesToUse)
+            : Undoable(stateToUse),
+              tabIndex(tabIndexToUse),
+              targetChannels(std::move(targetChannelsToUse)),
+              runs(std::move(runsToRemove)),
+              startFrame(startFrameToUse),
+              frameCount(frameCountToUse),
+              oldSamples(std::move(oldSamplesToUse)),
+              newSamples(std::move(newSamplesToUse))
+        {
+            updateGui = [this]
+            {
+                if (!state || state->activeTabIndex != tabIndex)
+                {
+                    return;
+                }
                 cupuacu::gui::Waveform::updateAllSamplePoints(state);
                 cupuacu::gui::Waveform::setAllWaveformsDirty(state);
                 cupuacu::gui::requestMainViewRefresh(state);
@@ -574,6 +670,7 @@ namespace cupuacu::effects
         }
 
     private:
+        int tabIndex = -1;
         std::vector<int64_t> targetChannels;
         std::vector<SilenceRange> runs;
         int64_t startFrame = 0;
@@ -588,7 +685,13 @@ namespace cupuacu::effects
                 return;
             }
 
-            const auto &document = state->getActiveDocumentSession().document;
+            if (tabIndex < 0 || tabIndex >= static_cast<int>(state->tabs.size()))
+            {
+                return;
+            }
+
+            const auto &document =
+                state->tabs[static_cast<std::size_t>(tabIndex)].session.document;
             oldSamples.resize(targetChannels.size());
             newSamples.resize(targetChannels.size());
 
@@ -646,7 +749,13 @@ namespace cupuacu::effects
                 return;
             }
 
-            auto &document = state->getActiveDocumentSession().document;
+            if (tabIndex < 0 || tabIndex >= static_cast<int>(state->tabs.size()))
+            {
+                return;
+            }
+
+            auto &document =
+                state->tabs[static_cast<std::size_t>(tabIndex)].session.document;
             for (std::size_t channelIndex = 0; channelIndex < targetChannels.size();
                  ++channelIndex)
             {
@@ -686,28 +795,7 @@ namespace cupuacu::effects
             return;
         }
 
-        cupuacu::LongTaskScope longTask(state, "Applying effect",
-                                        "Remove silence");
-        const auto runs = planSilenceRemoval(
-            document, targetChannels, startFrame, frameCount,
-            currentThresholdAbsolute(state, settings),
-            removeSilenceModeFromIndex(settings.modeIndex), settings);
-        if (runs.empty())
-        {
-            return;
-        }
-
-        if (static_cast<int64_t>(targetChannels.size()) == document.getChannelCount())
-        {
-            state->addAndDoUndoable(std::make_shared<RemoveSilenceUndoable>(
-                state, runs, startFrame, frameCount));
-        }
-        else
-        {
-            state->addAndDoUndoable(
-                std::make_shared<RemoveSilenceChannelCompactUndoable>(
-                    state, targetChannels, runs, startFrame, frameCount));
-        }
+        cupuacu::actions::effects::queueRemoveSilence(state, settings);
     }
 
     class RemoveSilenceDialog

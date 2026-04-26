@@ -30,7 +30,15 @@ namespace cupuacu
 
     namespace actions
     {
-        class BackgroundOpenJob;
+        namespace io
+        {
+            class BackgroundOpenJob;
+            class BackgroundSaveJob;
+        } // namespace io
+        namespace effects
+        {
+            class BackgroundEffectJob;
+        } // namespace effects
         struct CustomDataSource;
         class Undoable;
     } // namespace actions
@@ -63,7 +71,9 @@ namespace cupuacu
     void destroyGenerateSilenceDialogWindow(gui::GenerateSilenceDialogWindow *);
     void destroyExportAudioDialogWindow(gui::ExportAudioDialogWindow *);
     void destroyMarkerEditorDialogWindow(gui::MarkerEditorDialogWindow *);
-    void destroyBackgroundOpenJob(actions::BackgroundOpenJob *);
+    void destroyBackgroundOpenJob(actions::io::BackgroundOpenJob *);
+    void destroyBackgroundSaveJob(actions::io::BackgroundSaveJob *);
+    void destroyBackgroundEffectJob(actions::effects::BackgroundEffectJob *);
 
     enum class PendingSaveAsMode
     {
@@ -172,9 +182,15 @@ namespace cupuacu
             pendingStartupWarning;
         std::deque<PendingOpenRequest> pendingOpenFiles;
         StartupRestoreStatus startupRestore;
-        std::unique_ptr<actions::BackgroundOpenJob,
-                        void (*)(actions::BackgroundOpenJob *)>
+        std::unique_ptr<actions::io::BackgroundOpenJob,
+                        void (*)(actions::io::BackgroundOpenJob *)>
             backgroundOpenJob{nullptr, destroyBackgroundOpenJob};
+        std::unique_ptr<actions::io::BackgroundSaveJob,
+                        void (*)(actions::io::BackgroundSaveJob *)>
+            backgroundSaveJob{nullptr, destroyBackgroundSaveJob};
+        std::unique_ptr<actions::effects::BackgroundEffectJob,
+                        void (*)(actions::effects::BackgroundEffectJob *)>
+            backgroundEffectJob{nullptr, destroyBackgroundEffectJob};
         gui::Window *modalWindow = nullptr;
         LongTaskStatus longTask;
         bool mainWindowInitialFrameRendered = false;
@@ -245,6 +261,10 @@ namespace cupuacu
             return getActiveTab()->redoables;
         }
 
+        void addUndoableToTab(int tabIndex,
+                              std::shared_ptr<actions::Undoable>);
+        void addAndDoUndoableToTab(int tabIndex,
+                                   std::shared_ptr<actions::Undoable>);
         void addUndoable(std::shared_ptr<actions::Undoable>);
         void addAndDoUndoable(std::shared_ptr<actions::Undoable>);
         void undo();

@@ -5,6 +5,7 @@
 #include "effects/DynamicsEffect.hpp"
 #include "effects/ReverseEffect.hpp"
 #include "TestPaths.hpp"
+#include "actions/effects/BackgroundEffect.hpp"
 #include "gui/MainView.hpp"
 #include "State.hpp"
 #include "actions/audio/Cut.hpp"
@@ -20,6 +21,8 @@
 #include "gui/Window.hpp"
 
 #include <memory>
+#include <chrono>
+#include <thread>
 #include <vector>
 
 namespace
@@ -73,6 +76,21 @@ namespace
             result[static_cast<size_t>(i)] = document.getSample(channel, i);
         }
         return result;
+    }
+
+    void drainPendingEffectWork(cupuacu::State *state)
+    {
+        for (int attempt = 0; attempt < 5000; ++attempt)
+        {
+            cupuacu::actions::effects::processPendingEffectWork(state);
+            if (!state->backgroundEffectJob)
+            {
+                return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+
+        FAIL("Timed out waiting for background effect work");
     }
 } // namespace
 
@@ -210,6 +228,7 @@ TEST_CASE("Reverse applies across the whole mono document and respects undo",
     initializeMonoDocument(state, {0, 1, 2, 3, 4});
 
     cupuacu::effects::performReverse(&state);
+    drainPendingEffectWork(&state);
 
     REQUIRE(readMonoSamples(state.getActiveDocumentSession().document) ==
             std::vector<float>({4, 3, 2, 1, 0}));
@@ -233,6 +252,7 @@ TEST_CASE("Reverse respects the selected range and selected channel",
     state.getActiveViewState().selectedChannels = cupuacu::SelectedChannels::LEFT;
 
     cupuacu::effects::performReverse(&state);
+    drainPendingEffectWork(&state);
 
     REQUIRE(readChannelSamples(session.document, 0) ==
             std::vector<float>({0, 3, 2, 1, 4}));
@@ -482,6 +502,7 @@ TEST_CASE("Amplify/Fade applies across the whole document on all channels",
 
     cupuacu::effects::performAmplifyFade(
         &state, cupuacu::effects::AmplifyFadeSettings{200.0, 200.0, 0, false});
+    drainPendingEffectWork(&state);
 
     REQUIRE(readChannelSamples(state.getActiveDocumentSession().document, 0) ==
             std::vector<float>({2, 4, 6}));
@@ -507,6 +528,7 @@ TEST_CASE("Amplify/Fade processes the full selected range and stops at selection
 
     cupuacu::effects::performAmplifyFade(
         &state, cupuacu::effects::AmplifyFadeSettings{100.0, 0.0, 0, false});
+    drainPendingEffectWork(&state);
 
     REQUIRE(readMonoSamples(state.getActiveDocumentSession().document)[0] ==
             Catch::Approx(10.0f));
@@ -533,6 +555,7 @@ TEST_CASE("Dynamics compresses selected samples and respects undo", "[actions]")
 
     cupuacu::effects::performDynamics(
         &state, cupuacu::effects::DynamicsSettings{50.0, 1});
+    drainPendingEffectWork(&state);
 
     const auto processed = readMonoSamples(state.getActiveDocumentSession().document);
     REQUIRE(processed[0] == Catch::Approx(0.2f));

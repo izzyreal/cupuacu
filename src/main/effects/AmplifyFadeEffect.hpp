@@ -17,6 +17,12 @@
 #include <string>
 #include <vector>
 
+namespace cupuacu::actions::effects
+{
+    bool queueAmplifyFade(cupuacu::State *state,
+                          const ::cupuacu::effects::AmplifyFadeSettings &settings);
+}
+
 namespace cupuacu::effects
 {
     class AmplifyFadeUndoable : public cupuacu::actions::Undoable
@@ -31,12 +37,45 @@ namespace cupuacu::effects
 
         AmplifyFadeUndoable(cupuacu::State *stateToUse,
                             const AmplifyFadeSettings &settingsToUse)
-            : Undoable(stateToUse), settings(settingsToUse),
+            : Undoable(stateToUse),
+              tabIndex(stateToUse ? stateToUse->activeTabIndex : -1),
+              settings(settingsToUse),
               curve(clampCurve(settings.curveIndex))
         {
             captureTargetsAndSamples();
             updateGui = [this]
             {
+                if (!state || state->activeTabIndex != tabIndex)
+                {
+                    return;
+                }
+                cupuacu::gui::Waveform::updateAllSamplePoints(state);
+                cupuacu::gui::Waveform::setAllWaveformsDirty(state);
+                cupuacu::gui::requestMainViewRefresh(state);
+            };
+        }
+
+        AmplifyFadeUndoable(cupuacu::State *stateToUse, const int tabIndexToUse,
+                            const int64_t startFrameToUse,
+                            std::vector<int64_t> targetChannelsToUse,
+                            std::vector<std::vector<float>> oldSamplesToUse,
+                            std::vector<std::vector<float>> newSamplesToUse)
+            : Undoable(stateToUse),
+              tabIndex(tabIndexToUse),
+              startFrame(startFrameToUse),
+              frameCount(oldSamplesToUse.empty()
+                             ? 0
+                             : static_cast<int64_t>(oldSamplesToUse.front().size())),
+              targetChannels(std::move(targetChannelsToUse)),
+              oldSamples(std::move(oldSamplesToUse)),
+              newSamples(std::move(newSamplesToUse))
+        {
+            updateGui = [this]
+            {
+                if (!state || state->activeTabIndex != tabIndex)
+                {
+                    return;
+                }
                 cupuacu::gui::Waveform::updateAllSamplePoints(state);
                 cupuacu::gui::Waveform::setAllWaveformsDirty(state);
                 cupuacu::gui::requestMainViewRefresh(state);
@@ -126,6 +165,7 @@ namespace cupuacu::effects
         std::vector<int64_t> targetChannels;
         std::vector<std::vector<float>> oldSamples;
         std::vector<std::vector<float>> newSamples;
+        int tabIndex = -1;
 
         double gainForFrame(const int64_t frameIndex) const
         {
@@ -139,7 +179,13 @@ namespace cupuacu::effects
                 return;
             }
 
-            auto &document = state->getActiveDocumentSession().document;
+            if (tabIndex < 0 || tabIndex >= static_cast<int>(state->tabs.size()))
+            {
+                return;
+            }
+
+            auto &document =
+                state->tabs[static_cast<std::size_t>(tabIndex)].session.document;
             if (document.getChannelCount() <= 0)
             {
                 return;
@@ -184,7 +230,13 @@ namespace cupuacu::effects
                 return;
             }
 
-            auto &document = state->getActiveDocumentSession().document;
+            if (tabIndex < 0 || tabIndex >= static_cast<int>(state->tabs.size()))
+            {
+                return;
+            }
+
+            auto &document =
+                state->tabs[static_cast<std::size_t>(tabIndex)].session.document;
             for (size_t channelIndex = 0; channelIndex < targetChannels.size();
                  ++channelIndex)
             {
@@ -219,10 +271,7 @@ namespace cupuacu::effects
             return;
         }
 
-        cupuacu::LongTaskScope longTask(state, "Applying effect",
-                                        "Amplify/Fade");
-        state->addAndDoUndoable(
-            std::make_shared<AmplifyFadeUndoable>(state, settings));
+        cupuacu::actions::effects::queueAmplifyFade(state, settings);
     }
 
     inline double computeNormalizePercent(cupuacu::State *state)

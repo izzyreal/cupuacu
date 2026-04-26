@@ -4,6 +4,7 @@
 #include "Document.hpp"
 #include "SelectedChannels.hpp"
 #include "TestPaths.hpp"
+#include "actions/effects/BackgroundEffect.hpp"
 #include "audio/AudioCallbackCore.hpp"
 #include "effects/AmplifyEnvelopeEffect.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
@@ -13,6 +14,20 @@
 
 namespace
 {
+    void drainPendingEffectWork(cupuacu::State *state)
+    {
+        for (int attempt = 0; attempt < 5000; ++attempt)
+        {
+            cupuacu::actions::effects::processPendingEffectWork(state);
+            if (!state->backgroundEffectJob)
+            {
+                return;
+            }
+        }
+
+        FAIL("Timed out waiting for background amplify envelope work");
+    }
+
     void initializeMonoDocument(cupuacu::State &state,
                                 const std::vector<float> &samples)
     {
@@ -46,6 +61,7 @@ TEST_CASE("Amplify Envelope applies linear envelope points and supports undo",
     cupuacu::effects::AmplifyEnvelopeSettings settings{};
     settings.points = {{0.0, 100.0}, {0.5, 0.0}, {1.0, 100.0}};
     cupuacu::effects::performAmplifyEnvelope(&state, settings);
+    drainPendingEffectWork(&state);
 
     const auto processed =
         readMonoSamples(state.getActiveDocumentSession().document);
@@ -58,6 +74,35 @@ TEST_CASE("Amplify Envelope applies linear envelope points and supports undo",
     state.undo();
     REQUIRE(readMonoSamples(state.getActiveDocumentSession().document) ==
             std::vector<float>({1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
+}
+
+TEST_CASE("Amplify Envelope runs in the background and commits undoably",
+          "[effects]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    initializeMonoDocument(state, {1.0f, 1.0f, 1.0f, 1.0f});
+
+    cupuacu::effects::AmplifyEnvelopeSettings settings{};
+    settings.points = {{0.0, 100.0}, {1.0, 50.0}};
+    cupuacu::effects::performAmplifyEnvelope(&state, settings);
+
+    REQUIRE(state.backgroundEffectJob != nullptr);
+    REQUIRE(state.longTask.active);
+    REQUIRE(state.longTask.title == "Applying effect");
+    REQUIRE(state.longTask.detail == "Amplify Envelope");
+
+    drainPendingEffectWork(&state);
+
+    const auto processed =
+        readMonoSamples(state.getActiveDocumentSession().document);
+    REQUIRE(processed[0] == Catch::Approx(1.0f));
+    REQUIRE(processed[1] == Catch::Approx(5.0f / 6.0f));
+    REQUIRE(processed[2] == Catch::Approx(2.0f / 3.0f));
+    REQUIRE(processed[3] == Catch::Approx(0.5f));
+
+    state.undo();
+    REQUIRE(readMonoSamples(state.getActiveDocumentSession().document) ==
+            std::vector<float>({1.0f, 1.0f, 1.0f, 1.0f}));
 }
 
 TEST_CASE("Amplify Envelope normalize resets to a flat normalized envelope",

@@ -435,14 +435,16 @@ namespace cupuacu::actions
             buildPersistedOpenSessionState(state));
     }
 
-    inline void autosaveActiveDocumentAfterMutation(cupuacu::State *state)
+    inline void autosaveDocumentAfterMutation(cupuacu::State *state,
+                                              const int tabIndex)
     {
-        if (!state || !state->paths)
+        if (!state || !state->paths || tabIndex < 0 ||
+            tabIndex >= static_cast<int>(state->tabs.size()))
         {
             return;
         }
 
-        auto &session = state->getActiveDocumentSession();
+        auto &session = state->tabs[static_cast<std::size_t>(tabIndex)].session;
         const auto &document = session.document;
         if (document.getChannelCount() <= 0)
         {
@@ -476,6 +478,15 @@ namespace cupuacu::actions
         session.autosavedWaveformDataVersion = document.getWaveformDataVersion();
         session.autosavedMarkerDataVersion = document.getMarkerDataVersion();
         persistSessionState(state);
+    }
+
+    inline void autosaveActiveDocumentAfterMutation(cupuacu::State *state)
+    {
+        if (!state)
+        {
+            return;
+        }
+        autosaveDocumentAfterMutation(state, state->activeTabIndex);
     }
 
     inline void clearActiveDocumentAutosave(cupuacu::State *state)

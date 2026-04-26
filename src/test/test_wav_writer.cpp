@@ -4,6 +4,7 @@
 #include "State.hpp"
 #include "TestSdlLogSilencer.hpp"
 #include "TestPaths.hpp"
+#include "actions/io/BackgroundSave.hpp"
 #include "actions/Save.hpp"
 #include "actions/audio/RecordEdit.hpp"
 #include "actions/audio/EditCommands.hpp"
@@ -29,9 +30,11 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <random>
 #include <string>
 #include <system_error>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -42,6 +45,21 @@ namespace
         std::uint32_t bits = 0;
         std::memcpy(&bits, &value, sizeof(bits));
         return bits;
+    }
+
+    void drainPendingSaveWork(cupuacu::State *state)
+    {
+        for (int attempt = 0; attempt < 5000; ++attempt)
+        {
+            cupuacu::actions::io::processPendingSaveWork(state);
+            if (!state->backgroundSaveJob)
+            {
+                return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+
+        FAIL("Timed out waiting for background save work");
     }
 
     class ScopedDirCleanup
@@ -1841,6 +1859,153 @@ TEST_CASE("Save as writes a new WAV file and updates active file state", "[file]
     REQUIRE(frames[3] == Catch::Approx(-0.5f).margin(1.0f / 32767.0f));
     REQUIRE(frames[4] == Catch::Approx(0.0f).margin(1.0f / 32767.0f));
     REQUIRE(frames[5] == Catch::Approx(0.25f).margin(1.0f / 32767.0f));
+}
+
+TEST_CASE("Background save as writes a WAV file and finalizes state", "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-background-save-as"));
+    const auto outputPath = cleanup.path() / "exports" / "saved.wav";
+
+    cupuacu::test::StateWithTestPaths state{cleanup.path()};
+
+    auto &session = state.getActiveDocumentSession();
+    session.document.initialize(cupuacu::SampleFormat::PCM_S16, 22050, 1, 4);
+    session.document.setSample(0, 0, -1.0f, false);
+    session.document.setSample(0, 1, -0.25f, false);
+    session.document.setSample(0, 2, 0.25f, false);
+    session.document.setSample(0, 3, 1.0f, false);
+
+    const auto settings = cupuacu::file::defaultExportSettingsForPath(
+        outputPath, session.document.getSampleFormat());
+    REQUIRE(settings.has_value());
+
+    REQUIRE(cupuacu::actions::io::queueSaveAs(&state, outputPath.string(),
+                                              *settings));
+    REQUIRE(state.backgroundSaveJob != nullptr);
+    REQUIRE(state.longTask.active);
+
+    drainPendingSaveWork(&state);
+
+    REQUIRE(state.backgroundSaveJob == nullptr);
+    REQUIRE_FALSE(state.longTask.active);
+    REQUIRE(std::filesystem::exists(outputPath));
+    REQUIRE(session.currentFile == outputPath.string());
+    REQUIRE(session.preservationReferenceFile == outputPath.string());
+    REQUIRE(state.recentFiles == std::vector<std::string>{outputPath.string()});
+
+    int sampleRate = 0;
+    int channels = 0;
+    const auto frames = readFramesAsFloat(outputPath, sampleRate, channels);
+    REQUIRE(sampleRate == 22050);
+    REQUIRE(channels == 1);
+    REQUIRE(frames.size() == 4);
+    REQUIRE(frames[0] == Catch::Approx(-1.0f).margin(1.0f / 32767.0f));
+    REQUIRE(frames[1] == Catch::Approx(-0.25f).margin(1.0f / 32767.0f));
+    REQUIRE(frames[2] == Catch::Approx(0.25f).margin(1.0f / 32767.0f));
+    REQUIRE(frames[3] == Catch::Approx(1.0f).margin(1.0f / 32767.0f));
+}
+
+TEST_CASE("Background preserving save as writes against the reference and finalizes state",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-background-preserving-save-as"));
+    const auto sourcePath = cleanup.path() / "source.wav";
+    const auto outputPath = cleanup.path() / "exports" / "copy.wav";
+
+    writePcm16WavFile(sourcePath, 44100, 1, {100, 200, 300, 400},
+                      {'p', 'r', 'e', '!'}, {'p', 'o', 's', 't'});
+    const auto originalOrder = readChunkOrder(sourcePath);
+    const auto originalJunkChunk = readChunkBytes(sourcePath, "JUNK");
+    const auto originalListChunk = readChunkBytes(sourcePath, "LIST");
+
+    cupuacu::test::StateWithTestPaths state{cleanup.path()};
+    auto &session = state.getActiveDocumentSession();
+    session.currentFile = sourcePath.string();
+    cupuacu::file::loadSampleData(&state);
+    session.document.setSample(0, 1, 0.25f);
+
+    const auto settings = cupuacu::file::defaultExportSettingsForPath(
+        outputPath, session.document.getSampleFormat());
+    REQUIRE(settings.has_value());
+
+    REQUIRE(cupuacu::actions::io::queueSaveAsPreserving(
+        &state, outputPath.string(), *settings));
+    REQUIRE(state.backgroundSaveJob != nullptr);
+    REQUIRE(state.longTask.active);
+
+    drainPendingSaveWork(&state);
+
+    REQUIRE(state.backgroundSaveJob == nullptr);
+    REQUIRE_FALSE(state.longTask.active);
+    REQUIRE(std::filesystem::exists(outputPath));
+    REQUIRE(session.currentFile == outputPath.string());
+    REQUIRE(session.preservationReferenceFile == outputPath.string());
+    REQUIRE(session.currentFileExportSettings.has_value());
+    REQUIRE(session.preservationReferenceExportSettings.has_value());
+    REQUIRE(readChunkOrder(outputPath) == originalOrder);
+    REQUIRE(readChunkBytes(outputPath, "JUNK") == originalJunkChunk);
+    REQUIRE(readChunkBytes(outputPath, "LIST") == originalListChunk);
+
+    int sampleRate = 0;
+    int channels = 0;
+    const auto frames = readFramesAsFloat(outputPath, sampleRate, channels);
+    REQUIRE(sampleRate == 44100);
+    REQUIRE(channels == 1);
+    REQUIRE(frames.size() == 4);
+    REQUIRE(frames[0] == Catch::Approx(100.0f / 32767.0f).margin(0.0001f));
+    REQUIRE(frames[1] == Catch::Approx(0.25f).margin(1.0f / 32767.0f));
+    REQUIRE(frames[2] == Catch::Approx(300.0f / 32767.0f).margin(0.0001f));
+    REQUIRE(frames[3] == Catch::Approx(400.0f / 32767.0f).margin(0.0001f));
+}
+
+TEST_CASE("Preserving WAV write reports progress while encoding samples",
+          "[file]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-preserving-progress"));
+    const auto sourcePath = cleanup.path() / "source.wav";
+    const auto outputPath = cleanup.path() / "copy.wav";
+
+    std::vector<int16_t> samples(20000, 100);
+    writePcm16WavFile(sourcePath, 44100, 1, samples);
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto &session = state.getActiveDocumentSession();
+    session.currentFile = sourcePath.string();
+    cupuacu::file::loadSampleData(&state);
+    session.document.setSample(0, 100, 0.5f);
+
+    const auto settings = cupuacu::file::defaultExportSettingsForPath(
+        outputPath, session.document.getSampleFormat());
+    REQUIRE(settings.has_value());
+
+    std::vector<double> progressValues;
+    const auto lease = session.document.acquireReadLease();
+    cupuacu::file::writePreservingFile(cupuacu::file::PreservationWriteInput{
+        .document = lease,
+        .referencePath = sourcePath,
+        .outputPath = outputPath,
+        .settings = *settings,
+        .progress =
+            [&](const std::string &, const std::optional<double> progress)
+        {
+            if (progress.has_value())
+            {
+                progressValues.push_back(*progress);
+            }
+        },
+    });
+
+    REQUIRE(std::filesystem::exists(outputPath));
+    REQUIRE(progressValues.size() >= 4);
+    REQUIRE(progressValues.front() == Catch::Approx(0.0));
+    REQUIRE(progressValues.back() == Catch::Approx(1.0));
+    REQUIRE(std::is_sorted(progressValues.begin(), progressValues.end()));
+    REQUIRE(std::any_of(progressValues.begin(), progressValues.end(),
+                        [](const double progress)
+                        { return progress > 0.0 && progress < 1.0; }));
 }
 
 TEST_CASE("Save as writes native WAV markers", "[file]")

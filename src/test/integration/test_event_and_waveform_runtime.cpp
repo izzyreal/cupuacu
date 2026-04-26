@@ -6,7 +6,7 @@
 #include "../TestPaths.hpp"
 
 #include "State.hpp"
-#include "actions/BackgroundOpen.hpp"
+#include "actions/io/BackgroundOpen.hpp"
 #include "actions/DocumentLifecycle.hpp"
 #include "actions/ZoomPlanning.hpp"
 #include "file/SndfilePath.hpp"
@@ -407,10 +407,10 @@ namespace
     {
         for (int attempt = 0; attempt < 5000; ++attempt)
         {
-            cupuacu::actions::processPendingOpenWork(state);
+            cupuacu::actions::io::processPendingOpenWork(state);
             if (!state->backgroundOpenJob && state->pendingOpenFiles.empty())
             {
-                cupuacu::actions::processPendingOpenWork(state);
+                cupuacu::actions::io::processPendingOpenWork(state);
                 return;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(1));

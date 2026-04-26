@@ -3,7 +3,7 @@
 #include "IntegrationTestHelpers.hpp"
 
 #include "State.hpp"
-#include "actions/BackgroundOpen.hpp"
+#include "actions/io/BackgroundOpen.hpp"
 #include "actions/ShowOpenFileDialog.hpp"
 #include "file/SndfilePath.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
@@ -199,7 +199,7 @@ TEST_CASE("Pending open work loads queued dialog files asynchronously",
 
     for (int attempt = 0; attempt < 200; ++attempt)
     {
-        cupuacu::actions::processPendingOpenWork(&state);
+        cupuacu::actions::io::processPendingOpenWork(&state);
         if (state.pendingOpenFiles.empty() && !state.backgroundOpenJob &&
             state.getActiveDocumentSession().currentFile == pathString)
         {

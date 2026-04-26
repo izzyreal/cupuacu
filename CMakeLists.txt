@@ -196,7 +196,9 @@ set(CUPUACU_SHARED_SOURCES
     src/main/gui/MenuBar.cpp
     src/main/gui/TooltipController.cpp
     src/main/gui/Window.cpp
-    src/main/actions/BackgroundOpen.cpp
+    src/main/actions/effects/BackgroundEffect.cpp
+    src/main/actions/io/BackgroundOpen.cpp
+    src/main/actions/io/BackgroundSave.cpp
     src/main/actions/Play.cpp
     src/main/actions/Record.cpp
 )
@@ -231,6 +233,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_sample_quantization.cpp
     src/test/test_audio_callback_core.cpp
     src/test/test_long_task.cpp
+    src/test/test_background_effects.cpp
     src/test/test_action_undoables.cpp
     src/test/test_amplify_envelope_effect.cpp
     src/test/test_audio_devices_orchestration.cpp

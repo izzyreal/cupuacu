@@ -19,6 +19,13 @@
 #include <string>
 #include <vector>
 
+namespace cupuacu::actions::effects
+{
+    bool queueAmplifyEnvelope(
+        cupuacu::State *state,
+        ::cupuacu::effects::AmplifyEnvelopeSettings settings);
+}
+
 namespace cupuacu::effects
 {
     inline constexpr double kAmplifyEnvelopeMinPercent = 0.0;
@@ -266,12 +273,46 @@ namespace cupuacu::effects
     public:
         AmplifyEnvelopeUndoable(cupuacu::State *stateToUse,
                                 AmplifyEnvelopeSettings settingsToUse)
-            : Undoable(stateToUse), settings(std::move(settingsToUse))
+            : Undoable(stateToUse),
+              tabIndex(stateToUse ? stateToUse->activeTabIndex : -1),
+              settings(std::move(settingsToUse))
         {
             sanitizeAmplifyEnvelopeSettings(settings);
             captureTargetsAndSamples();
             updateGui = [this]
             {
+                if (!state || state->activeTabIndex != tabIndex)
+                {
+                    return;
+                }
+                cupuacu::gui::Waveform::updateAllSamplePoints(state);
+                cupuacu::gui::Waveform::setAllWaveformsDirty(state);
+                cupuacu::gui::requestMainViewRefresh(state);
+            };
+        }
+
+        AmplifyEnvelopeUndoable(
+            cupuacu::State *stateToUse, const int tabIndexToUse,
+            const int64_t startFrameToUse,
+            std::vector<int64_t> targetChannelsToUse,
+            std::vector<std::vector<float>> oldSamplesToUse,
+            std::vector<std::vector<float>> newSamplesToUse)
+            : Undoable(stateToUse),
+              startFrame(startFrameToUse),
+              frameCount(oldSamplesToUse.empty()
+                             ? 0
+                             : static_cast<int64_t>(oldSamplesToUse.front().size())),
+              targetChannels(std::move(targetChannelsToUse)),
+              oldSamples(std::move(oldSamplesToUse)),
+              newSamples(std::move(newSamplesToUse)),
+              tabIndex(tabIndexToUse)
+        {
+            updateGui = [this]
+            {
+                if (!state || state->activeTabIndex != tabIndex)
+                {
+                    return;
+                }
                 cupuacu::gui::Waveform::updateAllSamplePoints(state);
                 cupuacu::gui::Waveform::setAllWaveformsDirty(state);
                 cupuacu::gui::requestMainViewRefresh(state);
@@ -311,6 +352,7 @@ namespace cupuacu::effects
         std::vector<int64_t> targetChannels;
         std::vector<std::vector<float>> oldSamples;
         std::vector<std::vector<float>> newSamples;
+        int tabIndex = -1;
 
         double gainForFrame(const int64_t frameIndex) const
         {
@@ -325,7 +367,13 @@ namespace cupuacu::effects
                 return;
             }
 
-            auto &document = state->getActiveDocumentSession().document;
+            if (tabIndex < 0 || tabIndex >= static_cast<int>(state->tabs.size()))
+            {
+                return;
+            }
+
+            auto &document =
+                state->tabs[static_cast<std::size_t>(tabIndex)].session.document;
             if (document.getChannelCount() <= 0)
             {
                 return;
@@ -370,7 +418,13 @@ namespace cupuacu::effects
                 return;
             }
 
-            auto &document = state->getActiveDocumentSession().document;
+            if (tabIndex < 0 || tabIndex >= static_cast<int>(state->tabs.size()))
+            {
+                return;
+            }
+
+            auto &document =
+                state->tabs[static_cast<std::size_t>(tabIndex)].session.document;
             for (std::size_t channelIndex = 0;
                  channelIndex < targetChannels.size(); ++channelIndex)
             {
@@ -408,10 +462,8 @@ namespace cupuacu::effects
         }
 
         sanitizeAmplifyEnvelopeSettings(settings);
-        cupuacu::LongTaskScope longTask(state, "Applying effect",
-                                        "Amplify Envelope");
-        state->addAndDoUndoable(std::make_shared<AmplifyEnvelopeUndoable>(
-            state, std::move(settings)));
+        cupuacu::actions::effects::queueAmplifyEnvelope(state,
+                                                        std::move(settings));
     }
 
     class AmplifyEnvelopePreviewProcessor

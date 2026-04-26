@@ -15,7 +15,9 @@
 #include "gui/WindowPlacementPlanning.hpp"
 #include "gui/UiScale.hpp"
 #include "gui/Window.hpp"
-#include "actions/BackgroundOpen.hpp"
+#include "actions/effects/BackgroundEffect.hpp"
+#include "actions/io/BackgroundOpen.hpp"
+#include "actions/io/BackgroundSave.hpp"
 #include "actions/DocumentLifecycle.hpp"
 
 #include <cstdint>
@@ -208,7 +210,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
     cupuacu::State *state = (cupuacu::State *)appstate;
-    cupuacu::actions::processPendingOpenWork(state);
+    cupuacu::actions::effects::processPendingEffectWork(state);
+    cupuacu::actions::io::processPendingOpenWork(state);
+    cupuacu::actions::io::processPendingSaveWork(state);
 
     for (auto *window : state->windows)
     {
@@ -273,6 +277,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
         {.pixelScale = state->pixelScale, .vuMeterScale = state->vuMeterScale});
     state->generateSilenceDialogWindow.reset();
     state->backgroundOpenJob.reset();
+    state->backgroundSaveJob.reset();
     state->newFileDialogWindow.reset();
     state->optionsWindow.reset();
     state->mainDocumentSessionWindow.reset();

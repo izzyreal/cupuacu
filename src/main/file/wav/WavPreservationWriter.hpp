@@ -15,6 +15,7 @@
 #include <fstream>
 #include <limits>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace cupuacu::file::wav
@@ -38,20 +39,19 @@ namespace cupuacu::file::wav
             }
         }
 
-        static std::uint32_t expectedDataSizeBytes(const cupuacu::State *state)
+        static std::uint32_t expectedDataSizeBytes(
+            const cupuacu::Document::ReadLease &document)
         {
             return cupuacu::file::preservation::
                 expectedInterleavedDataSizeBytes(
-                    state, sampleByteWidth(
-                               state->getActiveDocumentSession()
-                                   .document.getSampleFormat()));
+                    document, sampleByteWidth(document.getSampleFormat()));
         }
 
-        static bool canPatchDataChunkInPlace(const cupuacu::State *state,
-                                             const ParsedFile &parsed)
+        static bool canPatchDataChunkInPlace(
+            const cupuacu::Document::ReadLease &document,
+            const ParsedFile &parsed)
         {
-            if (state == nullptr ||
-                (parsed.sampleFormat != cupuacu::SampleFormat::PCM_S8 &&
+            if ((parsed.sampleFormat != cupuacu::SampleFormat::PCM_S8 &&
                  parsed.sampleFormat != cupuacu::SampleFormat::PCM_S16 &&
                  parsed.sampleFormat != cupuacu::SampleFormat::FLOAT32) ||
                 parsed.fmtChunkCount != 1 ||
@@ -60,7 +60,6 @@ namespace cupuacu::file::wav
                 return false;
             }
 
-            const auto &document = state->getActiveDocumentSession().document;
             if (document.getChannelCount() != parsed.channelCount ||
                 document.getSampleRate() != parsed.sampleRate ||
                 document.getSampleFormat() != parsed.sampleFormat)
@@ -74,7 +73,7 @@ namespace cupuacu::file::wav
                 return false;
             }
 
-            return dataChunk->payloadSize == expectedDataSizeBytes(state);
+            return dataChunk->payloadSize == expectedDataSizeBytes(document);
         }
 
         static std::array<char, sizeof(std::int16_t)>
@@ -148,9 +147,11 @@ namespace cupuacu::file::wav
             return encoded;
         }
 
-        static void patchSamplesInPlace(const cupuacu::State *state,
-                                        std::fstream &io,
-                                        const ParsedFile &parsed)
+        static void patchSamplesInPlace(
+            const cupuacu::Document::ReadLease &document, std::fstream &io,
+            const ParsedFile &parsed,
+            const cupuacu::file::PreservationProgressCallback &progress = {},
+            const std::string &progressDetail = {})
         {
             const auto *dataChunk = parsed.findChunk("data");
             if (dataChunk == nullptr)
@@ -159,7 +160,7 @@ namespace cupuacu::file::wav
             }
 
             cupuacu::file::preservation::patchDirtySamplesInPlace(
-                state, io,
+                document, io,
                 sampleByteWidth(parsed.sampleFormat),
                 static_cast<std::size_t>(parsed.channelCount),
                 dataChunk->payloadOffset,
@@ -172,11 +173,15 @@ namespace cupuacu::file::wav
                     const auto quantized =
                         quantizeIntegerPcmSample(parsed.sampleFormat, sample, false);
                     return encodeSampleBytes(parsed.sampleFormat, quantized);
-                });
+                },
+                progress, progressDetail);
         }
 
-        static void patchDataChunkInPlace(const cupuacu::State *state,
-                                          const std::filesystem::path &inputPath)
+        static void patchDataChunkInPlace(
+            const cupuacu::Document::ReadLease &document,
+            const std::filesystem::path &inputPath,
+            const cupuacu::file::PreservationProgressCallback &progress = {},
+            const std::string &progressDetail = {})
         {
             writeFileAtomically(
                 inputPath,
@@ -195,7 +200,8 @@ namespace cupuacu::file::wav
                     }
 
                     const ParsedFile parsed = WavParser::parseFile(outputPath);
-                    patchSamplesInPlace(state, io, parsed);
+                    patchSamplesInPlace(document, io, parsed, progress,
+                                        progressDetail);
                     io.flush();
                 });
         }
@@ -214,16 +220,17 @@ namespace cupuacu::file::wav
                 "Failed to read bytes before data chunk");
         }
 
-        static void writeDataChunk(const cupuacu::State *state, std::istream &input,
-                                   std::ostream &output,
-                                   const ParsedFile &parsed)
+        static void writeDataChunk(
+            const cupuacu::Document::ReadLease &document, std::istream &input,
+            std::ostream &output, const ParsedFile &parsed,
+            const cupuacu::file::PreservationProgressCallback &progress = {},
+            const std::string &progressDetail = {})
         {
             output.write("data", 4);
 
-            const auto &document = state->getActiveDocumentSession().document;
             const auto encodedSamples =
                 cupuacu::file::preservation::buildEncodedSamples(
-                    state, input,
+                    document, input,
                     sampleByteWidth(document.getSampleFormat()),
                     static_cast<std::size_t>(document.getChannelCount()),
                     [&](std::istream &sourceInput, const std::int64_t channel,
@@ -243,7 +250,8 @@ namespace cupuacu::file::wav
                             document.getSampleFormat(), sample, false);
                         return encodeSampleBytes(document.getSampleFormat(),
                                                  quantized);
-                    });
+                    },
+                    progress, progressDetail, 0.05, 0.95);
 
             const std::uint32_t dataSize = static_cast<std::uint32_t>(
                 encodedSamples.size());
@@ -315,7 +323,7 @@ namespace cupuacu::file::wav
         }
 
         static void rewriteWholeFileWithMarkers(
-            cupuacu::State *state, const std::filesystem::path &referencePath,
+            const cupuacu::file::PreservationWriteInput &writeInput,
             const std::filesystem::path &outputPath, const ParsedFile &parsed)
         {
             cupuacu::file::writeFileAtomically(
@@ -323,7 +331,7 @@ namespace cupuacu::file::wav
                 [&](const std::filesystem::path &temporaryPath)
                 {
                     auto input = cupuacu::file::preservation::openInputFileStream(
-                        referencePath);
+                        writeInput.referencePath);
                     auto output = cupuacu::file::preservation::openOutputFileStream(
                         temporaryPath);
 
@@ -338,8 +346,7 @@ namespace cupuacu::file::wav
                              std::memcmp(chunk.id, "data", 4) == 0))
                         {
                             markers::writeMarkerChunks(
-                                output,
-                                state->getActiveDocumentSession().document.getMarkers());
+                                output, writeInput.document.getMarkers());
                             insertedMarkers = true;
                         }
 
@@ -350,7 +357,9 @@ namespace cupuacu::file::wav
 
                         if (std::memcmp(chunk.id, "data", 4) == 0)
                         {
-                            writeDataChunk(state, input, output, parsed);
+                            writeDataChunk(writeInput.document, input, output,
+                                           parsed, writeInput.progress,
+                                           writeInput.outputPath.string());
                             continue;
                         }
 
@@ -363,8 +372,7 @@ namespace cupuacu::file::wav
                     if (!insertedMarkers)
                     {
                         markers::writeMarkerChunks(
-                            output,
-                            state->getActiveDocumentSession().document.getMarkers());
+                            output, writeInput.document.getMarkers());
                     }
 
                     updateRiffSizeField(output, parsed);
@@ -389,29 +397,57 @@ namespace cupuacu::file::wav
             {
                 throw std::runtime_error(support.reason);
             }
-            const ParsedFile parsed = WavParser::parseFile(referencePath);
+            const auto lease =
+                state->getActiveDocumentSession().document.acquireReadLease();
+            writePreservingWavFile(cupuacu::file::PreservationWriteInput{
+                .document = lease,
+                .referencePath = referencePath,
+                .outputPath = outputPath,
+                .settings = settings,
+            });
+        }
+
+        static void writePreservingWavFile(
+            const cupuacu::file::PreservationWriteInput &writeInput)
+        {
+            if (writeInput.progress)
+            {
+                writeInput.progress(writeInput.outputPath.string(), 0.0);
+            }
+
+            const ParsedFile parsed =
+                WavParser::parseFile(writeInput.referencePath);
 
             const bool markersRequireRewrite =
-                !state->getActiveDocumentSession().document.getMarkers().empty();
+                !writeInput.document.getMarkers().empty();
 
             if (!markersRequireRewrite)
             {
-                if (referencePath == outputPath &&
-                    canPatchDataChunkInPlace(state, parsed))
+                if (writeInput.referencePath == writeInput.outputPath &&
+                    canPatchDataChunkInPlace(writeInput.document, parsed))
                 {
-                    patchDataChunkInPlace(state, referencePath);
+                    patchDataChunkInPlace(writeInput.document,
+                                          writeInput.referencePath,
+                                          writeInput.progress,
+                                          writeInput.outputPath.string());
+                    if (writeInput.progress)
+                    {
+                        writeInput.progress(writeInput.outputPath.string(), 1.0);
+                    }
                     return;
                 }
 
                 cupuacu::file::preservation::rewriteChunkPreserving(
-                    referencePath, outputPath,
+                    writeInput.referencePath, writeInput.outputPath,
                     [&](std::istream &input, std::ostream &output)
                     {
                         copyPrefix(input, output, parsed);
                     },
                     [&](std::istream &input, std::ostream &output)
                     {
-                        writeDataChunk(state, input, output, parsed);
+                        writeDataChunk(writeInput.document, input, output,
+                                       parsed, writeInput.progress,
+                                       writeInput.outputPath.string());
                     },
                     [&](std::istream &input, std::ostream &output)
                     {
@@ -421,10 +457,19 @@ namespace cupuacu::file::wav
                     {
                         updateRiffSizeField(output, parsed);
                     });
+                if (writeInput.progress)
+                {
+                    writeInput.progress(writeInput.outputPath.string(), 1.0);
+                }
                 return;
             }
 
-            rewriteWholeFileWithMarkers(state, referencePath, outputPath, parsed);
+            rewriteWholeFileWithMarkers(writeInput, writeInput.outputPath,
+                                        parsed);
+            if (writeInput.progress)
+            {
+                writeInput.progress(writeInput.outputPath.string(), 1.0);
+            }
         }
 
         static void overwritePreservingWavFile(cupuacu::State *state)

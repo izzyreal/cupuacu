@@ -63,5 +63,19 @@ namespace cupuacu::file
             state->getActiveDocumentSession().overwritePreservation =
                 assessActiveSession(state);
         }
+
+        static void refreshSession(cupuacu::State *state, const int tabIndex)
+        {
+            if (state == nullptr || tabIndex < 0 ||
+                tabIndex >= static_cast<int>(state->tabs.size()))
+            {
+                return;
+            }
+
+            const int previousActiveTabIndex = state->activeTabIndex;
+            state->activeTabIndex = tabIndex;
+            refreshActiveSession(state);
+            state->activeTabIndex = previousActiveTabIndex;
+        }
     };
 } // namespace cupuacu::file

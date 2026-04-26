@@ -7,6 +7,7 @@
 #include "gui/WaveformCache.hpp"
 
 #include <memory>
+#include <shared_mutex>
 #include <string>
 #include <vector>
 
@@ -43,19 +44,61 @@ namespace cupuacu
         uint64_t waveformDataVersion = 0;
         uint64_t markerDataVersion = 0;
         uint64_t nextMarkerId = 1;
+        mutable std::shared_mutex dataMutex;
         std::vector<gui::WaveformCache> waveformCache =
             std::vector<gui::WaveformCache>(2);
         std::vector<DocumentMarker> markers;
 
         void syncWaveformCacheToChannelCount(int64_t channelCount);
         void resetWaveformCacheToChannelCount(int64_t channelCount);
+        int64_t getFrameCountUnlocked() const;
+        int64_t getChannelCountUnlocked() const;
+        float getSampleUnlocked(int64_t channel, int64_t frame) const;
         int64_t clampMarkerFrame(int64_t frame) const;
+        int64_t clampMarkerFrameUnlocked(int64_t frame) const;
         void normalizeMarkers();
+        void normalizeMarkersUnlocked();
 
     public:
+        Document() = default;
+        Document(const Document &other);
+        Document &operator=(const Document &other);
+        Document(Document &&other) noexcept;
+        Document &operator=(Document &&other) noexcept;
+
+        class ReadLease
+        {
+        public:
+            ReadLease(const ReadLease &) = delete;
+            ReadLease &operator=(const ReadLease &) = delete;
+            ReadLease(ReadLease &&) = default;
+            ReadLease &operator=(ReadLease &&) = default;
+
+            [[nodiscard]] SampleFormat getSampleFormat() const;
+            [[nodiscard]] int getSampleRate() const;
+            [[nodiscard]] int64_t getFrameCount() const;
+            [[nodiscard]] int64_t getChannelCount() const;
+            [[nodiscard]] float getSample(int64_t channel, int64_t frame) const;
+            [[nodiscard]] bool isDirty(int64_t channel, int64_t frame) const;
+            [[nodiscard]] audio::SampleProvenance
+            getSampleProvenance(int64_t channel, int64_t frame) const;
+            [[nodiscard]] uint64_t getPreservationSourceId() const;
+            [[nodiscard]] const std::vector<DocumentMarker> &getMarkers() const;
+
+        private:
+            friend class Document;
+
+            explicit ReadLease(const Document &documentToRead);
+
+            const Document *document = nullptr;
+            std::shared_lock<std::shared_mutex> lock;
+        };
+
         void initialize(SampleFormat sampleFormatToUse,
                         uint32_t sampleRateToUse,
                         uint32_t channelCount, int64_t frameCount);
+
+        [[nodiscard]] ReadLease acquireReadLease() const;
 
         gui::WaveformCache &getWaveformCache(int channel);
         const gui::WaveformCache &getWaveformCache(int channel) const;

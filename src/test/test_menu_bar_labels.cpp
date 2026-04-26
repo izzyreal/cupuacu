@@ -4,6 +4,7 @@
 #include "State.hpp"
 #include "TestPaths.hpp"
 #include "TestSdlTtfGuard.hpp"
+#include "actions/io/BackgroundSave.hpp"
 #include "actions/Undoable.hpp"
 #include "file/AudioExport.hpp"
 #include "file/SndfilePath.hpp"
@@ -26,10 +27,26 @@
 #include <random>
 #include <string>
 #include <system_error>
+#include <thread>
 #include <vector>
 
 namespace
 {
+    void drainPendingSaveWork(cupuacu::State *state)
+    {
+        for (int attempt = 0; attempt < 5000; ++attempt)
+        {
+            cupuacu::actions::io::processPendingSaveWork(state);
+            if (!state->backgroundSaveJob)
+            {
+                return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+
+        FAIL("Timed out waiting for background save work");
+    }
+
     class RootComponent : public cupuacu::gui::Component
     {
     public:
@@ -643,6 +660,8 @@ TEST_CASE("MenuBar file overwrite action rewrites the current file",
 
     auto *overwriteEntry = fileEntries[6];
     overwriteEntry->mouseDown(leftMouseDown());
+    REQUIRE(state.backgroundSaveJob != nullptr);
+    drainPendingSaveWork(&state);
 
     const auto frames = readFramesAsFloat(wavPath);
     REQUIRE(frames.size() == 3);

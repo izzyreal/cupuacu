@@ -2,6 +2,7 @@
 #include <SDL3/SDL.h>
 
 #include "../file/AudioExport.hpp"
+#include "io/BackgroundSave.hpp"
 #include "PlatformSaveFileDialog.hpp"
 #include "Save.hpp"
 
@@ -106,7 +107,7 @@ namespace cupuacu::actions
 
         if (mode == cupuacu::PendingSaveAsMode::Preserving)
         {
-            actions::saveAsPreserving(state, *filelist, *settings);
+            actions::io::queueSaveAsPreserving(state, *filelist, *settings);
             if (state)
             {
                 state->pendingSaveAsMarkerWarningConfirmed = false;
@@ -114,7 +115,7 @@ namespace cupuacu::actions
             return;
         }
 
-        actions::saveAs(state, *filelist, *settings);
+        actions::io::queueSaveAs(state, *filelist, *settings);
         if (state)
         {
             state->pendingSaveAsMarkerWarningConfirmed = false;

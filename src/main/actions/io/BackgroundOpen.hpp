@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../State.hpp"
-#include "../file/file_loading.hpp"
+#include "../../State.hpp"
+#include "../../file/file_loading.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -10,7 +10,7 @@
 #include <string>
 #include <thread>
 
-namespace cupuacu::actions
+namespace cupuacu::actions::io
 {
     class BackgroundOpenJob
     {
@@ -60,4 +60,4 @@ namespace cupuacu::actions
     void queueOpenFile(cupuacu::State *state, std::string path);
     void queueOpenRequest(cupuacu::State *state, PendingOpenRequest request);
     void processPendingOpenWork(cupuacu::State *state);
-} // namespace cupuacu::actions
+} // namespace cupuacu::actions::io

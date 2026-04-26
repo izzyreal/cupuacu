@@ -8,6 +8,7 @@
 #include <fstream>
 #include <limits>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 namespace cupuacu::file::m4a
@@ -15,7 +16,7 @@ namespace cupuacu::file::m4a
     namespace
     {
         [[nodiscard]] std::uint32_t bitDepthForDocument(
-            const cupuacu::Document &document)
+            const cupuacu::Document::ReadLease &document)
         {
             switch (document.getSampleFormat())
             {
@@ -95,7 +96,7 @@ namespace cupuacu::file::m4a
         }
 
         std::vector<std::uint8_t>
-        makeInterleavedPcm(const cupuacu::Document &document,
+        makeInterleavedPcm(const cupuacu::Document::ReadLease &document,
                            const std::uint32_t bitsPerSample)
         {
             const auto channels = document.getChannelCount();
@@ -129,7 +130,18 @@ namespace cupuacu::file::m4a
 
     void writeAlacM4aFile(const cupuacu::Document &document,
                           const std::filesystem::path &outputPath,
-                          const std::uint32_t requestedBitDepth)
+                          const std::uint32_t requestedBitDepth,
+                          cupuacu::file::WriteProgressCallback progress)
+    {
+        const auto lease = document.acquireReadLease();
+        writeAlacM4aFile(lease, outputPath, requestedBitDepth,
+                         std::move(progress));
+    }
+
+    void writeAlacM4aFile(const cupuacu::Document::ReadLease &document,
+                          const std::filesystem::path &outputPath,
+                          const std::uint32_t requestedBitDepth,
+                          cupuacu::file::WriteProgressCallback progress)
     {
         if (outputPath.empty())
         {
@@ -144,7 +156,15 @@ namespace cupuacu::file::m4a
         const auto bitDepth =
             requestedBitDepth == 0 ? bitDepthForDocument(document)
                                    : requestedBitDepth;
+        if (progress)
+        {
+            progress(outputPath.string() + " (preparing PCM)", 0.0);
+        }
         const auto pcm = makeInterleavedPcm(document, bitDepth);
+        if (progress)
+        {
+            progress(outputPath.string() + " (encoding ALAC)", 0.25);
+        }
         const auto encoded = alac::encodePcmPackets(
             {
                 .sampleRate =
@@ -160,11 +180,20 @@ namespace cupuacu::file::m4a
             throw std::runtime_error("Failed to encode ALAC packets");
         }
 
+        if (progress)
+        {
+            progress(outputPath.string() + " (assembling M4A)", 0.85);
+        }
         const auto bytes = assembleAlacM4a(*encoded, document.getMarkers());
         cupuacu::file::writeFileAtomically(
             outputPath,
-            [&bytes](const std::filesystem::path &temporaryPath)
+            [&bytes, &outputPath, &progress](
+                const std::filesystem::path &temporaryPath)
             {
+                if (progress)
+                {
+                    progress(outputPath.string() + " (writing file)", 0.95);
+                }
                 std::ofstream output(temporaryPath, std::ios::binary);
                 if (!output)
                 {
@@ -177,5 +206,9 @@ namespace cupuacu::file::m4a
                     throw std::runtime_error("Failed to write M4A output file");
                 }
             });
+        if (progress)
+        {
+            progress(outputPath.string(), 1.0);
+        }
     }
 } // namespace cupuacu::file::m4a

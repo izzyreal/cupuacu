@@ -2,7 +2,6 @@
 
 #include "EffectTargeting.hpp"
 
-#include "LongTask.hpp"
 #include "actions/Undoable.hpp"
 #include "gui/MainViewAccess.hpp"
 #include "gui/Waveform.hpp"
@@ -12,17 +11,54 @@
 #include <string>
 #include <vector>
 
+namespace cupuacu::actions::effects
+{
+    bool queueReverse(cupuacu::State *state);
+}
+
 namespace cupuacu::effects
 {
     class ReverseUndoable : public cupuacu::actions::Undoable
     {
     public:
         explicit ReverseUndoable(cupuacu::State *stateToUse)
-            : Undoable(stateToUse)
+            : Undoable(stateToUse), tabIndex(stateToUse ? stateToUse->activeTabIndex
+                                                        : -1)
         {
             captureTargetsAndSamples();
             updateGui = [this]
             {
+                if (!state || state->activeTabIndex != tabIndex)
+                {
+                    return;
+                }
+                cupuacu::gui::Waveform::updateAllSamplePoints(state);
+                cupuacu::gui::Waveform::setAllWaveformsDirty(state);
+                cupuacu::gui::requestMainViewRefresh(state);
+            };
+        }
+
+        ReverseUndoable(cupuacu::State *stateToUse, const int tabIndexToUse,
+                        const int64_t startFrameToUse,
+                        std::vector<int64_t> targetChannelsToUse,
+                        std::vector<std::vector<float>> oldSamplesToUse,
+                        std::vector<std::vector<float>> newSamplesToUse)
+            : Undoable(stateToUse),
+              startFrame(startFrameToUse),
+              frameCount(oldSamplesToUse.empty()
+                             ? 0
+                             : static_cast<int64_t>(oldSamplesToUse.front().size())),
+              targetChannels(std::move(targetChannelsToUse)),
+              oldSamples(std::move(oldSamplesToUse)),
+              newSamples(std::move(newSamplesToUse)),
+              tabIndex(tabIndexToUse)
+        {
+            updateGui = [this]
+            {
+                if (!state || state->activeTabIndex != tabIndex)
+                {
+                    return;
+                }
                 cupuacu::gui::Waveform::updateAllSamplePoints(state);
                 cupuacu::gui::Waveform::setAllWaveformsDirty(state);
                 cupuacu::gui::requestMainViewRefresh(state);
@@ -61,6 +97,7 @@ namespace cupuacu::effects
         std::vector<int64_t> targetChannels;
         std::vector<std::vector<float>> oldSamples;
         std::vector<std::vector<float>> newSamples;
+        int tabIndex = -1;
 
         void captureTargetsAndSamples()
         {
@@ -69,7 +106,13 @@ namespace cupuacu::effects
                 return;
             }
 
-            auto &document = state->getActiveDocumentSession().document;
+            if (tabIndex < 0 || tabIndex >= static_cast<int>(state->tabs.size()))
+            {
+                return;
+            }
+
+            auto &document =
+                state->tabs[static_cast<std::size_t>(tabIndex)].session.document;
             if (document.getChannelCount() <= 0)
             {
                 return;
@@ -119,7 +162,13 @@ namespace cupuacu::effects
                 return;
             }
 
-            auto &document = state->getActiveDocumentSession().document;
+            if (tabIndex < 0 || tabIndex >= static_cast<int>(state->tabs.size()))
+            {
+                return;
+            }
+
+            auto &document =
+                state->tabs[static_cast<std::size_t>(tabIndex)].session.document;
             for (size_t channelIndex = 0; channelIndex < targetChannels.size();
                  ++channelIndex)
             {
@@ -139,24 +188,6 @@ namespace cupuacu::effects
 
     inline void performReverse(cupuacu::State *state)
     {
-        if (!state)
-        {
-            return;
-        }
-
-        const auto &document = state->getActiveDocumentSession().document;
-        if (document.getFrameCount() <= 0 || document.getChannelCount() <= 0)
-        {
-            return;
-        }
-
-        const auto &selection = state->getActiveDocumentSession().selection;
-        if (selection.isActive() && selection.getLengthInt() <= 0)
-        {
-            return;
-        }
-
-        cupuacu::LongTaskScope longTask(state, "Applying effect", "Reverse");
-        state->addAndDoUndoable(std::make_shared<ReverseUndoable>(state));
+        cupuacu::actions::effects::queueReverse(state);
     }
 } // namespace cupuacu::effects

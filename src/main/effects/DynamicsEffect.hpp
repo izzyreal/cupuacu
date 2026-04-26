@@ -18,6 +18,12 @@
 #include <string>
 #include <vector>
 
+namespace cupuacu::actions::effects
+{
+    bool queueDynamics(cupuacu::State *state,
+                       const ::cupuacu::effects::DynamicsSettings &settings);
+}
+
 namespace cupuacu::effects
 {
     class DynamicsUndoable : public cupuacu::actions::Undoable
@@ -25,11 +31,44 @@ namespace cupuacu::effects
     public:
         DynamicsUndoable(cupuacu::State *stateToUse,
                          const DynamicsSettings &settingsToUse)
-            : Undoable(stateToUse), settings(settingsToUse)
+            : Undoable(stateToUse),
+              tabIndex(stateToUse ? stateToUse->activeTabIndex : -1),
+              settings(settingsToUse)
         {
             captureTargetsAndSamples();
             updateGui = [this]
             {
+                if (!state || state->activeTabIndex != tabIndex)
+                {
+                    return;
+                }
+                cupuacu::gui::Waveform::updateAllSamplePoints(state);
+                cupuacu::gui::Waveform::setAllWaveformsDirty(state);
+                cupuacu::gui::requestMainViewRefresh(state);
+            };
+        }
+
+        DynamicsUndoable(cupuacu::State *stateToUse, const int tabIndexToUse,
+                         const int64_t startFrameToUse,
+                         std::vector<int64_t> targetChannelsToUse,
+                         std::vector<std::vector<float>> oldSamplesToUse,
+                         std::vector<std::vector<float>> newSamplesToUse)
+            : Undoable(stateToUse),
+              startFrame(startFrameToUse),
+              frameCount(oldSamplesToUse.empty()
+                             ? 0
+                             : static_cast<int64_t>(oldSamplesToUse.front().size())),
+              targetChannels(std::move(targetChannelsToUse)),
+              oldSamples(std::move(oldSamplesToUse)),
+              newSamples(std::move(newSamplesToUse)),
+              tabIndex(tabIndexToUse)
+        {
+            updateGui = [this]
+            {
+                if (!state || state->activeTabIndex != tabIndex)
+                {
+                    return;
+                }
                 cupuacu::gui::Waveform::updateAllSamplePoints(state);
                 cupuacu::gui::Waveform::setAllWaveformsDirty(state);
                 cupuacu::gui::requestMainViewRefresh(state);
@@ -109,10 +148,16 @@ namespace cupuacu::effects
         std::vector<int64_t> targetChannels;
         std::vector<std::vector<float>> oldSamples;
         std::vector<std::vector<float>> newSamples;
+        int tabIndex = -1;
 
         void captureTargetsAndSamples()
         {
             if (!state)
+            {
+                return;
+            }
+
+            if (tabIndex < 0 || tabIndex >= static_cast<int>(state->tabs.size()))
             {
                 return;
             }
@@ -127,7 +172,8 @@ namespace cupuacu::effects
                 return;
             }
 
-            auto &document = state->getActiveDocumentSession().document;
+            auto &document =
+                state->tabs[static_cast<std::size_t>(tabIndex)].session.document;
             oldSamples.resize(targetChannels.size());
             newSamples.resize(targetChannels.size());
             for (size_t channelIndex = 0; channelIndex < targetChannels.size();
@@ -156,7 +202,13 @@ namespace cupuacu::effects
                 return;
             }
 
-            auto &document = state->getActiveDocumentSession().document;
+            if (tabIndex < 0 || tabIndex >= static_cast<int>(state->tabs.size()))
+            {
+                return;
+            }
+
+            auto &document =
+                state->tabs[static_cast<std::size_t>(tabIndex)].session.document;
             for (size_t channelIndex = 0; channelIndex < targetChannels.size();
                  ++channelIndex)
             {
@@ -191,9 +243,7 @@ namespace cupuacu::effects
             return;
         }
 
-        cupuacu::LongTaskScope longTask(state, "Applying effect", "Dynamics");
-        state->addAndDoUndoable(
-            std::make_shared<DynamicsUndoable>(state, settings));
+        cupuacu::actions::effects::queueDynamics(state, settings);
     }
 
     class DynamicsPreviewProcessor : public cupuacu::audio::AudioProcessor

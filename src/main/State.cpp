@@ -11,7 +11,9 @@
 #include "gui/MarkerEditorDialogWindow.hpp"
 #include "gui/NewFileDialogWindow.hpp"
 #include "gui/OptionsWindow.hpp"
-#include "actions/BackgroundOpen.hpp"
+#include "actions/effects/BackgroundEffect.hpp"
+#include "actions/io/BackgroundOpen.hpp"
+#include "actions/io/BackgroundSave.hpp"
 #include "actions/Undoable.hpp"
 #include "actions/DocumentLifecycle.hpp"
 #include "file/OverwritePreservation.hpp"
@@ -85,32 +87,69 @@ void cupuacu::destroyMarkerEditorDialogWindow(
     delete dialog;
 }
 
-void cupuacu::destroyBackgroundOpenJob(actions::BackgroundOpenJob *job)
+void cupuacu::destroyBackgroundOpenJob(actions::io::BackgroundOpenJob *job)
+{
+    delete job;
+}
+
+void cupuacu::destroyBackgroundSaveJob(actions::io::BackgroundSaveJob *job)
+{
+    delete job;
+}
+
+void cupuacu::destroyBackgroundEffectJob(
+    actions::effects::BackgroundEffectJob *job)
 {
     delete job;
 }
 
 cupuacu::State::~State() = default;
 
+void cupuacu::State::addUndoableToTab(
+    const int tabIndex, std::shared_ptr<cupuacu::actions::Undoable> undoable)
+{
+    if (tabIndex < 0 || tabIndex >= static_cast<int>(tabs.size()))
+    {
+        return;
+    }
+
+    auto &tab = tabs[static_cast<std::size_t>(tabIndex)];
+    tab.undoables.push_back(std::move(undoable));
+    tab.redoables.clear();
+}
+
+void cupuacu::State::addAndDoUndoableToTab(
+    const int tabIndex, std::shared_ptr<cupuacu::actions::Undoable> undoable)
+{
+    if (tabIndex < 0 || tabIndex >= static_cast<int>(tabs.size()) || !undoable)
+    {
+        return;
+    }
+
+    addUndoableToTab(tabIndex, undoable);
+    undoable->redo();
+
+    auto &session = tabs[static_cast<std::size_t>(tabIndex)].session;
+    cupuacu::file::OverwritePreservationMutationHelper::applyToSession(
+        session, undoable->overwritePreservationMutation());
+    cupuacu::file::OverwritePreservation::refreshSession(this, tabIndex);
+    if (tabIndex == activeTabIndex)
+    {
+        undoable->updateGui();
+    }
+    cupuacu::actions::autosaveDocumentAfterMutation(this, tabIndex);
+}
+
 void cupuacu::State::addUndoable(
     std::shared_ptr<cupuacu::actions::Undoable> undoable)
 {
-    auto &undoables = getActiveUndoables();
-    auto &redoables = getActiveRedoables();
-    undoables.push_back(undoable);
-    redoables.clear();
+    addUndoableToTab(activeTabIndex, std::move(undoable));
 }
 
 void cupuacu::State::addAndDoUndoable(
     std::shared_ptr<cupuacu::actions::Undoable> undoable)
 {
-    addUndoable(undoable);
-    undoable->redo();
-    cupuacu::file::OverwritePreservationMutationHelper::applyToSession(
-        getActiveDocumentSession(), undoable->overwritePreservationMutation());
-    cupuacu::file::OverwritePreservation::refreshActiveSession(this);
-    undoable->updateGui();
-    cupuacu::actions::autosaveActiveDocumentAfterMutation(this);
+    addAndDoUndoableToTab(activeTabIndex, std::move(undoable));
 }
 
 void cupuacu::State::undo()

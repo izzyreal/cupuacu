@@ -1,16 +1,16 @@
 #include "BackgroundOpen.hpp"
 
-#include "../LongTask.hpp"
-#include "../file/OverwritePreservation.hpp"
-#include "../gui/Window.hpp"
-#include "DocumentLifecycle.hpp"
+#include "../../LongTask.hpp"
+#include "../../file/OverwritePreservation.hpp"
+#include "../../gui/Window.hpp"
+#include "../DocumentLifecycle.hpp"
 
 #include <algorithm>
 #include <exception>
 #include <utility>
 #include <vector>
 
-namespace cupuacu::actions
+namespace cupuacu::actions::io
 {
     namespace
     {
@@ -364,4 +364,4 @@ namespace cupuacu::actions
         }
         finalizeStartupRestoreIfComplete(state);
     }
-} // namespace cupuacu::actions
+} // namespace cupuacu::actions::io

@@ -2,6 +2,9 @@
 
 #include "Document.hpp"
 
+#include <chrono>
+#include <future>
+
 TEST_CASE("Document markers are assigned stable ids and clamped to bounds",
           "[document][markers]")
 {
@@ -26,6 +29,30 @@ TEST_CASE("Document markers are assigned stable ids and clamped to bounds",
                 .frame = 100,
                 .label = "Outro",
             });
+}
+
+TEST_CASE("Document read lease blocks concurrent mutation",
+          "[document][threading]")
+{
+    cupuacu::Document document;
+    document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 4);
+    document.setSample(0, 0, 0.0f);
+
+    std::future<void> mutation;
+    {
+        const auto lease = document.acquireReadLease();
+        mutation = std::async(std::launch::async,
+                              [&document]
+                              {
+                                  document.setSample(0, 0, 0.5f);
+                              });
+
+        REQUIRE(mutation.wait_for(std::chrono::milliseconds(20)) ==
+                std::future_status::timeout);
+    }
+
+    mutation.get();
+    REQUIRE(document.getSample(0, 0) == 0.5f);
 }
 
 TEST_CASE("Document marker edits preserve identity", "[document][markers]")

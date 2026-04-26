@@ -22,7 +22,8 @@
 #include "gui/Helpers.hpp"
 
 #include "actions/ShowOpenFileDialog.hpp"
-#include "actions/BackgroundOpen.hpp"
+#include "actions/io/BackgroundOpen.hpp"
+#include "actions/io/BackgroundSave.hpp"
 #include "actions/Save.hpp"
 #include "actions/audio/Copy.hpp"
 #include "actions/audio/Trim.hpp"
@@ -188,7 +189,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
                     return;
                 }
 
-                actions::queueOpenFile(state, path);
+                actions::io::queueOpenFile(state, path);
             });
         entry->setIsAvailable(
             [this, index]()
@@ -215,7 +216,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
         },
         [&]
         {
-            actions::overwrite(state);
+            actions::io::queueOverwrite(state);
         });
     overwriteMenu->setTooltipText(
         [&]
@@ -231,7 +232,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
         fileMenu->addSubMenu(state, buildPreservingOverwriteMenuLabel(),
                              [&]
                              {
-                                 actions::overwritePreserving(state);
+                                 actions::io::queueOverwritePreserving(state);
                              });
     preservingOverwriteMenu->setTooltipText(
         [&]

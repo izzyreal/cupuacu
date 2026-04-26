@@ -3,6 +3,7 @@
 #include "../State.hpp"
 #include "AudioExport.hpp"
 #include "OverwritePreservationState.hpp"
+#include "PreservationWriteInput.hpp"
 #include "aiff/AiffPreservationSupport.hpp"
 #include "aiff/AiffPreservationWriter.hpp"
 #include "wav/WavPreservationSupport.hpp"
@@ -124,6 +125,26 @@ namespace cupuacu::file
             case PreservationBackendKind::WavPcm:
                 cupuacu::file::wav::WavPreservationWriter::writePreservingWavFile(
                     state, referencePath, outputPath, settings);
+                return;
+            case PreservationBackendKind::None:
+            default:
+                throw std::runtime_error(
+                    "Selected target format does not have a preservation writer yet");
+        }
+    }
+
+    inline void writePreservingFile(
+        const cupuacu::file::PreservationWriteInput &writeInput)
+    {
+        switch (preservationBackendKindForSettings(writeInput.settings))
+        {
+            case PreservationBackendKind::AiffPcm:
+                cupuacu::file::aiff::AiffPreservationWriter::
+                    writePreservingAiffFile(writeInput);
+                return;
+            case PreservationBackendKind::WavPcm:
+                cupuacu::file::wav::WavPreservationWriter::writePreservingWavFile(
+                    writeInput);
                 return;
             case PreservationBackendKind::None:
             default:

@@ -3,7 +3,7 @@
 #include "IntegrationTestHelpers.hpp"
 
 #include "State.hpp"
-#include "actions/BackgroundOpen.hpp"
+#include "actions/io/BackgroundOpen.hpp"
 #include "actions/DocumentLifecycle.hpp"
 #include "actions/Undoable.hpp"
 #include "file/SndfilePath.hpp"
@@ -1203,7 +1203,7 @@ TEST_CASE("File menu integration opens a recent file into the active session",
 
     for (int attempt = 0; attempt < 200; ++attempt)
     {
-        cupuacu::actions::processPendingOpenWork(&state);
+        cupuacu::actions::io::processPendingOpenWork(&state);
         if (state.pendingOpenFiles.empty() && !state.backgroundOpenJob &&
             state.getActiveDocumentSession().currentFile == wavPath.string())
         {
