@@ -156,6 +156,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/file/m4a/M4aParser.cpp
     src/main/persistence/AudioDevicePropertiesPersistence.cpp
     src/main/persistence/DisplayPropertiesPersistence.cpp
+    src/main/persistence/DocumentAutosave.cpp
     src/main/persistence/RecentFilesPersistence.cpp
     src/main/persistence/SessionStatePersistence.cpp
     src/main/audio/AudioDevices.cpp
@@ -220,6 +221,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_overwrite_preservation_mutation.cpp
     src/test/test_audio_device_properties_persistence.cpp
     src/test/test_display_properties_persistence.cpp
+    src/test/test_document_autosave.cpp
     src/test/test_recent_files_persistence.cpp
     src/test/test_document_tabs.cpp
     src/test/test_document_markers.cpp

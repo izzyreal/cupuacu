@@ -12,6 +12,7 @@
 #include "gui/NewFileDialogWindow.hpp"
 #include "gui/OptionsWindow.hpp"
 #include "actions/Undoable.hpp"
+#include "actions/DocumentLifecycle.hpp"
 #include "file/OverwritePreservation.hpp"
 #include "file/OverwritePreservationMutation.hpp"
 
@@ -103,6 +104,7 @@ void cupuacu::State::addAndDoUndoable(
         getActiveDocumentSession(), undoable->overwritePreservationMutation());
     cupuacu::file::OverwritePreservation::refreshActiveSession(this);
     undoable->updateGui();
+    cupuacu::actions::autosaveActiveDocumentAfterMutation(this);
 }
 
 void cupuacu::State::undo()
@@ -122,6 +124,7 @@ void cupuacu::State::undo()
     cupuacu::file::OverwritePreservation::refreshActiveSession(this);
     undoable->updateGui();
     redoables.push_back(undoable);
+    cupuacu::actions::autosaveActiveDocumentAfterMutation(this);
 }
 
 void cupuacu::State::redo()
@@ -141,6 +144,7 @@ void cupuacu::State::redo()
     cupuacu::file::OverwritePreservation::refreshActiveSession(this);
     redoable->updateGui();
     undoables.push_back(redoable);
+    cupuacu::actions::autosaveActiveDocumentAfterMutation(this);
 }
 
 std::string cupuacu::State::getUndoDescription()

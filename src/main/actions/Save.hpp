@@ -189,6 +189,7 @@ namespace cupuacu::actions
             }
 
             auto &session = state->getActiveDocumentSession();
+            clearActiveDocumentAutosave(state);
             if (updateCurrentFile)
             {
                 session.setCurrentFile(path.string(), settings);
@@ -260,6 +261,7 @@ namespace cupuacu::actions
 
         detail::finalizeSavedDocument(
             state, std::filesystem::path(session.currentFile), *settings, false);
+        persistSessionState(state);
         return true;
     }
 
@@ -316,6 +318,7 @@ namespace cupuacu::actions
 
         detail::finalizeSavedDocument(
             state, std::filesystem::path(session.currentFile), *settings, false);
+        persistSessionState(state);
         return true;
     }
 

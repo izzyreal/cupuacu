@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <string>
 
@@ -25,6 +26,9 @@ namespace cupuacu
         Document document;
         gui::Selection<double> selection = gui::Selection<double>(0.0);
         int64_t cursor = 0;
+        std::filesystem::path autosaveSnapshotPath;
+        uint64_t autosavedWaveformDataVersion = 0;
+        uint64_t autosavedMarkerDataVersion = 0;
 
         void clearCurrentFile()
         {
@@ -35,6 +39,7 @@ namespace cupuacu
             overwritePreservation = {};
             overwritePreservationBrokenByOperation = false;
             overwritePreservationBrokenReason.clear();
+            clearAutosaveSnapshotReference();
         }
 
         void setCurrentFile(
@@ -48,6 +53,7 @@ namespace cupuacu
             overwritePreservation = {};
             overwritePreservationBrokenByOperation = false;
             overwritePreservationBrokenReason.clear();
+            clearAutosaveSnapshotReference();
         }
 
         void setPreservationReference(
@@ -75,6 +81,13 @@ namespace cupuacu
             const int64_t frameCount = document.getFrameCount();
             selection.setHighest(frameCount);
             cursor = std::clamp(cursor, int64_t{0}, frameCount);
+        }
+
+        void clearAutosaveSnapshotReference()
+        {
+            autosaveSnapshotPath.clear();
+            autosavedWaveformDataVersion = 0;
+            autosavedMarkerDataVersion = 0;
         }
     };
 } // namespace cupuacu

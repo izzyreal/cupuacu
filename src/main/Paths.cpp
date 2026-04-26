@@ -83,6 +83,11 @@ std::filesystem::path Paths::sessionStatePath() const
     return path;
 }
 
+std::filesystem::path Paths::autosavePath() const
+{
+    return configPath() / "autosave";
+}
+
 std::filesystem::path Paths::logPath() const
 {
     return appLogHome() / "cupuacu.log";

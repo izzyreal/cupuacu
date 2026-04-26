@@ -9,6 +9,7 @@
 #include "../gui/NewFileDialogWindow.hpp"
 #include "../gui/ExportAudioDialogWindow.hpp"
 #include "../gui/Waveform.hpp"
+#include "../persistence/DocumentAutosave.hpp"
 #include "../persistence/RecentFilesPersistence.hpp"
 #include "../persistence/SessionStatePersistence.hpp"
 #include "Play.hpp"
@@ -19,6 +20,8 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <exception>
 #include <filesystem>
 #include <string>
@@ -216,6 +219,53 @@ namespace cupuacu::actions
                 return;
             }
         }
+
+        inline bool hasRestorableDocument(
+            const cupuacu::persistence::PersistedOpenDocumentState &documentState)
+        {
+            if (!documentState.autosaveSnapshotPath.empty() &&
+                std::filesystem::exists(documentState.autosaveSnapshotPath))
+            {
+                return true;
+            }
+            return !documentState.filePath.empty() &&
+                   std::filesystem::exists(documentState.filePath);
+        }
+
+        inline std::string restoreIdentityPath(
+            const cupuacu::persistence::PersistedOpenDocumentState &documentState)
+        {
+            if (!documentState.filePath.empty())
+            {
+                return documentState.filePath;
+            }
+            return documentState.autosaveSnapshotPath;
+        }
+
+        inline std::filesystem::path makeAutosaveSnapshotPath(
+            const cupuacu::State *state)
+        {
+            static std::atomic<uint64_t> counter{0};
+
+            if (!state || !state->paths)
+            {
+                return {};
+            }
+
+            const auto tick = static_cast<unsigned long long>(
+                std::chrono::steady_clock::now().time_since_epoch().count());
+            const auto index = counter.fetch_add(1);
+            return state->paths->autosavePath() /
+                   ("document-" + std::to_string(tick) + "-" +
+                    std::to_string(index) + ".cupuacu-autosave");
+        }
+
+        inline void discardAutosaveSnapshot(cupuacu::DocumentSession &session)
+        {
+            cupuacu::persistence::removeDocumentAutosaveSnapshot(
+                session.autosaveSnapshotPath);
+            session.clearAutosaveSnapshotReference();
+        }
     } // namespace detail
 
     struct StartupDocumentRestorePlan
@@ -316,13 +366,16 @@ namespace cupuacu::actions
         for (int i = 0; i < static_cast<int>(state->tabs.size()); ++i)
         {
             const auto &tab = state->tabs[static_cast<size_t>(i)];
-            if (tab.session.currentFile.empty())
+            if (tab.session.currentFile.empty() &&
+                tab.session.autosaveSnapshotPath.empty())
             {
                 continue;
             }
 
             cupuacu::persistence::PersistedOpenDocumentState documentState{};
             documentState.filePath = tab.session.currentFile;
+            documentState.autosaveSnapshotPath =
+                tab.session.autosaveSnapshotPath.string();
             documentState.samplesPerPixel = tab.viewState.samplesPerPixel;
             documentState.sampleOffset = tab.viewState.sampleOffset;
             documentState.cursor = tab.session.cursor;
@@ -343,7 +396,10 @@ namespace cupuacu::actions
             }
 
             persisted.openDocuments.push_back(documentState);
-            persisted.openFiles.push_back(tab.session.currentFile);
+            if (!tab.session.currentFile.empty())
+            {
+                persisted.openFiles.push_back(tab.session.currentFile);
+            }
             if (i == state->activeTabIndex)
             {
                 persisted.activeOpenFileIndex = openFileIndex;
@@ -368,6 +424,57 @@ namespace cupuacu::actions
         cupuacu::persistence::SessionStatePersistence::save(
             state->paths->sessionStatePath(),
             buildPersistedOpenSessionState(state));
+    }
+
+    inline void autosaveActiveDocumentAfterMutation(cupuacu::State *state)
+    {
+        if (!state || !state->paths)
+        {
+            return;
+        }
+
+        auto &session = state->getActiveDocumentSession();
+        const auto &document = session.document;
+        if (document.getChannelCount() <= 0)
+        {
+            return;
+        }
+        if (session.autosavedWaveformDataVersion ==
+                document.getWaveformDataVersion() &&
+            session.autosavedMarkerDataVersion == document.getMarkerDataVersion() &&
+            !session.autosaveSnapshotPath.empty())
+        {
+            return;
+        }
+        if (session.autosaveSnapshotPath.empty())
+        {
+            session.autosaveSnapshotPath =
+                detail::makeAutosaveSnapshotPath(state);
+        }
+        if (session.autosaveSnapshotPath.empty())
+        {
+            return;
+        }
+
+        if (!cupuacu::persistence::saveDocumentAutosaveSnapshot(
+                session.autosaveSnapshotPath, session))
+        {
+            return;
+        }
+
+        session.autosavedWaveformDataVersion = document.getWaveformDataVersion();
+        session.autosavedMarkerDataVersion = document.getMarkerDataVersion();
+        persistSessionState(state);
+    }
+
+    inline void clearActiveDocumentAutosave(cupuacu::State *state)
+    {
+        if (!state)
+        {
+            return;
+        }
+
+        detail::discardAutosaveSnapshot(state->getActiveDocumentSession());
     }
 
     inline void removeRecentFile(cupuacu::State *state,
@@ -538,6 +645,7 @@ namespace cupuacu::actions
             return;
         }
 
+        detail::discardAutosaveSnapshot(state->getActiveDocumentSession());
         prepareForDocumentTransition(state);
 
         auto &session = state->getActiveDocumentSession();
@@ -565,6 +673,7 @@ namespace cupuacu::actions
             return;
         }
 
+        detail::discardAutosaveSnapshot(state->getActiveDocumentSession());
         prepareForDocumentTransition(state);
 
         auto &session = state->getActiveDocumentSession();
@@ -638,6 +747,8 @@ namespace cupuacu::actions
             return false;
         }
 
+        auto previousSession = previousTab.session;
+        detail::discardAutosaveSnapshot(previousSession);
         if (updateRecentFiles)
         {
             rememberRecentFile(state, absoluteFilePath);
@@ -718,11 +829,11 @@ namespace cupuacu::actions
             plan.openFiles.reserve(persistedSessionState.openDocuments.size());
             for (const auto &documentState : persistedSessionState.openDocuments)
             {
-                if (!documentState.filePath.empty() &&
-                    std::filesystem::exists(documentState.filePath))
+                if (detail::hasRestorableDocument(documentState))
                 {
                     plan.openDocuments.push_back(documentState);
-                    plan.openFiles.push_back(documentState.filePath);
+                    plan.openFiles.push_back(
+                        detail::restoreIdentityPath(documentState));
                 }
             }
         }
@@ -858,32 +969,62 @@ namespace cupuacu::actions
             for (size_t index = 0; index < plan.openFiles.size(); ++index)
             {
                 std::string failureReason;
-                const bool loaded =
-                    (index == 0)
-                        ? loadFileIntoSession(
-                              state, plan.openDocuments[index].filePath, false,
-                              false, false, false, &failureReason)
-                        : loadFileIntoNewTab(
-                              state, plan.openDocuments[index].filePath, false,
-                              false, false, false, &failureReason);
+                bool loaded = false;
+                const auto &documentState = plan.openDocuments[index];
+                if (!documentState.autosaveSnapshotPath.empty() &&
+                    std::filesystem::exists(documentState.autosaveSnapshotPath))
+                {
+                    if (index == 0 || prepareTabForOpenedDocument(state))
+                    {
+                        prepareForDocumentTransition(state);
+                        loaded =
+                            cupuacu::persistence::loadDocumentAutosaveSnapshot(
+                                documentState.autosaveSnapshotPath,
+                                state->getActiveDocumentSession());
+                        if (loaded)
+                        {
+                            refreshDocumentUi(state);
+                            setMainWindowTitle(
+                                state,
+                                state->getActiveDocumentSession().currentFile.empty()
+                                    ? kUntitledDocumentTitle
+                                    : state->getActiveDocumentSession().currentFile);
+                        }
+                        else
+                        {
+                            failureReason = "Autosave snapshot could not be read.";
+                        }
+                    }
+                }
+                else
+                {
+                    loaded =
+                        (index == 0)
+                            ? loadFileIntoSession(
+                                  state, documentState.filePath, false,
+                                  false, false, false, &failureReason)
+                            : loadFileIntoNewTab(
+                                  state, documentState.filePath, false,
+                                  false, false, false, &failureReason);
+                }
                 if (!loaded)
                 {
                     detail::reportDocumentIoFailure(state, "Open",
-                                                    plan.openDocuments[index].filePath,
+                                                    plan.openFiles[index],
                                                     failureReason, false);
                     restoreFailures.push_back(
-                        {plan.openDocuments[index].filePath,
-                         detail::condensedRestoreReason(plan.openDocuments[index].filePath,
+                        {plan.openFiles[index],
+                         detail::condensedRestoreReason(plan.openFiles[index],
                                                         failureReason)});
                     state->recentFiles.erase(
                         std::remove(state->recentFiles.begin(),
                                     state->recentFiles.end(),
-                                    plan.openDocuments[index].filePath),
+                                    plan.openFiles[index]),
                         state->recentFiles.end());
                     continue;
                 }
 
-                applyPersistedOpenDocumentState(state, plan.openDocuments[index]);
+                applyPersistedOpenDocumentState(state, documentState);
 
                 if (static_cast<int>(index) == plan.activeOpenFileIndex)
                 {
@@ -899,7 +1040,10 @@ namespace cupuacu::actions
                 bindMainWindowToActiveDocument(state);
                 refreshBoundDocumentUi(state);
                 setMainWindowTitle(
-                    state, state->getActiveDocumentSession().currentFile);
+                    state,
+                    state->getActiveDocumentSession().currentFile.empty()
+                        ? kUntitledDocumentTitle
+                        : state->getActiveDocumentSession().currentFile);
             }
 
             if (plan.shouldPersistState)

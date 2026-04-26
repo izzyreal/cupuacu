@@ -18,6 +18,7 @@ namespace cupuacu::persistence
     struct PersistedOpenDocumentState
     {
         std::string filePath;
+        std::string autosaveSnapshotPath;
         std::optional<double> samplesPerPixel;
         std::optional<int64_t> sampleOffset;
         std::optional<int64_t> cursor;

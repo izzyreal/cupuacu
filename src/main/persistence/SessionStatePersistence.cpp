@@ -12,7 +12,7 @@ namespace cupuacu::persistence
 {
     namespace
     {
-        constexpr int kFormatVersion = 7;
+        constexpr int kFormatVersion = 8;
 
         std::vector<std::string> filterFiles(const std::vector<std::string> &files)
         {
@@ -169,15 +169,31 @@ namespace cupuacu::persistence
             std::vector<PersistedOpenDocumentState> result;
             for (const auto &entry : json.at("openDocuments"))
             {
-                if (!entry.is_object() || !entry.contains("filePath") ||
-                    !entry.at("filePath").is_string())
+                if (!entry.is_object())
                 {
                     return std::nullopt;
                 }
 
                 PersistedOpenDocumentState documentState{};
-                documentState.filePath = entry.at("filePath").get<std::string>();
-                if (documentState.filePath.empty())
+                if (entry.contains("filePath"))
+                {
+                    if (!entry.at("filePath").is_string())
+                    {
+                        return std::nullopt;
+                    }
+                    documentState.filePath = entry.at("filePath").get<std::string>();
+                }
+                if (entry.contains("autosaveSnapshotPath"))
+                {
+                    if (!entry.at("autosaveSnapshotPath").is_string())
+                    {
+                        return std::nullopt;
+                    }
+                    documentState.autosaveSnapshotPath =
+                        entry.at("autosaveSnapshotPath").get<std::string>();
+                }
+                if (documentState.filePath.empty() &&
+                    documentState.autosaveSnapshotPath.empty())
                 {
                     continue;
                 }
@@ -235,7 +251,8 @@ namespace cupuacu::persistence
 
         const int version = json.value("version", 0);
         if (version != 1 && version != 2 && version != 3 && version != 4 &&
-            version != 5 && version != 6 && version != kFormatVersion)
+            version != 5 && version != 6 && version != 7 &&
+            version != kFormatVersion)
         {
             return {};
         }
@@ -251,7 +268,10 @@ namespace cupuacu::persistence
             state.openFiles.reserve(state.openDocuments.size());
             for (const auto &documentState : state.openDocuments)
             {
-                state.openFiles.push_back(documentState.filePath);
+                state.openFiles.push_back(
+                    !documentState.filePath.empty()
+                        ? documentState.filePath
+                        : documentState.autosaveSnapshotPath);
             }
         }
         else
@@ -310,7 +330,8 @@ namespace cupuacu::persistence
         openDocuments.reserve(state.openDocuments.size());
         for (const auto &documentState : state.openDocuments)
         {
-            if (!documentState.filePath.empty())
+            if (!documentState.filePath.empty() ||
+                !documentState.autosaveSnapshotPath.empty())
             {
                 openDocuments.push_back(documentState);
             }
@@ -330,7 +351,9 @@ namespace cupuacu::persistence
         openFiles.reserve(openDocuments.size());
         for (const auto &documentState : openDocuments)
         {
-            openFiles.push_back(documentState.filePath);
+            openFiles.push_back(!documentState.filePath.empty()
+                                    ? documentState.filePath
+                                    : documentState.autosaveSnapshotPath);
         }
         const int activeOpenFileIndex =
             openFiles.empty()
@@ -357,6 +380,11 @@ namespace cupuacu::persistence
             nlohmann::json entry{
                 {"filePath", documentState.filePath},
             };
+            if (!documentState.autosaveSnapshotPath.empty())
+            {
+                entry["autosaveSnapshotPath"] =
+                    documentState.autosaveSnapshotPath;
+            }
             if (documentState.samplesPerPixel.has_value())
             {
                 entry["samplesPerPixel"] = *documentState.samplesPerPixel;
