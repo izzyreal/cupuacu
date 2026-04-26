@@ -724,9 +724,9 @@ TEST_CASE("Async startup document restore reopens tabs and restores active view"
     persistedState.openDocuments = {
         {.filePath = firstPath.string(), .cursor = 1},
         {.filePath = secondPath.string(),
-         .cursor = 2,
          .samplesPerPixel = 1.5,
-         .sampleOffset = 1},
+         .sampleOffset = 1,
+         .cursor = 2},
     };
     persistedState.openFiles = {firstPath.string(), secondPath.string()};
     persistedState.activeOpenFileIndex = 1;
