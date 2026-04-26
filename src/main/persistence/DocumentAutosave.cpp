@@ -2,7 +2,6 @@
 
 #include "file/FileIo.hpp"
 
-#include <bit>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
@@ -106,12 +105,19 @@ namespace cupuacu::persistence
 
         void writeFloat(std::ostream &output, const float value)
         {
-            writeU32(output, std::bit_cast<uint32_t>(value));
+            uint32_t bits = 0;
+            static_assert(sizeof(bits) == sizeof(value));
+            std::memcpy(&bits, &value, sizeof(bits));
+            writeU32(output, bits);
         }
 
         float readFloat(std::istream &input)
         {
-            return std::bit_cast<float>(readU32(input));
+            const uint32_t bits = readU32(input);
+            float value = 0.0f;
+            static_assert(sizeof(value) == sizeof(bits));
+            std::memcpy(&value, &bits, sizeof(value));
+            return value;
         }
 
         cupuacu::SampleFormat sampleFormatFromInt(const uint32_t value)
