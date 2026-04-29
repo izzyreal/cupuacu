@@ -136,6 +136,8 @@ namespace cupuacu::file::alac
             ReadPacketFn readPacket,
             const DecodedPacketCallback &decodedPacketCallback)
         {
+            constexpr std::size_t kBitReaderPaddingBytes = 3u;
+
             if (parameters.sampleRate == 0 || parameters.channels == 0 ||
                 parameters.channels > maxChannels() ||
                 alacFormatFlagForBits(parameters.bitsPerSample) == 0 ||
@@ -173,7 +175,7 @@ namespace cupuacu::file::alac
                 static_cast<std::size_t>(parameters.channels);
             std::vector<std::uint8_t> packetOutput(maxPacketSampleCount *
                                                    outputBytesPerSample);
-            std::vector<std::uint8_t> packetInput;
+            std::vector<std::uint8_t> packetScratch;
 
             std::uint32_t decodedFrames = 0;
             for (std::size_t packetIndex = 0; packetIndex < packetSizes.size();
@@ -191,15 +193,33 @@ namespace cupuacu::file::alac
                     return false;
                 }
 
-                packetInput.assign(static_cast<std::size_t>(packetSize) + 3u, 0);
-                if (!readPacket(packetByteOffset, packetSize, packetInput))
+                PacketBufferView packetView{};
+                if (!readPacket(packetByteOffset, packetSize, packetView) ||
+                    !packetView.bytes ||
+                    packetView.accessibleByteCount <
+                        static_cast<std::size_t>(packetSize))
                 {
                     return false;
                 }
 
+                const auto packetBytesNeeded =
+                    static_cast<std::size_t>(packetSize) +
+                    kBitReaderPaddingBytes;
+                const std::uint8_t *packetInput = packetView.bytes;
+                if (packetView.accessibleByteCount < packetBytesNeeded)
+                {
+                    packetScratch.resize(packetBytesNeeded);
+                    std::memcpy(packetScratch.data(), packetView.bytes,
+                                packetSize);
+                    std::fill(packetScratch.begin() + packetSize,
+                              packetScratch.end(), 0);
+                    packetInput = packetScratch.data();
+                }
+
                 BitBuffer bitBuffer;
-                BitBufferInit(&bitBuffer, packetInput.data(), packetSize);
-                std::fill(packetOutput.begin(), packetOutput.end(), 0);
+                BitBufferInit(&bitBuffer,
+                              const_cast<std::uint8_t *>(packetInput),
+                              packetSize);
 
                 std::uint32_t decodedPacketFrames = 0;
                 if (decoder.Decode(
@@ -456,19 +476,19 @@ namespace cupuacu::file::alac
             std::move(progressCallback),
             [&](const std::uint64_t packetByteOffset,
                 const std::uint32_t packetSize,
-                std::vector<std::uint8_t> &packetInput) -> bool
+                PacketBufferView &packetView) -> bool
             {
                 if (packetByteOffset > sourceBytes.size() ||
                     packetSize > sourceBytes.size() - packetByteOffset)
                 {
                     return false;
                 }
-                std::copy(sourceBytes.begin() +
-                              static_cast<std::ptrdiff_t>(packetByteOffset),
-                          sourceBytes.begin() +
-                              static_cast<std::ptrdiff_t>(packetByteOffset +
-                                                          packetSize),
-                          packetInput.begin());
+                packetView.bytes =
+                    sourceBytes.data() +
+                    static_cast<std::ptrdiff_t>(packetByteOffset);
+                packetView.accessibleByteCount =
+                    sourceBytes.size() -
+                    static_cast<std::size_t>(packetByteOffset);
                 return true;
             },
             [&decoded](const std::uint8_t *interleavedPcmBytes,
@@ -516,10 +536,10 @@ namespace cupuacu::file::alac
             std::move(progressCallback),
             [&](const std::uint64_t packetByteOffset,
                 const std::uint32_t packetSize,
-                std::vector<std::uint8_t> &packetInput) -> bool
+                PacketBufferView &packetView) -> bool
             {
                 return packetReadCallback(packetByteOffset, packetSize,
-                                          packetInput);
+                                          packetView);
             },
             [&decoded](const std::uint8_t *interleavedPcmBytes,
                        const std::uint32_t pcmByteCount,
@@ -555,10 +575,10 @@ namespace cupuacu::file::alac
             std::move(progressCallback),
             [&](const std::uint64_t packetByteOffset,
                 const std::uint32_t packetSize,
-                std::vector<std::uint8_t> &packetInput) -> bool
+                PacketBufferView &packetView) -> bool
             {
                 return packetReadCallback(packetByteOffset, packetSize,
-                                          packetInput);
+                                          packetView);
             },
             std::move(decodedPacketCallback));
     }

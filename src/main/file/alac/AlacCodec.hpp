@@ -64,10 +64,15 @@ namespace cupuacu::file::alac
     using DecodeProgressCallback =
         std::function<void(std::uint32_t decodedFrames,
                            std::uint32_t totalFrames)>;
+    struct PacketBufferView
+    {
+        const std::uint8_t *bytes = nullptr;
+        std::size_t accessibleByteCount = 0;
+    };
     using PacketReadCallback =
         std::function<bool(std::uint64_t packetOffset,
                            std::uint32_t packetSize,
-                           std::vector<std::uint8_t> &packetBytes)>;
+                           PacketBufferView &packetView)>;
     using DecodedPacketCallback =
         std::function<bool(const std::uint8_t *interleavedPcmBytes,
                            std::uint32_t pcmByteCount,

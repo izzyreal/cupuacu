@@ -247,11 +247,31 @@ namespace cupuacu::file
             LoadedAudioFile result;
             auto &doc = result.document;
             std::uint32_t totalFramesLoaded = 0;
+            constexpr std::uint32_t kLoadBlockFrames = 65536u;
             std::vector<float> interleaved;
+            std::uint16_t streamChannels = 0;
+            auto flushInterleaved = [&doc, &interleaved, &totalFramesLoaded,
+                                     &streamChannels]()
+            {
+                if (interleaved.empty() || streamChannels == 0)
+                {
+                    return;
+                }
+
+                const auto frameCount = static_cast<std::uint32_t>(
+                    interleaved.size() /
+                    static_cast<std::size_t>(streamChannels));
+                doc.writeInterleavedFloatBlock(totalFramesLoaded,
+                                               interleaved.data(), frameCount,
+                                               streamChannels, false);
+                totalFramesLoaded += frameCount;
+                interleaved.clear();
+            };
             cupuacu::file::m4a::M4aAlacFileInfo fileInfo;
             fileInfo = cupuacu::file::m4a::streamAlacM4aFile(
                 path,
-                [&doc, &interleaved, &totalFramesLoaded](
+                [&doc, &interleaved, &totalFramesLoaded, &streamChannels,
+                 &flushInterleaved](
                     const std::uint8_t *interleavedPcmBytes,
                     const std::uint32_t pcmByteCount,
                     const std::uint32_t frameCount,
@@ -260,36 +280,61 @@ namespace cupuacu::file
                 {
                     const auto sampleCount = static_cast<std::size_t>(frameCount) *
                                              static_cast<std::size_t>(channels);
-                    interleaved.resize(sampleCount);
+                    if (streamChannels == 0)
+                    {
+                        streamChannels = channels;
+                        interleaved.reserve(
+                            static_cast<std::size_t>(kLoadBlockFrames) *
+                            static_cast<std::size_t>(channels));
+                    }
+                    if (streamChannels != channels)
+                    {
+                        throw std::runtime_error(
+                            "ALAC M4A channel count changed during decode");
+                    }
+
+                    const auto existingSamples = interleaved.size();
+                    const auto incomingSamples = sampleCount;
+                    const auto incomingFrames = frameCount;
+                    const auto bufferedFrames = static_cast<std::uint32_t>(
+                        existingSamples / static_cast<std::size_t>(channels));
+                    if (bufferedFrames > 0 &&
+                        bufferedFrames + incomingFrames > kLoadBlockFrames)
+                    {
+                        flushInterleaved();
+                    }
+
+                    const auto writeOffset = interleaved.size();
+                    interleaved.resize(writeOffset + incomingSamples);
+                    auto *const output = interleaved.data() + writeOffset;
                     switch (bitDepth)
                     {
                         case 16:
                             convertNativePcm16BlockToFloat(
-                                interleavedPcmBytes, sampleCount,
-                                interleaved.data());
+                                interleavedPcmBytes, sampleCount, output);
                             break;
                         case 24:
                             convertNativePcm24BlockToFloat(
-                                interleavedPcmBytes, sampleCount,
-                                interleaved.data());
+                                interleavedPcmBytes, sampleCount, output);
                             break;
                         case 32:
                             convertNativePcm32BlockToFloat(
-                                interleavedPcmBytes, sampleCount,
-                                interleaved.data());
+                                interleavedPcmBytes, sampleCount, output);
                             break;
                         default:
                             throw std::runtime_error(
                                 "Unsupported ALAC M4A bit depth");
                     }
-
-                    doc.writeInterleavedFloatBlock(totalFramesLoaded,
-                                                   interleaved.data(),
-                                                   frameCount, channels, false);
-                    totalFramesLoaded += frameCount;
+                    const auto framesBuffered = static_cast<std::uint32_t>(
+                        interleaved.size() /
+                        static_cast<std::size_t>(channels));
+                    if (framesBuffered >= kLoadBlockFrames)
+                    {
+                        flushInterleaved();
+                    }
                 },
-                [&doc, &result, &path](const cupuacu::file::m4a::M4aAlacFileInfo
-                                           &streamInfo)
+                [&doc, &result, &path, &streamChannels, &interleaved](
+                    const cupuacu::file::m4a::M4aAlacFileInfo &streamInfo)
                 {
                     result.exportSettings = inferExportSettingsForFile(
                         path,
@@ -303,6 +348,10 @@ namespace cupuacu::file
                     doc.initialize(streamInfo.sampleFormat,
                                    streamInfo.sampleRate, streamInfo.channels,
                                    streamInfo.frameCount);
+                    streamChannels = streamInfo.channels;
+                    interleaved.reserve(
+                        static_cast<std::size_t>(kLoadBlockFrames) *
+                        static_cast<std::size_t>(streamInfo.channels));
                 },
                 [progress, path, &lastDecodePercent, &decodeStarted](
                     const std::uint32_t decodedFrames,
@@ -362,6 +411,7 @@ namespace cupuacu::file
                             0.0, 1.0) *
                             0.05);
                 });
+            flushInterleaved();
             if (totalFramesLoaded != fileInfo.frameCount)
             {
                 throw std::runtime_error("Decoded ALAC M4A sample count mismatch");

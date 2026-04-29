@@ -30,7 +30,7 @@ namespace cupuacu::file::m4a
 
             bool readPacket(const std::uint64_t packetOffset,
                             const std::uint32_t packetSize,
-                            std::vector<std::uint8_t> &packetBytes)
+                            cupuacu::file::alac::PacketBufferView &packetView)
             {
                 if (packetOffset > totalBytes ||
                     packetSize > totalBytes - packetOffset)
@@ -41,12 +41,9 @@ namespace cupuacu::file::m4a
                 ensureBufferCovers(packetOffset, packetSize);
                 const auto offsetInBuffer = static_cast<std::size_t>(
                     packetOffset - bufferOffset);
-                std::copy(buffer.begin() +
-                              static_cast<std::ptrdiff_t>(offsetInBuffer),
-                          buffer.begin() +
-                              static_cast<std::ptrdiff_t>(offsetInBuffer +
-                                                          packetSize),
-                          packetBytes.begin());
+                packetView.bytes =
+                    buffer.data() + static_cast<std::ptrdiff_t>(offsetInBuffer);
+                packetView.accessibleByteCount = buffer.size() - offsetInBuffer;
                 return true;
             }
 
@@ -66,9 +63,12 @@ namespace cupuacu::file::m4a
 
                 constexpr std::uint64_t kReadChunkBytes = 4u * 1024u * 1024u;
                 const auto readOffset = packetOffset;
+                const auto requiredSize = std::min<std::uint64_t>(
+                    totalBytes - readOffset,
+                    static_cast<std::uint64_t>(packetSize) + 3u);
                 const auto readSize = std::min<std::uint64_t>(
                     totalBytes - readOffset,
-                    std::max<std::uint64_t>(packetSize, kReadChunkBytes));
+                    std::max<std::uint64_t>(requiredSize, kReadChunkBytes));
                 buffer.resize(static_cast<std::size_t>(readSize));
 
                 input.clear();
@@ -186,9 +186,9 @@ namespace cupuacu::file::m4a
             parsed.packetOffsets, parsed.packetSizes,
             [&packetReader](const std::uint64_t packetOffset,
                             const std::uint32_t packetSize,
-                            std::vector<std::uint8_t> &packetBytes)
+                            cupuacu::file::alac::PacketBufferView &packetView)
             { return packetReader.readPacket(packetOffset, packetSize,
-                                             packetBytes); },
+                                             packetView); },
             [&](const std::uint8_t *interleavedPcmBytes,
                 const std::uint32_t pcmByteCount,
                 const std::uint32_t frameCount)

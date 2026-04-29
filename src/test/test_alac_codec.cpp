@@ -325,7 +325,7 @@ TEST_CASE("ALAC codec decodes packets via packet reader callback", "[alac]")
         packetOffsets, encoded->packetSizes,
         [&sourceBytes](const std::uint64_t packetOffset,
                        const std::uint32_t packetSize,
-                       std::vector<std::uint8_t> &packetBytes)
+                       cupuacu::file::alac::PacketBufferView &packetView)
         {
             if (packetOffset > sourceBytes.size() ||
                 packetSize > sourceBytes.size() - packetOffset)
@@ -333,11 +333,12 @@ TEST_CASE("ALAC codec decodes packets via packet reader callback", "[alac]")
                 return false;
             }
 
-            std::copy(sourceBytes.begin() +
-                          static_cast<std::ptrdiff_t>(packetOffset),
-                      sourceBytes.begin() +
-                          static_cast<std::ptrdiff_t>(packetOffset + packetSize),
-                      packetBytes.begin());
+            packetView.bytes =
+                sourceBytes.data() +
+                static_cast<std::ptrdiff_t>(packetOffset);
+            packetView.accessibleByteCount =
+                sourceBytes.size() -
+                static_cast<std::size_t>(packetOffset);
             return true;
         });
 
