@@ -1,7 +1,6 @@
 #pragma once
 
 #include "audio/AudioBuffer.hpp"
-#include "audio/DirtyTrackingAudioBuffer.hpp"
 #include "audio/SampleProvenance.hpp"
 #include "SampleFormat.hpp"
 #include "gui/WaveformCache.hpp"

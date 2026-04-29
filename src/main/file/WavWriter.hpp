@@ -282,10 +282,6 @@ namespace cupuacu::file
 
             auto buf = state->getActiveDocumentSession().document.getAudioBuffer();
 
-            const bool shouldCheckForDirtiness =
-                std::dynamic_pointer_cast<
-                    cupuacu::audio::DirtyTrackingAudioBuffer>(buf) != nullptr;
-
             for (size_t f = 0; f < frames; ++f)
             {
                 for (size_t c = 0; c < channels; ++c)
@@ -300,7 +296,7 @@ namespace cupuacu::file
                         s = -1.0f;
                     }
 
-                    if (!shouldCheckForDirtiness || buf->isDirty(c, f))
+                    if (buf->isDirty(c, f))
                     {
                         interleaved[f * channels + c] =
                             static_cast<int16_t>(quantizeIntegerPcmSample(

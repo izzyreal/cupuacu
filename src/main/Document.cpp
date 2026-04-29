@@ -462,7 +462,9 @@ namespace cupuacu
             }
             else
             {
-                waveformCache[ch].rebuildDirty(channelData.data());
+                auto result = gui::WaveformCache::buildFromState(
+                    waveformCache[ch].snapshotBuildState(), channelData.data());
+                waveformCache[ch].applyBuildResult(std::move(result));
             }
         }
     }

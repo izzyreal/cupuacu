@@ -5,7 +5,6 @@
 #include "TestPaths.hpp"
 #include "TestResourceUtil.hpp"
 #include "actions/audio/EditCommands.hpp"
-#include "audio/DirtyTrackingAudioBuffer.hpp"
 #include "file/file_loading.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/LabeledField.hpp"
@@ -150,43 +149,6 @@ TEST_CASE("Waveform smooth spline evaluation and segment quads handle edge cases
     REQUIRE(vertical->vertices[1].x == Catch::Approx(7.0f));
     REQUIRE(vertical->vertices[0].y == Catch::Approx(1.0f));
     REQUIRE(vertical->vertices[2].y == Catch::Approx(9.0f));
-}
-
-TEST_CASE("DirtyTrackingAudioBuffer preserves dirty bits across inserts and removals",
-          "[audio]")
-{
-    cupuacu::audio::DirtyTrackingAudioBuffer buffer;
-    const auto &bufferView = static_cast<const cupuacu::audio::AudioBuffer &>(buffer);
-    buffer.resize(2, 4);
-
-    REQUIRE_FALSE(bufferView.isDirty(0, 0));
-    buffer.setSample(0, 1, 1.0f);
-    buffer.setSample(1, 2, 0.5f, false);
-
-    REQUIRE(bufferView.isDirty(0, 1));
-    REQUIRE_FALSE(bufferView.isDirty(1, 2));
-
-    buffer.insertFrames(4, 2);
-    REQUIRE(buffer.getFrameCount() == 6);
-    REQUIRE(bufferView.isDirty(0, 1));
-    REQUIRE_FALSE(bufferView.isDirty(0, 4));
-    REQUIRE_FALSE(bufferView.isDirty(1, 5));
-
-    buffer.setSample(1, 3, -0.25f);
-    REQUIRE(bufferView.isDirty(1, 3));
-
-    buffer.insertFrames(1, 2);
-    REQUIRE(buffer.getFrameCount() == 8);
-    REQUIRE_FALSE(bufferView.isDirty(0, 1));
-    REQUIRE_FALSE(bufferView.isDirty(0, 2));
-    REQUIRE(bufferView.isDirty(0, 3));
-    REQUIRE(bufferView.isDirty(1, 5));
-
-    buffer.removeFrames(2, 3);
-    REQUIRE(buffer.getFrameCount() == 5);
-    REQUIRE(bufferView.isDirty(1, 2));
-    REQUIRE_FALSE(bufferView.isDirty(0, 1));
-    REQUIRE_FALSE(bufferView.isDirty(0, 4));
 }
 
 TEST_CASE("LabeledField marks itself dirty only when the displayed value changes",

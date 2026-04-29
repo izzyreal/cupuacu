@@ -19,6 +19,22 @@ namespace cupuacu::gui
         constexpr static int BASE_BLOCK_SIZE = 32;
         constexpr static int MAX_LEVEL_COUNT = 16;
 
+        struct BuildState
+        {
+            int64_t numSamples = 0;
+            int64_t dirtyFromBlock = INT64_MAX;
+            int64_t dirtyToBlock = -1;
+            std::vector<std::vector<Peak>> levels;
+        };
+
+        struct BuildResult
+        {
+            int64_t numSamples = 0;
+            int64_t dirtyFromBlock = INT64_MAX;
+            int64_t dirtyToBlock = -1;
+            std::vector<std::vector<Peak>> levels;
+        };
+
         WaveformCache()
             : numSamples(0), dirtyFromBlock(INT64_MAX), dirtyToBlock(-1)
         {
@@ -215,38 +231,84 @@ namespace cupuacu::gui
             return (int)levels.size();
         }
 
+        [[nodiscard]] BuildState snapshotBuildState() const
+        {
+            return {
+                .numSamples = numSamples,
+                .dirtyFromBlock = dirtyFromBlock,
+                .dirtyToBlock = dirtyToBlock,
+                .levels = levels,
+            };
+        }
+
+        [[nodiscard]] static BuildResult buildFromState(
+            const BuildState &state,
+            const float *samples)
+        {
+            BuildResult result{
+                .numSamples = state.numSamples,
+                .dirtyFromBlock = state.dirtyFromBlock,
+                .dirtyToBlock = state.dirtyToBlock,
+                .levels = state.levels,
+            };
+            rebuildDirtyLevels(result.levels, result.numSamples,
+                               result.dirtyFromBlock, result.dirtyToBlock,
+                               samples);
+            return result;
+        }
+
+        void applyBuildResult(BuildResult result)
+        {
+            numSamples = result.numSamples;
+            dirtyFromBlock = result.dirtyFromBlock;
+            dirtyToBlock = result.dirtyToBlock;
+            levels = std::move(result.levels);
+        }
+
         void rebuildDirty(const float *samples)
         {
-            if (levels.empty() || numSamples <= 0)
+            auto result = buildFromState(snapshotBuildState(), samples);
+            applyBuildResult(std::move(result));
+        }
+
+    private:
+        static void rebuildDirtyLevels(std::vector<std::vector<Peak>> &levelsToUse,
+                                       const int64_t numSamplesToUse,
+                                       int64_t &dirtyFromBlockToUse,
+                                       int64_t &dirtyToBlockToUse,
+                                       const float *samples)
+        {
+            if (levelsToUse.empty() || numSamplesToUse <= 0)
             {
-                dirtyFromBlock = INT64_MAX;
-                dirtyToBlock = -1;
+                dirtyFromBlockToUse = INT64_MAX;
+                dirtyToBlockToUse = -1;
                 return;
             }
-            if (dirtyToBlock < dirtyFromBlock)
+            if (dirtyToBlockToUse < dirtyFromBlockToUse)
             {
                 return;
             }
 
-            const int64_t max0 = level0Size() - 1;
+            const int64_t max0 = level0SizeFromSamples(numSamplesToUse) - 1;
             if (max0 < 0)
             {
-                dirtyFromBlock = INT64_MAX;
-                dirtyToBlock = -1;
+                dirtyFromBlockToUse = INT64_MAX;
+                dirtyToBlockToUse = -1;
                 return;
             }
 
-            const int64_t from0 = std::clamp<int64_t>(dirtyFromBlock, 0, max0);
-            const int64_t to0 = std::clamp<int64_t>(dirtyToBlock, 0, max0);
+            const int64_t from0 =
+                std::clamp<int64_t>(dirtyFromBlockToUse, 0, max0);
+            const int64_t to0 = std::clamp<int64_t>(dirtyToBlockToUse, 0, max0);
 
             for (int64_t blk = from0; blk <= to0; ++blk)
             {
                 const int64_t s0 = blk * (int64_t)BASE_BLOCK_SIZE;
                 const int64_t s1 =
-                    std::min<int64_t>(s0 + BASE_BLOCK_SIZE, numSamples);
+                    std::min<int64_t>(s0 + BASE_BLOCK_SIZE, numSamplesToUse);
                 if (s0 >= s1)
                 {
-                    levels[0][blk] = {0.0f, 0.0f};
+                    levelsToUse[0][blk] = {0.0f, 0.0f};
                     continue;
                 }
 
@@ -254,20 +316,20 @@ namespace cupuacu::gui
                 float maxv = samples[s0];
                 for (int64_t i = s0 + 1; i < s1; ++i)
                 {
-                    float v = samples[i];
+                    const float v = samples[i];
                     minv = std::min(minv, v);
                     maxv = std::max(maxv, v);
                 }
-                levels[0][blk] = {minv, maxv};
+                levelsToUse[0][blk] = {minv, maxv};
             }
 
             int64_t pFrom = from0;
             int64_t pTo = to0;
 
-            for (int l = 1; l < (int)levels.size(); ++l)
+            for (int l = 1; l < (int)levelsToUse.size(); ++l)
             {
-                auto &prev = levels[l - 1];
-                auto &cur = levels[l];
+                auto &prev = levelsToUse[l - 1];
+                auto &cur = levelsToUse[l];
 
                 if (cur.empty())
                 {
@@ -303,11 +365,10 @@ namespace cupuacu::gui
                 }
             }
 
-            dirtyFromBlock = INT64_MAX;
-            dirtyToBlock = -1;
+            dirtyFromBlockToUse = INT64_MAX;
+            dirtyToBlockToUse = -1;
         }
 
-    private:
         void buildStorage()
         {
             levels.clear();
