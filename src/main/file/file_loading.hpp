@@ -7,6 +7,9 @@
 #include "OverwritePreservation.hpp"
 #include "SndfilePath.hpp"
 #include "aiff/AiffMarkerMetadata.hpp"
+#if defined(__APPLE__)
+#include "m4a/M4aAppleReader.hpp"
+#endif
 #include "m4a/M4aAlacReader.hpp"
 #include "wav/WavMarkerMetadata.hpp"
 
@@ -237,6 +240,82 @@ namespace cupuacu::file
                 return std::nullopt;
             }
 
+#if defined(__APPLE__)
+            if (progress)
+            {
+                progress(path + " (decoding ALAC)", 0.0);
+            }
+            int lastDecodePercent = -1;
+            LoadedAudioFile result;
+            auto &doc = result.document;
+            std::uint32_t totalFramesLoaded = 0;
+            cupuacu::file::m4a::M4aAlacFileInfo fileInfo =
+                cupuacu::file::m4a::streamAlacM4aFileWithAudioToolbox(
+                    path,
+                    [&doc, &totalFramesLoaded](const float *interleavedSamples,
+                                               const std::uint32_t frameCount,
+                                               const std::uint16_t channels)
+                    {
+                        doc.writeInterleavedFloatBlock(totalFramesLoaded,
+                                                       interleavedSamples,
+                                                       frameCount, channels,
+                                                       false);
+                        totalFramesLoaded += frameCount;
+                    },
+                    [&doc, &result, &path](
+                        const cupuacu::file::m4a::M4aAlacFileInfo &streamInfo)
+                    {
+                        result.exportSettings = inferExportSettingsForFile(
+                            path,
+                            CUPUACU_FORMAT_M4A |
+                                (streamInfo.bitDepth == 24
+                                     ? CUPUACU_FORMAT_ALAC_24
+                                     : streamInfo.bitDepth == 32
+                                           ? CUPUACU_FORMAT_ALAC_32
+                                           : CUPUACU_FORMAT_ALAC_16),
+                            streamInfo.sampleFormat);
+                        doc.initialize(streamInfo.sampleFormat,
+                                       streamInfo.sampleRate,
+                                       streamInfo.channels,
+                                       streamInfo.frameCount);
+                    },
+                    [progress, path, &lastDecodePercent](
+                        const std::uint32_t decodedFrames,
+                        const std::uint32_t totalFrames)
+                    {
+                        if (!progress || totalFrames == 0)
+                        {
+                            return;
+                        }
+                        const int percent = static_cast<int>(
+                            std::clamp<double>(
+                                static_cast<double>(decodedFrames) /
+                                    static_cast<double>(totalFrames),
+                                0.0, 1.0) *
+                            100.0);
+                        if (percent == lastDecodePercent &&
+                            decodedFrames < totalFrames)
+                        {
+                            return;
+                        }
+                        lastDecodePercent = percent;
+                        progress(
+                            path + " (decoding ALAC " +
+                                std::to_string(percent) + "%)",
+                            std::clamp<double>(
+                                static_cast<double>(decodedFrames) /
+                                    static_cast<double>(totalFrames),
+                                0.0, 1.0));
+                    });
+            if (totalFramesLoaded != fileInfo.frameCount)
+            {
+                throw std::runtime_error("Decoded ALAC M4A sample count mismatch");
+            }
+            doc.replaceMarkers(std::move(fileInfo.markers));
+            doc.markCurrentStateAsSavedSource();
+            return result;
+#else
+
             if (progress)
             {
                 progress(path + " (reading file)", 0.0);
@@ -419,6 +498,7 @@ namespace cupuacu::file
             doc.replaceMarkers(std::move(fileInfo.markers));
             doc.markCurrentStateAsSavedSource();
             return result;
+#endif
         }
     } // namespace detail
 

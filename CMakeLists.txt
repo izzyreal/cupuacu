@@ -205,6 +205,7 @@ set(CUPUACU_SHARED_SOURCES
 
 if(APPLE)
     list(APPEND CUPUACU_SHARED_SOURCES
+        src/main/file/m4a/M4aAppleReader.cpp
         src/main/actions/CocoaSaveFileDialog.mm
     )
 endif()
@@ -308,6 +309,14 @@ target_link_libraries(cupuacu_deps INTERFACE
     spdlog::spdlog
     nlohmann_json::nlohmann_json
 )
+if(APPLE)
+    find_library(CUPUACU_AUDIOTOOLBOX_FRAMEWORK AudioToolbox REQUIRED)
+    find_library(CUPUACU_COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+    target_link_libraries(cupuacu_deps INTERFACE
+        "${CUPUACU_AUDIOTOOLBOX_FRAMEWORK}"
+        "${CUPUACU_COREFOUNDATION_FRAMEWORK}"
+    )
+endif()
 
 function(cupuacu_enable_coverage_for_target target)
     if(NOT CUPUACU_ENABLE_COVERAGE)
