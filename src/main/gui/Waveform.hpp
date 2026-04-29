@@ -229,11 +229,18 @@ namespace cupuacu::gui
 
             bool operator==(const BaseTextureCacheKey &other) const = default;
         };
+        struct StoredBlockTexture
+        {
+            SDL_Texture *texture = nullptr;
+            BaseTextureCacheKey key{};
+            bool valid = false;
+        };
 
         mutable BaseTextureCacheKey cachedBaseTextureKey{};
         mutable bool cachedBaseTextureValid = false;
         mutable SDL_FRect cachedBaseTextureSourceRect{
             0.0f, 0.0f, 0.0f, 0.0f};
+        mutable std::vector<StoredBlockTexture> storedBlockTextures;
 
         std::vector<std::unique_ptr<SamplePoint>> computeSamplePoints();
 
@@ -246,7 +253,9 @@ namespace cupuacu::gui
         BaseTextureCacheKey chooseBaseTextureTargetKey(
             const BaseTextureCacheKey &, bool allowBlockCoverageReuse) const;
         bool canRenderCurrentViewFromCachedBlockTexture(
-            const BaseTextureCacheKey &) const;
+            const BaseTextureCacheKey &currentViewKey,
+            const BaseTextureCacheKey &sourceTextureKey,
+            SDL_FRect &outSourceRect) const;
         bool ensureBaseTextureStorage(SDL_Renderer *,
                                       const BaseTextureCacheKey &) const;
         void renderBaseTexture(SDL_Renderer *,
@@ -260,6 +269,11 @@ namespace cupuacu::gui
         bool rebuildShiftedBlockTexture(SDL_Renderer *,
                                         const BaseTextureCacheKey &newKey,
                                         int pixelShift) const;
+        void destroyTexture(SDL_Texture *&) const;
+        void storeCurrentBlockTexture() const;
+        void trimStoredBlockTextures() const;
+        bool activateStoredBlockTextureForView(
+            const BaseTextureCacheKey &newKey) const;
         void drawBaseWaveformContents(SDL_Renderer *) const;
         void drawHorizontalLines(SDL_Renderer *) const;
         bool shouldDrawSelection() const;

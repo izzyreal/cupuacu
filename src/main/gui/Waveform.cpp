@@ -110,16 +110,12 @@ void Waveform::resized()
 void Waveform::invalidateBaseTexture() const
 {
     cachedBaseTextureValid = false;
-    if (cachedBaseTexture)
+    destroyTexture(cachedBaseTexture);
+    for (auto &stored : storedBlockTextures)
     {
-        if (window && window->getRenderer() &&
-            SDL_GetRenderTarget(window->getRenderer()) == cachedBaseTexture)
-        {
-            SDL_SetRenderTarget(window->getRenderer(), nullptr);
-        }
-        SDL_DestroyTexture(cachedBaseTexture);
-        cachedBaseTexture = nullptr;
+        destroyTexture(stored.texture);
     }
+    storedBlockTextures.clear();
 }
 
 Waveform::BaseTextureCacheKey Waveform::computeBaseTextureCacheKey() const
@@ -186,30 +182,29 @@ Waveform::BaseTextureCacheKey Waveform::chooseBaseTextureTargetKey(
 }
 
 bool Waveform::canRenderCurrentViewFromCachedBlockTexture(
-    const BaseTextureCacheKey &currentViewKey) const
+    const BaseTextureCacheKey &currentViewKey,
+    const BaseTextureCacheKey &sourceTextureKey, SDL_FRect &outSourceRect) const
 {
-    if (!cachedBaseTextureValid || !cachedBaseTexture ||
-        currentViewKey.samplesPerPixel < 1.0)
+    if (currentViewKey.samplesPerPixel < 1.0)
     {
         return false;
     }
 
-    if (cachedBaseTextureKey.viewWidth != currentViewKey.viewWidth ||
-        cachedBaseTextureKey.viewHeight != currentViewKey.viewHeight ||
-        cachedBaseTextureKey.height != currentViewKey.viewHeight ||
-        cachedBaseTextureKey.frameCount != currentViewKey.frameCount ||
-        cachedBaseTextureKey.waveformDataVersion !=
-            currentViewKey.waveformDataVersion ||
-        cachedBaseTextureKey.pixelScale != currentViewKey.pixelScale ||
-        cachedBaseTextureKey.samplesPerPixel != currentViewKey.samplesPerPixel ||
-        cachedBaseTextureKey.verticalZoom != currentViewKey.verticalZoom)
+    if (sourceTextureKey.viewWidth != currentViewKey.viewWidth ||
+        sourceTextureKey.viewHeight != currentViewKey.viewHeight ||
+        sourceTextureKey.height != currentViewKey.viewHeight ||
+        sourceTextureKey.frameCount != currentViewKey.frameCount ||
+        sourceTextureKey.waveformDataVersion != currentViewKey.waveformDataVersion ||
+        sourceTextureKey.pixelScale != currentViewKey.pixelScale ||
+        sourceTextureKey.samplesPerPixel != currentViewKey.samplesPerPixel ||
+        sourceTextureKey.verticalZoom != currentViewKey.verticalZoom)
     {
         return false;
     }
 
     const double sourceX =
         (static_cast<double>(currentViewKey.sampleOffset) -
-         static_cast<double>(cachedBaseTextureKey.sampleOffset)) /
+         static_cast<double>(sourceTextureKey.sampleOffset)) /
         currentViewKey.samplesPerPixel;
     if (sourceX < 0.0)
     {
@@ -217,14 +212,14 @@ bool Waveform::canRenderCurrentViewFromCachedBlockTexture(
     }
 
     if (sourceX + static_cast<double>(currentViewKey.viewWidth) >
-        static_cast<double>(cachedBaseTextureKey.width))
+        static_cast<double>(sourceTextureKey.width))
     {
         return false;
     }
 
-    cachedBaseTextureSourceRect = {static_cast<float>(sourceX), 0.0f,
-                                   static_cast<float>(currentViewKey.viewWidth),
-                                   static_cast<float>(currentViewKey.viewHeight)};
+    outSourceRect = {static_cast<float>(sourceX), 0.0f,
+                     static_cast<float>(currentViewKey.viewWidth),
+                     static_cast<float>(currentViewKey.viewHeight)};
     return true;
 }
 
@@ -237,11 +232,8 @@ bool Waveform::ensureBaseTextureStorage(
         return true;
     }
 
-    if (cachedBaseTexture)
-    {
-        SDL_DestroyTexture(cachedBaseTexture);
-        cachedBaseTexture = nullptr;
-    }
+    storeCurrentBlockTexture();
+    destroyTexture(cachedBaseTexture);
 
     cachedBaseTexture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
                                           SDL_TEXTUREACCESS_TARGET,
@@ -292,7 +284,8 @@ void Waveform::finalizeBaseTextureForView(
     cachedBaseTextureValid = true;
     if (allowBlockCoverageReuse && targetKey != newKey)
     {
-        canRenderCurrentViewFromCachedBlockTexture(newKey);
+        canRenderCurrentViewFromCachedBlockTexture(newKey, targetKey,
+                                                   cachedBaseTextureSourceRect);
         return;
     }
 
@@ -329,8 +322,17 @@ bool Waveform::ensureBaseTexture(SDL_Renderer *renderer) const
     const auto newKey = computeBaseTextureCacheKey();
     const bool isBlockMode = newKey.samplesPerPixel >= 1.0;
     const bool allowBlockCoverageReuse = isBlockMode;
-    if (allowBlockCoverageReuse &&
-        canRenderCurrentViewFromCachedBlockTexture(newKey))
+    if (allowBlockCoverageReuse && cachedBaseTextureValid && cachedBaseTexture)
+    {
+        SDL_FRect sourceRect{};
+        if (canRenderCurrentViewFromCachedBlockTexture(newKey, cachedBaseTextureKey,
+                                                       sourceRect))
+        {
+            cachedBaseTextureSourceRect = sourceRect;
+            return true;
+        }
+    }
+    if (allowBlockCoverageReuse && activateStoredBlockTextureForView(newKey))
     {
         return true;
     }
@@ -353,6 +355,11 @@ bool Waveform::ensureBaseTexture(SDL_Renderer *renderer) const
         cachedBaseTextureSourceRect = {0.0f, 0.0f, static_cast<float>(newKey.width),
                                        static_cast<float>(newKey.height)};
         return true;
+    }
+
+    if (isBlockMode && cachedBaseTextureValid && cachedBaseTexture)
+    {
+        storeCurrentBlockTexture();
     }
 
     auto targetKey =
@@ -476,9 +483,108 @@ bool Waveform::rebuildShiftedBlockTexture(SDL_Renderer *renderer,
     SDL_SetRenderTarget(renderer, previousTarget);
     SDL_SetRenderViewport(renderer, &previousViewport);
 
-    SDL_DestroyTexture(cachedBaseTexture);
+    destroyTexture(cachedBaseTexture);
     cachedBaseTexture = shiftedTexture;
     return true;
+}
+
+void Waveform::destroyTexture(SDL_Texture *&texture) const
+{
+    if (!texture)
+    {
+        return;
+    }
+    if (window && window->getRenderer() &&
+        SDL_GetRenderTarget(window->getRenderer()) == texture)
+    {
+        SDL_SetRenderTarget(window->getRenderer(), nullptr);
+    }
+    SDL_DestroyTexture(texture);
+    texture = nullptr;
+}
+
+void Waveform::storeCurrentBlockTexture() const
+{
+    if (!cachedBaseTexture || !cachedBaseTextureValid ||
+        cachedBaseTextureKey.samplesPerPixel < 1.0)
+    {
+        return;
+    }
+
+    for (auto it = storedBlockTextures.begin(); it != storedBlockTextures.end();)
+    {
+        if (it->key == cachedBaseTextureKey)
+        {
+            destroyTexture(it->texture);
+            it = storedBlockTextures.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+
+    storedBlockTextures.push_back(
+        {.texture = cachedBaseTexture, .key = cachedBaseTextureKey, .valid = true});
+    cachedBaseTexture = nullptr;
+    cachedBaseTextureValid = false;
+    trimStoredBlockTextures();
+}
+
+void Waveform::trimStoredBlockTextures() const
+{
+    constexpr std::size_t kMaxStoredBlockTextures = 24;
+    while (storedBlockTextures.size() > kMaxStoredBlockTextures)
+    {
+        destroyTexture(storedBlockTextures.front().texture);
+        storedBlockTextures.erase(storedBlockTextures.begin());
+    }
+}
+
+bool Waveform::activateStoredBlockTextureForView(
+    const BaseTextureCacheKey &newKey) const
+{
+    SDL_FRect sourceRect{};
+    for (std::size_t i = storedBlockTextures.size(); i > 0; --i)
+    {
+        auto &stored = storedBlockTextures[i - 1];
+        if (!stored.texture || !stored.valid)
+        {
+            continue;
+        }
+
+        const bool exactMatch = stored.key == newKey;
+        const bool reusable =
+            exactMatch ||
+            canRenderCurrentViewFromCachedBlockTexture(newKey, stored.key,
+                                                       sourceRect);
+        if (!reusable)
+        {
+            continue;
+        }
+
+        SDL_Texture *selectedTexture = stored.texture;
+        const BaseTextureCacheKey selectedKey = stored.key;
+        const bool selectedValid = stored.valid;
+        const SDL_FRect selectedSourceRect =
+            exactMatch
+                ? SDL_FRect{0.0f, 0.0f, static_cast<float>(newKey.width),
+                            static_cast<float>(newKey.height)}
+                : sourceRect;
+        stored.texture = nullptr;
+        stored.valid = false;
+        storedBlockTextures.erase(storedBlockTextures.begin() +
+                                  static_cast<std::ptrdiff_t>(i - 1));
+
+        storeCurrentBlockTexture();
+        cachedBaseTexture = selectedTexture;
+        cachedBaseTextureKey = selectedKey;
+        cachedBaseTextureValid = selectedValid;
+        cachedBaseTextureSourceRect = selectedSourceRect;
+        return true;
+    }
+
+    return false;
 }
 
 void Waveform::updateSamplePoints()
