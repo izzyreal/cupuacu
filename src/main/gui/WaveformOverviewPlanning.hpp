@@ -12,11 +12,22 @@
 
 namespace cupuacu::gui
 {
+    struct WaveformOverviewDebugStats
+    {
+        int64_t windowsRequested = 0;
+        int64_t windowsComputed = 0;
+        int64_t windowsBypassedCache = 0;
+        int64_t windowsUsedCache = 0;
+        int64_t rawSamplesScanned = 0;
+        int64_t cachedPeaksUsed = 0;
+    };
+
     inline bool computeWaveformPeakForSampleWindow(
         const cupuacu::Document &document, const int channelIndex,
         const int64_t sampleOffset, const double samplesPerPixel,
         const uint8_t pixelScale, const double startSampleInclusive,
-        const double endSampleExclusive, Peak &outPeak)
+        const double endSampleExclusive, Peak &outPeak,
+        WaveformOverviewDebugStats *debugStats = nullptr)
     {
         const auto &sampleData =
             document.getAudioBuffer()->getImmutableChannelData(channelIndex);
@@ -50,6 +61,11 @@ namespace cupuacu::gui
             {
                 return;
             }
+            if (debugStats)
+            {
+                debugStats->rawSamplesScanned +=
+                    endSampleWindowExclusive - startSample;
+            }
 
             float minv = sampleData[startSample];
             float maxv = sampleData[startSample];
@@ -78,6 +94,11 @@ namespace cupuacu::gui
 
         if (bypassCache)
         {
+            if (debugStats)
+            {
+                ++debugStats->windowsBypassedCache;
+                debugStats->rawSamplesScanned += b - a;
+            }
             float minv = sampleData[a];
             float maxv = sampleData[a];
             for (int64_t i = a + 1; i < b; ++i)
@@ -88,6 +109,11 @@ namespace cupuacu::gui
             }
             outPeak = {minv, maxv};
             return true;
+        }
+
+        if (debugStats)
+        {
+            ++debugStats->windowsUsedCache;
         }
 
         if (!peaks || peaks->empty())
@@ -120,6 +146,10 @@ namespace cupuacu::gui
 
             for (int64_t i = cachedI0; i < cachedI1Exclusive; ++i)
             {
+                if (debugStats)
+                {
+                    ++debugStats->cachedPeaksUsed;
+                }
                 if (!hasPeak)
                 {
                     peak = (*peaks)[i];

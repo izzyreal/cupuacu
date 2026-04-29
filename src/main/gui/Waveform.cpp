@@ -12,9 +12,9 @@
 
 #include "smooth_line.hpp"
 
-#include <limits>
-#include <cmath>
 #include <algorithm>
+#include <cmath>
+#include <limits>
 
 using namespace cupuacu::gui;
 
@@ -178,13 +178,11 @@ Waveform::BaseTextureCacheKey Waveform::chooseBaseTextureTargetKey(
         (static_cast<double>(newKey.sampleOffset) -
          static_cast<double>(targetKey.sampleOffset)) /
         newKey.samplesPerPixel;
-    const double roundedSourceX = std::round(sourceX);
-    const bool hasIntegralCrop =
-        std::abs(sourceX - roundedSourceX) <= 1e-6 &&
+    const bool hasReusableCrop =
         sourceX >= 0.0 &&
-        roundedSourceX + static_cast<double>(newKey.viewWidth) <=
+        sourceX + static_cast<double>(newKey.viewWidth) <=
             static_cast<double>(targetKey.width);
-    return hasIntegralCrop ? targetKey : newKey;
+    return hasReusableCrop ? targetKey : newKey;
 }
 
 bool Waveform::canRenderCurrentViewFromCachedBlockTexture(
@@ -213,19 +211,18 @@ bool Waveform::canRenderCurrentViewFromCachedBlockTexture(
         (static_cast<double>(currentViewKey.sampleOffset) -
          static_cast<double>(cachedBaseTextureKey.sampleOffset)) /
         currentViewKey.samplesPerPixel;
-    const double roundedSourceX = std::round(sourceX);
-    if (std::abs(sourceX - roundedSourceX) > 1e-6 || sourceX < 0.0)
+    if (sourceX < 0.0)
     {
         return false;
     }
 
-    if (roundedSourceX + static_cast<double>(currentViewKey.viewWidth) >
+    if (sourceX + static_cast<double>(currentViewKey.viewWidth) >
         static_cast<double>(cachedBaseTextureKey.width))
     {
         return false;
     }
 
-    cachedBaseTextureSourceRect = {static_cast<float>(roundedSourceX), 0.0f,
+    cachedBaseTextureSourceRect = {static_cast<float>(sourceX), 0.0f,
                                    static_cast<float>(currentViewKey.viewWidth),
                                    static_cast<float>(currentViewKey.viewHeight)};
     return true;
