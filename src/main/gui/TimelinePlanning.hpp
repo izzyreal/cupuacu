@@ -64,7 +64,7 @@ namespace cupuacu::gui
             return plan;
         }
 
-        double maxTicks = waveformWidth * pixelScale / 85.0;
+        double maxTicks = waveformWidth * pixelScale / 105.0;
         maxTicks = std::max(1.0, maxTicks);
 
         const int totalVisibleSamples =
@@ -80,7 +80,7 @@ namespace cupuacu::gui
             1,       2,         5,         10,        20,        50,
             100,     200,       500,       1000,      2000,      5000,
             10'000,  20'000,    50'000,    100'000,   200'000,   400'000,
-            800'000, 1'600'000, 3'200'000, 6'400'000, 12'800'000};
+            800'000, 1'600'000, 3'200'000, /*6'400'000, */ 12'800'000, 25'600'000, 51'200'000, 102'400'000, 204'800'000, 409'600'000, 819'200'000};
 
         int samplesPerTick = niceSteps.back();
         for (const int step : niceSteps)
