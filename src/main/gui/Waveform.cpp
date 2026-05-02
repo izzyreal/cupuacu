@@ -481,7 +481,8 @@ void Waveform::processBackgroundBlockRenderRequest(
         static_cast<std::size_t>(kBackgroundBlockRenderChunkWidth) * 12);
     const auto publishChunk = [&]()
     {
-        if (!chunk.reset && chunk.vertices.empty() && chunk.indices.empty())
+        if (!chunk.reset && !chunk.complete && chunk.vertices.empty() &&
+            chunk.indices.empty())
         {
             return;
         }
@@ -489,6 +490,7 @@ void Waveform::processBackgroundBlockRenderRequest(
         chunk = BackgroundBlockRenderChunk{
             .key = request.key,
             .reset = false,
+            .complete = false,
         };
         chunk.vertices.reserve(
             static_cast<std::size_t>(kBackgroundBlockRenderChunkWidth) * 8);
@@ -577,6 +579,8 @@ void Waveform::processBackgroundBlockRenderRequest(
         return;
     }
     publishChunk();
+    chunk.complete = true;
+    publishChunk();
 }
 
 void Waveform::ensureBackgroundBlockRenderWorker() const
@@ -648,12 +652,19 @@ bool Waveform::consumePublishedBackgroundBlockRenderChunks() const
             backgroundBlockRenderProgress = BackgroundBlockRenderProgress{
                 .generation = publishedChunk.generation,
                 .key = chunk.key,
+                .complete = false,
                 .vertices = {},
                 .indices = {},
             };
         }
 
         auto &progress = *backgroundBlockRenderProgress;
+        if (chunk.complete)
+        {
+            progress.complete = true;
+            consumedAny = true;
+            continue;
+        }
         const int baseIndex = static_cast<int>(progress.vertices.size());
         progress.vertices.insert(progress.vertices.end(),
                                  std::make_move_iterator(chunk.vertices.begin()),
@@ -756,7 +767,8 @@ bool Waveform::ensureBaseTexture(SDL_Renderer *renderer) const
         if (backgroundBlockRenderProgress.has_value() &&
             backgroundBlockRenderProgress->generation ==
                 latestBackgroundBlockRenderGeneration &&
-            backgroundBlockRenderProgress->key == targetKey)
+            backgroundBlockRenderProgress->key == targetKey &&
+            backgroundBlockRenderProgress->complete)
         {
             if (!ensureBaseTextureStorage(renderer, targetKey))
             {

@@ -256,6 +256,7 @@ namespace cupuacu::gui
         {
             BaseTextureCacheKey key{};
             bool reset = false;
+            bool complete = false;
             std::vector<SDL_Vertex> vertices;
             std::vector<int> indices;
         };
@@ -263,6 +264,7 @@ namespace cupuacu::gui
         {
             std::uint64_t generation = 0;
             BaseTextureCacheKey key{};
+            bool complete = false;
             std::vector<SDL_Vertex> vertices;
             std::vector<int> indices;
         };
