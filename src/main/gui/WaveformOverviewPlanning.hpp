@@ -91,8 +91,12 @@ namespace cupuacu::gui
             bypassCache ? 0 : waveformCache.getLevelIndex(samplesPerPixel);
         const int64_t samplesPerPeak =
             bypassCache ? 0 : WaveformCache::samplesPerPeakForLevel(cacheLevel);
+        const int64_t builtSampleEndExclusive =
+            bypassCache ? frameCount : waveformCache.builtSamplePrefixEnd();
         const std::vector<Peak> *peaks =
             bypassCache ? nullptr : &waveformCache.getLevel(samplesPerPixel);
+        const int64_t validCachedPeakCount =
+            bypassCache ? 0 : waveformCache.validPeakCountForLevel(cacheLevel);
 
         auto accumulateRawPeakRange = [&](const int64_t startSample,
                                           const int64_t endSampleWindowExclusive,
@@ -133,6 +137,19 @@ namespace cupuacu::gui
         int64_t b = static_cast<int64_t>(std::floor(endSampleExclusive));
         a = std::clamp<int64_t>(a, 0, frameCount - 1);
         b = std::clamp<int64_t>(b, a + 1, frameCount);
+
+        if (!bypassCache)
+        {
+            if (builtSampleEndExclusive <= 0 || a >= builtSampleEndExclusive)
+            {
+                return false;
+            }
+            b = std::min<int64_t>(b, builtSampleEndExclusive);
+            if (b <= a)
+            {
+                return false;
+            }
+        }
 
         if (bypassCache)
         {
@@ -176,9 +193,9 @@ namespace cupuacu::gui
             const int64_t requestedI0 = firstFullBlockStart / samplesPerPeak;
             const int64_t requestedI1Exclusive = lastFullBlockEnd / samplesPerPeak;
             const int64_t cachedI0 = std::clamp<int64_t>(
-                requestedI0, 0, static_cast<int64_t>(peaks->size()));
+                requestedI0, 0, validCachedPeakCount);
             const int64_t cachedI1Exclusive = std::clamp<int64_t>(
-                requestedI1Exclusive, 0, static_cast<int64_t>(peaks->size()));
+                requestedI1Exclusive, 0, validCachedPeakCount);
             const int64_t cachedFullBlockStart = cachedI0 * samplesPerPeak;
             const int64_t cachedFullBlockEnd = cachedI1Exclusive * samplesPerPeak;
 

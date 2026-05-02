@@ -46,10 +46,29 @@ namespace cupuacu
     }
 
     std::vector<Document::WaveformCacheBuildOutput>
-    Document::WaveformCacheBuildJob::takePublishedOutputs()
+    Document::WaveformCacheBuildJob::takePublishedOutputs(const std::size_t maxCount)
     {
         std::lock_guard lock(mutex);
-        return std::exchange(outputs, {});
+        if (maxCount == 0 || outputs.empty())
+        {
+            return {};
+        }
+
+        const auto count = std::min(maxCount, outputs.size());
+        std::vector<WaveformCacheBuildOutput> drained;
+        drained.reserve(count);
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            drained.push_back(std::move(outputs.front()));
+            outputs.pop_front();
+        }
+        return drained;
+    }
+
+    bool Document::WaveformCacheBuildJob::hasPublishedOutputs() const
+    {
+        std::lock_guard lock(mutex);
+        return !outputs.empty();
     }
 
     Document::WaveformCacheBuildProgress
@@ -373,6 +392,10 @@ namespace cupuacu
             {
                 return;
             }
+            waveformCacheAppliedProgress = {
+                .completedBlocks = 0,
+                .totalBlocks = totalWaveformCacheDirtyBlocksUnlocked(),
+            };
             waveformCacheBuildJob = std::make_unique<WaveformCacheBuildJob>(this);
             jobToStart = waveformCacheBuildJob.get();
         }
@@ -389,6 +412,7 @@ namespace cupuacu
         {
             std::unique_lock lock(dataMutex);
             oldJob = std::move(waveformCacheBuildJob);
+            waveformCacheAppliedProgress.reset();
         }
     }
 
@@ -781,20 +805,25 @@ namespace cupuacu
 
     bool Document::pumpWaveformCacheWork()
     {
+        // Each successful pump eventually invalidates and redraws the visible
+        // waveform texture, so very small apply batches fragment UI-side work
+        // too aggressively on large files.
+        constexpr std::size_t kMaxPublishedOutputsPerPump = 256;
+
         bool applied = false;
         std::vector<WaveformCacheBuildOutput> publishedOutputs;
         bool buildCompleted = false;
+        bool publishedOutputsRemain = false;
         {
             std::unique_lock lock(dataMutex);
             if (waveformCacheBuildJob)
             {
                 publishedOutputs =
-                    waveformCacheBuildJob->takePublishedOutputs();
+                    waveformCacheBuildJob->takePublishedOutputs(
+                        kMaxPublishedOutputsPerPump);
                 buildCompleted = waveformCacheBuildJob->isCompleted();
-                if (buildCompleted && publishedOutputs.empty())
-                {
-                    waveformCacheBuildJob.reset();
-                }
+                publishedOutputsRemain =
+                    waveformCacheBuildJob->hasPublishedOutputs();
             }
         }
 
@@ -805,7 +834,13 @@ namespace cupuacu
                 std::unique_lock lock(dataMutex);
                 if (waveformCacheBuildJob && waveformCacheBuildJob->isCompleted())
                 {
-                    waveformCacheBuildJob.reset();
+                    publishedOutputsRemain =
+                        waveformCacheBuildJob->hasPublishedOutputs();
+                    if (!publishedOutputsRemain)
+                    {
+                        waveformCacheBuildJob.reset();
+                        waveformCacheAppliedProgress.reset();
+                    }
                 }
                 continue;
             }
@@ -831,40 +866,34 @@ namespace cupuacu
                         channelChunk.builtToBlock, channelChunk.levelUpdates);
                 applied = true;
             }
+
+            if (waveformCacheAppliedProgress.has_value())
+            {
+                waveformCacheAppliedProgress = {
+                    .completedBlocks = std::max<int64_t>(
+                        waveformCacheAppliedProgress->completedBlocks,
+                        output.completedBlocks),
+                    .totalBlocks = std::max<int64_t>(
+                        waveformCacheAppliedProgress->totalBlocks,
+                        output.totalBlocks),
+                };
+            }
+            else
+            {
+                waveformCacheAppliedProgress = {
+                    .completedBlocks = output.completedBlocks,
+                    .totalBlocks = output.totalBlocks,
+                };
+            }
         }
 
-        if (buildCompleted)
+        if (buildCompleted && !publishedOutputsRemain)
         {
             std::unique_lock lock(dataMutex);
             if (waveformCacheBuildJob && waveformCacheBuildJob->isCompleted())
             {
-                auto remainingOutputs =
-                    waveformCacheBuildJob->takePublishedOutputs();
-                for (auto &output : remainingOutputs)
-                {
-                    if (output.waveformDataVersion != waveformDataVersion)
-                    {
-                        continue;
-                    }
-                    for (const auto &channelChunk : output.channelChunks)
-                    {
-                        if (channelChunk.channelIndex < 0 ||
-                            channelChunk.channelIndex >=
-                                static_cast<int64_t>(waveformCache.size()))
-                        {
-                            continue;
-                        }
-                        waveformCache[static_cast<std::size_t>(
-                            channelChunk.channelIndex)]
-                            .applyLevelSpanUpdates(
-                                getFrameCountUnlocked(),
-                                channelChunk.builtFromBlock,
-                                channelChunk.builtToBlock,
-                                channelChunk.levelUpdates);
-                        applied = true;
-                    }
-                }
                 waveformCacheBuildJob.reset();
+                waveformCacheAppliedProgress.reset();
             }
         }
 
@@ -889,7 +918,8 @@ namespace cupuacu
         {
             return std::nullopt;
         }
-        auto progress = waveformCacheBuildJob->getProgress();
+        auto progress = waveformCacheAppliedProgress.value_or(
+            waveformCacheBuildJob->getProgress());
         if (progress.totalBlocks <= 0)
         {
             progress.completedBlocks = 0;

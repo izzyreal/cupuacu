@@ -265,6 +265,81 @@ TEST_CASE("Document reports deterministic waveform cache build progress",
                         { return progress > 0.0 && progress < 1.0; }));
 }
 
+TEST_CASE("Document reports waveform cache progress from applied chunks",
+          "[gui][waveform]")
+{
+    cupuacu::Document document;
+    constexpr int64_t frameCount = 1 << 22;
+    document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, frameCount);
+    for (int64_t frame = 0; frame < frameCount; ++frame)
+    {
+        document.setSample(0, frame,
+                           (frame % 64) < 32 ? -0.5f : 0.5f, false);
+    }
+
+    document.invalidateWaveformSamples(0, frameCount - 1);
+    document.updateWaveformCache();
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+    const auto beforePump = document.getWaveformCacheBuildProgress();
+    REQUIRE(beforePump.has_value());
+    REQUIRE(beforePump->completedBlocks == 0);
+    REQUIRE(beforePump->totalBlocks > 0);
+
+    bool observedAppliedAdvance = false;
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        if (document.pumpWaveformCacheWork())
+        {
+            observedAppliedAdvance = true;
+        }
+        if (const auto progress = document.getWaveformCacheBuildProgress();
+            progress.has_value() && progress->completedBlocks > 0)
+        {
+            observedAppliedAdvance = true;
+        }
+        if (observedAppliedAdvance)
+        {
+            break;
+        }
+        if (!document.getWaveformCacheBuildProgress().has_value())
+        {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    REQUIRE(observedAppliedAdvance);
+}
+
+TEST_CASE("Overview rendering ignores dirty cache regions past the built frontier",
+          "[gui][waveform]")
+{
+    cupuacu::Document document;
+    constexpr int64_t frameCount = 32768;
+    document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, frameCount);
+    for (int64_t frame = 0; frame < frameCount; ++frame)
+    {
+        document.setSample(0, frame, frame < (frameCount / 2) ? 0.25f : -0.75f,
+                           false);
+    }
+
+    document.rebuildWaveformCacheSynchronously();
+    document.invalidateWaveformSamples(frameCount / 2, frameCount - 1);
+
+    cupuacu::gui::Peak peak{};
+    REQUIRE(cupuacu::gui::computeWaveformPeakForSampleWindow(
+        document, 0, 0, 1024.0, 1, 15 * 1024.0, 16 * 1024.0, peak));
+    REQUIRE(peak.min == Catch::Approx(0.25f));
+    REQUIRE(peak.max == Catch::Approx(0.25f));
+
+    REQUIRE_FALSE(cupuacu::gui::computeWaveformPeakForSampleWindow(
+        document, 0, 0, 1024.0, 1, 20 * 1024.0, 21 * 1024.0, peak));
+}
+
 TEST_CASE("Background block render input avoids raw sample snapshots for zoomed-out views",
           "[gui][waveform]")
 {

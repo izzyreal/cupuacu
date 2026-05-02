@@ -243,6 +243,38 @@ namespace cupuacu::gui
             return dirtyToBlock >= dirtyFromBlock;
         }
 
+        [[nodiscard]] int64_t builtSamplePrefixEnd() const
+        {
+            if (dirtyToBlock < dirtyFromBlock)
+            {
+                return numSamples;
+            }
+            return std::clamp<int64_t>(
+                dirtyFromBlock * static_cast<int64_t>(BASE_BLOCK_SIZE), 0,
+                numSamples);
+        }
+
+        [[nodiscard]] int64_t validPeakCountForLevel(const int level) const
+        {
+            const auto &levelData = getLevelByIndex(level);
+            if (dirtyToBlock < dirtyFromBlock)
+            {
+                return static_cast<int64_t>(levelData.size());
+            }
+
+            const int clampedLevel =
+                std::clamp(level, 0, MAX_LEVEL_COUNT - 1);
+            const int64_t blocksPerPeak = int64_t{1} << clampedLevel;
+            if (blocksPerPeak <= 0)
+            {
+                return 0;
+            }
+
+            return std::clamp<int64_t>(
+                dirtyFromBlock / blocksPerPeak, 0,
+                static_cast<int64_t>(levelData.size()));
+        }
+
         [[nodiscard]] BuildState snapshotBuildState() const
         {
             return {

@@ -340,6 +340,10 @@ Waveform::captureBackgroundBlockRenderRequest(
     }
 
     const auto &waveformCache = document.getWaveformCache(channelIndex);
+    if (waveformCache.hasDirtyBlocks())
+    {
+        return std::nullopt;
+    }
     const auto inputPlan = planBackgroundBlockRenderInput(
         frameCount, targetKey.sampleOffset, targetKey.samplesPerPixel,
         targetKey.width, targetKey.pixelScale, waveformCache);

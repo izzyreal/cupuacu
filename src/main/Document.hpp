@@ -11,6 +11,7 @@
 #include <shared_mutex>
 #include <string>
 #include <thread>
+#include <deque>
 #include <vector>
 
 namespace cupuacu
@@ -86,7 +87,9 @@ namespace cupuacu
 
             void start();
             [[nodiscard]] bool isCompleted() const;
-            [[nodiscard]] std::vector<WaveformCacheBuildOutput> takePublishedOutputs();
+            [[nodiscard]] std::vector<WaveformCacheBuildOutput>
+            takePublishedOutputs(std::size_t maxCount);
+            [[nodiscard]] bool hasPublishedOutputs() const;
             [[nodiscard]] WaveformCacheBuildProgress getProgress() const;
 
         private:
@@ -94,7 +97,7 @@ namespace cupuacu
             mutable std::mutex mutex;
             bool completed = false;
             WaveformCacheBuildProgress progress;
-            std::vector<WaveformCacheBuildOutput> outputs;
+            std::deque<WaveformCacheBuildOutput> outputs;
             std::thread worker;
 
             void run();
@@ -113,6 +116,7 @@ namespace cupuacu
             std::vector<gui::WaveformCache>(2);
         std::vector<DocumentMarker> markers;
         std::unique_ptr<WaveformCacheBuildJob> waveformCacheBuildJob;
+        std::optional<WaveformCacheBuildProgress> waveformCacheAppliedProgress;
 
         void syncWaveformCacheToChannelCount(int64_t channelCount);
         void resetWaveformCacheToChannelCount(int64_t channelCount);
