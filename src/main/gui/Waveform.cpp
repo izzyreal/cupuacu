@@ -15,11 +15,14 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <utility>
 
 using namespace cupuacu::gui;
 
 namespace
 {
+    constexpr int kBackgroundBlockRenderChunkWidth = 64;
+
     void appendColoredQuad(std::vector<SDL_Vertex> &vertices,
                            std::vector<int> &indices,
                            const std::array<SDL_FPoint, 4> &positions,
@@ -71,15 +74,18 @@ namespace
 
         appendColoredQuad(vertices, indices, quad->vertices, color);
     }
+
 }
 
 Waveform::Waveform(State *state, const uint8_t channelIndexToUse)
     : Component(state, "Waveform"), channelIndex(channelIndexToUse)
 {
+    ensureBackgroundBlockRenderWorker();
 }
 
 Waveform::~Waveform()
 {
+    backgroundBlockRenderWorker.reset();
     invalidateBaseTexture();
 }
 
@@ -103,13 +109,24 @@ bool Waveform::hasRenderableChannel() const
 
 void Waveform::resized()
 {
-    invalidateBaseTexture();
     updateSamplePoints();
+
+    const auto newKey = computeBaseTextureCacheKey();
+    if (newKey.samplesPerPixel >= 1.0)
+    {
+        requestBackgroundBlockRenderPlan(
+            chooseBaseTextureTargetKey(newKey, !isWaveformCacheBuildActive()));
+    }
 }
 
 void Waveform::invalidateBaseTexture() const
 {
     cachedBaseTextureValid = false;
+    cachedBaseTextureBuiltSamplePrefixEnd = -1;
+    progressiveBlockTextureRefreshPending = false;
+    requestedBackgroundBlockRenderKey.reset();
+    backgroundBlockRenderProgress.reset();
+    latestBackgroundBlockRenderGeneration = 0;
     destroyTexture(cachedBaseTexture);
     for (auto &stored : storedBlockTextures)
     {
@@ -266,14 +283,410 @@ void Waveform::renderBaseTexture(SDL_Renderer *renderer,
         drawHorizontalLines(renderer);
         renderBlockWaveformRange(renderer, 0, targetKey.width, targetKey.width,
                                  targetKey.sampleOffset);
+        rememberRenderedBlockTextureFrontier(targetKey);
     }
     else
     {
         drawBaseWaveformContents(renderer);
+        cachedBaseTextureBuiltSamplePrefixEnd = -1;
+        progressiveBlockTextureRefreshPending = false;
     }
 
     SDL_SetRenderTarget(renderer, previousTarget);
     SDL_SetRenderViewport(renderer, &previousViewport);
+}
+
+void Waveform::renderBaseTextureFromBackgroundPlan(
+    SDL_Renderer *renderer, const BackgroundBlockRenderProgress &plan) const
+{
+    if (!cachedBaseTexture)
+    {
+        return;
+    }
+
+    SDL_Texture *previousTarget = SDL_GetRenderTarget(renderer);
+    SDL_Rect previousViewport{};
+    SDL_GetRenderViewport(renderer, &previousViewport);
+
+    SDL_SetRenderTarget(renderer, cachedBaseTexture);
+    const SDL_Rect localViewport{0, 0, plan.key.width, plan.key.height};
+    SDL_SetRenderViewport(renderer, &localViewport);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderFillRect(renderer, nullptr);
+    drawHorizontalLines(renderer);
+    if (!plan.vertices.empty() && !plan.indices.empty())
+    {
+        SDL_RenderGeometry(renderer, nullptr, plan.vertices.data(),
+                           static_cast<int>(plan.vertices.size()),
+                           plan.indices.data(),
+                           static_cast<int>(plan.indices.size()));
+    }
+    cachedBaseTextureBuiltSamplePrefixEnd = plan.key.frameCount;
+    progressiveBlockTextureRefreshPending = false;
+
+    SDL_SetRenderTarget(renderer, previousTarget);
+    SDL_SetRenderViewport(renderer, &previousViewport);
+}
+
+std::optional<Waveform::BackgroundBlockRenderRequest>
+Waveform::captureBackgroundBlockRenderRequest(
+    const BaseTextureCacheKey &targetKey) const
+{
+    if (!state || targetKey.width <= 0 || targetKey.height <= 0)
+    {
+        return std::nullopt;
+    }
+
+    const auto &document = state->getActiveDocumentSession().document;
+    auto lease = document.acquireReadLease();
+    const int64_t frameCount = lease.getFrameCount();
+    const int64_t channelCount = lease.getChannelCount();
+    if (channelIndex >= channelCount || frameCount <= 0)
+    {
+        return std::nullopt;
+    }
+
+    const auto &waveformCache = document.getWaveformCache(channelIndex);
+    if (waveformCache.hasDirtyBlocks())
+    {
+        return std::nullopt;
+    }
+    const auto inputPlan = planBackgroundBlockRenderInput(
+        frameCount, targetKey.sampleOffset, targetKey.samplesPerPixel,
+        targetKey.width, targetKey.pixelScale, waveformCache);
+
+    std::vector<float> rawSamples;
+    std::vector<Peak> cachedPeaks;
+    if (inputPlan.bypassCache)
+    {
+        rawSamples.reserve(static_cast<std::size_t>(
+            std::max<int64_t>(0, inputPlan.rawSampleEndExclusive -
+                                     inputPlan.rawSampleStart)));
+        for (int64_t sample = inputPlan.rawSampleStart;
+             sample < inputPlan.rawSampleEndExclusive; ++sample)
+        {
+            rawSamples.push_back(lease.getSample(channelIndex, sample));
+        }
+    }
+    else
+    {
+        const auto &selectedLevel =
+            waveformCache.getLevelByIndex(inputPlan.cacheLevel);
+        cachedPeaks = selectedLevel;
+    }
+    return BackgroundBlockRenderRequest{
+        .key = targetKey,
+        .frameCount = frameCount,
+        .uiScale = state->uiScale,
+        .bypassCache = inputPlan.bypassCache,
+        .cacheLevel = inputPlan.cacheLevel,
+        .samplesPerPeak = inputPlan.samplesPerPeak,
+        .rawSampleStart = inputPlan.rawSampleStart,
+        .rawSamples = std::move(rawSamples),
+        .cachedPeaks = std::move(cachedPeaks),
+    };
+}
+
+void Waveform::processBackgroundBlockRenderRequest(
+    const BackgroundBlockRenderRequest &request, const std::uint64_t generation,
+    const BackgroundBlockRenderWorker::CancelCheck &isCanceled,
+    const BackgroundBlockRenderWorker::PublishFn &publish) const
+{
+    (void)generation;
+    const double blockRenderPhasePx =
+        getBlockRenderPhasePixels(request.key.sampleOffset,
+                                  request.key.samplesPerPixel);
+    const uint16_t samplePointSize =
+        getWaveformSamplePointSize(request.key.pixelScale, request.uiScale);
+    const int drawableHeight = request.key.height - samplePointSize;
+    const float scale = static_cast<float>(
+        request.key.verticalZoom * static_cast<double>(drawableHeight) * 0.5);
+    const int centerY = request.key.height / 2;
+
+    auto computePeakForWindow = [&](const double startSampleInclusive,
+                                    const double endSampleExclusive,
+                                    Peak &outPeak) -> bool
+    {
+        const int64_t frameCount = request.frameCount;
+        if (frameCount <= 0 || endSampleExclusive <= 0.0 ||
+            startSampleInclusive >= static_cast<double>(frameCount))
+        {
+            return false;
+        }
+
+        const auto sampleEndExclusive =
+            request.rawSampleStart +
+            static_cast<int64_t>(request.rawSamples.size());
+        const auto sampleAt = [&](const int64_t sampleIndex) -> float
+        {
+            const auto localIndex = sampleIndex - request.rawSampleStart;
+            if (localIndex < 0 ||
+                localIndex >= static_cast<int64_t>(request.rawSamples.size()))
+            {
+                return 0.0f;
+            }
+            return request.rawSamples[static_cast<std::size_t>(localIndex)];
+        };
+
+        int64_t a = static_cast<int64_t>(std::floor(startSampleInclusive));
+        int64_t b = static_cast<int64_t>(std::floor(endSampleExclusive));
+        a = std::clamp<int64_t>(a, 0, frameCount - 1);
+        b = std::clamp<int64_t>(b, a + 1, frameCount);
+
+        if (request.bypassCache)
+        {
+            if (a < request.rawSampleStart || b > sampleEndExclusive)
+            {
+                return false;
+            }
+            float minv = sampleAt(a);
+            float maxv = minv;
+            for (int64_t i = a + 1; i < b; ++i)
+            {
+                const float v = sampleAt(i);
+                minv = std::min(minv, v);
+                maxv = std::max(maxv, v);
+            }
+            outPeak = {minv, maxv};
+            return true;
+        }
+
+        if (request.samplesPerPeak <= 0 || request.cachedPeaks.empty())
+        {
+            return false;
+        }
+
+        const int64_t firstPeakIndex = std::clamp<int64_t>(
+            a / request.samplesPerPeak, 0,
+            static_cast<int64_t>(request.cachedPeaks.size()) - 1);
+        const int64_t lastPeakIndexExclusive = std::clamp<int64_t>(
+            static_cast<int64_t>(
+                std::ceil(static_cast<double>(b) /
+                          static_cast<double>(request.samplesPerPeak))),
+            firstPeakIndex + 1,
+            static_cast<int64_t>(request.cachedPeaks.size()));
+
+        Peak peak =
+            request.cachedPeaks[static_cast<std::size_t>(firstPeakIndex)];
+        for (int64_t i = firstPeakIndex + 1; i < lastPeakIndexExclusive; ++i)
+        {
+            peak.min = std::min(
+                peak.min,
+                request.cachedPeaks[static_cast<std::size_t>(i)].min);
+            peak.max = std::max(
+                peak.max,
+                request.cachedPeaks[static_cast<std::size_t>(i)].max);
+        }
+
+        outPeak = peak;
+        return true;
+    };
+
+    BackgroundBlockRenderChunk chunk{
+        .key = request.key,
+        .reset = true,
+    };
+    chunk.vertices.reserve(
+        static_cast<std::size_t>(kBackgroundBlockRenderChunkWidth) * 8);
+    chunk.indices.reserve(
+        static_cast<std::size_t>(kBackgroundBlockRenderChunkWidth) * 12);
+    const auto publishChunk = [&]()
+    {
+        if (!chunk.reset && !chunk.complete && chunk.vertices.empty() &&
+            chunk.indices.empty())
+        {
+            return;
+        }
+        publish(std::move(chunk));
+        chunk = BackgroundBlockRenderChunk{
+            .key = request.key,
+            .reset = false,
+            .complete = false,
+        };
+        chunk.vertices.reserve(
+            static_cast<std::size_t>(kBackgroundBlockRenderChunkWidth) * 8);
+        chunk.indices.reserve(
+            static_cast<std::size_t>(kBackgroundBlockRenderChunkWidth) * 12);
+    };
+
+    int prevX = 0;
+    int prevY = 0;
+    bool hasPrev = false;
+    int lastDrawXi = std::numeric_limits<int>::min();
+
+    for (int x = 0; x < request.key.width + 1; ++x)
+    {
+        if (x > 0 && (x % kBackgroundBlockRenderChunkWidth) == 0)
+        {
+            publishChunk();
+            if (isCanceled())
+            {
+                return;
+            }
+        }
+
+        const float drawX = static_cast<float>(x - blockRenderPhasePx);
+        const int drawXi = static_cast<int>(std::lround(drawX));
+        if (drawXi < 0 || drawXi > request.key.width)
+        {
+            continue;
+        }
+        if (drawXi == lastDrawXi)
+        {
+            continue;
+        }
+
+        double aD = 0.0;
+        double bD = 0.0;
+        getBlockRenderSampleWindowForPixel(
+            x, request.key.sampleOffset, request.key.samplesPerPixel, aD, bD);
+        if (bD <= 0.0 || aD >= static_cast<double>(request.frameCount))
+        {
+            continue;
+        }
+
+        Peak p{};
+        if (!computePeakForWindow(aD, bD, p))
+        {
+            continue;
+        }
+
+        const int y1 = static_cast<int>(centerY - p.max * scale);
+        const int y2 = static_cast<int>(centerY - p.min * scale);
+        const int midY = (y1 + y2) / 2;
+        const bool connectFromPrevious = hasPrev && prevX != drawXi;
+
+        if (y1 != y2)
+        {
+            appendLineQuad(chunk.vertices, chunk.indices,
+                           static_cast<float>(drawXi),
+                           static_cast<float>(y1),
+                           static_cast<float>(drawXi),
+                           static_cast<float>(y2), waveformFColor);
+        }
+        else
+        {
+            appendPointQuad(chunk.vertices, chunk.indices, drawXi, y1,
+                            waveformFColor);
+        }
+
+        if (connectFromPrevious)
+        {
+            appendLineQuad(chunk.vertices, chunk.indices,
+                           static_cast<float>(prevX),
+                           static_cast<float>(prevY),
+                           static_cast<float>(drawXi),
+                           static_cast<float>(midY), waveformFColor);
+        }
+
+        prevX = drawXi;
+        prevY = midY;
+        hasPrev = true;
+        lastDrawXi = drawXi;
+    }
+
+    if (isCanceled())
+    {
+        return;
+    }
+    publishChunk();
+    chunk.complete = true;
+    publishChunk();
+}
+
+void Waveform::ensureBackgroundBlockRenderWorker() const
+{
+    if (backgroundBlockRenderWorker)
+    {
+        return;
+    }
+
+    backgroundBlockRenderWorker =
+        std::make_unique<BackgroundBlockRenderWorker>(
+            [this](const BackgroundBlockRenderRequest &request,
+                   const std::uint64_t generation,
+                   const BackgroundBlockRenderWorker::CancelCheck &isCanceled,
+                   const BackgroundBlockRenderWorker::PublishFn &publish)
+            {
+                processBackgroundBlockRenderRequest(request, generation,
+                                                    isCanceled, publish);
+            });
+}
+
+void Waveform::requestBackgroundBlockRenderPlan(
+    const BaseTextureCacheKey &targetKey) const
+{
+    if (targetKey.samplesPerPixel < 1.0 || targetKey.width <= 0 ||
+        targetKey.height <= 0)
+    {
+        return;
+    }
+
+    ensureBackgroundBlockRenderWorker();
+    if (requestedBackgroundBlockRenderKey.has_value() &&
+        *requestedBackgroundBlockRenderKey == targetKey)
+    {
+        return;
+    }
+    auto request = captureBackgroundBlockRenderRequest(targetKey);
+    if (!request.has_value())
+    {
+        return;
+    }
+    requestedBackgroundBlockRenderKey = targetKey;
+    backgroundBlockRenderProgress.reset();
+    latestBackgroundBlockRenderGeneration =
+        backgroundBlockRenderWorker->submit(std::move(*request));
+}
+
+bool Waveform::consumePublishedBackgroundBlockRenderChunks() const
+{
+    if (!backgroundBlockRenderWorker)
+    {
+        return false;
+    }
+
+    bool consumedAny = false;
+    auto published = backgroundBlockRenderWorker->takePublished();
+    for (auto &publishedChunk : published)
+    {
+        if (publishedChunk.generation != latestBackgroundBlockRenderGeneration)
+        {
+            continue;
+        }
+
+        auto &chunk = publishedChunk.result;
+        if (!backgroundBlockRenderProgress.has_value() || chunk.reset ||
+            backgroundBlockRenderProgress->generation != publishedChunk.generation ||
+            backgroundBlockRenderProgress->key != chunk.key)
+        {
+            backgroundBlockRenderProgress = BackgroundBlockRenderProgress{
+                .generation = publishedChunk.generation,
+                .key = chunk.key,
+                .complete = false,
+                .vertices = {},
+                .indices = {},
+            };
+        }
+
+        auto &progress = *backgroundBlockRenderProgress;
+        if (chunk.complete)
+        {
+            progress.complete = true;
+            consumedAny = true;
+            continue;
+        }
+        const int baseIndex = static_cast<int>(progress.vertices.size());
+        progress.vertices.insert(progress.vertices.end(),
+                                 std::make_move_iterator(chunk.vertices.begin()),
+                                 std::make_move_iterator(chunk.vertices.end()));
+        for (const int index : chunk.indices)
+        {
+            progress.indices.push_back(baseIndex + index);
+        }
+        consumedAny = true;
+    }
+    return consumedAny;
 }
 
 void Waveform::finalizeBaseTextureForView(
@@ -294,6 +707,175 @@ void Waveform::finalizeBaseTextureForView(
         static_cast<float>(newKey.height)};
 }
 
+bool Waveform::isWaveformCacheBuildActive() const
+{
+    if (!state)
+    {
+        return false;
+    }
+    return state->getActiveDocumentSession()
+        .document.getWaveformCacheBuildProgress()
+        .has_value();
+}
+
+int64_t Waveform::currentBuiltSamplePrefixEnd() const
+{
+    if (!state || !hasRenderableChannel())
+    {
+        return 0;
+    }
+
+    const auto &document = state->getActiveDocumentSession().document;
+    const auto &waveformCache = document.getWaveformCache(channelIndex);
+    return std::clamp<int64_t>(waveformCache.builtSamplePrefixEnd(), 0,
+                               document.getFrameCount());
+}
+
+bool Waveform::hasProgressiveBlockBuildGeometryForKey(
+    const BaseTextureCacheKey &key) const
+{
+    return progressiveBlockBuildGeometryKey.has_value() &&
+           *progressiveBlockBuildGeometryKey == key &&
+           !progressiveBlockBuildVertices.empty() &&
+           !progressiveBlockBuildIndices.empty();
+}
+
+void Waveform::rememberRenderedBlockTextureFrontier(
+    const BaseTextureCacheKey &targetKey) const
+{
+    if (targetKey.samplesPerPixel < 1.0)
+    {
+        cachedBaseTextureBuiltSamplePrefixEnd = -1;
+        progressiveBlockTextureRefreshPending = false;
+        return;
+    }
+
+    cachedBaseTextureBuiltSamplePrefixEnd =
+        isWaveformCacheBuildActive() ? currentBuiltSamplePrefixEnd()
+                                     : targetKey.frameCount;
+    progressiveBlockTextureRefreshPending = false;
+}
+
+bool Waveform::refreshProgressiveBlockTexture(
+    SDL_Renderer *renderer, const BaseTextureCacheKey &targetKey) const
+{
+    if (!renderer || !cachedBaseTexture || !cachedBaseTextureValid ||
+        targetKey.samplesPerPixel < 1.0)
+    {
+        progressiveBlockTextureRefreshPending = false;
+        return false;
+    }
+
+    if (!isWaveformCacheBuildActive())
+    {
+        cachedBaseTextureBuiltSamplePrefixEnd = targetKey.frameCount;
+        progressiveBlockTextureRefreshPending = false;
+        return false;
+    }
+
+    const int64_t previousBuiltEnd =
+        std::max<int64_t>(0, cachedBaseTextureBuiltSamplePrefixEnd);
+    const int64_t newBuiltEnd = currentBuiltSamplePrefixEnd();
+    if (newBuiltEnd <= previousBuiltEnd)
+    {
+        progressiveBlockTextureRefreshPending = false;
+        return false;
+    }
+
+    const double startXD =
+        (static_cast<double>(previousBuiltEnd) -
+         static_cast<double>(targetKey.sampleOffset)) /
+        targetKey.samplesPerPixel;
+    const double endXD =
+        (static_cast<double>(newBuiltEnd) -
+         static_cast<double>(targetKey.sampleOffset)) /
+        targetKey.samplesPerPixel;
+    const int xStart =
+        std::clamp(static_cast<int>(std::floor(startXD)) - 2, 0, targetKey.width);
+    const int xEndExclusive =
+        std::clamp(static_cast<int>(std::ceil(endXD)) + 2, 0, targetKey.width);
+    cachedBaseTextureBuiltSamplePrefixEnd = newBuiltEnd;
+    progressiveBlockTextureRefreshPending = false;
+    if (xEndExclusive <= xStart)
+    {
+        return false;
+    }
+
+    SDL_Texture *previousTarget = SDL_GetRenderTarget(renderer);
+    SDL_Rect previousViewport{};
+    SDL_GetRenderViewport(renderer, &previousViewport);
+
+    SDL_SetRenderTarget(renderer, cachedBaseTexture);
+    const SDL_Rect localViewport{0, 0, targetKey.width, targetKey.height};
+    SDL_SetRenderViewport(renderer, &localViewport);
+    const SDL_FRect updateRect{static_cast<float>(xStart), 0.0f,
+                               static_cast<float>(xEndExclusive - xStart),
+                               static_cast<float>(targetKey.height)};
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderFillRect(renderer, &updateRect);
+    drawHorizontalLines(renderer);
+    renderBlockWaveformRange(renderer, xStart, xEndExclusive, targetKey.width,
+                             targetKey.sampleOffset);
+
+    SDL_SetRenderTarget(renderer, previousTarget);
+    SDL_SetRenderViewport(renderer, &previousViewport);
+    return true;
+}
+
+void Waveform::handleWaveformCacheUpdate() const
+{
+    const auto newKey = computeBaseTextureCacheKey();
+    if (newKey.samplesPerPixel < 1.0)
+    {
+        clearProgressiveBlockBuildGeometry();
+        invalidateBaseTexture();
+        return;
+    }
+
+    if (!isWaveformCacheBuildActive())
+    {
+        return;
+    }
+
+    if (!progressiveBlockBuildGeometryKey.has_value() ||
+        *progressiveBlockBuildGeometryKey != newKey)
+    {
+        clearProgressiveBlockBuildGeometry();
+        progressiveBlockBuildGeometryKey = newKey;
+        progressiveBlockBuildSamplePrefixEnd = 0;
+    }
+
+    const int64_t previousBuiltEnd =
+        std::max<int64_t>(0, progressiveBlockBuildSamplePrefixEnd);
+    const int64_t newBuiltEnd = currentBuiltSamplePrefixEnd();
+    if (newBuiltEnd <= previousBuiltEnd)
+    {
+        return;
+    }
+
+    const double startXD =
+        (static_cast<double>(previousBuiltEnd) -
+         static_cast<double>(newKey.sampleOffset)) /
+        newKey.samplesPerPixel;
+    const double endXD =
+        (static_cast<double>(newBuiltEnd) -
+         static_cast<double>(newKey.sampleOffset)) /
+        newKey.samplesPerPixel;
+    const int xStart =
+        std::clamp(static_cast<int>(std::floor(startXD)) - 2, 0, newKey.width);
+    const int xEndExclusive =
+        std::clamp(static_cast<int>(std::ceil(endXD)) + 2, 0, newKey.width);
+    if (xEndExclusive > xStart)
+    {
+        appendBlockWaveformGeometryRange(progressiveBlockBuildVertices,
+                                         progressiveBlockBuildIndices,
+                                         std::max(0, xStart - 1), xEndExclusive,
+                                         newKey.width, newKey.sampleOffset);
+    }
+    progressiveBlockBuildSamplePrefixEnd = newBuiltEnd;
+    invalidateBaseTexture();
+}
+
 void Waveform::drawBaseWaveformContents(SDL_Renderer *renderer) const
 {
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
@@ -312,6 +894,189 @@ void Waveform::drawBaseWaveformContents(SDL_Renderer *renderer) const
     }
 }
 
+void Waveform::drawProgressiveBlockBuildWaveform(
+    SDL_Renderer *renderer, const BaseTextureCacheKey &key) const
+{
+    (void)key;
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderFillRect(renderer, nullptr);
+    drawHorizontalLines(renderer);
+    if (!progressiveBlockBuildVertices.empty() &&
+        !progressiveBlockBuildIndices.empty())
+    {
+        SDL_SetRenderDrawColor(renderer, waveformColor.r, waveformColor.g,
+                               waveformColor.b, waveformColor.a);
+        SDL_RenderGeometry(renderer, nullptr,
+                           progressiveBlockBuildVertices.data(),
+                           static_cast<int>(progressiveBlockBuildVertices.size()),
+                           progressiveBlockBuildIndices.data(),
+                           static_cast<int>(progressiveBlockBuildIndices.size()));
+    }
+}
+
+bool Waveform::promoteProgressiveBlockBuildGeometryToTexture(
+    SDL_Renderer *renderer, const BaseTextureCacheKey &key) const
+{
+    if (!renderer || !hasProgressiveBlockBuildGeometryForKey(key))
+    {
+        return false;
+    }
+
+    if (!ensureBaseTextureStorage(renderer, key))
+    {
+        return false;
+    }
+
+    SDL_Texture *previousTarget = SDL_GetRenderTarget(renderer);
+    SDL_Rect previousViewport{};
+    SDL_GetRenderViewport(renderer, &previousViewport);
+
+    SDL_SetRenderTarget(renderer, cachedBaseTexture);
+    const SDL_Rect localViewport{0, 0, key.width, key.height};
+    SDL_SetRenderViewport(renderer, &localViewport);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderFillRect(renderer, nullptr);
+    drawHorizontalLines(renderer);
+    SDL_SetRenderDrawColor(renderer, waveformColor.r, waveformColor.g,
+                           waveformColor.b, waveformColor.a);
+    SDL_RenderGeometry(renderer, nullptr, progressiveBlockBuildVertices.data(),
+                       static_cast<int>(progressiveBlockBuildVertices.size()),
+                       progressiveBlockBuildIndices.data(),
+                       static_cast<int>(progressiveBlockBuildIndices.size()));
+
+    SDL_SetRenderTarget(renderer, previousTarget);
+    SDL_SetRenderViewport(renderer, &previousViewport);
+
+    finalizeBaseTextureForView(key, key, false);
+    rememberRenderedBlockTextureFrontier(key);
+    clearProgressiveBlockBuildGeometry();
+    return true;
+}
+
+void Waveform::appendBlockWaveformGeometryRange(
+    std::vector<SDL_Vertex> &vertices, std::vector<int> &indices, int xStart,
+    int xEndExclusive, int widthToUse, int64_t sampleOffset) const
+{
+    if (!hasRenderableChannel())
+    {
+        return;
+    }
+
+    auto &session = state->getActiveDocumentSession();
+    auto &doc = session.document;
+    const auto &viewState = state->getActiveViewState();
+
+    const double samplesPerPixel = viewState.samplesPerPixel;
+    const double blockRenderPhasePx =
+        getBlockRenderPhasePixels(sampleOffset, samplesPerPixel);
+    const double verticalZoom = viewState.verticalZoom;
+    const int heightToUse = getHeight();
+    const uint16_t samplePointSize =
+        getWaveformSamplePointSize(state->pixelScale, state->uiScale);
+    const auto drawableHeight = heightToUse - samplePointSize;
+    const float scale = static_cast<float>(verticalZoom * drawableHeight * 0.5f);
+    const int centerY = heightToUse / 2;
+    xStart = std::clamp(xStart, 0, widthToUse);
+    xEndExclusive = std::clamp(xEndExclusive, 0, widthToUse);
+    if (xEndExclusive <= xStart)
+    {
+        return;
+    }
+
+    const int64_t frameCount = doc.getFrameCount();
+    auto getPeakForPixel = [&](const int x, Peak &out) -> bool
+    {
+        double aD = 0.0;
+        double bD = 0.0;
+        getBlockRenderSampleWindowForPixel(x, sampleOffset, samplesPerPixel, aD,
+                                           bD);
+
+        if (bD <= 0.0)
+        {
+            return false;
+        }
+        if (aD >= static_cast<double>(frameCount))
+        {
+            return false;
+        }
+
+        return computeWaveformPeakForSampleWindow(
+            doc, channelIndex, sampleOffset, samplesPerPixel, state->pixelScale,
+            aD, bD, out);
+    };
+
+    int prevX = 0;
+    int prevY = 0;
+    bool hasPrev = false;
+    int lastDrawXi = std::numeric_limits<int>::min();
+    const int lookupStart = std::max(0, xStart - 1);
+    const int lookupEndExclusive = std::min(widthToUse + 1, xEndExclusive + 1);
+
+    for (int x = lookupStart; x < lookupEndExclusive; ++x)
+    {
+        const float drawX = static_cast<float>(x - blockRenderPhasePx);
+        const int drawXi = static_cast<int>(std::lround(drawX));
+        if (drawXi < 0 || drawXi > widthToUse)
+        {
+            continue;
+        }
+
+        if (drawXi == lastDrawXi)
+        {
+            continue;
+        }
+
+        Peak p{};
+        if (!getPeakForPixel(x, p))
+        {
+            continue;
+        }
+
+        const int y1 = static_cast<int>(centerY - p.max * scale);
+        const int y2 = static_cast<int>(centerY - p.min * scale);
+        const int midY = (y1 + y2) / 2;
+        const bool connectFromPrevious = hasPrev && prevX != drawXi;
+        const bool columnVisible =
+            drawXi >= xStart && drawXi < xEndExclusive;
+        if (columnVisible)
+        {
+            if (y1 != y2)
+            {
+                appendLineQuad(vertices, indices, static_cast<float>(drawXi),
+                               static_cast<float>(y1),
+                               static_cast<float>(drawXi),
+                               static_cast<float>(y2), waveformFColor);
+            }
+            else
+            {
+                appendPointQuad(vertices, indices, drawXi, y1, waveformFColor);
+            }
+        }
+
+        if (connectFromPrevious && drawXi >= xStart &&
+            drawXi < xEndExclusive)
+        {
+            appendLineQuad(vertices, indices, static_cast<float>(prevX),
+                           static_cast<float>(prevY),
+                           static_cast<float>(drawXi),
+                           static_cast<float>(midY), waveformFColor);
+        }
+
+        prevX = drawXi;
+        prevY = midY;
+        hasPrev = true;
+        lastDrawXi = drawXi;
+    }
+}
+
+void Waveform::clearProgressiveBlockBuildGeometry() const
+{
+    progressiveBlockBuildGeometryKey.reset();
+    progressiveBlockBuildSamplePrefixEnd = -1;
+    progressiveBlockBuildVertices.clear();
+    progressiveBlockBuildIndices.clear();
+}
+
 bool Waveform::ensureBaseTexture(SDL_Renderer *renderer) const
 {
     if (!renderer || getWidth() <= 0 || getHeight() <= 0)
@@ -321,7 +1086,22 @@ bool Waveform::ensureBaseTexture(SDL_Renderer *renderer) const
 
     const auto newKey = computeBaseTextureCacheKey();
     const bool isBlockMode = newKey.samplesPerPixel >= 1.0;
-    const bool allowBlockCoverageReuse = isBlockMode;
+    if (isBlockMode && isWaveformCacheBuildActive())
+    {
+        invalidateBaseTexture();
+        return false;
+    }
+    if (isBlockMode &&
+        hasProgressiveBlockBuildGeometryForKey(newKey) &&
+        (!cachedBaseTextureValid || cachedBaseTextureKey != newKey))
+    {
+        if (promoteProgressiveBlockBuildGeometryToTexture(renderer, newKey))
+        {
+            return true;
+        }
+    }
+    const bool allowBlockCoverageReuse =
+        isBlockMode && !isWaveformCacheBuildActive();
     if (allowBlockCoverageReuse && cachedBaseTextureValid && cachedBaseTexture)
     {
         SDL_FRect sourceRect{};
@@ -340,6 +1120,10 @@ bool Waveform::ensureBaseTexture(SDL_Renderer *renderer) const
     if (cachedBaseTextureValid && cachedBaseTexture &&
         cachedBaseTextureKey == newKey)
     {
+        if (isBlockMode && progressiveBlockTextureRefreshPending)
+        {
+            (void)refreshProgressiveBlockTexture(renderer, newKey);
+        }
         cachedBaseTextureSourceRect = {0.0f, 0.0f, static_cast<float>(newKey.width),
                                        static_cast<float>(newKey.height)};
         return true;
@@ -357,13 +1141,40 @@ bool Waveform::ensureBaseTexture(SDL_Renderer *renderer) const
         return true;
     }
 
-    if (isBlockMode && cachedBaseTextureValid && cachedBaseTexture)
+    const auto targetKey =
+        chooseBaseTextureTargetKey(newKey, allowBlockCoverageReuse);
+    if (isBlockMode)
     {
-        storeCurrentBlockTexture();
+        consumePublishedBackgroundBlockRenderChunks();
+        if (backgroundBlockRenderProgress.has_value() &&
+            backgroundBlockRenderProgress->generation ==
+                latestBackgroundBlockRenderGeneration &&
+            backgroundBlockRenderProgress->key == targetKey &&
+            backgroundBlockRenderProgress->complete)
+        {
+            if (!ensureBaseTextureStorage(renderer, targetKey))
+            {
+                return false;
+            }
+
+            renderBaseTextureFromBackgroundPlan(
+                renderer, *backgroundBlockRenderProgress);
+            finalizeBaseTextureForView(newKey, targetKey,
+                                       allowBlockCoverageReuse);
+            return true;
+        }
+
+        requestBackgroundBlockRenderPlan(targetKey);
+        if (cachedBaseTextureValid && cachedBaseTexture)
+        {
+            return true;
+        }
+        if (hasProgressiveBlockBuildGeometryForKey(newKey))
+        {
+            return false;
+        }
     }
 
-    auto targetKey =
-        chooseBaseTextureTargetKey(newKey, allowBlockCoverageReuse);
     if (!ensureBaseTextureStorage(renderer, targetKey))
     {
         return false;
@@ -1184,6 +1995,38 @@ void Waveform::drawHighlight(SDL_Renderer *renderer) const
 
 void Waveform::onDraw(SDL_Renderer *renderer)
 {
+    const auto currentKey = computeBaseTextureCacheKey();
+    const bool progressiveGeometryVisible =
+        currentKey.samplesPerPixel >= 1.0 &&
+        hasProgressiveBlockBuildGeometryForKey(currentKey);
+    if (progressiveGeometryVisible &&
+        (isWaveformCacheBuildActive() || !cachedBaseTextureValid))
+    {
+        if (isWaveformCacheBuildActive())
+        {
+            handleWaveformCacheUpdate();
+            drawProgressiveBlockBuildWaveform(renderer, currentKey);
+        }
+        else
+        {
+            if (ensureBaseTexture(renderer))
+            {
+                SDL_RenderTexture(renderer, cachedBaseTexture,
+                                  &cachedBaseTextureSourceRect, nullptr);
+            }
+            else
+            {
+                drawProgressiveBlockBuildWaveform(renderer, currentKey);
+            }
+        }
+        drawSelection(renderer);
+        drawHighlight(renderer);
+        drawMarkers(renderer);
+        drawCursor(renderer);
+        drawPlaybackPosition(renderer);
+        return;
+    }
+
     if (ensureBaseTexture(renderer))
     {
         SDL_RenderTexture(renderer, cachedBaseTexture,
@@ -1282,9 +2125,14 @@ void Waveform::timerCallback()
             {
                 continue;
             }
-            waveform->invalidateBaseTexture();
+            waveform->handleWaveformCacheUpdate();
             waveform->setDirty();
         }
+    }
+
+    if (consumePublishedBackgroundBlockRenderChunks())
+    {
+        setDirty();
     }
 
     if (samplePosUnderCursor.has_value() &&

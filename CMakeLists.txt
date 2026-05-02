@@ -252,6 +252,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_transport_and_vumeter.cpp
     src/test/test_remove_silence_effect.cpp
     src/test/test_tooltip_planning.cpp
+    src/test/test_latest_wins_background_worker.cpp
     src/test/test_waveform_render_and_buffers.cpp
 )
 

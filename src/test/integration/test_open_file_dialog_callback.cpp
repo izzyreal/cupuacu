@@ -200,7 +200,16 @@ TEST_CASE("Pending open work loads queued dialog files asynchronously",
     for (int attempt = 0; attempt < 200; ++attempt)
     {
         cupuacu::actions::io::processPendingOpenWork(&state);
+        state.getActiveDocumentSession().document.pumpWaveformCacheWork();
+        for (auto *window : state.windows)
+        {
+            if (window && window->isOpen() && window->getRootComponent())
+            {
+                window->getRootComponent()->timerCallbackRecursive();
+            }
+        }
         if (state.pendingOpenFiles.empty() && !state.backgroundOpenJob &&
+            !state.pendingOpenWaveformBuild.active &&
             state.getActiveDocumentSession().currentFile == pathString)
         {
             break;
@@ -210,11 +219,86 @@ TEST_CASE("Pending open work loads queued dialog files asynchronously",
 
     REQUIRE(state.pendingOpenFiles.empty());
     REQUIRE_FALSE(state.backgroundOpenJob);
+    REQUIRE_FALSE(state.pendingOpenWaveformBuild.active);
     REQUIRE(state.getActiveDocumentSession().currentFile == pathString);
     REQUIRE(state.getActiveDocumentSession().document.getSampleRate() == 32000);
     REQUIRE(state.getActiveDocumentSession().document.getFrameCount() == 2);
     REQUIRE(state.getActiveDocumentSession().document.getSample(0, 1) == 0.25f);
     REQUIRE(state.recentFiles == std::vector<std::string>{pathString});
+}
+
+TEST_CASE("Pending open work commits the document before waveform cache build completes",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-open-progressive-cache"));
+    const auto wavPath = cleanup.path() / "progressive-cache.wav";
+    constexpr int sampleRate = 44100;
+    constexpr int channels = 1;
+    constexpr int64_t frameCount = 1 << 22;
+    std::vector<float> frames(static_cast<std::size_t>(frameCount));
+    for (int64_t frame = 0; frame < frameCount; ++frame)
+    {
+        frames[static_cast<std::size_t>(frame)] =
+            (frame % 128) < 64 ? -0.5f : 0.5f;
+    }
+    writeTestWav(wavPath, sampleRate, channels, frames);
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto sessionUi =
+        cupuacu::test::integration::createSessionUi(&state, 32, false, 1);
+
+    const std::string pathString = wavPath.string();
+    const char *selectedFiles[] = {pathString.c_str(), nullptr};
+    cupuacu::actions::fileDialogCallback(&state, selectedFiles, 0);
+
+    bool sawCommittedWhileBuilding = false;
+    std::vector<double> buildProgressValues;
+    for (int attempt = 0; attempt < 5000; ++attempt)
+    {
+        cupuacu::actions::io::processPendingOpenWork(&state);
+        state.getActiveDocumentSession().document.pumpWaveformCacheWork();
+        for (auto *window : state.windows)
+        {
+            if (window && window->isOpen() && window->getRootComponent())
+            {
+                window->getRootComponent()->timerCallbackRecursive();
+            }
+        }
+
+        if (state.getActiveDocumentSession().currentFile == pathString &&
+            state.pendingOpenWaveformBuild.active)
+        {
+            sawCommittedWhileBuilding = true;
+            if (state.longTask.progress.has_value())
+            {
+                buildProgressValues.push_back(*state.longTask.progress);
+            }
+        }
+
+        if (state.pendingOpenFiles.empty() && !state.backgroundOpenJob &&
+            !state.pendingOpenWaveformBuild.active &&
+            state.getActiveDocumentSession().currentFile == pathString)
+        {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    REQUIRE(sawCommittedWhileBuilding);
+    REQUIRE(buildProgressValues.size() >= 2);
+    REQUIRE(std::is_sorted(buildProgressValues.begin(),
+                           buildProgressValues.end()));
+    REQUIRE(std::any_of(buildProgressValues.begin(), buildProgressValues.end(),
+                        [](const double progress)
+                        { return progress > 0.0 && progress < 1.0; }));
+    REQUIRE(state.pendingOpenFiles.empty());
+    REQUIRE_FALSE(state.backgroundOpenJob);
+    REQUIRE_FALSE(state.pendingOpenWaveformBuild.active);
+    REQUIRE_FALSE(state.longTask.active);
+    REQUIRE(state.getActiveDocumentSession().currentFile == pathString);
 }
 
 TEST_CASE("Open file dialog callback leaves state unchanged when canceled",

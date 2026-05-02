@@ -216,6 +216,153 @@ TEST_CASE("Document publishes waveform cache results from background work",
     REQUIRE(built);
 }
 
+TEST_CASE("Document reports deterministic waveform cache build progress",
+          "[gui][waveform]")
+{
+    cupuacu::Document document;
+    constexpr int64_t frameCount = 1 << 22;
+    document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, frameCount);
+    for (int64_t frame = 0; frame < frameCount; ++frame)
+    {
+        document.setSample(0, frame,
+                           (frame % 64) < 32 ? -0.75f : 0.75f, false);
+    }
+
+    document.invalidateWaveformSamples(0, frameCount - 1);
+    document.updateWaveformCache();
+
+    const auto initialProgress = document.getWaveformCacheBuildProgress();
+    REQUIRE(initialProgress.has_value());
+    REQUIRE(initialProgress->completedBlocks == 0);
+    REQUIRE(initialProgress->totalBlocks > 0);
+
+    std::vector<double> seenProgress;
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        if (const auto progress = document.getWaveformCacheBuildProgress();
+            progress.has_value() && progress->totalBlocks > 0)
+        {
+            seenProgress.push_back(
+                static_cast<double>(progress->completedBlocks) /
+                static_cast<double>(progress->totalBlocks));
+        }
+
+        document.pumpWaveformCacheWork();
+        if (!document.getWaveformCacheBuildProgress().has_value())
+        {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    REQUIRE_FALSE(document.getWaveformCacheBuildProgress().has_value());
+    REQUIRE(seenProgress.size() >= 2);
+    REQUIRE(std::is_sorted(seenProgress.begin(), seenProgress.end()));
+    REQUIRE(std::any_of(seenProgress.begin(), seenProgress.end(),
+                        [](const double progress)
+                        { return progress > 0.0 && progress < 1.0; }));
+}
+
+TEST_CASE("Document reports waveform cache progress from applied chunks",
+          "[gui][waveform]")
+{
+    cupuacu::Document document;
+    constexpr int64_t frameCount = 1 << 22;
+    document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, frameCount);
+    for (int64_t frame = 0; frame < frameCount; ++frame)
+    {
+        document.setSample(0, frame,
+                           (frame % 64) < 32 ? -0.5f : 0.5f, false);
+    }
+
+    document.invalidateWaveformSamples(0, frameCount - 1);
+    document.updateWaveformCache();
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+    const auto beforePump = document.getWaveformCacheBuildProgress();
+    REQUIRE(beforePump.has_value());
+    REQUIRE(beforePump->completedBlocks == 0);
+    REQUIRE(beforePump->totalBlocks > 0);
+
+    bool observedAppliedAdvance = false;
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        if (document.pumpWaveformCacheWork())
+        {
+            observedAppliedAdvance = true;
+        }
+        if (const auto progress = document.getWaveformCacheBuildProgress();
+            progress.has_value() && progress->completedBlocks > 0)
+        {
+            observedAppliedAdvance = true;
+        }
+        if (observedAppliedAdvance)
+        {
+            break;
+        }
+        if (!document.getWaveformCacheBuildProgress().has_value())
+        {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    REQUIRE(observedAppliedAdvance);
+}
+
+TEST_CASE("Overview rendering ignores dirty cache regions past the built frontier",
+          "[gui][waveform]")
+{
+    cupuacu::Document document;
+    constexpr int64_t frameCount = 32768;
+    document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, frameCount);
+    for (int64_t frame = 0; frame < frameCount; ++frame)
+    {
+        document.setSample(0, frame, frame < (frameCount / 2) ? 0.25f : -0.75f,
+                           false);
+    }
+
+    document.rebuildWaveformCacheSynchronously();
+    document.invalidateWaveformSamples(frameCount / 2, frameCount - 1);
+
+    cupuacu::gui::Peak peak{};
+    REQUIRE(cupuacu::gui::computeWaveformPeakForSampleWindow(
+        document, 0, 0, 1024.0, 1, 15 * 1024.0, 16 * 1024.0, peak));
+    REQUIRE(peak.min == Catch::Approx(0.25f));
+    REQUIRE(peak.max == Catch::Approx(0.25f));
+
+    REQUIRE_FALSE(cupuacu::gui::computeWaveformPeakForSampleWindow(
+        document, 0, 0, 1024.0, 1, 20 * 1024.0, 21 * 1024.0, peak));
+}
+
+TEST_CASE("Background block render input avoids raw sample snapshots for zoomed-out views",
+          "[gui][waveform]")
+{
+    constexpr int64_t frameCount = 262144;
+    cupuacu::gui::WaveformCache cache;
+    cache.init(frameCount);
+
+    const auto zoomedOut = cupuacu::gui::planBackgroundBlockRenderInput(
+        frameCount, 0, 200000.0, 2000, 1, cache);
+    REQUIRE_FALSE(zoomedOut.bypassCache);
+    REQUIRE(zoomedOut.samplesPerPeak > 0);
+    REQUIRE(zoomedOut.rawSampleStart == 0);
+    REQUIRE(zoomedOut.rawSampleEndExclusive == 0);
+    REQUIRE(cache.getLevelByIndex(zoomedOut.cacheLevel).size() < 10000);
+
+    const auto zoomedIn = cupuacu::gui::planBackgroundBlockRenderInput(
+        frameCount, 128, 2.0, 2000, 1, cache);
+    REQUIRE(zoomedIn.bypassCache);
+    REQUIRE(zoomedIn.rawSampleStart == 128);
+    REQUIRE(zoomedIn.rawSampleEndExclusive == 4130);
+    REQUIRE(zoomedIn.samplesPerPeak == 0);
+}
+
 TEST_CASE("ScrollBar vertical drag updates value and non-left clicks are ignored",
           "[gui]")
 {

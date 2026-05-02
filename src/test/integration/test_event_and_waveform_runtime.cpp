@@ -408,7 +408,8 @@ namespace
         for (int attempt = 0; attempt < 5000; ++attempt)
         {
             cupuacu::actions::io::processPendingOpenWork(state);
-            if (!state->backgroundOpenJob && state->pendingOpenFiles.empty())
+            if (!state->backgroundOpenJob && state->pendingOpenFiles.empty() &&
+                !state->pendingOpenWaveformBuild.active)
             {
                 cupuacu::actions::io::processPendingOpenWork(state);
                 return;

@@ -11,6 +11,7 @@
 #include <shared_mutex>
 #include <string>
 #include <thread>
+#include <deque>
 #include <vector>
 
 namespace cupuacu
@@ -40,8 +41,9 @@ namespace cupuacu
     private:
         struct WaveformCacheBuildRequestChannel
         {
+            int64_t channelIndex = 0;
             gui::WaveformCache::BuildState buildState;
-            std::vector<float> samples;
+            int64_t totalDirtyBlocks = 0;
         };
 
         struct WaveformCacheBuildRequest
@@ -52,8 +54,25 @@ namespace cupuacu
 
         struct WaveformCacheBuildOutput
         {
+            struct ChannelChunk
+            {
+                int64_t channelIndex = 0;
+                int64_t builtFromBlock = 0;
+                int64_t builtToBlock = -1;
+                std::vector<gui::WaveformCache::LevelSpanUpdate> levelUpdates;
+            };
+
             uint64_t waveformDataVersion = 0;
-            std::vector<gui::WaveformCache::BuildResult> channelResults;
+            int64_t completedBlocks = 0;
+            int64_t totalBlocks = 0;
+            bool completed = false;
+            std::vector<ChannelChunk> channelChunks;
+        };
+
+        struct WaveformCacheBuildProgress
+        {
+            int64_t completedBlocks = 0;
+            int64_t totalBlocks = 0;
         };
 
         class WaveformCacheBuildJob
@@ -68,13 +87,17 @@ namespace cupuacu
 
             void start();
             [[nodiscard]] bool isCompleted() const;
-            [[nodiscard]] std::unique_ptr<WaveformCacheBuildOutput> takeOutput();
+            [[nodiscard]] std::vector<WaveformCacheBuildOutput>
+            takePublishedOutputs(std::size_t maxCount);
+            [[nodiscard]] bool hasPublishedOutputs() const;
+            [[nodiscard]] WaveformCacheBuildProgress getProgress() const;
 
         private:
             const Document *document = nullptr;
             mutable std::mutex mutex;
             bool completed = false;
-            std::unique_ptr<WaveformCacheBuildOutput> output;
+            WaveformCacheBuildProgress progress;
+            std::deque<WaveformCacheBuildOutput> outputs;
             std::thread worker;
 
             void run();
@@ -93,6 +116,7 @@ namespace cupuacu
             std::vector<gui::WaveformCache>(2);
         std::vector<DocumentMarker> markers;
         std::unique_ptr<WaveformCacheBuildJob> waveformCacheBuildJob;
+        std::optional<WaveformCacheBuildProgress> waveformCacheAppliedProgress;
 
         void syncWaveformCacheToChannelCount(int64_t channelCount);
         void resetWaveformCacheToChannelCount(int64_t channelCount);
@@ -104,6 +128,7 @@ namespace cupuacu
         void normalizeMarkers();
         void normalizeMarkersUnlocked();
         [[nodiscard]] bool needsWaveformCacheBuildUnlocked() const;
+        [[nodiscard]] int64_t totalWaveformCacheDirtyBlocksUnlocked() const;
         [[nodiscard]] bool
         waveformCacheLevel0SizeMatchesUnlocked(int64_t channel,
                                                int64_t frameCount) const;
@@ -184,6 +209,8 @@ namespace cupuacu
 
         void updateWaveformCache();
         bool pumpWaveformCacheWork();
+        [[nodiscard]] std::optional<WaveformCacheBuildProgress>
+        getWaveformCacheBuildProgress() const;
         void rebuildWaveformCacheSynchronously();
 
         std::shared_ptr<cupuacu::audio::AudioBuffer> getAudioBuffer() const;

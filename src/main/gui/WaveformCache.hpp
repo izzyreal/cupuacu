@@ -19,6 +19,13 @@ namespace cupuacu::gui
         constexpr static int BASE_BLOCK_SIZE = 32;
         constexpr static int MAX_LEVEL_COUNT = 16;
 
+        struct LevelSpanUpdate
+        {
+            int level = 0;
+            int64_t fromIndex = 0;
+            std::vector<Peak> peaks;
+        };
+
         struct BuildState
         {
             int64_t numSamples = 0;
@@ -236,6 +243,38 @@ namespace cupuacu::gui
             return dirtyToBlock >= dirtyFromBlock;
         }
 
+        [[nodiscard]] int64_t builtSamplePrefixEnd() const
+        {
+            if (dirtyToBlock < dirtyFromBlock)
+            {
+                return numSamples;
+            }
+            return std::clamp<int64_t>(
+                dirtyFromBlock * static_cast<int64_t>(BASE_BLOCK_SIZE), 0,
+                numSamples);
+        }
+
+        [[nodiscard]] int64_t validPeakCountForLevel(const int level) const
+        {
+            const auto &levelData = getLevelByIndex(level);
+            if (dirtyToBlock < dirtyFromBlock)
+            {
+                return static_cast<int64_t>(levelData.size());
+            }
+
+            const int clampedLevel =
+                std::clamp(level, 0, MAX_LEVEL_COUNT - 1);
+            const int64_t blocksPerPeak = int64_t{1} << clampedLevel;
+            if (blocksPerPeak <= 0)
+            {
+                return 0;
+            }
+
+            return std::clamp<int64_t>(
+                dirtyFromBlock / blocksPerPeak, 0,
+                static_cast<int64_t>(levelData.size()));
+        }
+
         [[nodiscard]] BuildState snapshotBuildState() const
         {
             return {
@@ -270,12 +309,178 @@ namespace cupuacu::gui
             return cache.snapshotBuildState();
         }
 
+        [[nodiscard]] static int64_t dirtyBlockCount(const BuildState &state)
+        {
+            if (state.dirtyToBlock < state.dirtyFromBlock)
+            {
+                return 0;
+            }
+            return state.dirtyToBlock - state.dirtyFromBlock + 1;
+        }
+
         void applyBuildResult(BuildResult result)
         {
             numSamples = result.numSamples;
             dirtyFromBlock = result.dirtyFromBlock;
             dirtyToBlock = result.dirtyToBlock;
             levels = std::move(result.levels);
+        }
+
+        static void rebuildDirtyBlockRange(std::vector<std::vector<Peak>> &levelsToUse,
+                                           const int64_t numSamplesToUse,
+                                           const int64_t fromBlock,
+                                           const int64_t toBlock,
+                                           const float *samples)
+        {
+            int64_t dirtyFromBlockToUse = fromBlock;
+            int64_t dirtyToBlockToUse = toBlock;
+            rebuildDirtyLevels(levelsToUse, numSamplesToUse, dirtyFromBlockToUse,
+                               dirtyToBlockToUse, samples);
+        }
+
+        static void rebuildDirtyBlockRangeFromSlice(
+            std::vector<std::vector<Peak>> &levelsToUse,
+            const int64_t numSamplesToUse, const int64_t fromBlock,
+            const int64_t toBlock, const int64_t sampleBaseIndex,
+            const float *samples, const int64_t samplesCount)
+        {
+            if (levelsToUse.empty() || numSamplesToUse <= 0 ||
+                fromBlock > toBlock)
+            {
+                return;
+            }
+
+            const int64_t max0 = level0SizeFromSamples(numSamplesToUse) - 1;
+            if (max0 < 0)
+            {
+                return;
+            }
+
+            const int64_t from0 = std::clamp<int64_t>(fromBlock, 0, max0);
+            const int64_t to0 = std::clamp<int64_t>(toBlock, 0, max0);
+
+            for (int64_t blk = from0; blk <= to0; ++blk)
+            {
+                const int64_t s0 = blk * static_cast<int64_t>(BASE_BLOCK_SIZE);
+                const int64_t s1 =
+                    std::min<int64_t>(s0 + BASE_BLOCK_SIZE, numSamplesToUse);
+                if (s0 >= s1)
+                {
+                    levelsToUse[0][blk] = {0.0f, 0.0f};
+                    continue;
+                }
+
+                const int64_t localS0 = s0 - sampleBaseIndex;
+                const int64_t localS1 = s1 - sampleBaseIndex;
+                if (localS0 < 0 || localS1 > samplesCount)
+                {
+                    continue;
+                }
+
+                float minv = samples[localS0];
+                float maxv = minv;
+                for (int64_t i = localS0 + 1; i < localS1; ++i)
+                {
+                    const float v = samples[i];
+                    minv = std::min(minv, v);
+                    maxv = std::max(maxv, v);
+                }
+                levelsToUse[0][blk] = {minv, maxv};
+            }
+
+            int64_t pFrom = from0;
+            int64_t pTo = to0;
+            for (int level = 1; level < static_cast<int>(levelsToUse.size());
+                 ++level)
+            {
+                auto &prev = levelsToUse[static_cast<std::size_t>(level - 1)];
+                auto &cur = levelsToUse[static_cast<std::size_t>(level)];
+                if (cur.empty())
+                {
+                    break;
+                }
+
+                int64_t cFrom = std::clamp<int64_t>(
+                    pFrom / 2, 0, static_cast<int64_t>(cur.size()) - 1);
+                int64_t cTo = std::clamp<int64_t>(
+                    pTo / 2, 0, static_cast<int64_t>(cur.size()) - 1);
+                for (int64_t i = cFrom; i <= cTo; ++i)
+                {
+                    const int64_t a = i * 2;
+                    const int64_t b = a + 1;
+
+                    float minv = prev[a].min;
+                    float maxv = prev[a].max;
+                    if (b < static_cast<int64_t>(prev.size()))
+                    {
+                        minv = std::min(minv, prev[b].min);
+                        maxv = std::max(maxv, prev[b].max);
+                    }
+                    cur[i] = {minv, maxv};
+                }
+
+                pFrom = cFrom;
+                pTo = cTo;
+                if (static_cast<int64_t>(cur.size()) <= 1)
+                {
+                    break;
+                }
+            }
+        }
+
+        void applyLevelSpanUpdates(const int64_t numSamplesToUse,
+                                   const int64_t builtFromBlock,
+                                   const int64_t builtToBlock,
+                                   const std::vector<LevelSpanUpdate> &updates)
+        {
+            numSamples = std::max<int64_t>(0, numSamplesToUse);
+            const int64_t expectedLevel0Size = level0SizeFromSamples(numSamples);
+            if (levels.empty() ||
+                static_cast<int64_t>(levels.front().size()) != expectedLevel0Size)
+            {
+                buildStorage();
+                markAllDirty();
+            }
+
+            for (const auto &update : updates)
+            {
+                if (update.level < 0 ||
+                    update.level >= static_cast<int>(levels.size()) ||
+                    update.peaks.empty())
+                {
+                    continue;
+                }
+
+                auto &level = levels[static_cast<std::size_t>(update.level)];
+                const int64_t fromIndex =
+                    std::clamp<int64_t>(update.fromIndex, 0,
+                                        static_cast<int64_t>(level.size()));
+                const int64_t maxWritable =
+                    static_cast<int64_t>(level.size()) - fromIndex;
+                const int64_t count = std::clamp<int64_t>(
+                    static_cast<int64_t>(update.peaks.size()), 0, maxWritable);
+                for (int64_t i = 0; i < count; ++i)
+                {
+                    level[static_cast<std::size_t>(fromIndex + i)] =
+                        update.peaks[static_cast<std::size_t>(i)];
+                }
+            }
+
+            if (dirtyToBlock < dirtyFromBlock)
+            {
+                return;
+            }
+
+            if (builtFromBlock <= dirtyFromBlock)
+            {
+                dirtyFromBlock = std::min<int64_t>(dirtyToBlock + 1,
+                                                   builtToBlock + 1);
+            }
+            if (dirtyFromBlock > dirtyToBlock)
+            {
+                dirtyFromBlock = INT64_MAX;
+                dirtyToBlock = -1;
+            }
         }
 
         void rebuildDirty(const float *samples)

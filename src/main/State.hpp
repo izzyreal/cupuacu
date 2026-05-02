@@ -123,6 +123,14 @@ namespace cupuacu
             std::optional<double> progress;
         };
 
+        struct PendingOpenWaveformBuildStatus
+        {
+            bool active = false;
+            PendingOpenRequest request;
+            std::string path;
+            int tabIndex = -1;
+        };
+
         std::shared_ptr<audio::AudioDevices> audioDevices;
         std::unique_ptr<Paths> paths = std::make_unique<Paths>();
         uint8_t menuFontSize = 30;
@@ -182,6 +190,7 @@ namespace cupuacu
             pendingStartupWarning;
         std::deque<PendingOpenRequest> pendingOpenFiles;
         StartupRestoreStatus startupRestore;
+        PendingOpenWaveformBuildStatus pendingOpenWaveformBuild;
         std::unique_ptr<actions::io::BackgroundOpenJob,
                         void (*)(actions::io::BackgroundOpenJob *)>
             backgroundOpenJob{nullptr, destroyBackgroundOpenJob};

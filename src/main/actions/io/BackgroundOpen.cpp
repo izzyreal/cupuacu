@@ -54,6 +54,24 @@ namespace cupuacu::actions::io
             window->renderFrame();
         }
 
+        std::optional<double>
+        normalizedWaveformCacheBuildProgress(const cupuacu::Document &document)
+        {
+            const auto progress = document.getWaveformCacheBuildProgress();
+            if (!progress.has_value())
+            {
+                return std::nullopt;
+            }
+            if (progress->totalBlocks <= 0)
+            {
+                return 1.0;
+            }
+            return std::clamp(
+                static_cast<double>(progress->completedBlocks) /
+                    static_cast<double>(progress->totalBlocks),
+                0.0, 1.0);
+        }
+
         void commitCompletedBackgroundOpen(cupuacu::State *state,
                                            BackgroundOpenJob &job)
         {
@@ -156,6 +174,23 @@ namespace cupuacu::actions::io
             {
                 rememberRecentFile(state, snapshot.path);
             }
+            session.document.updateWaveformCache();
+            if (const auto progress =
+                    normalizedWaveformCacheBuildProgress(session.document);
+                progress.has_value())
+            {
+                state->pendingOpenWaveformBuild = {
+                    .active = true,
+                    .request = snapshot.request,
+                    .path = snapshot.path,
+                    .tabIndex = state->activeTabIndex,
+                };
+                cupuacu::updateLongTask(state, "Building waveform cache",
+                                        progress, false);
+                renderMainWindowNow(state);
+                return;
+            }
+
             cupuacu::clearLongTask(state, false);
             if (isStartupRestore)
             {
@@ -311,8 +346,6 @@ namespace cupuacu::actions::io
                                         publishProgress(detailToUse,
                                                         progressToUse);
                                     }));
-            publishProgress("Building waveform cache", std::nullopt);
-            loaded->document.rebuildWaveformCacheSynchronously();
             std::lock_guard lock(mutex);
             loadedFile = std::move(loaded);
             success = true;
@@ -356,6 +389,32 @@ namespace cupuacu::actions::io
                                         snapshot.progress, false);
             }
             return;
+        }
+
+        if (state->pendingOpenWaveformBuild.active)
+        {
+            const int tabIndex = state->pendingOpenWaveformBuild.tabIndex;
+            if (tabIndex < 0 || tabIndex >= static_cast<int>(state->tabs.size()))
+            {
+                state->pendingOpenWaveformBuild = {};
+                cupuacu::clearLongTask(state, false);
+            }
+            else
+            {
+                auto &document =
+                    state->tabs[static_cast<std::size_t>(tabIndex)].session.document;
+                if (const auto progress =
+                        normalizedWaveformCacheBuildProgress(document);
+                    progress.has_value())
+                {
+                    cupuacu::updateLongTask(state, "Building waveform cache",
+                                            progress, false);
+                    return;
+                }
+
+                state->pendingOpenWaveformBuild = {};
+                cupuacu::clearLongTask(state, false);
+            }
         }
 
         if (!state->pendingOpenFiles.empty())
