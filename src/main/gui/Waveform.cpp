@@ -914,6 +914,45 @@ void Waveform::drawProgressiveBlockBuildWaveform(
     }
 }
 
+bool Waveform::promoteProgressiveBlockBuildGeometryToTexture(
+    SDL_Renderer *renderer, const BaseTextureCacheKey &key) const
+{
+    if (!renderer || !hasProgressiveBlockBuildGeometryForKey(key))
+    {
+        return false;
+    }
+
+    if (!ensureBaseTextureStorage(renderer, key))
+    {
+        return false;
+    }
+
+    SDL_Texture *previousTarget = SDL_GetRenderTarget(renderer);
+    SDL_Rect previousViewport{};
+    SDL_GetRenderViewport(renderer, &previousViewport);
+
+    SDL_SetRenderTarget(renderer, cachedBaseTexture);
+    const SDL_Rect localViewport{0, 0, key.width, key.height};
+    SDL_SetRenderViewport(renderer, &localViewport);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderFillRect(renderer, nullptr);
+    drawHorizontalLines(renderer);
+    SDL_SetRenderDrawColor(renderer, waveformColor.r, waveformColor.g,
+                           waveformColor.b, waveformColor.a);
+    SDL_RenderGeometry(renderer, nullptr, progressiveBlockBuildVertices.data(),
+                       static_cast<int>(progressiveBlockBuildVertices.size()),
+                       progressiveBlockBuildIndices.data(),
+                       static_cast<int>(progressiveBlockBuildIndices.size()));
+
+    SDL_SetRenderTarget(renderer, previousTarget);
+    SDL_SetRenderViewport(renderer, &previousViewport);
+
+    finalizeBaseTextureForView(key, key, false);
+    rememberRenderedBlockTextureFrontier(key);
+    clearProgressiveBlockBuildGeometry();
+    return true;
+}
+
 void Waveform::appendBlockWaveformGeometryRange(
     std::vector<SDL_Vertex> &vertices, std::vector<int> &indices, int xStart,
     int xEndExclusive, int widthToUse, int64_t sampleOffset) const
@@ -1051,6 +1090,15 @@ bool Waveform::ensureBaseTexture(SDL_Renderer *renderer) const
     {
         invalidateBaseTexture();
         return false;
+    }
+    if (isBlockMode &&
+        hasProgressiveBlockBuildGeometryForKey(newKey) &&
+        (!cachedBaseTextureValid || cachedBaseTextureKey != newKey))
+    {
+        if (promoteProgressiveBlockBuildGeometryToTexture(renderer, newKey))
+        {
+            return true;
+        }
     }
     const bool allowBlockCoverageReuse =
         isBlockMode && !isWaveformCacheBuildActive();
@@ -1948,19 +1996,29 @@ void Waveform::drawHighlight(SDL_Renderer *renderer) const
 void Waveform::onDraw(SDL_Renderer *renderer)
 {
     const auto currentKey = computeBaseTextureCacheKey();
-    if (currentKey.samplesPerPixel >= 1.0 &&
-        hasProgressiveBlockBuildGeometryForKey(currentKey) &&
+    const bool progressiveGeometryVisible =
+        currentKey.samplesPerPixel >= 1.0 &&
+        hasProgressiveBlockBuildGeometryForKey(currentKey);
+    if (progressiveGeometryVisible &&
         (isWaveformCacheBuildActive() || !cachedBaseTextureValid))
     {
         if (isWaveformCacheBuildActive())
         {
             handleWaveformCacheUpdate();
+            drawProgressiveBlockBuildWaveform(renderer, currentKey);
         }
         else
         {
-            (void)ensureBaseTexture(renderer);
+            if (ensureBaseTexture(renderer))
+            {
+                SDL_RenderTexture(renderer, cachedBaseTexture,
+                                  &cachedBaseTextureSourceRect, nullptr);
+            }
+            else
+            {
+                drawProgressiveBlockBuildWaveform(renderer, currentKey);
+            }
         }
-        drawProgressiveBlockBuildWaveform(renderer, currentKey);
         drawSelection(renderer);
         drawHighlight(renderer);
         drawMarkers(renderer);

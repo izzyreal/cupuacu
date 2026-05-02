@@ -339,6 +339,8 @@ namespace cupuacu::gui
         void drawBaseWaveformContents(SDL_Renderer *) const;
         void drawProgressiveBlockBuildWaveform(
             SDL_Renderer *, const BaseTextureCacheKey &key) const;
+        bool promoteProgressiveBlockBuildGeometryToTexture(
+            SDL_Renderer *, const BaseTextureCacheKey &key) const;
         void appendBlockWaveformGeometryRange(
             std::vector<SDL_Vertex> &vertices, std::vector<int> &indices,
             int xStart, int xEndExclusive, int widthToUse,
