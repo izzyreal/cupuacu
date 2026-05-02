@@ -785,10 +785,6 @@ bool Waveform::ensureBaseTexture(SDL_Renderer *renderer) const
         requestBackgroundBlockRenderPlan(targetKey);
         if (cachedBaseTextureValid && cachedBaseTexture)
         {
-            cachedBaseTextureSourceRect = {
-                0.0f, 0.0f,
-                static_cast<float>(cachedBaseTextureKey.width),
-                static_cast<float>(cachedBaseTextureKey.height)};
             return true;
         }
     }
