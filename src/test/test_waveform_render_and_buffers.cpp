@@ -216,6 +216,55 @@ TEST_CASE("Document publishes waveform cache results from background work",
     REQUIRE(built);
 }
 
+TEST_CASE("Document reports deterministic waveform cache build progress",
+          "[gui][waveform]")
+{
+    cupuacu::Document document;
+    constexpr int64_t frameCount = 1 << 22;
+    document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, frameCount);
+    for (int64_t frame = 0; frame < frameCount; ++frame)
+    {
+        document.setSample(0, frame,
+                           (frame % 64) < 32 ? -0.75f : 0.75f, false);
+    }
+
+    document.invalidateWaveformSamples(0, frameCount - 1);
+    document.updateWaveformCache();
+
+    const auto initialProgress = document.getWaveformCacheBuildProgress();
+    REQUIRE(initialProgress.has_value());
+    REQUIRE(initialProgress->completedBlocks == 0);
+    REQUIRE(initialProgress->totalBlocks > 0);
+
+    std::vector<double> seenProgress;
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        if (const auto progress = document.getWaveformCacheBuildProgress();
+            progress.has_value() && progress->totalBlocks > 0)
+        {
+            seenProgress.push_back(
+                static_cast<double>(progress->completedBlocks) /
+                static_cast<double>(progress->totalBlocks));
+        }
+
+        document.pumpWaveformCacheWork();
+        if (!document.getWaveformCacheBuildProgress().has_value())
+        {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    REQUIRE_FALSE(document.getWaveformCacheBuildProgress().has_value());
+    REQUIRE(seenProgress.size() >= 2);
+    REQUIRE(std::is_sorted(seenProgress.begin(), seenProgress.end()));
+    REQUIRE(std::any_of(seenProgress.begin(), seenProgress.end(),
+                        [](const double progress)
+                        { return progress > 0.0 && progress < 1.0; }));
+}
+
 TEST_CASE("Background block render input avoids raw sample snapshots for zoomed-out views",
           "[gui][waveform]")
 {
