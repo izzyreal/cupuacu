@@ -731,6 +731,15 @@ int64_t Waveform::currentBuiltSamplePrefixEnd() const
                                document.getFrameCount());
 }
 
+bool Waveform::hasProgressiveBlockBuildGeometryForKey(
+    const BaseTextureCacheKey &key) const
+{
+    return progressiveBlockBuildGeometryKey.has_value() &&
+           *progressiveBlockBuildGeometryKey == key &&
+           !progressiveBlockBuildVertices.empty() &&
+           !progressiveBlockBuildIndices.empty();
+}
+
 void Waveform::rememberRenderedBlockTextureFrontier(
     const BaseTextureCacheKey &targetKey) const
 {
@@ -816,10 +825,15 @@ bool Waveform::refreshProgressiveBlockTexture(
 void Waveform::handleWaveformCacheUpdate() const
 {
     const auto newKey = computeBaseTextureCacheKey();
-    if (newKey.samplesPerPixel < 1.0 || !isWaveformCacheBuildActive())
+    if (newKey.samplesPerPixel < 1.0)
     {
         clearProgressiveBlockBuildGeometry();
         invalidateBaseTexture();
+        return;
+    }
+
+    if (!isWaveformCacheBuildActive())
+    {
         return;
     }
 
@@ -1106,6 +1120,10 @@ bool Waveform::ensureBaseTexture(SDL_Renderer *renderer) const
         if (cachedBaseTextureValid && cachedBaseTexture)
         {
             return true;
+        }
+        if (hasProgressiveBlockBuildGeometryForKey(newKey))
+        {
+            return false;
         }
     }
 
@@ -1930,9 +1948,18 @@ void Waveform::drawHighlight(SDL_Renderer *renderer) const
 void Waveform::onDraw(SDL_Renderer *renderer)
 {
     const auto currentKey = computeBaseTextureCacheKey();
-    if (currentKey.samplesPerPixel >= 1.0 && isWaveformCacheBuildActive())
+    if (currentKey.samplesPerPixel >= 1.0 &&
+        hasProgressiveBlockBuildGeometryForKey(currentKey) &&
+        (isWaveformCacheBuildActive() || !cachedBaseTextureValid))
     {
-        handleWaveformCacheUpdate();
+        if (isWaveformCacheBuildActive())
+        {
+            handleWaveformCacheUpdate();
+        }
+        else
+        {
+            (void)ensureBaseTexture(renderer);
+        }
         drawProgressiveBlockBuildWaveform(renderer, currentKey);
         drawSelection(renderer);
         drawHighlight(renderer);

@@ -313,6 +313,8 @@ namespace cupuacu::gui
                                bool isBlockMode) const;
         bool isWaveformCacheBuildActive() const;
         int64_t currentBuiltSamplePrefixEnd() const;
+        bool hasProgressiveBlockBuildGeometryForKey(
+            const BaseTextureCacheKey &key) const;
         void rememberRenderedBlockTextureFrontier(
             const BaseTextureCacheKey &targetKey) const;
         bool refreshProgressiveBlockTexture(
