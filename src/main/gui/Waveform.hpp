@@ -1,9 +1,14 @@
 #pragma once
 #include "Component.hpp"
 #include "../State.hpp"
+#include "../concurrency/LatestWinsBackgroundWorker.hpp"
 #include <SDL3/SDL.h>
 
 #include "SamplePoint.hpp"
+
+#include <memory>
+#include <optional>
+#include <vector>
 
 namespace cupuacu::gui
 {
@@ -235,12 +240,48 @@ namespace cupuacu::gui
             BaseTextureCacheKey key{};
             bool valid = false;
         };
+        struct BackgroundBlockRenderRequest
+        {
+            BaseTextureCacheKey key{};
+            int64_t frameCount = 0;
+            float uiScale = 1.0f;
+            bool bypassCache = true;
+            int cacheLevel = 0;
+            int64_t samplesPerPeak = 0;
+            int64_t rawSampleStart = 0;
+            std::vector<float> rawSamples;
+            std::vector<Peak> cachedPeaks;
+        };
+        struct BackgroundBlockRenderChunk
+        {
+            BaseTextureCacheKey key{};
+            bool reset = false;
+            std::vector<SDL_Vertex> vertices;
+            std::vector<int> indices;
+        };
+        struct BackgroundBlockRenderProgress
+        {
+            std::uint64_t generation = 0;
+            BaseTextureCacheKey key{};
+            std::vector<SDL_Vertex> vertices;
+            std::vector<int> indices;
+        };
+        using BackgroundBlockRenderWorker =
+            cupuacu::concurrency::LatestWinsBackgroundWorker<
+                BackgroundBlockRenderRequest, BackgroundBlockRenderChunk>;
 
         mutable BaseTextureCacheKey cachedBaseTextureKey{};
         mutable bool cachedBaseTextureValid = false;
         mutable SDL_FRect cachedBaseTextureSourceRect{
             0.0f, 0.0f, 0.0f, 0.0f};
         mutable std::vector<StoredBlockTexture> storedBlockTextures;
+        mutable std::unique_ptr<BackgroundBlockRenderWorker>
+            backgroundBlockRenderWorker;
+        mutable std::optional<BaseTextureCacheKey>
+            requestedBackgroundBlockRenderKey;
+        mutable std::optional<BackgroundBlockRenderProgress>
+            backgroundBlockRenderProgress;
+        mutable std::uint64_t latestBackgroundBlockRenderGeneration = 0;
 
         std::vector<std::unique_ptr<SamplePoint>> computeSamplePoints();
 
@@ -261,6 +302,8 @@ namespace cupuacu::gui
         void renderBaseTexture(SDL_Renderer *,
                                const BaseTextureCacheKey &targetKey,
                                bool isBlockMode) const;
+        void renderBaseTextureFromBackgroundPlan(
+            SDL_Renderer *, const BackgroundBlockRenderProgress &plan) const;
         void finalizeBaseTextureForView(const BaseTextureCacheKey &newKey,
                                         const BaseTextureCacheKey &targetKey,
                                         bool allowBlockCoverageReuse) const;
@@ -298,5 +341,17 @@ namespace cupuacu::gui
         void drawPlaybackPosition(SDL_Renderer *) const;
         void drawMarkers(SDL_Renderer *) const;
         void drawCursor(SDL_Renderer *) const;
+        std::optional<BackgroundBlockRenderRequest>
+        captureBackgroundBlockRenderRequest(
+            const BaseTextureCacheKey &targetKey) const;
+        void processBackgroundBlockRenderRequest(
+            const BackgroundBlockRenderRequest &request,
+            std::uint64_t generation,
+            const BackgroundBlockRenderWorker::CancelCheck &isCanceled,
+            const BackgroundBlockRenderWorker::PublishFn &publish) const;
+        void ensureBackgroundBlockRenderWorker() const;
+        void requestBackgroundBlockRenderPlan(
+            const BaseTextureCacheKey &targetKey) const;
+        bool consumePublishedBackgroundBlockRenderChunks() const;
     };
 } // namespace cupuacu::gui

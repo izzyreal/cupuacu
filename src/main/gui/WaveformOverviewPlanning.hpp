@@ -12,6 +12,48 @@
 
 namespace cupuacu::gui
 {
+    struct BackgroundBlockRenderInputPlan
+    {
+        bool bypassCache = true;
+        int cacheLevel = 0;
+        int64_t samplesPerPeak = 0;
+        int64_t rawSampleStart = 0;
+        int64_t rawSampleEndExclusive = 0;
+    };
+
+    inline BackgroundBlockRenderInputPlan planBackgroundBlockRenderInput(
+        const int64_t frameCount, const int64_t sampleOffset,
+        const double samplesPerPixel, const int widthToUse,
+        const uint8_t pixelScale, const WaveformCache &waveformCache)
+    {
+        BackgroundBlockRenderInputPlan plan{};
+        if (frameCount <= 0 || widthToUse <= 0 || samplesPerPixel <= 0.0)
+        {
+            return plan;
+        }
+
+        const double cacheBypassThreshold =
+            static_cast<double>(WaveformCache::BASE_BLOCK_SIZE) *
+            static_cast<double>(std::max<uint8_t>(1, pixelScale));
+        plan.bypassCache = samplesPerPixel < cacheBypassThreshold;
+        if (plan.bypassCache)
+        {
+            plan.rawSampleStart =
+                std::clamp<int64_t>(sampleOffset, 0, frameCount);
+            plan.rawSampleEndExclusive = std::clamp<int64_t>(
+                sampleOffset +
+                    static_cast<int64_t>(std::ceil(
+                        samplesPerPixel * static_cast<double>(widthToUse + 1))),
+                0, frameCount);
+            return plan;
+        }
+
+        plan.cacheLevel = waveformCache.getLevelIndex(samplesPerPixel);
+        plan.samplesPerPeak =
+            WaveformCache::samplesPerPeakForLevel(plan.cacheLevel);
+        return plan;
+    }
+
     struct WaveformOverviewDebugStats
     {
         int64_t windowsRequested = 0;

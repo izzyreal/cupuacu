@@ -216,6 +216,29 @@ TEST_CASE("Document publishes waveform cache results from background work",
     REQUIRE(built);
 }
 
+TEST_CASE("Background block render input avoids raw sample snapshots for zoomed-out views",
+          "[gui][waveform]")
+{
+    constexpr int64_t frameCount = 262144;
+    cupuacu::gui::WaveformCache cache;
+    cache.init(frameCount);
+
+    const auto zoomedOut = cupuacu::gui::planBackgroundBlockRenderInput(
+        frameCount, 0, 200000.0, 2000, 1, cache);
+    REQUIRE_FALSE(zoomedOut.bypassCache);
+    REQUIRE(zoomedOut.samplesPerPeak > 0);
+    REQUIRE(zoomedOut.rawSampleStart == 0);
+    REQUIRE(zoomedOut.rawSampleEndExclusive == 0);
+    REQUIRE(cache.getLevelByIndex(zoomedOut.cacheLevel).size() < 10000);
+
+    const auto zoomedIn = cupuacu::gui::planBackgroundBlockRenderInput(
+        frameCount, 128, 2.0, 2000, 1, cache);
+    REQUIRE(zoomedIn.bypassCache);
+    REQUIRE(zoomedIn.rawSampleStart == 128);
+    REQUIRE(zoomedIn.rawSampleEndExclusive == 4130);
+    REQUIRE(zoomedIn.samplesPerPeak == 0);
+}
+
 TEST_CASE("ScrollBar vertical drag updates value and non-left clicks are ignored",
           "[gui]")
 {
