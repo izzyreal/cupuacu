@@ -276,6 +276,13 @@ namespace cupuacu::gui
         mutable bool cachedBaseTextureValid = false;
         mutable SDL_FRect cachedBaseTextureSourceRect{
             0.0f, 0.0f, 0.0f, 0.0f};
+        mutable int64_t cachedBaseTextureBuiltSamplePrefixEnd = -1;
+        mutable bool progressiveBlockTextureRefreshPending = false;
+        mutable std::optional<BaseTextureCacheKey>
+            progressiveBlockBuildGeometryKey;
+        mutable int64_t progressiveBlockBuildSamplePrefixEnd = -1;
+        mutable std::vector<SDL_Vertex> progressiveBlockBuildVertices;
+        mutable std::vector<int> progressiveBlockBuildIndices;
         mutable std::vector<StoredBlockTexture> storedBlockTextures;
         mutable std::unique_ptr<BackgroundBlockRenderWorker>
             backgroundBlockRenderWorker;
@@ -304,6 +311,14 @@ namespace cupuacu::gui
         void renderBaseTexture(SDL_Renderer *,
                                const BaseTextureCacheKey &targetKey,
                                bool isBlockMode) const;
+        bool isWaveformCacheBuildActive() const;
+        int64_t currentBuiltSamplePrefixEnd() const;
+        void rememberRenderedBlockTextureFrontier(
+            const BaseTextureCacheKey &targetKey) const;
+        bool refreshProgressiveBlockTexture(
+            SDL_Renderer *renderer,
+            const BaseTextureCacheKey &targetKey) const;
+        void handleWaveformCacheUpdate() const;
         void renderBaseTextureFromBackgroundPlan(
             SDL_Renderer *, const BackgroundBlockRenderProgress &plan) const;
         void finalizeBaseTextureForView(const BaseTextureCacheKey &newKey,
@@ -320,6 +335,13 @@ namespace cupuacu::gui
         bool activateStoredBlockTextureForView(
             const BaseTextureCacheKey &newKey) const;
         void drawBaseWaveformContents(SDL_Renderer *) const;
+        void drawProgressiveBlockBuildWaveform(
+            SDL_Renderer *, const BaseTextureCacheKey &key) const;
+        void appendBlockWaveformGeometryRange(
+            std::vector<SDL_Vertex> &vertices, std::vector<int> &indices,
+            int xStart, int xEndExclusive, int widthToUse,
+            int64_t sampleOffset) const;
+        void clearProgressiveBlockBuildGeometry() const;
         void drawHorizontalLines(SDL_Renderer *) const;
         bool shouldDrawSelection() const;
         void drawBlockSelection(SDL_Renderer *, int64_t firstSample,

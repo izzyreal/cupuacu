@@ -811,6 +811,7 @@ namespace cupuacu
         constexpr std::size_t kMaxPublishedOutputsPerPump = 256;
 
         bool applied = false;
+        bool stateChanged = false;
         std::vector<WaveformCacheBuildOutput> publishedOutputs;
         bool buildCompleted = false;
         bool publishedOutputsRemain = false;
@@ -826,11 +827,13 @@ namespace cupuacu
                     waveformCacheBuildJob->hasPublishedOutputs();
             }
         }
+        stateChanged = !publishedOutputs.empty();
 
         for (auto &output : publishedOutputs)
         {
             if (output.completed)
             {
+                stateChanged = true;
                 std::unique_lock lock(dataMutex);
                 if (waveformCacheBuildJob && waveformCacheBuildJob->isCompleted())
                 {
@@ -889,6 +892,7 @@ namespace cupuacu
 
         if (buildCompleted && !publishedOutputsRemain)
         {
+            stateChanged = true;
             std::unique_lock lock(dataMutex);
             if (waveformCacheBuildJob && waveformCacheBuildJob->isCompleted())
             {
@@ -907,7 +911,7 @@ namespace cupuacu
         }
 
         startWaveformCacheBuild();
-        return applied;
+        return applied || stateChanged;
     }
 
     std::optional<Document::WaveformCacheBuildProgress>
