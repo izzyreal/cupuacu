@@ -999,31 +999,7 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
         return;
     }
 
-    const auto sampleData =
-        doc.getAudioBuffer()->getImmutableChannelData(channelIndex);
     const int64_t frameCount = doc.getFrameCount();
-
-    const double cacheBypassThreshold =
-        static_cast<double>(WaveformCache::BASE_BLOCK_SIZE) *
-        static_cast<double>(std::max<uint8_t>(1, state->pixelScale));
-    const bool bypassCache = samplesPerPixel < cacheBypassThreshold;
-
-    auto &waveformCache = doc.getWaveformCache(channelIndex);
-
-    if (!bypassCache && waveformCache.levelsCount() == 0)
-    {
-        waveformCache.rebuildAll(sampleData.data(), frameCount);
-    }
-
-    if (!bypassCache)
-    {
-        const auto &lvl0 =
-            waveformCache.getLevel((double)WaveformCache::BASE_BLOCK_SIZE);
-        if (lvl0.empty())
-        {
-            waveformCache.rebuildAll(sampleData.data(), frameCount);
-        }
-    }
 
     auto getPeakForPixel = [&](const int x, const int drawXi,
                                Peak &out) -> bool
@@ -1298,6 +1274,19 @@ void Waveform::drawMarkers(SDL_Renderer *renderer) const
 
 void Waveform::timerCallback()
 {
+    if (state && state->getActiveDocumentSession().document.pumpWaveformCacheWork())
+    {
+        for (auto *waveform : state->waveforms)
+        {
+            if (!waveform)
+            {
+                continue;
+            }
+            waveform->invalidateBaseTexture();
+            waveform->setDirty();
+        }
+    }
+
     if (samplePosUnderCursor.has_value() &&
         lastDrawnSamplePosUnderCursor != samplePosUnderCursor)
     {

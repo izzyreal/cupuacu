@@ -231,6 +231,11 @@ namespace cupuacu::gui
             return (int)levels.size();
         }
 
+        [[nodiscard]] bool hasDirtyBlocks() const
+        {
+            return dirtyToBlock >= dirtyFromBlock;
+        }
+
         [[nodiscard]] BuildState snapshotBuildState() const
         {
             return {
@@ -255,6 +260,14 @@ namespace cupuacu::gui
                                result.dirtyFromBlock, result.dirtyToBlock,
                                samples);
             return result;
+        }
+
+        [[nodiscard]] static BuildState makeFullBuildState(
+            const int64_t numSamplesToUse)
+        {
+            WaveformCache cache;
+            cache.init(numSamplesToUse);
+            return cache.snapshotBuildState();
         }
 
         void applyBuildResult(BuildResult result)

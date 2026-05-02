@@ -18,6 +18,68 @@ namespace cupuacu
         }
     } // namespace
 
+    Document::WaveformCacheBuildJob::WaveformCacheBuildJob(
+        const Document *documentToRead)
+        : document(documentToRead)
+    {
+    }
+
+    Document::WaveformCacheBuildJob::~WaveformCacheBuildJob()
+    {
+        if (worker.joinable())
+        {
+            worker.join();
+        }
+    }
+
+    void Document::WaveformCacheBuildJob::start()
+    {
+        worker = std::thread([this]
+                             { run(); });
+    }
+
+    bool Document::WaveformCacheBuildJob::isCompleted() const
+    {
+        std::lock_guard lock(mutex);
+        return completed;
+    }
+
+    std::unique_ptr<Document::WaveformCacheBuildOutput>
+    Document::WaveformCacheBuildJob::takeOutput()
+    {
+        std::lock_guard lock(mutex);
+        return std::move(output);
+    }
+
+    void Document::WaveformCacheBuildJob::run()
+    {
+        auto buildOutput = std::make_unique<WaveformCacheBuildOutput>();
+        if (document)
+        {
+            if (const auto request = document->captureWaveformCacheBuildRequest();
+                request.has_value())
+            {
+                buildOutput->waveformDataVersion = request->waveformDataVersion;
+                buildOutput->channelResults.reserve(request->channels.size());
+                for (const auto &channel : request->channels)
+                {
+                    buildOutput->channelResults.push_back(
+                        gui::WaveformCache::buildFromState(
+                            channel.buildState, channel.samples.data()));
+                }
+            }
+        }
+
+        std::lock_guard lock(mutex);
+        output = std::move(buildOutput);
+        completed = true;
+    }
+
+    Document::~Document()
+    {
+        stopWaveformCacheBuild();
+    }
+
     Document::Document(const Document &other)
     {
         std::shared_lock lock(other.dataMutex);
@@ -39,6 +101,7 @@ namespace cupuacu
             return *this;
         }
 
+        stopWaveformCacheBuild();
         std::unique_lock thisLock(dataMutex, std::defer_lock);
         std::shared_lock otherLock(other.dataMutex, std::defer_lock);
         std::lock(thisLock, otherLock);
@@ -56,6 +119,7 @@ namespace cupuacu
 
     Document::Document(Document &&other) noexcept
     {
+        other.stopWaveformCacheBuild();
         std::unique_lock lock(other.dataMutex);
         buffer = std::move(other.buffer);
         sampleRate = other.sampleRate;
@@ -75,6 +139,8 @@ namespace cupuacu
             return *this;
         }
 
+        stopWaveformCacheBuild();
+        other.stopWaveformCacheBuild();
         std::unique_lock thisLock(dataMutex, std::defer_lock);
         std::unique_lock otherLock(other.dataMutex, std::defer_lock);
         std::lock(thisLock, otherLock);
@@ -88,6 +154,116 @@ namespace cupuacu
         waveformCache = std::move(other.waveformCache);
         markers = std::move(other.markers);
         return *this;
+    }
+
+    bool Document::waveformCacheLevel0SizeMatchesUnlocked(
+        const int64_t channel, const int64_t frameCount) const
+    {
+        if (channel < 0 || channel >= getChannelCountUnlocked())
+        {
+            return false;
+        }
+
+        const auto expectedLevel0Size =
+            frameCount <= 0
+                ? 0
+                : (frameCount + gui::WaveformCache::BASE_BLOCK_SIZE - 1) /
+                      gui::WaveformCache::BASE_BLOCK_SIZE;
+        const auto &cache = waveformCache[static_cast<std::size_t>(channel)];
+        return cache.levelsCount() > 0 &&
+               static_cast<int64_t>(cache.getLevelByIndex(0).size()) ==
+                   expectedLevel0Size;
+    }
+
+    bool Document::needsWaveformCacheBuildUnlocked() const
+    {
+        const auto frameCount = getFrameCountUnlocked();
+        const auto channelCount = getChannelCountUnlocked();
+        if (frameCount <= 0 || channelCount <= 0)
+        {
+            return false;
+        }
+
+        for (int64_t channel = 0; channel < channelCount; ++channel)
+        {
+            const auto &cache = waveformCache[static_cast<std::size_t>(channel)];
+            if (!waveformCacheLevel0SizeMatchesUnlocked(channel, frameCount) ||
+                cache.hasDirtyBlocks())
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    void Document::clearWaveformCacheUnlocked()
+    {
+        for (auto &cache : waveformCache)
+        {
+            cache.clear();
+        }
+    }
+
+    void Document::startWaveformCacheBuild()
+    {
+        WaveformCacheBuildJob *jobToStart = nullptr;
+        {
+            std::unique_lock lock(dataMutex);
+            if (waveformCacheBuildJob || !needsWaveformCacheBuildUnlocked())
+            {
+                return;
+            }
+            waveformCacheBuildJob = std::make_unique<WaveformCacheBuildJob>(this);
+            jobToStart = waveformCacheBuildJob.get();
+        }
+
+        if (jobToStart)
+        {
+            jobToStart->start();
+        }
+    }
+
+    void Document::stopWaveformCacheBuild()
+    {
+        std::unique_ptr<WaveformCacheBuildJob> oldJob;
+        {
+            std::unique_lock lock(dataMutex);
+            oldJob = std::move(waveformCacheBuildJob);
+        }
+    }
+
+    std::optional<Document::WaveformCacheBuildRequest>
+    Document::captureWaveformCacheBuildRequest() const
+    {
+        std::shared_lock lock(dataMutex);
+        const auto frameCount = getFrameCountUnlocked();
+        const auto channelCount = getChannelCountUnlocked();
+        if (frameCount <= 0 || channelCount <= 0)
+        {
+            return std::nullopt;
+        }
+
+        WaveformCacheBuildRequest request;
+        request.waveformDataVersion = waveformDataVersion;
+        request.channels.reserve(static_cast<std::size_t>(channelCount));
+
+        for (int64_t channel = 0; channel < channelCount; ++channel)
+        {
+            auto buildState =
+                waveformCache[static_cast<std::size_t>(channel)].snapshotBuildState();
+            if (!waveformCacheLevel0SizeMatchesUnlocked(channel, frameCount))
+            {
+                buildState = gui::WaveformCache::makeFullBuildState(frameCount);
+            }
+
+            const auto samples = buffer->getImmutableChannelData(channel);
+            request.channels.push_back(
+                {.buildState = std::move(buildState),
+                 .samples = std::vector<float>(samples.begin(), samples.end())});
+        }
+
+        return request;
     }
 
     void Document::syncWaveformCacheToChannelCount(const int64_t channelCount)
@@ -438,34 +614,79 @@ namespace cupuacu
 
     void Document::updateWaveformCache()
     {
-        std::unique_lock lock(dataMutex);
-        for (int ch = 0; ch < getChannelCountUnlocked(); ++ch)
-        {
-            const auto channelData = buffer->getImmutableChannelData(ch);
-            const auto expectedLevel0Size =
-                getFrameCountUnlocked() <= 0
-                    ? 0
-                    : (getFrameCountUnlocked() +
-                       gui::WaveformCache::BASE_BLOCK_SIZE - 1) /
-                          gui::WaveformCache::BASE_BLOCK_SIZE;
-            const bool hasLevels = waveformCache[ch].levelsCount() > 0;
-            const bool level0SizeMatches =
-                hasLevels &&
-                static_cast<int64_t>(
-                    waveformCache[ch].getLevelByIndex(0).size()) ==
-                    expectedLevel0Size;
+        (void)pumpWaveformCacheWork();
+    }
 
-            if (!hasLevels || !level0SizeMatches)
+    bool Document::pumpWaveformCacheWork()
+    {
+        bool applied = false;
+        std::unique_ptr<WaveformCacheBuildJob> completedJob;
+        {
+            std::unique_lock lock(dataMutex);
+            if (waveformCacheBuildJob && waveformCacheBuildJob->isCompleted())
             {
-                waveformCache[ch].rebuildAll(channelData.data(),
-                                             getFrameCountUnlocked());
+                completedJob = std::move(waveformCacheBuildJob);
             }
-            else
+        }
+
+        if (completedJob)
+        {
+            if (auto output = completedJob->takeOutput())
             {
-                auto result = gui::WaveformCache::buildFromState(
-                    waveformCache[ch].snapshotBuildState(), channelData.data());
-                waveformCache[ch].applyBuildResult(std::move(result));
+                std::unique_lock lock(dataMutex);
+                if (output->waveformDataVersion == waveformDataVersion &&
+                    output->channelResults.size() == waveformCache.size())
+                {
+                    for (std::size_t channel = 0;
+                         channel < output->channelResults.size(); ++channel)
+                    {
+                        waveformCache[channel].applyBuildResult(
+                            std::move(output->channelResults[channel]));
+                    }
+                    applied = true;
+                }
             }
+        }
+
+        {
+            std::unique_lock lock(dataMutex);
+            if (getFrameCountUnlocked() <= 0 || getChannelCountUnlocked() <= 0)
+            {
+                clearWaveformCacheUnlocked();
+                return applied;
+            }
+        }
+
+        startWaveformCacheBuild();
+        return applied;
+    }
+
+    void Document::rebuildWaveformCacheSynchronously()
+    {
+        stopWaveformCacheBuild();
+
+        std::unique_lock lock(dataMutex);
+        const auto frameCount = getFrameCountUnlocked();
+        const auto channelCount = getChannelCountUnlocked();
+        if (frameCount <= 0 || channelCount <= 0)
+        {
+            clearWaveformCacheUnlocked();
+            return;
+        }
+
+        for (int64_t channel = 0; channel < channelCount; ++channel)
+        {
+            const auto channelData = buffer->getImmutableChannelData(channel);
+            auto buildState =
+                waveformCache[static_cast<std::size_t>(channel)].snapshotBuildState();
+            if (!waveformCacheLevel0SizeMatchesUnlocked(channel, frameCount))
+            {
+                buildState = gui::WaveformCache::makeFullBuildState(frameCount);
+            }
+            auto result = gui::WaveformCache::buildFromState(buildState,
+                                                             channelData.data());
+            waveformCache[static_cast<std::size_t>(channel)].applyBuildResult(
+                std::move(result));
         }
     }
 

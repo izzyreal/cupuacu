@@ -190,7 +190,7 @@ TEST_CASE("Loading a second file fully reinitializes document cache and shape",
 
     session.currentFile = firstPath.string();
     cupuacu::file::loadSampleData(&state);
-    session.document.updateWaveformCache();
+    session.document.rebuildWaveformCacheSynchronously();
     REQUIRE(session.document.getWaveformCache(0).levelsCount() > 0);
 
     session.selection.setHighest(1'000'000.0);

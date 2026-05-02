@@ -6,8 +6,11 @@
 #include "gui/WaveformCache.hpp"
 
 #include <memory>
+#include <mutex>
+#include <optional>
 #include <shared_mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace cupuacu
@@ -35,6 +38,48 @@ namespace cupuacu
         };
 
     private:
+        struct WaveformCacheBuildRequestChannel
+        {
+            gui::WaveformCache::BuildState buildState;
+            std::vector<float> samples;
+        };
+
+        struct WaveformCacheBuildRequest
+        {
+            uint64_t waveformDataVersion = 0;
+            std::vector<WaveformCacheBuildRequestChannel> channels;
+        };
+
+        struct WaveformCacheBuildOutput
+        {
+            uint64_t waveformDataVersion = 0;
+            std::vector<gui::WaveformCache::BuildResult> channelResults;
+        };
+
+        class WaveformCacheBuildJob
+        {
+        public:
+            explicit WaveformCacheBuildJob(const Document *documentToRead);
+            ~WaveformCacheBuildJob();
+
+            WaveformCacheBuildJob(const WaveformCacheBuildJob &) = delete;
+            WaveformCacheBuildJob &
+            operator=(const WaveformCacheBuildJob &) = delete;
+
+            void start();
+            [[nodiscard]] bool isCompleted() const;
+            [[nodiscard]] std::unique_ptr<WaveformCacheBuildOutput> takeOutput();
+
+        private:
+            const Document *document = nullptr;
+            mutable std::mutex mutex;
+            bool completed = false;
+            std::unique_ptr<WaveformCacheBuildOutput> output;
+            std::thread worker;
+
+            void run();
+        };
+
         std::shared_ptr<cupuacu::audio::AudioBuffer> buffer =
             std::make_shared<cupuacu::audio::AudioBuffer>();
         int sampleRate = 0;
@@ -47,6 +92,7 @@ namespace cupuacu
         std::vector<gui::WaveformCache> waveformCache =
             std::vector<gui::WaveformCache>(2);
         std::vector<DocumentMarker> markers;
+        std::unique_ptr<WaveformCacheBuildJob> waveformCacheBuildJob;
 
         void syncWaveformCacheToChannelCount(int64_t channelCount);
         void resetWaveformCacheToChannelCount(int64_t channelCount);
@@ -57,9 +103,19 @@ namespace cupuacu
         int64_t clampMarkerFrameUnlocked(int64_t frame) const;
         void normalizeMarkers();
         void normalizeMarkersUnlocked();
+        [[nodiscard]] bool needsWaveformCacheBuildUnlocked() const;
+        [[nodiscard]] bool
+        waveformCacheLevel0SizeMatchesUnlocked(int64_t channel,
+                                               int64_t frameCount) const;
+        void clearWaveformCacheUnlocked();
+        void startWaveformCacheBuild();
+        void stopWaveformCacheBuild();
+        [[nodiscard]] std::optional<WaveformCacheBuildRequest>
+        captureWaveformCacheBuildRequest() const;
 
     public:
         Document() = default;
+        ~Document();
         Document(const Document &other);
         Document &operator=(const Document &other);
         Document(Document &&other) noexcept;
@@ -127,6 +183,8 @@ namespace cupuacu
         void invalidateWaveformSamples(int64_t startSample, int64_t endSample);
 
         void updateWaveformCache();
+        bool pumpWaveformCacheWork();
+        void rebuildWaveformCacheSynchronously();
 
         std::shared_ptr<cupuacu::audio::AudioBuffer> getAudioBuffer() const;
         uint64_t getPreservationSourceId() const;

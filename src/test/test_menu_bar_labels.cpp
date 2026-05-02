@@ -520,7 +520,7 @@ TEST_CASE(
     {
         doc.setSample(0, i, 0.1f * static_cast<float>(i + 1), false);
     }
-    doc.updateWaveformCache();
+    doc.rebuildWaveformCacheSynchronously();
 
     session.selection.setHighest(5.0);
     session.selection.setValue1(1.0);

@@ -311,6 +311,8 @@ namespace cupuacu::actions::io
                                         publishProgress(detailToUse,
                                                         progressToUse);
                                     }));
+            publishProgress("Building waveform cache", std::nullopt);
+            loaded->document.rebuildWaveformCacheSynchronously();
             std::lock_guard lock(mutex);
             loadedFile = std::move(loaded);
             success = true;

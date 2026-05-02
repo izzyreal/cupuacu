@@ -18,7 +18,9 @@
 #include <cmath>
 #include <map>
 #include <filesystem>
+#include <chrono>
 #include <system_error>
+#include <thread>
 #include <vector>
 
 namespace
@@ -182,6 +184,38 @@ TEST_CASE("Waveform tolerates a temporary channel mismatch during transitions",
     REQUIRE(waveform.getChildren().empty());
 }
 
+TEST_CASE("Document publishes waveform cache results from background work",
+          "[gui][waveform]")
+{
+    cupuacu::Document document;
+    document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 256);
+    for (int64_t frame = 0; frame < 256; ++frame)
+    {
+        document.setSample(0, frame,
+                           (frame % 32) < 16 ? -0.5f : 0.5f, false);
+    }
+
+    document.invalidateWaveformSamples(0, 255);
+    document.updateWaveformCache();
+
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    bool built = false;
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        document.pumpWaveformCacheWork();
+        const auto &cache = document.getWaveformCache(0);
+        if (cache.levelsCount() > 0 && !cache.hasDirtyBlocks())
+        {
+            built = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    REQUIRE(built);
+}
+
 TEST_CASE("ScrollBar vertical drag updates value and non-left clicks are ignored",
           "[gui]")
 {
@@ -226,13 +260,13 @@ TEST_CASE("Block waveform overview preserves pasted-copy peaks in the former com
     auto &originalSession = originalState.getActiveDocumentSession();
     originalSession.currentFile = wavPath.string();
     cupuacu::file::loadSampleData(&originalState);
-    originalSession.document.updateWaveformCache();
+    originalSession.document.rebuildWaveformCacheSynchronously();
 
     cupuacu::test::StateWithTestPaths pastedState(cleanup.path() / "pasted");
     auto &pastedSession = pastedState.getActiveDocumentSession();
     pastedSession.currentFile = wavPath.string();
     cupuacu::file::loadSampleData(&pastedState);
-    pastedSession.document.updateWaveformCache();
+    pastedSession.document.rebuildWaveformCacheSynchronously();
 
     const int64_t pasteOffset = 42197;
     pastedSession.selection.setValue1(0.0);
@@ -242,7 +276,7 @@ TEST_CASE("Block waveform overview preserves pasted-copy peaks in the former com
     pastedSession.selection.reset();
     pastedSession.cursor = pasteOffset;
     cupuacu::actions::audio::performPaste(&pastedState);
-    pastedSession.document.updateWaveformCache();
+    pastedSession.document.rebuildWaveformCacheSynchronously();
 
     for (const int totalWidth : {756, 1200})
     {
