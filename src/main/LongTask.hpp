@@ -13,6 +13,11 @@ namespace cupuacu
     void updateLongTask(State *state, std::string detail = {},
                         std::optional<double> progress = std::nullopt,
                         bool renderNow = true);
+    void updateLongTaskOverlayOnly(
+        State *state, std::string detail = {},
+        std::optional<double> progress = std::nullopt,
+        bool renderNow = true);
+    void renderLongTaskOverlayNow(State *state);
     void clearLongTask(State *state, bool renderNow = true);
 
     class LongTaskScope

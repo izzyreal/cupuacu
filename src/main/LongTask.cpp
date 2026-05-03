@@ -124,6 +124,63 @@ namespace cupuacu
         refreshLongTaskUi(state, renderNow);
     }
 
+    void updateLongTaskOverlayOnly(State *state, std::string detail,
+                                   std::optional<double> progress,
+                                   const bool renderNow)
+    {
+        if (!state || !state->longTask.active)
+        {
+            return;
+        }
+
+        if (!detail.empty())
+        {
+            state->longTask.detail = std::move(detail);
+        }
+        state->longTask.progress = progress;
+
+        for (auto *window : state->windows)
+        {
+            if (!window || !window->isOpen() || !window->getRootComponent())
+            {
+                continue;
+            }
+            syncLongTaskOverlays(window->getRootComponent());
+            if (!markLongTaskOverlaysDirty(window->getRootComponent()))
+            {
+                continue;
+            }
+            if (renderNow && state->mainWindowInitialFrameRendered)
+            {
+                SDL_PumpEvents();
+                window->renderOverlayFrame();
+            }
+        }
+    }
+
+    void renderLongTaskOverlayNow(State *state)
+    {
+        if (!state || !state->longTask.active || !state->mainWindowInitialFrameRendered)
+        {
+            return;
+        }
+
+        for (auto *window : state->windows)
+        {
+            if (!window || !window->isOpen() || !window->getRootComponent())
+            {
+                continue;
+            }
+            syncLongTaskOverlays(window->getRootComponent());
+            if (!markLongTaskOverlaysDirty(window->getRootComponent()))
+            {
+                continue;
+            }
+            SDL_PumpEvents();
+            window->renderOverlayFrame();
+        }
+    }
+
     void clearLongTask(State *state, const bool renderNow)
     {
         if (!state)

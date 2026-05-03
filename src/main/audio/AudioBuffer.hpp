@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <span>
 #include <vector>
 
@@ -15,6 +16,9 @@ namespace cupuacu::audio
         std::vector<std::vector<float>> channels;
 
     public:
+        using ProgressCallback =
+            std::function<void(int64_t completed, int64_t total)>;
+
         virtual bool isDirty(int64_t channel, int64_t frame) const
         {
             return true;
@@ -80,13 +84,20 @@ namespace cupuacu::audio
             }
         }
 
-        virtual void removeFrames(int64_t frameIndex, int64_t numFrames)
+        virtual void removeFrames(int64_t frameIndex, int64_t numFrames,
+                                  const ProgressCallback &progress = {})
         {
             int64_t chCount = channels.size();
+            int64_t completedChannels = 0;
             for (auto &ch : channels)
             {
                 ch.erase(ch.begin() + frameIndex,
                          ch.begin() + frameIndex + numFrames);
+                ++completedChannels;
+                if (progress)
+                {
+                    progress(completedChannels, std::max<int64_t>(1, chCount));
+                }
             }
         }
 

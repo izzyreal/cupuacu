@@ -1,6 +1,7 @@
 #pragma once
 #include "DurationMutationUndoable.hpp"
 #include "../../Document.hpp"
+#include "../../LongTask.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
@@ -40,10 +41,10 @@ namespace cupuacu::actions::audio
         {
             const auto redoStartedAt =
                 std::chrono::steady_clock::now();
+            constexpr auto kProgressUiThrottle =
+                std::chrono::milliseconds(50);
             auto &session = state->getActiveDocumentSession();
             auto &doc = session.document;
-            const int64_t ch = doc.getChannelCount();
-            const int sr = doc.getSampleRate();
             const int64_t total = doc.getFrameCount();
 
             if (numFrames <= 0 || startFrame < 0 || startFrame >= total)
@@ -54,31 +55,89 @@ namespace cupuacu::actions::audio
             const int64_t actualCount =
                 std::min<int64_t>(numFrames, total - startFrame);
             numFrames = actualCount;
+            cupuacu::LongTaskScope longTask(
+                state, "Cutting audio", "Capturing selection", 0.0, false);
+            cupuacu::renderLongTaskOverlayNow(state);
+            std::string lastProgressDetail = "Capturing selection";
+            auto lastProgressRenderedAt = std::chrono::steady_clock::now();
+            const auto publishProgress =
+                [&](const std::string &detail, const double progress,
+                    const bool forceRender)
+            {
+                const auto now = std::chrono::steady_clock::now();
+                const bool shouldRender =
+                    forceRender ||
+                    detail != lastProgressDetail ||
+                    progress >= 1.0 ||
+                    now - lastProgressRenderedAt >= kProgressUiThrottle;
+
+                lastProgressDetail = detail;
+                cupuacu::updateLongTaskOverlayOnly(state, detail, progress, false);
+                if (shouldRender)
+                {
+                    cupuacu::renderLongTaskOverlayNow(state);
+                    lastProgressRenderedAt = now;
+                }
+            };
+            const auto publishPhaseProgress =
+                [&](const std::string &detail, const double startProgress,
+                    const double endProgress, const int64_t completed,
+                    const int64_t total)
+            {
+                const auto safeTotal = std::max<int64_t>(1, total);
+                const double normalized =
+                    std::clamp(static_cast<double>(completed) /
+                                   static_cast<double>(safeTotal),
+                               0.0, 1.0);
+                publishProgress(
+                    detail,
+                    startProgress + (endProgress - startProgress) * normalized,
+                    normalized >= 1.0);
+            };
 
             const auto clipboardInitStartedAt =
                 std::chrono::steady_clock::now();
-            state->clipboard.initialize(doc.getSampleFormat(), sr, ch,
-                                        numFrames);
             const auto clipboardInitializedAt =
                 std::chrono::steady_clock::now();
 
             const auto captureStartedAt =
                 std::chrono::steady_clock::now();
-            removed = doc.captureSegment(startFrame, numFrames);
+            removed = doc.captureSegment(
+                startFrame, numFrames,
+                [&](const int64_t completed, const int64_t total)
+                {
+                    publishPhaseProgress("Capturing selection", 0.0, 0.35,
+                                         completed, total);
+                });
             const auto captureCompletedAt =
                 std::chrono::steady_clock::now();
+            publishProgress("Writing clipboard", 0.35, true);
 
             const auto clipboardAssignStartedAt =
                 std::chrono::steady_clock::now();
-            state->clipboard.assignSegment(removed);
+            state->clipboard.assignSegment(
+                removed,
+                [&](const int64_t completed, const int64_t total)
+                {
+                    publishPhaseProgress("Writing clipboard", 0.35, 0.7,
+                                         completed, total);
+                });
             const auto clipboardAssignedAt =
                 std::chrono::steady_clock::now();
+            publishProgress("Removing audio", 0.7, true);
 
             const auto removeStartedAt =
                 std::chrono::steady_clock::now();
-            doc.removeFrames(startFrame, numFrames);
+            doc.removeFrames(
+                startFrame, numFrames,
+                [&](const int64_t completed, const int64_t total)
+                {
+                    publishPhaseProgress("Removing audio", 0.7, 0.95,
+                                         completed, total);
+                });
             const auto removeCompletedAt =
                 std::chrono::steady_clock::now();
+            publishProgress("Updating waveform", 0.95, true);
 
             const auto waveformStartedAt =
                 std::chrono::steady_clock::now();
@@ -94,6 +153,7 @@ namespace cupuacu::actions::audio
             session.selection.reset();
             const auto redoCompletedAt =
                 std::chrono::steady_clock::now();
+            publishProgress("Cut complete", 1.0, true);
 
             const auto toMilliseconds = [](const auto start, const auto end)
             {

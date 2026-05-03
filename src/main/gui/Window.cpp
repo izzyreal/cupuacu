@@ -3,6 +3,7 @@
 #include "../ResourceUtil.hpp"
 #include "../State.hpp"
 #include "DropdownMenu.hpp"
+#include "LongTaskOverlay.hpp"
 #include "MenuBar.hpp"
 #include "TooltipController.hpp"
 #include "TooltipPlanning.hpp"
@@ -19,6 +20,41 @@ using namespace cupuacu::gui;
 
 namespace
 {
+    void setLongTaskOverlaysDirtyOnly(cupuacu::gui::Component *component)
+    {
+        if (!component)
+        {
+            return;
+        }
+
+        if (dynamic_cast<cupuacu::gui::LongTaskOverlay *>(component) != nullptr)
+        {
+            component->setDirty();
+        }
+        for (const auto &child : component->getChildren())
+        {
+            setLongTaskOverlaysDirtyOnly(child.get());
+        }
+    }
+
+    void drawLongTaskOverlaysOnly(cupuacu::gui::Component *component,
+                                  SDL_Renderer *renderer)
+    {
+        if (!component)
+        {
+            return;
+        }
+
+        if (dynamic_cast<cupuacu::gui::LongTaskOverlay *>(component) != nullptr)
+        {
+            component->draw(renderer);
+        }
+        for (const auto &child : component->getChildren())
+        {
+            drawLongTaskOverlaysOnly(child.get(), renderer);
+        }
+    }
+
     float getEffectiveWindowDisplayScale(SDL_Window *window,
                                          SDL_Texture *canvas)
     {
@@ -985,6 +1021,38 @@ void Window::renderFrameIfDirty()
         SDL_RenderClear(renderer);
     }
     SDL_RenderTexture(renderer, canvas, nullptr, nullptr);
+    SDL_RenderPresent(renderer);
+    dirtyRects.clear();
+}
+
+void Window::renderOverlayFrame()
+{
+    if (!renderer || !canvas || !rootComponent)
+    {
+        return;
+    }
+
+    applyWindowScale(state, window, canvas);
+
+    SDL_Rect fullBounds{0, 0, 0, 0};
+    float canvasW = 0.0f;
+    float canvasH = 0.0f;
+    SDL_GetTextureSize(canvas, &canvasW, &canvasH);
+    fullBounds.w = static_cast<int>(canvasW);
+    fullBounds.h = static_cast<int>(canvasH);
+
+    dirtyRects.clear();
+    dirtyRects.push_back(fullBounds);
+    setLongTaskOverlaysDirtyOnly(rootComponent.get());
+
+    SDL_SetRenderTarget(renderer, nullptr);
+    if (transparentWindow)
+    {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+        SDL_RenderClear(renderer);
+    }
+    SDL_RenderTexture(renderer, canvas, nullptr, nullptr);
+    drawLongTaskOverlaysOnly(rootComponent.get(), renderer);
     SDL_RenderPresent(renderer);
     dirtyRects.clear();
 }

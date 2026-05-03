@@ -149,6 +149,7 @@ namespace cupuacu::gui
         void updateHoverFromCurrentMousePosition();
         void renderFrame();
         void renderFrameIfDirty();
+        void renderOverlayFrame();
         void refreshForScaleOrResize();
         void updateTooltip();
         void hideTooltip();

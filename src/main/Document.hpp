@@ -6,6 +6,7 @@
 #include "gui/WaveformCache.hpp"
 
 #include <memory>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <shared_mutex>
@@ -28,6 +29,9 @@ namespace cupuacu
     class Document
     {
     public:
+        using SampleOperationProgressCallback =
+            std::function<void(int64_t completed, int64_t total)>;
+
         struct AudioSegment
         {
             SampleFormat format = SampleFormat::Unknown;
@@ -204,7 +208,9 @@ namespace cupuacu
 
         void insertFrames(int64_t frameIndex, int64_t numFrames);
 
-        void removeFrames(int64_t frameIndex, int64_t numFrames);
+        void removeFrames(
+            int64_t frameIndex, int64_t numFrames,
+            const SampleOperationProgressCallback &progress = {});
         void invalidateWaveformSamples(int64_t startSample, int64_t endSample);
 
         void updateWaveformCache();
@@ -219,10 +225,15 @@ namespace cupuacu
                                                     int64_t frame) const;
         void setSampleProvenance(int64_t channel, int64_t frame,
                                  const audio::SampleProvenance &provenance);
-        AudioSegment captureSegment(int64_t startFrame, int64_t frameCount) const;
-        void assignSegment(const AudioSegment &segment);
+        AudioSegment captureSegment(
+            int64_t startFrame, int64_t frameCount,
+            const SampleOperationProgressCallback &progress = {}) const;
+        void assignSegment(
+            const AudioSegment &segment,
+            const SampleOperationProgressCallback &progress = {});
         void writeSegment(int64_t startFrame, const AudioSegment &segment,
-                          bool shouldMarkDirty = false);
+                          bool shouldMarkDirty = false,
+                          const SampleOperationProgressCallback &progress = {});
         const std::vector<DocumentMarker> &getMarkers() const;
         uint64_t addMarker(int64_t frame, std::string label = {});
         bool removeMarker(uint64_t id);

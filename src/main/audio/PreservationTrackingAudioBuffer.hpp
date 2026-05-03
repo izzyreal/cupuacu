@@ -4,6 +4,8 @@
 #include "SampleProvenance.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <cstdio>
 #include <cstdint>
 #include <vector>
 
@@ -269,13 +271,16 @@ namespace cupuacu::audio
             }
         }
 
-        void removeFrames(const std::int64_t frameIndex,
-                          const std::int64_t numFrames) override
+        void removeFrames(
+            const std::int64_t frameIndex, const std::int64_t numFrames,
+            const AudioBuffer::ProgressCallback &progress = {}) override
         {
             if (numFrames <= 0)
             {
                 return;
             }
+
+            const auto startedAt = std::chrono::steady_clock::now();
 
             const auto oldFrameCount = getFrameCount();
             const auto channelCount = getChannelCount();
@@ -285,11 +290,43 @@ namespace cupuacu::audio
             oldDirtyFlags.resize(static_cast<std::size_t>((oldSampleCount + 7) / 8),
                                  0);
 
-            AudioBuffer::removeFrames(frameIndex, numFrames);
+            const std::int64_t phase1Units = std::max<std::int64_t>(1, channelCount);
+
+            AudioBuffer::removeFrames(
+                frameIndex, numFrames,
+                [&](const std::int64_t completed, const std::int64_t total)
+                {
+                    const auto safeTotal = std::max<std::int64_t>(1, total);
+                    if (progress)
+                    {
+                        progress(completed * phase1Units / safeTotal, phase1Units);
+                    }
+                });
+            const auto eraseCompletedAt = std::chrono::steady_clock::now();
 
             const auto newFrameCount = getFrameCount();
             const auto newSampleCount = newFrameCount * channelCount;
             dirtyFlags.assign(static_cast<std::size_t>((newSampleCount + 7) / 8), 0);
+            const std::int64_t phase2Units =
+                std::max<std::int64_t>(1, newFrameCount * channelCount);
+            std::int64_t totalRangeCount = 0;
+            for (const auto &ranges : provenanceRanges)
+            {
+                totalRangeCount += static_cast<std::int64_t>(ranges.size());
+            }
+            const std::int64_t phase3Units =
+                std::max<std::int64_t>(1, totalRangeCount);
+            const std::int64_t totalUnits =
+                phase1Units + phase2Units + phase3Units;
+            const auto publishProgress =
+                [&](const std::int64_t completedUnits)
+            {
+                if (progress)
+                {
+                    progress(std::clamp<std::int64_t>(completedUnits, 0, totalUnits),
+                             totalUnits);
+                }
+            };
 
             const auto oldIsDirty = [&](const std::int64_t channel,
                                         const std::int64_t frame) -> bool
@@ -300,6 +337,8 @@ namespace cupuacu::audio
                        1;
             };
 
+            constexpr std::int64_t kProgressStrideFrames = 16384;
+            std::int64_t dirtyUnitsCompleted = 0;
             for (std::int64_t frame = 0; frame < frameIndex; ++frame)
             {
                 for (std::int64_t channel = 0; channel < channelCount; ++channel)
@@ -309,6 +348,14 @@ namespace cupuacu::audio
                     {
                         markDirtyByFlatIndex(index);
                     }
+                }
+                dirtyUnitsCompleted += channelCount;
+                if ((frame + 1) % kProgressStrideFrames == 0 ||
+                    frame + 1 == frameIndex)
+                {
+                    publishProgress(phase1Units +
+                                    dirtyUnitsCompleted * phase2Units /
+                                        std::max<std::int64_t>(1, newFrameCount * channelCount));
                 }
             }
 
@@ -322,9 +369,19 @@ namespace cupuacu::audio
                         markDirtyByFlatIndex(newIndex);
                     }
                 }
+                dirtyUnitsCompleted += channelCount;
+                if ((frame - frameIndex + 1) % kProgressStrideFrames == 0 ||
+                    frame + 1 == newFrameCount)
+                {
+                    publishProgress(phase1Units +
+                                    dirtyUnitsCompleted * phase2Units /
+                                        std::max<std::int64_t>(1, newFrameCount * channelCount));
+                }
             }
+            const auto dirtyFlagsCompletedAt = std::chrono::steady_clock::now();
 
             const auto removeEnd = frameIndex + numFrames;
+            std::int64_t provenanceRangesCompleted = 0;
             for (std::int64_t channel = 0; channel < channelCount; ++channel)
             {
                 auto &ranges =
@@ -336,9 +393,8 @@ namespace cupuacu::audio
                     if (range.endFrameExclusive <= frameIndex)
                     {
                         updated.push_back(range);
-                        continue;
                     }
-                    if (range.startFrame >= removeEnd)
+                    else if (range.startFrame >= removeEnd)
                     {
                         updated.push_back(
                             {.startFrame = range.startFrame - numFrames,
@@ -346,32 +402,66 @@ namespace cupuacu::audio
                                  range.endFrameExclusive - numFrames,
                              .sourceId = range.sourceId,
                              .sourceStartFrame = range.sourceStartFrame});
-                        continue;
                     }
-
-                    if (range.startFrame < frameIndex)
+                    else
                     {
-                        updated.push_back(
-                            {.startFrame = range.startFrame,
-                             .endFrameExclusive = frameIndex,
-                             .sourceId = range.sourceId,
-                             .sourceStartFrame = range.sourceStartFrame});
+                        if (range.startFrame < frameIndex)
+                        {
+                            updated.push_back(
+                                {.startFrame = range.startFrame,
+                                 .endFrameExclusive = frameIndex,
+                                 .sourceId = range.sourceId,
+                                 .sourceStartFrame = range.sourceStartFrame});
+                        }
+                        if (range.endFrameExclusive > removeEnd)
+                        {
+                            updated.push_back(
+                                {.startFrame = frameIndex,
+                                 .endFrameExclusive =
+                                     range.endFrameExclusive - numFrames,
+                                 .sourceId = range.sourceId,
+                                 .sourceStartFrame =
+                                     range.sourceStartFrame +
+                                     (removeEnd - range.startFrame)});
+                        }
                     }
-                    if (range.endFrameExclusive > removeEnd)
-                    {
-                        updated.push_back(
-                            {.startFrame = frameIndex,
-                             .endFrameExclusive =
-                                 range.endFrameExclusive - numFrames,
-                             .sourceId = range.sourceId,
-                             .sourceStartFrame =
-                                 range.sourceStartFrame +
-                                 (removeEnd - range.startFrame)});
-                    }
+                    ++provenanceRangesCompleted;
+                    publishProgress(
+                        phase1Units + phase2Units +
+                        provenanceRangesCompleted * phase3Units /
+                            std::max<std::int64_t>(1, totalRangeCount));
                 }
                 mergeAdjacentRanges(updated);
                 ranges = std::move(updated);
             }
+            const auto provenanceCompletedAt = std::chrono::steady_clock::now();
+
+            const auto toMilliseconds = [](const auto start, const auto end)
+            {
+                return std::chrono::duration_cast<std::chrono::milliseconds>(
+                           end - start)
+                    .count();
+            };
+
+            std::printf(
+                "[remove-preservation] frame_index=%lld frames=%lld "
+                "old_frames=%lld new_frames=%lld channels=%lld "
+                "provenance_ranges=%lld erase_ms=%lld dirty_flags_ms=%lld "
+                "provenance_ms=%lld total_ms=%lld\n",
+                static_cast<long long>(frameIndex),
+                static_cast<long long>(numFrames),
+                static_cast<long long>(oldFrameCount),
+                static_cast<long long>(newFrameCount),
+                static_cast<long long>(channelCount),
+                static_cast<long long>(totalRangeCount),
+                static_cast<long long>(toMilliseconds(startedAt, eraseCompletedAt)),
+                static_cast<long long>(
+                    toMilliseconds(eraseCompletedAt, dirtyFlagsCompletedAt)),
+                static_cast<long long>(toMilliseconds(dirtyFlagsCompletedAt,
+                                                      provenanceCompletedAt)),
+                static_cast<long long>(toMilliseconds(startedAt,
+                                                      provenanceCompletedAt)));
+            std::fflush(stdout);
         }
 
         [[nodiscard]] SampleProvenance

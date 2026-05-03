@@ -752,10 +752,12 @@ namespace cupuacu
         ++markerDataVersion;
     }
 
-    void Document::removeFrames(int64_t frameIndex, int64_t numFrames)
+    void Document::removeFrames(
+        int64_t frameIndex, int64_t numFrames,
+        const SampleOperationProgressCallback &progress)
     {
         std::unique_lock lock(dataMutex);
-        buffer->removeFrames(frameIndex, numFrames);
+        buffer->removeFrames(frameIndex, numFrames, progress);
         ++waveformDataVersion;
 
         for (int ch = 0; ch < getChannelCountUnlocked(); ++ch)
@@ -988,8 +990,9 @@ namespace cupuacu
         buffer->setProvenance(channel, frame, provenanceToUse);
     }
 
-    Document::AudioSegment Document::captureSegment(const int64_t startFrame,
-                                                    const int64_t frameCount) const
+    Document::AudioSegment Document::captureSegment(
+        const int64_t startFrame, const int64_t frameCount,
+        const SampleOperationProgressCallback &progress) const
     {
         std::shared_lock lock(dataMutex);
         AudioSegment result{};
@@ -1006,6 +1009,9 @@ namespace cupuacu
             result.frameCount, 0, getFrameCountUnlocked() - boundedStart);
         result.frameCount = boundedCount;
 
+        constexpr int64_t kProgressStrideFrames = 16384;
+        const int64_t totalProgressUnits =
+            boundedCount * std::max<int64_t>(1, result.channelCount);
         for (int64_t channel = 0; channel < result.channelCount; ++channel)
         {
             auto &channelSamples = result.samples[static_cast<std::size_t>(channel)];
@@ -1019,21 +1025,32 @@ namespace cupuacu
                     getSampleUnlocked(channel, boundedStart + frame);
                 channelProvenance[static_cast<std::size_t>(frame)] =
                     buffer->getProvenance(channel, boundedStart + frame);
+                if (progress &&
+                    (((frame + 1) % kProgressStrideFrames) == 0 ||
+                     frame + 1 == boundedCount))
+                {
+                    progress(channel * boundedCount + frame + 1,
+                             totalProgressUnits);
+                }
             }
         }
 
         return result;
     }
 
-    void Document::assignSegment(const AudioSegment &segment)
+    void Document::assignSegment(
+        const AudioSegment &segment,
+        const SampleOperationProgressCallback &progress)
     {
         initialize(segment.format, static_cast<uint32_t>(segment.sampleRate),
                    static_cast<uint32_t>(segment.channelCount), segment.frameCount);
-        writeSegment(0, segment, false);
+        writeSegment(0, segment, false, progress);
     }
 
-    void Document::writeSegment(const int64_t startFrame, const AudioSegment &segment,
-                                const bool shouldMarkDirty)
+    void Document::writeSegment(
+        const int64_t startFrame, const AudioSegment &segment,
+        const bool shouldMarkDirty,
+        const SampleOperationProgressCallback &progress)
     {
         std::unique_lock lock(dataMutex);
         const auto writableFrames = std::min<int64_t>(
@@ -1041,6 +1058,9 @@ namespace cupuacu
             std::max<int64_t>(0, getFrameCountUnlocked() - startFrame));
         const auto writableChannels =
             std::min<int64_t>(segment.channelCount, getChannelCountUnlocked());
+        constexpr int64_t kProgressStrideFrames = 16384;
+        const int64_t totalProgressUnits =
+            writableFrames * std::max<int64_t>(1, writableChannels);
 
         for (int64_t channel = 0; channel < writableChannels; ++channel)
         {
@@ -1060,6 +1080,13 @@ namespace cupuacu
                         channel, startFrame + frame,
                         segment.provenance[static_cast<std::size_t>(channel)]
                                           [static_cast<std::size_t>(frame)]);
+                }
+                if (progress &&
+                    (((frame + 1) % kProgressStrideFrames) == 0 ||
+                     frame + 1 == writableFrames))
+                {
+                    progress(channel * writableFrames + frame + 1,
+                             totalProgressUnits);
                 }
             }
         }
