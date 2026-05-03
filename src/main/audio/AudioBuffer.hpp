@@ -19,6 +19,56 @@ namespace cupuacu::audio
         using ProgressCallback =
             std::function<void(int64_t completed, int64_t total)>;
 
+        virtual void assignChannels(
+            const std::vector<std::vector<float>> &samples,
+            const std::vector<std::vector<SampleProvenance>> &provenance,
+            bool shouldMarkDirty = false,
+            const ProgressCallback &progress = {})
+        {
+            constexpr int64_t kProgressStrideFrames = 262144;
+
+            (void)provenance;
+
+            const auto writableChannels = std::min<std::size_t>(
+                channels.size(), samples.size());
+            int64_t totalFrames = 0;
+            for (std::size_t channel = 0; channel < writableChannels; ++channel)
+            {
+                totalFrames += std::min<std::size_t>(
+                    channels[channel].size(), samples[channel].size());
+            }
+
+            int64_t completedFrames = 0;
+            for (std::size_t channel = 0; channel < writableChannels; ++channel)
+            {
+                auto &destination = channels[channel];
+                const auto &source = samples[channel];
+                const auto writableFrames = std::min<std::size_t>(
+                    destination.size(), source.size());
+                for (std::size_t frame = 0; frame < writableFrames;
+                     frame += static_cast<std::size_t>(kProgressStrideFrames))
+                {
+                    const auto chunkFrames = std::min<std::size_t>(
+                        writableFrames - frame,
+                        static_cast<std::size_t>(kProgressStrideFrames));
+                    std::copy_n(source.data() + frame, chunkFrames,
+                                destination.data() + frame);
+                    completedFrames += static_cast<int64_t>(chunkFrames);
+                    if (progress)
+                    {
+                        progress(completedFrames, std::max<int64_t>(1, totalFrames));
+                    }
+                }
+            }
+
+            (void)shouldMarkDirty;
+            if (progress)
+            {
+                progress(std::max<int64_t>(1, totalFrames),
+                         std::max<int64_t>(1, totalFrames));
+            }
+        }
+
         virtual bool isDirty(int64_t channel, int64_t frame) const
         {
             return true;

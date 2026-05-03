@@ -131,6 +131,37 @@ TEST_CASE("Cut undoable updates clipboard, cursor, and undo state", "[actions]")
             std::vector<float>({0, 1, 5}));
 }
 
+TEST_CASE("Clipboard assignSegment preserves PCM provenance without per-sample edits",
+          "[actions]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    auto &document = state.getActiveDocumentSession().document;
+    document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 4);
+    document.setSample(0, 0, 0.1f, false);
+    document.setSample(0, 1, 0.2f, false);
+    document.setSample(0, 2, 0.3f, false);
+    document.setSample(0, 3, 0.4f, false);
+    document.markCurrentStateAsSavedSource();
+
+    const auto segment = document.captureSegment(1, 2);
+    state.clipboard.assignSegment(segment);
+
+    REQUIRE(state.clipboard.getSampleFormat() == cupuacu::SampleFormat::PCM_S16);
+    REQUIRE(state.clipboard.getFrameCount() == 2);
+    REQUIRE(readMonoSamples(state.clipboard) == std::vector<float>({0.2f, 0.3f}));
+
+    const auto p0 = state.clipboard.getSampleProvenance(0, 0);
+    const auto p1 = state.clipboard.getSampleProvenance(0, 1);
+    REQUIRE(p0.sourceId == segment.provenance[0][0].sourceId);
+    REQUIRE(p0.frameIndex == segment.provenance[0][0].frameIndex);
+    REQUIRE(p1.sourceId == segment.provenance[0][1].sourceId);
+    REQUIRE(p1.frameIndex == segment.provenance[0][1].frameIndex);
+
+    const auto lease = state.clipboard.acquireReadLease();
+    REQUIRE_FALSE(lease.isDirty(0, 0));
+    REQUIRE_FALSE(lease.isDirty(0, 1));
+}
+
 TEST_CASE("Paste insert undoable inserts clipboard content and restores on undo",
           "[actions]")
 {

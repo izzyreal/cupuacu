@@ -146,6 +146,147 @@ namespace cupuacu::audio
         }
 
     public:
+        void assignChannels(
+            const std::vector<std::vector<float>> &samples,
+            const std::vector<std::vector<SampleProvenance>> &provenance,
+            const bool shouldMarkDirty = false,
+            const AudioBuffer::ProgressCallback &progress = {}) override
+        {
+            constexpr std::int64_t kProgressStrideFrames = 262144;
+
+            const auto writableChannels = std::min<std::size_t>(
+                channels.size(), samples.size());
+            std::int64_t totalSampleFrames = 0;
+            std::int64_t totalProvenanceFrames = 0;
+            for (std::size_t channel = 0; channel < writableChannels; ++channel)
+            {
+                totalSampleFrames += static_cast<std::int64_t>(std::min<std::size_t>(
+                    channels[channel].size(), samples[channel].size()));
+                if (channel < provenance.size())
+                {
+                    totalProvenanceFrames += static_cast<std::int64_t>(
+                        std::min<std::size_t>(channels[channel].size(),
+                                              provenance[channel].size()));
+                }
+            }
+            const auto totalUnits =
+                std::max<std::int64_t>(1, totalSampleFrames + totalProvenanceFrames);
+
+            std::int64_t completedSampleFrames = 0;
+            for (std::size_t channel = 0; channel < writableChannels; ++channel)
+            {
+                auto &destination = channels[channel];
+                const auto &source = samples[channel];
+                const auto writableFrames = std::min<std::size_t>(
+                    destination.size(), source.size());
+                for (std::size_t frame = 0; frame < writableFrames;
+                     frame += static_cast<std::size_t>(kProgressStrideFrames))
+                {
+                    const auto chunkFrames = std::min<std::size_t>(
+                        writableFrames - frame,
+                        static_cast<std::size_t>(kProgressStrideFrames));
+                    std::copy_n(source.data() + frame, chunkFrames,
+                                destination.data() + frame);
+                    completedSampleFrames += static_cast<std::int64_t>(chunkFrames);
+                    if (progress)
+                    {
+                        progress(completedSampleFrames, totalUnits);
+                    }
+                }
+            }
+
+            const auto channelCount = getChannelCount();
+            const auto frameCount = getFrameCount();
+            const auto sampleCount = channelCount * frameCount;
+            const auto dirtyFillValue =
+                static_cast<std::uint8_t>(shouldMarkDirty ? 0xFF : 0x00);
+            dirtyFlags.assign(static_cast<std::size_t>((sampleCount + 7) / 8),
+                              dirtyFillValue);
+            if (shouldMarkDirty && sampleCount > 0 && sampleCount % 8 != 0)
+            {
+                dirtyFlags.back() &=
+                    static_cast<std::uint8_t>((1u << (sampleCount % 8)) - 1u);
+            }
+
+            provenanceRanges.assign(static_cast<std::size_t>(channelCount), {});
+            std::int64_t completedProvenanceFrames = 0;
+            for (std::size_t channel = 0; channel < writableChannels; ++channel)
+            {
+                auto &ranges = provenanceRanges[channel];
+                if (channel >= provenance.size())
+                {
+                    continue;
+                }
+
+                const auto writableFrames = std::min<std::size_t>(
+                    channels[channel].size(), provenance[channel].size());
+                if (writableFrames == 0)
+                {
+                    continue;
+                }
+
+                bool hasActiveRange = false;
+                ProvenanceRange activeRange{};
+                for (std::size_t frame = 0; frame < writableFrames; ++frame)
+                {
+                    const auto &sampleProvenance = provenance[channel][frame];
+                    const bool canExtendActiveRange =
+                        hasActiveRange && sampleProvenance.isValid() &&
+                        activeRange.sourceId == sampleProvenance.sourceId &&
+                        activeRange.sourceStartFrame +
+                                (static_cast<std::int64_t>(frame) -
+                                 activeRange.startFrame) ==
+                            sampleProvenance.frameIndex;
+
+                    if (canExtendActiveRange)
+                    {
+                        activeRange.endFrameExclusive =
+                            static_cast<std::int64_t>(frame) + 1;
+                    }
+                    else
+                    {
+                        if (hasActiveRange)
+                        {
+                            ranges.push_back(activeRange);
+                        }
+                        hasActiveRange = false;
+                        if (sampleProvenance.isValid())
+                        {
+                            activeRange = {
+                                .startFrame = static_cast<std::int64_t>(frame),
+                                .endFrameExclusive =
+                                    static_cast<std::int64_t>(frame) + 1,
+                                .sourceId = sampleProvenance.sourceId,
+                                .sourceStartFrame =
+                                    sampleProvenance.frameIndex,
+                            };
+                            hasActiveRange = true;
+                        }
+                    }
+
+                    ++completedProvenanceFrames;
+                    if (progress &&
+                        (((frame + 1) %
+                          static_cast<std::size_t>(kProgressStrideFrames)) == 0 ||
+                         frame + 1 == writableFrames))
+                    {
+                        progress(completedSampleFrames + completedProvenanceFrames,
+                                 totalUnits);
+                    }
+                }
+
+                if (hasActiveRange)
+                {
+                    ranges.push_back(activeRange);
+                }
+            }
+
+            if (progress)
+            {
+                progress(totalUnits, totalUnits);
+            }
+        }
+
         [[nodiscard]] bool isDirty(const std::int64_t channel,
                                    const std::int64_t frame) const override
         {

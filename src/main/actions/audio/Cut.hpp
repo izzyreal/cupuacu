@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <thread>
 #include <vector>
 
 namespace cupuacu::actions::audio
@@ -142,6 +143,22 @@ namespace cupuacu::actions::audio
             const auto waveformStartedAt =
                 std::chrono::steady_clock::now();
             doc.updateWaveformCache();
+            while (true)
+            {
+                const auto buildProgress = doc.getWaveformCacheBuildProgress();
+                if (!buildProgress.has_value())
+                {
+                    break;
+                }
+                publishPhaseProgress(
+                    "Updating waveform", 0.95, 1.0,
+                    buildProgress->completedBlocks,
+                    std::max<int64_t>(1, buildProgress->totalBlocks));
+                if (!doc.pumpWaveformCacheWork())
+                {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                }
+            }
             const auto waveformCompletedAt =
                 std::chrono::steady_clock::now();
 

@@ -3,7 +3,9 @@
 #include "audio/PreservationTrackingAudioBuffer.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
+#include <cstdio>
 #include <mutex>
 #include <shared_mutex>
 #include <utility>
@@ -1042,9 +1044,32 @@ namespace cupuacu
         const AudioSegment &segment,
         const SampleOperationProgressCallback &progress)
     {
+        const auto startedAt = std::chrono::steady_clock::now();
         initialize(segment.format, static_cast<uint32_t>(segment.sampleRate),
                    static_cast<uint32_t>(segment.channelCount), segment.frameCount);
-        writeSegment(0, segment, false, progress);
+        const auto initializedAt = std::chrono::steady_clock::now();
+        {
+            std::unique_lock lock(dataMutex);
+            buffer->assignChannels(segment.samples, segment.provenance, false,
+                                   progress);
+            ++waveformDataVersion;
+        }
+        const auto importedAt = std::chrono::steady_clock::now();
+        const auto toMilliseconds = [](const auto start, const auto end)
+        {
+            return std::chrono::duration_cast<std::chrono::milliseconds>(
+                       end - start)
+                .count();
+        };
+        std::printf(
+            "[assign-segment] channels=%lld frames=%lld init_ms=%lld "
+            "write_ms=%lld total_ms=%lld\n",
+            static_cast<long long>(segment.channelCount),
+            static_cast<long long>(segment.frameCount),
+            static_cast<long long>(toMilliseconds(startedAt, initializedAt)),
+            static_cast<long long>(toMilliseconds(initializedAt, importedAt)),
+            static_cast<long long>(toMilliseconds(startedAt, importedAt)));
+        std::fflush(stdout);
     }
 
     void Document::writeSegment(
@@ -1052,6 +1077,7 @@ namespace cupuacu
         const bool shouldMarkDirty,
         const SampleOperationProgressCallback &progress)
     {
+        const auto startedAt = std::chrono::steady_clock::now();
         std::unique_lock lock(dataMutex);
         const auto writableFrames = std::min<int64_t>(
             segment.frameCount,
@@ -1061,6 +1087,8 @@ namespace cupuacu
         constexpr int64_t kProgressStrideFrames = 16384;
         const int64_t totalProgressUnits =
             writableFrames * std::max<int64_t>(1, writableChannels);
+        int64_t sampleWrites = 0;
+        int64_t provenanceWrites = 0;
 
         for (int64_t channel = 0; channel < writableChannels; ++channel)
         {
@@ -1071,6 +1099,7 @@ namespace cupuacu
                     segment.samples[static_cast<std::size_t>(channel)]
                                    [static_cast<std::size_t>(frame)],
                     shouldMarkDirty);
+                ++sampleWrites;
                 if (channel < static_cast<int64_t>(segment.provenance.size()) &&
                     frame < static_cast<int64_t>(
                                 segment.provenance[static_cast<std::size_t>(channel)]
@@ -1080,6 +1109,7 @@ namespace cupuacu
                         channel, startFrame + frame,
                         segment.provenance[static_cast<std::size_t>(channel)]
                                           [static_cast<std::size_t>(frame)]);
+                    ++provenanceWrites;
                 }
                 if (progress &&
                     (((frame + 1) % kProgressStrideFrames) == 0 ||
@@ -1091,6 +1121,23 @@ namespace cupuacu
             }
         }
         ++waveformDataVersion;
+        const auto completedAt = std::chrono::steady_clock::now();
+        const auto toMilliseconds = [](const auto start, const auto end)
+        {
+            return std::chrono::duration_cast<std::chrono::milliseconds>(
+                       end - start)
+                .count();
+        };
+        std::printf(
+            "[write-segment] start=%lld channels=%lld writable_frames=%lld "
+            "sample_writes=%lld provenance_writes=%lld total_ms=%lld\n",
+            static_cast<long long>(startFrame),
+            static_cast<long long>(writableChannels),
+            static_cast<long long>(writableFrames),
+            static_cast<long long>(sampleWrites),
+            static_cast<long long>(provenanceWrites),
+            static_cast<long long>(toMilliseconds(startedAt, completedAt)));
+        std::fflush(stdout);
     }
 
     const std::vector<DocumentMarker> &Document::getMarkers() const
