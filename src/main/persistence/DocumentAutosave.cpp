@@ -2,10 +2,8 @@
 
 #include "file/FileIo.hpp"
 
-#include <chrono>
 #include <cstdint>
 #include <cstring>
-#include <cstdio>
 #include <fstream>
 #include <limits>
 #include <stdexcept>
@@ -189,10 +187,6 @@ namespace cupuacu::persistence
             return false;
         }
 
-        const auto startedAt = std::chrono::steady_clock::now();
-        const auto frameCount = session.document.getFrameCount();
-        const auto channelCount = session.document.getChannelCount();
-
         try
         {
             cupuacu::file::writeFileAtomically(
@@ -201,52 +195,14 @@ namespace cupuacu::persistence
                 {
                     writeSnapshotFile(temporaryPath, session);
                 });
-            const auto completedAt = std::chrono::steady_clock::now();
-            const auto elapsedMs =
-                std::chrono::duration_cast<std::chrono::milliseconds>(
-                    completedAt - startedAt)
-                    .count();
-            std::printf(
-                "[autosave] path=%s channels=%lld frames=%lld total_ms=%lld\n",
-                path.string().c_str(),
-                static_cast<long long>(channelCount),
-                static_cast<long long>(frameCount),
-                static_cast<long long>(elapsedMs));
-            std::fflush(stdout);
             return true;
         }
         catch (const std::exception &e)
         {
-            const auto failedAt = std::chrono::steady_clock::now();
-            const auto elapsedMs =
-                std::chrono::duration_cast<std::chrono::milliseconds>(
-                    failedAt - startedAt)
-                    .count();
-            std::printf(
-                "[autosave] FAILED path=%s channels=%lld frames=%lld total_ms=%lld "
-                "error=%s\n",
-                path.string().c_str(),
-                static_cast<long long>(channelCount),
-                static_cast<long long>(frameCount),
-                static_cast<long long>(elapsedMs), e.what());
-            std::fflush(stdout);
             return false;
         }
         catch (...)
         {
-            const auto failedAt = std::chrono::steady_clock::now();
-            const auto elapsedMs =
-                std::chrono::duration_cast<std::chrono::milliseconds>(
-                    failedAt - startedAt)
-                    .count();
-            std::printf(
-                "[autosave] FAILED path=%s channels=%lld frames=%lld total_ms=%lld "
-                "error=unknown\n",
-                path.string().c_str(),
-                static_cast<long long>(channelCount),
-                static_cast<long long>(frameCount),
-                static_cast<long long>(elapsedMs));
-            std::fflush(stdout);
             return false;
         }
     }

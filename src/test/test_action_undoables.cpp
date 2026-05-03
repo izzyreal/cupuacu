@@ -162,6 +162,55 @@ TEST_CASE("Clipboard assignSegment preserves PCM provenance without per-sample e
     REQUIRE_FALSE(lease.isDirty(0, 1));
 }
 
+TEST_CASE("Clipboard assignSegment preserves stereo PCM provenance",
+          "[actions]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    auto &document = state.getActiveDocumentSession().document;
+    document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 2, 4);
+
+    document.setSample(0, 0, 0.1f, false);
+    document.setSample(0, 1, 0.2f, false);
+    document.setSample(0, 2, 0.3f, false);
+    document.setSample(0, 3, 0.4f, false);
+    document.setSample(1, 0, -0.1f, false);
+    document.setSample(1, 1, -0.2f, false);
+    document.setSample(1, 2, -0.3f, false);
+    document.setSample(1, 3, -0.4f, false);
+    document.markCurrentStateAsSavedSource();
+
+    const auto segment = document.captureSegment(1, 2);
+    state.clipboard.assignSegment(segment);
+
+    REQUIRE(state.clipboard.getSampleFormat() == cupuacu::SampleFormat::PCM_S16);
+    REQUIRE(state.clipboard.getFrameCount() == 2);
+    REQUIRE(state.clipboard.getChannelCount() == 2);
+    REQUIRE(readChannelSamples(state.clipboard, 0) ==
+            std::vector<float>({0.2f, 0.3f}));
+    REQUIRE(readChannelSamples(state.clipboard, 1) ==
+            std::vector<float>({-0.2f, -0.3f}));
+
+    for (int64_t channel = 0; channel < 2; ++channel)
+    {
+        for (int64_t frame = 0; frame < 2; ++frame)
+        {
+            const auto actual =
+                state.clipboard.getSampleProvenance(channel, frame);
+            const auto expected =
+                segment.provenance[static_cast<std::size_t>(channel)]
+                                  [static_cast<std::size_t>(frame)];
+            REQUIRE(actual.sourceId == expected.sourceId);
+            REQUIRE(actual.frameIndex == expected.frameIndex);
+        }
+    }
+
+    const auto lease = state.clipboard.acquireReadLease();
+    REQUIRE_FALSE(lease.isDirty(0, 0));
+    REQUIRE_FALSE(lease.isDirty(0, 1));
+    REQUIRE_FALSE(lease.isDirty(1, 0));
+    REQUIRE_FALSE(lease.isDirty(1, 1));
+}
+
 TEST_CASE("Paste insert undoable inserts clipboard content and restores on undo",
           "[actions]")
 {

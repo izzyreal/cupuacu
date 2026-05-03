@@ -11,7 +11,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <cstdio>
 #include <cstring>
 #include <exception>
 #include <utility>
@@ -301,11 +300,6 @@ namespace cupuacu::actions::io
         cupuacu::file::replaceFile(temporaryPath, path);
         success = true;
         completed = true;
-        std::printf(
-            "[autosave] path=%s channels=%lld frames=%lld total_ms=chunked\n",
-            path.string().c_str(), static_cast<long long>(channelCount),
-            static_cast<long long>(frameCount));
-        std::fflush(stdout);
     }
 
     void BackgroundAutosaveJob::fail(std::string message)
@@ -319,9 +313,6 @@ namespace cupuacu::actions::io
             std::error_code ec;
             std::filesystem::remove(temporaryPath, ec);
         }
-        std::printf("[autosave] FAILED path=%s error=%s\n", path.string().c_str(),
-                    error.c_str());
-        std::fflush(stdout);
     }
 
     double BackgroundAutosaveJob::progressValue() const

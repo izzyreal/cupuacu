@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
-#include <cstdio>
 #include <thread>
 #include <vector>
 
@@ -40,8 +39,6 @@ namespace cupuacu::actions::audio
 
         void redo() override
         {
-            const auto redoStartedAt =
-                std::chrono::steady_clock::now();
             constexpr auto kProgressUiThrottle =
                 std::chrono::milliseconds(50);
             auto &session = state->getActiveDocumentSession();
@@ -96,13 +93,6 @@ namespace cupuacu::actions::audio
                     normalized >= 1.0);
             };
 
-            const auto clipboardInitStartedAt =
-                std::chrono::steady_clock::now();
-            const auto clipboardInitializedAt =
-                std::chrono::steady_clock::now();
-
-            const auto captureStartedAt =
-                std::chrono::steady_clock::now();
             removed = doc.captureSegment(
                 startFrame, numFrames,
                 [&](const int64_t completed, const int64_t total)
@@ -110,12 +100,8 @@ namespace cupuacu::actions::audio
                     publishPhaseProgress("Capturing selection", 0.0, 0.35,
                                          completed, total);
                 });
-            const auto captureCompletedAt =
-                std::chrono::steady_clock::now();
             publishProgress("Writing clipboard", 0.35, true);
 
-            const auto clipboardAssignStartedAt =
-                std::chrono::steady_clock::now();
             state->clipboard.assignSegment(
                 removed,
                 [&](const int64_t completed, const int64_t total)
@@ -123,12 +109,8 @@ namespace cupuacu::actions::audio
                     publishPhaseProgress("Writing clipboard", 0.35, 0.7,
                                          completed, total);
                 });
-            const auto clipboardAssignedAt =
-                std::chrono::steady_clock::now();
             publishProgress("Removing audio", 0.7, true);
 
-            const auto removeStartedAt =
-                std::chrono::steady_clock::now();
             doc.removeFrames(
                 startFrame, numFrames,
                 [&](const int64_t completed, const int64_t total)
@@ -136,12 +118,8 @@ namespace cupuacu::actions::audio
                     publishPhaseProgress("Removing audio", 0.7, 0.95,
                                          completed, total);
                 });
-            const auto removeCompletedAt =
-                std::chrono::steady_clock::now();
             publishProgress("Updating waveform", 0.95, true);
 
-            const auto waveformStartedAt =
-                std::chrono::steady_clock::now();
             doc.updateWaveformCache();
             while (true)
             {
@@ -159,50 +137,11 @@ namespace cupuacu::actions::audio
                     std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 }
             }
-            const auto waveformCompletedAt =
-                std::chrono::steady_clock::now();
-
-            const auto uiSyncStartedAt =
-                std::chrono::steady_clock::now();
             session.syncSelectionAndCursorToDocumentLength();
 
             updateCursorPos(state, startFrame);
             session.selection.reset();
-            const auto redoCompletedAt =
-                std::chrono::steady_clock::now();
             publishProgress("Cut complete", 1.0, true);
-
-            const auto toMilliseconds = [](const auto start, const auto end)
-            {
-                return std::chrono::duration_cast<std::chrono::milliseconds>(
-                           end - start)
-                    .count();
-            };
-
-            std::printf(
-                "[cut] start=%lld frames=%lld total_frames_before=%lld "
-                "clipboard_init_ms=%lld capture_ms=%lld clipboard_assign_ms=%lld "
-                "remove_ms=%lld waveform_ms=%lld ui_sync_ms=%lld total_ms=%lld\n",
-                static_cast<long long>(startFrame),
-                static_cast<long long>(numFrames),
-                static_cast<long long>(total),
-                static_cast<long long>(
-                    toMilliseconds(clipboardInitStartedAt,
-                                   clipboardInitializedAt)),
-                static_cast<long long>(
-                    toMilliseconds(captureStartedAt, captureCompletedAt)),
-                static_cast<long long>(
-                    toMilliseconds(clipboardAssignStartedAt,
-                                   clipboardAssignedAt)),
-                static_cast<long long>(
-                    toMilliseconds(removeStartedAt, removeCompletedAt)),
-                static_cast<long long>(
-                    toMilliseconds(waveformStartedAt, waveformCompletedAt)),
-                static_cast<long long>(
-                    toMilliseconds(uiSyncStartedAt, redoCompletedAt)),
-                static_cast<long long>(
-                    toMilliseconds(redoStartedAt, redoCompletedAt)));
-            std::fflush(stdout);
         }
 
         void undo() override

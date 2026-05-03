@@ -4,8 +4,6 @@
 #include "SampleProvenance.hpp"
 
 #include <algorithm>
-#include <chrono>
-#include <cstdio>
 #include <cstdint>
 #include <vector>
 
@@ -421,8 +419,6 @@ namespace cupuacu::audio
                 return;
             }
 
-            const auto startedAt = std::chrono::steady_clock::now();
-
             const auto oldFrameCount = getFrameCount();
             const auto channelCount = getChannelCount();
             const auto oldSampleCount = oldFrameCount * channelCount;
@@ -443,7 +439,6 @@ namespace cupuacu::audio
                         progress(completed * phase1Units / safeTotal, phase1Units);
                     }
                 });
-            const auto eraseCompletedAt = std::chrono::steady_clock::now();
 
             const auto newFrameCount = getFrameCount();
             const auto newSampleCount = newFrameCount * channelCount;
@@ -519,7 +514,6 @@ namespace cupuacu::audio
                                         std::max<std::int64_t>(1, newFrameCount * channelCount));
                 }
             }
-            const auto dirtyFlagsCompletedAt = std::chrono::steady_clock::now();
 
             const auto removeEnd = frameIndex + numFrames;
             std::int64_t provenanceRangesCompleted = 0;
@@ -575,34 +569,6 @@ namespace cupuacu::audio
                 mergeAdjacentRanges(updated);
                 ranges = std::move(updated);
             }
-            const auto provenanceCompletedAt = std::chrono::steady_clock::now();
-
-            const auto toMilliseconds = [](const auto start, const auto end)
-            {
-                return std::chrono::duration_cast<std::chrono::milliseconds>(
-                           end - start)
-                    .count();
-            };
-
-            std::printf(
-                "[remove-preservation] frame_index=%lld frames=%lld "
-                "old_frames=%lld new_frames=%lld channels=%lld "
-                "provenance_ranges=%lld erase_ms=%lld dirty_flags_ms=%lld "
-                "provenance_ms=%lld total_ms=%lld\n",
-                static_cast<long long>(frameIndex),
-                static_cast<long long>(numFrames),
-                static_cast<long long>(oldFrameCount),
-                static_cast<long long>(newFrameCount),
-                static_cast<long long>(channelCount),
-                static_cast<long long>(totalRangeCount),
-                static_cast<long long>(toMilliseconds(startedAt, eraseCompletedAt)),
-                static_cast<long long>(
-                    toMilliseconds(eraseCompletedAt, dirtyFlagsCompletedAt)),
-                static_cast<long long>(toMilliseconds(dirtyFlagsCompletedAt,
-                                                      provenanceCompletedAt)),
-                static_cast<long long>(toMilliseconds(startedAt,
-                                                      provenanceCompletedAt)));
-            std::fflush(stdout);
         }
 
         [[nodiscard]] SampleProvenance

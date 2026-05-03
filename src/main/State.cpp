@@ -19,9 +19,6 @@
 #include "file/OverwritePreservation.hpp"
 #include "file/OverwritePreservationMutation.hpp"
 
-#include <chrono>
-#include <cstdio>
-
 int64_t getMaxSampleOffset(const cupuacu::State *state)
 {
     if (!state->mainDocumentSessionWindow || state->waveforms.empty() ||
@@ -136,56 +133,20 @@ void cupuacu::State::addAndDoUndoableToTab(
     }
 
     addUndoableToTab(tabIndex, undoable);
-    const auto operationStartedAt = std::chrono::steady_clock::now();
-    const auto redoStartedAt = operationStartedAt;
     undoable->redo();
-    const auto redoCompletedAt = std::chrono::steady_clock::now();
 
     auto &session = tabs[static_cast<std::size_t>(tabIndex)].session;
-    const auto preservationMutationStartedAt =
-        std::chrono::steady_clock::now();
     cupuacu::file::OverwritePreservationMutationHelper::applyToSession(
         session, undoable->overwritePreservationMutation());
-    const auto preservationMutationCompletedAt =
-        std::chrono::steady_clock::now();
 
-    const auto refreshStartedAt = std::chrono::steady_clock::now();
     cupuacu::file::OverwritePreservation::refreshSession(this, tabIndex);
-    const auto refreshCompletedAt = std::chrono::steady_clock::now();
 
-    const auto guiUpdateStartedAt = std::chrono::steady_clock::now();
     if (tabIndex == activeTabIndex)
     {
         undoable->updateGui();
     }
-    const auto guiUpdateCompletedAt = std::chrono::steady_clock::now();
 
-    const auto autosaveStartedAt = std::chrono::steady_clock::now();
     cupuacu::actions::autosaveDocumentAfterMutation(this, tabIndex);
-    const auto autosaveCompletedAt = std::chrono::steady_clock::now();
-
-    const auto toMilliseconds = [](const auto start, const auto end)
-    {
-        return std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
-            .count();
-    };
-
-    std::printf(
-        "[undoable] redo_ms=%lld preservation_mutation_ms=%lld "
-        "preservation_refresh_ms=%lld gui_update_ms=%lld autosave_ms=%lld "
-        "total_ms=%lld\n",
-        static_cast<long long>(toMilliseconds(redoStartedAt, redoCompletedAt)),
-        static_cast<long long>(toMilliseconds(preservationMutationStartedAt,
-                                              preservationMutationCompletedAt)),
-        static_cast<long long>(
-            toMilliseconds(refreshStartedAt, refreshCompletedAt)),
-        static_cast<long long>(
-            toMilliseconds(guiUpdateStartedAt, guiUpdateCompletedAt)),
-        static_cast<long long>(
-            toMilliseconds(autosaveStartedAt, autosaveCompletedAt)),
-        static_cast<long long>(
-            toMilliseconds(operationStartedAt, autosaveCompletedAt)));
-    std::fflush(stdout);
 }
 
 void cupuacu::State::addUndoable(

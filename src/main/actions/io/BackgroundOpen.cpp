@@ -403,17 +403,26 @@ namespace cupuacu::actions::io
             {
                 auto &document =
                     state->tabs[static_cast<std::size_t>(tabIndex)].session.document;
+                const bool cacheStateChanged = document.pumpWaveformCacheWork();
                 if (const auto progress =
                         normalizedWaveformCacheBuildProgress(document);
                     progress.has_value())
                 {
                     cupuacu::updateLongTask(state, "Building waveform cache",
                                             progress, false);
+                    if (cacheStateChanged && tabIndex == state->activeTabIndex)
+                    {
+                        renderMainWindowNow(state);
+                    }
                     return;
                 }
 
                 state->pendingOpenWaveformBuild = {};
                 cupuacu::clearLongTask(state, false);
+                if (cacheStateChanged && tabIndex == state->activeTabIndex)
+                {
+                    renderMainWindowNow(state);
+                }
             }
         }
 
