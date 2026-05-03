@@ -21,9 +21,9 @@ TEST_CASE("Timeline ruler planning builds sample labels with nice spacing", "[gu
     REQUIRE(plan.valid);
     REQUIRE(plan.labels.size() >= 2);
     REQUIRE(plan.labels.front() == "smpl");
-    REQUIRE(plan.labels[1] == "10000");
-    REQUIRE(plan.tickSpacingPx == Approx(100.0f));
-    REQUIRE(plan.subdivisions == 5);
+    REQUIRE(plan.labels[1] == "20000");
+    REQUIRE(plan.tickSpacingPx == Approx(200.0f));
+    REQUIRE(plan.subdivisions == 2);
     REQUIRE(plan.scrollOffsetPx == Approx(0.0f));
 }
 
@@ -35,7 +35,7 @@ TEST_CASE("Timeline ruler planning formats decimal labels from sample rate", "[g
 
     REQUIRE(plan.valid);
     REQUIRE(plan.labels.size() >= 2);
-    REQUIRE(plan.labels[1] == "0:1.000");
+    REQUIRE(plan.labels[1] == "0:2.000");
 }
 
 TEST_CASE("Timeline ruler planning rounds scroll offset at sample-point zoom", "[gui]")

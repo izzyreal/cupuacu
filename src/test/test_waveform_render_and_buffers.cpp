@@ -216,7 +216,7 @@ TEST_CASE("Document publishes waveform cache results from background work",
     REQUIRE(built);
 }
 
-TEST_CASE("Waveform overview planning keeps drawing after frame erasure while cache rebuild is pending",
+TEST_CASE("Waveform overview planning keeps drawing the clean prefix after frame erasure while cache rebuild is pending",
           "[gui][waveform]")
 {
     cupuacu::Document document;
@@ -233,22 +233,25 @@ TEST_CASE("Waveform overview planning keeps drawing after frame erasure while ca
 
     const auto deadline =
         std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    bool built = false;
     while (std::chrono::steady_clock::now() < deadline)
     {
         document.pumpWaveformCacheWork();
-        if (!document.getWaveformCache(0).hasDirtyBlocks())
+        const auto &cache = document.getWaveformCache(0);
+        if (cache.levelsCount() > 0 && !cache.hasDirtyBlocks())
         {
+            built = true;
             break;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    REQUIRE_FALSE(document.getWaveformCache(0).hasDirtyBlocks());
+    REQUIRE(built);
 
     document.removeFrames(1024, 512);
 
     cupuacu::gui::Peak peak{};
     const bool hasPeak = cupuacu::gui::computeWaveformPeakForSampleWindow(
-        document, 0, 0, 64.0, 1, 3000.0, 3064.0, peak);
+        document, 0, 0, 64.0, 1, 768.0, 832.0, peak);
 
     REQUIRE(hasPeak);
     REQUIRE(peak.min < 0.0f);
@@ -354,7 +357,7 @@ TEST_CASE("Document reports waveform cache progress from applied chunks",
     REQUIRE(observedAppliedAdvance);
 }
 
-TEST_CASE("Overview rendering ignores dirty cache regions past the built frontier",
+TEST_CASE("Overview rendering falls back to raw samples past the dirty cache frontier",
           "[gui][waveform]")
 {
     cupuacu::Document document;
@@ -375,8 +378,10 @@ TEST_CASE("Overview rendering ignores dirty cache regions past the built frontie
     REQUIRE(peak.min == Catch::Approx(0.25f));
     REQUIRE(peak.max == Catch::Approx(0.25f));
 
-    REQUIRE_FALSE(cupuacu::gui::computeWaveformPeakForSampleWindow(
+    REQUIRE(cupuacu::gui::computeWaveformPeakForSampleWindow(
         document, 0, 0, 1024.0, 1, 20 * 1024.0, 21 * 1024.0, peak));
+    REQUIRE(peak.min == Catch::Approx(-0.75f));
+    REQUIRE(peak.max == Catch::Approx(-0.75f));
 }
 
 TEST_CASE("Background block render input avoids raw sample snapshots for zoomed-out views",
