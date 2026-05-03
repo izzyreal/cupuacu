@@ -842,6 +842,17 @@ void Waveform::handleWaveformCacheUpdate() const
     {
         clearProgressiveBlockBuildGeometry();
         progressiveBlockBuildGeometryKey = newKey;
+        if (cachedBaseTextureValid && cachedBaseTexture)
+        {
+            progressiveBlockBuildSamplePrefixEnd = currentBuiltSamplePrefixEnd();
+            appendBlockWaveformGeometryRange(progressiveBlockBuildVertices,
+                                             progressiveBlockBuildIndices, 0,
+                                             newKey.width, newKey.width,
+                                             newKey.sampleOffset);
+            invalidateBaseTexture();
+            return;
+        }
+
         progressiveBlockBuildSamplePrefixEnd = 0;
     }
 
@@ -1095,8 +1106,16 @@ bool Waveform::ensureBaseTexture(SDL_Renderer *renderer) const
         hasProgressiveBlockBuildGeometryForKey(newKey) &&
         (!cachedBaseTextureValid || cachedBaseTextureKey != newKey))
     {
-        if (promoteProgressiveBlockBuildGeometryToTexture(renderer, newKey))
+        if (!isWaveformCacheBuildActive())
         {
+            clearProgressiveBlockBuildGeometry();
+            if (!ensureBaseTextureStorage(renderer, newKey))
+            {
+                return false;
+            }
+
+            renderBaseTexture(renderer, newKey, true);
+            finalizeBaseTextureForView(newKey, newKey, false);
             return true;
         }
     }

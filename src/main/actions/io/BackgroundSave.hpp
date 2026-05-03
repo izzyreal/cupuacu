@@ -6,11 +6,13 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace cupuacu::actions::io
 {
@@ -74,6 +76,65 @@ namespace cupuacu::actions::io
                              std::optional<double> progressToUse);
     };
 
+    class BackgroundAutosaveJob
+    {
+    public:
+        struct Snapshot
+        {
+            bool completed = false;
+            bool success = false;
+            uint64_t tabId = 0;
+            std::filesystem::path path;
+            uint64_t waveformDataVersion = 0;
+            uint64_t markerDataVersion = 0;
+            std::string currentFile;
+            std::optional<double> progress;
+            std::string error;
+        };
+
+        BackgroundAutosaveJob(uint64_t tabIdToUse,
+                              std::filesystem::path pathToUse,
+                              uint64_t waveformDataVersionToUse,
+                              uint64_t markerDataVersionToUse,
+                              std::string currentFileToUse);
+
+        [[nodiscard]] Snapshot snapshot() const;
+        void pump(cupuacu::State *state);
+
+    private:
+        struct MarkerSnapshot
+        {
+            uint64_t id = 0;
+            int64_t frame = 0;
+            std::string label;
+        };
+
+        uint64_t tabId = 0;
+        std::filesystem::path path;
+        uint64_t waveformDataVersion = 0;
+        uint64_t markerDataVersion = 0;
+        std::string currentFile;
+        std::vector<MarkerSnapshot> markers;
+        bool initialized = false;
+        bool completed = false;
+        bool success = false;
+        std::string error;
+        int sampleFormat = 0;
+        int sampleRate = 0;
+        int64_t channelCount = 0;
+        int64_t frameCount = 0;
+        int64_t nextFrameToWrite = 0;
+        std::filesystem::path temporaryPath;
+        std::ofstream output;
+
+        void initializeFromSession(const cupuacu::DocumentSession &session);
+        void writeFrameChunk(const cupuacu::Document::ReadLease &lease,
+                             int64_t frameStart, int64_t frameCountToWrite);
+        void finish();
+        void fail(std::string message);
+        [[nodiscard]] double progressValue() const;
+    };
+
     bool queueOverwrite(cupuacu::State *state);
     bool queueOverwritePreserving(cupuacu::State *state);
     bool queueSaveAs(cupuacu::State *state, const std::string &absoluteFilePath,
@@ -81,5 +142,7 @@ namespace cupuacu::actions::io
     bool queueSaveAsPreserving(cupuacu::State *state,
                                const std::string &absoluteFilePath,
                                const file::AudioExportSettings &settings);
+    void queueAutosaveForTab(cupuacu::State *state, int tabIndex);
     void processPendingSaveWork(cupuacu::State *state);
+    void processPendingAutosaveWork(cupuacu::State *state);
 } // namespace cupuacu::actions::io

@@ -13,6 +13,7 @@
 #include "../persistence/DocumentAutosave.hpp"
 #include "../persistence/RecentFilesPersistence.hpp"
 #include "../persistence/SessionStatePersistence.hpp"
+#include "io/BackgroundSave.hpp"
 #include "Play.hpp"
 #include "SessionWindowGeometryPlanning.hpp"
 #include "ViewPolicy.hpp"
@@ -467,17 +468,7 @@ namespace cupuacu::actions
             return;
         }
 
-        cupuacu::LongTaskScope longTask(
-            state, "Autosaving document", "Preserving unsaved changes");
-        if (!cupuacu::persistence::saveDocumentAutosaveSnapshot(
-                session.autosaveSnapshotPath, session))
-        {
-            return;
-        }
-
-        session.autosavedWaveformDataVersion = document.getWaveformDataVersion();
-        session.autosavedMarkerDataVersion = document.getMarkerDataVersion();
-        persistSessionState(state);
+        cupuacu::actions::io::queueAutosaveForTab(state, tabIndex);
     }
 
     inline void autosaveActiveDocumentAfterMutation(cupuacu::State *state)

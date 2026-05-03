@@ -91,8 +91,6 @@ namespace cupuacu::gui
             bypassCache ? 0 : waveformCache.getLevelIndex(samplesPerPixel);
         const int64_t samplesPerPeak =
             bypassCache ? 0 : WaveformCache::samplesPerPeakForLevel(cacheLevel);
-        const int64_t builtSampleEndExclusive =
-            bypassCache ? frameCount : waveformCache.builtSamplePrefixEnd();
         const std::vector<Peak> *peaks =
             bypassCache ? nullptr : &waveformCache.getLevel(samplesPerPixel);
         const int64_t validCachedPeakCount =
@@ -137,19 +135,6 @@ namespace cupuacu::gui
         int64_t b = static_cast<int64_t>(std::floor(endSampleExclusive));
         a = std::clamp<int64_t>(a, 0, frameCount - 1);
         b = std::clamp<int64_t>(b, a + 1, frameCount);
-
-        if (!bypassCache)
-        {
-            if (builtSampleEndExclusive <= 0 || a >= builtSampleEndExclusive)
-            {
-                return false;
-            }
-            b = std::min<int64_t>(b, builtSampleEndExclusive);
-            if (b <= a)
-            {
-                return false;
-            }
-        }
 
         if (bypassCache)
         {

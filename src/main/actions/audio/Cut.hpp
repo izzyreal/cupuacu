@@ -1,9 +1,11 @@
 #pragma once
 #include "DurationMutationUndoable.hpp"
 #include "../../Document.hpp"
-#include <vector>
-#include <cstdint>
 #include <algorithm>
+#include <chrono>
+#include <cstdint>
+#include <cstdio>
+#include <vector>
 
 namespace cupuacu::actions::audio
 {
@@ -36,6 +38,8 @@ namespace cupuacu::actions::audio
 
         void redo() override
         {
+            const auto redoStartedAt =
+                std::chrono::steady_clock::now();
             auto &session = state->getActiveDocumentSession();
             auto &doc = session.document;
             const int64_t ch = doc.getChannelCount();
@@ -51,18 +55,77 @@ namespace cupuacu::actions::audio
                 std::min<int64_t>(numFrames, total - startFrame);
             numFrames = actualCount;
 
+            const auto clipboardInitStartedAt =
+                std::chrono::steady_clock::now();
             state->clipboard.initialize(doc.getSampleFormat(), sr, ch,
                                         numFrames);
+            const auto clipboardInitializedAt =
+                std::chrono::steady_clock::now();
 
+            const auto captureStartedAt =
+                std::chrono::steady_clock::now();
             removed = doc.captureSegment(startFrame, numFrames);
-            state->clipboard.assignSegment(removed);
+            const auto captureCompletedAt =
+                std::chrono::steady_clock::now();
 
+            const auto clipboardAssignStartedAt =
+                std::chrono::steady_clock::now();
+            state->clipboard.assignSegment(removed);
+            const auto clipboardAssignedAt =
+                std::chrono::steady_clock::now();
+
+            const auto removeStartedAt =
+                std::chrono::steady_clock::now();
             doc.removeFrames(startFrame, numFrames);
+            const auto removeCompletedAt =
+                std::chrono::steady_clock::now();
+
+            const auto waveformStartedAt =
+                std::chrono::steady_clock::now();
             doc.updateWaveformCache();
+            const auto waveformCompletedAt =
+                std::chrono::steady_clock::now();
+
+            const auto uiSyncStartedAt =
+                std::chrono::steady_clock::now();
             session.syncSelectionAndCursorToDocumentLength();
 
             updateCursorPos(state, startFrame);
             session.selection.reset();
+            const auto redoCompletedAt =
+                std::chrono::steady_clock::now();
+
+            const auto toMilliseconds = [](const auto start, const auto end)
+            {
+                return std::chrono::duration_cast<std::chrono::milliseconds>(
+                           end - start)
+                    .count();
+            };
+
+            std::printf(
+                "[cut] start=%lld frames=%lld total_frames_before=%lld "
+                "clipboard_init_ms=%lld capture_ms=%lld clipboard_assign_ms=%lld "
+                "remove_ms=%lld waveform_ms=%lld ui_sync_ms=%lld total_ms=%lld\n",
+                static_cast<long long>(startFrame),
+                static_cast<long long>(numFrames),
+                static_cast<long long>(total),
+                static_cast<long long>(
+                    toMilliseconds(clipboardInitStartedAt,
+                                   clipboardInitializedAt)),
+                static_cast<long long>(
+                    toMilliseconds(captureStartedAt, captureCompletedAt)),
+                static_cast<long long>(
+                    toMilliseconds(clipboardAssignStartedAt,
+                                   clipboardAssignedAt)),
+                static_cast<long long>(
+                    toMilliseconds(removeStartedAt, removeCompletedAt)),
+                static_cast<long long>(
+                    toMilliseconds(waveformStartedAt, waveformCompletedAt)),
+                static_cast<long long>(
+                    toMilliseconds(uiSyncStartedAt, redoCompletedAt)),
+                static_cast<long long>(
+                    toMilliseconds(redoStartedAt, redoCompletedAt)));
+            std::fflush(stdout);
         }
 
         void undo() override

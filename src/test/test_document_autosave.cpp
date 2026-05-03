@@ -3,6 +3,7 @@
 
 #include "TestPaths.hpp"
 #include "actions/DocumentLifecycle.hpp"
+#include "actions/io/BackgroundSave.hpp"
 #include "actions/Undoable.hpp"
 #include "persistence/DocumentAutosave.hpp"
 #include "persistence/SessionStatePersistence.hpp"
@@ -70,6 +71,19 @@ namespace
         float value = 0.0f;
         float previousValue = 0.0f;
     };
+
+    void drainPendingAutosave(cupuacu::State &state)
+    {
+        for (int i = 0; i < 100000; ++i)
+        {
+            cupuacu::actions::io::processPendingAutosaveWork(&state);
+            if (!state.backgroundAutosaveJob)
+            {
+                return;
+            }
+        }
+        FAIL("Autosave job did not complete");
+    }
 } // namespace
 
 TEST_CASE("Document autosave snapshots preserve untitled audio and markers",
@@ -109,6 +123,7 @@ TEST_CASE("Undoable mutations autosave and restore untitled sessions",
 
         state.addAndDoUndoable(
             std::make_shared<SetSampleUndoable>(&state, 2, 0.75f));
+        drainPendingAutosave(state);
 
         const auto persisted = cupuacu::persistence::SessionStatePersistence::load(
             state.paths->sessionStatePath());
@@ -144,6 +159,7 @@ TEST_CASE("Autosaved file-backed sessions restore the snapshot over the source",
 
         state.addAndDoUndoable(
             std::make_shared<SetSampleUndoable>(&state, 1, -0.5f));
+        drainPendingAutosave(state);
     }
 
     cupuacu::test::StateWithTestPaths restored{root};

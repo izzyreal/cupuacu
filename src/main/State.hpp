@@ -34,6 +34,7 @@ namespace cupuacu
         {
             class BackgroundOpenJob;
             class BackgroundSaveJob;
+            class BackgroundAutosaveJob;
         } // namespace io
         namespace effects
         {
@@ -73,6 +74,7 @@ namespace cupuacu
     void destroyMarkerEditorDialogWindow(gui::MarkerEditorDialogWindow *);
     void destroyBackgroundOpenJob(actions::io::BackgroundOpenJob *);
     void destroyBackgroundSaveJob(actions::io::BackgroundSaveJob *);
+    void destroyBackgroundAutosaveJob(actions::io::BackgroundAutosaveJob *);
     void destroyBackgroundEffectJob(actions::effects::BackgroundEffectJob *);
 
     enum class PendingSaveAsMode
@@ -197,6 +199,9 @@ namespace cupuacu
         std::unique_ptr<actions::io::BackgroundSaveJob,
                         void (*)(actions::io::BackgroundSaveJob *)>
             backgroundSaveJob{nullptr, destroyBackgroundSaveJob};
+        std::unique_ptr<actions::io::BackgroundAutosaveJob,
+                        void (*)(actions::io::BackgroundAutosaveJob *)>
+            backgroundAutosaveJob{nullptr, destroyBackgroundAutosaveJob};
         std::unique_ptr<actions::effects::BackgroundEffectJob,
                         void (*)(actions::effects::BackgroundEffectJob *)>
             backgroundEffectJob{nullptr, destroyBackgroundEffectJob};

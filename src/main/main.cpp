@@ -213,6 +213,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     cupuacu::actions::effects::processPendingEffectWork(state);
     cupuacu::actions::io::processPendingOpenWork(state);
     cupuacu::actions::io::processPendingSaveWork(state);
+    cupuacu::actions::io::processPendingAutosaveWork(state);
 
     for (auto *window : state->windows)
     {
@@ -278,6 +279,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
     state->generateSilenceDialogWindow.reset();
     state->backgroundOpenJob.reset();
     state->backgroundSaveJob.reset();
+    state->backgroundAutosaveJob.reset();
     state->newFileDialogWindow.reset();
     state->optionsWindow.reset();
     state->mainDocumentSessionWindow.reset();

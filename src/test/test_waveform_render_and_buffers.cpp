@@ -216,6 +216,45 @@ TEST_CASE("Document publishes waveform cache results from background work",
     REQUIRE(built);
 }
 
+TEST_CASE("Waveform overview planning keeps drawing after frame erasure while cache rebuild is pending",
+          "[gui][waveform]")
+{
+    cupuacu::Document document;
+    const int64_t frameCount = 4096;
+    document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, frameCount);
+    for (int64_t frame = 0; frame < frameCount; ++frame)
+    {
+        const float value = (frame % 64) < 32 ? -0.75f : 0.75f;
+        document.setSample(0, frame, value, false);
+    }
+
+    document.invalidateWaveformSamples(0, frameCount - 1);
+    document.updateWaveformCache();
+
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        document.pumpWaveformCacheWork();
+        if (!document.getWaveformCache(0).hasDirtyBlocks())
+        {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    REQUIRE_FALSE(document.getWaveformCache(0).hasDirtyBlocks());
+
+    document.removeFrames(1024, 512);
+
+    cupuacu::gui::Peak peak{};
+    const bool hasPeak = cupuacu::gui::computeWaveformPeakForSampleWindow(
+        document, 0, 0, 64.0, 1, 3000.0, 3064.0, peak);
+
+    REQUIRE(hasPeak);
+    REQUIRE(peak.min < 0.0f);
+    REQUIRE(peak.max > 0.0f);
+}
+
 TEST_CASE("Document reports deterministic waveform cache build progress",
           "[gui][waveform]")
 {
