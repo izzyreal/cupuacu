@@ -2140,15 +2140,7 @@ void Waveform::timerCallback()
 {
     if (state && state->getActiveDocumentSession().pumpWaveformCacheWork())
     {
-        for (auto *waveform : state->waveforms)
-        {
-            if (!waveform)
-            {
-                continue;
-            }
-            waveform->handleWaveformCacheUpdate();
-            waveform->setDirty();
-        }
+        applyAllPendingCacheUpdates(state);
     }
 
     if (consumePublishedBackgroundBlockRenderChunks())

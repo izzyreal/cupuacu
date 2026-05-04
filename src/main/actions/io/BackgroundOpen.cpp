@@ -2,6 +2,7 @@
 
 #include "../../LongTask.hpp"
 #include "../../file/OverwritePreservation.hpp"
+#include "../../gui/Waveform.hpp"
 #include "../../gui/Window.hpp"
 #include "../DocumentLifecycle.hpp"
 
@@ -35,23 +36,6 @@ namespace cupuacu::actions::io
             cupuacu::setLongTask(state, "Opening file", detail, 0.0,
                                  false);
             state->backgroundOpenJob->start();
-        }
-
-        void renderMainWindowNow(cupuacu::State *state)
-        {
-            if (!state || !state->mainWindowInitialFrameRendered ||
-                !state->mainDocumentSessionWindow)
-            {
-                return;
-            }
-
-            auto *window = state->mainDocumentSessionWindow->getWindow();
-            if (!window || !window->isOpen())
-            {
-                return;
-            }
-
-            window->renderFrame();
         }
 
         std::optional<double>
@@ -188,15 +172,10 @@ namespace cupuacu::actions::io
                 };
                 cupuacu::updateLongTask(state, "Building waveform cache",
                                         progress, false);
-                renderMainWindowNow(state);
                 return;
             }
 
             cupuacu::clearLongTask(state, false);
-            if (isStartupRestore)
-            {
-                renderMainWindowNow(state);
-            }
         }
 
         void finalizeStartupRestoreIfComplete(cupuacu::State *state)
@@ -409,12 +388,12 @@ namespace cupuacu::actions::io
                         normalizedWaveformCacheBuildProgress(session);
                     progress.has_value())
                 {
-                    cupuacu::updateLongTask(state, "Building waveform cache",
-                                            progress, false);
                     if (cacheStateChanged && tabIndex == state->activeTabIndex)
                     {
-                        renderMainWindowNow(state);
+                        cupuacu::gui::Waveform::applyAllPendingCacheUpdates(state);
                     }
+                    cupuacu::updateLongTask(state, "Building waveform cache",
+                                            progress, false);
                     return;
                 }
 
@@ -422,7 +401,7 @@ namespace cupuacu::actions::io
                 cupuacu::clearLongTask(state, false);
                 if (cacheStateChanged && tabIndex == state->activeTabIndex)
                 {
-                    renderMainWindowNow(state);
+                    cupuacu::gui::Waveform::applyAllPendingCacheUpdates(state);
                 }
             }
         }

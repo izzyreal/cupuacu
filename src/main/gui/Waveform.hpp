@@ -61,6 +61,25 @@ namespace cupuacu::gui
             }
         }
 
+        static void applyAllPendingCacheUpdates(State *state)
+        {
+            if (!state)
+            {
+                return;
+            }
+
+            for (auto *waveform : state->waveforms)
+            {
+                if (!waveform)
+                {
+                    continue;
+                }
+
+                waveform->handleWaveformCacheUpdate();
+                waveform->setDirty();
+            }
+        }
+
         static bool computeBlockModeSelectionRect(
             const int64_t firstSample, const int64_t lastSampleExclusive,
             const int64_t sampleOffset, const double samplesPerPixel,
