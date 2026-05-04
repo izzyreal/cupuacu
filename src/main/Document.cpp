@@ -340,10 +340,12 @@ namespace cupuacu
         ++waveformDataVersion;
     }
 
-    void Document::insertFrames(int64_t frameIndex, int64_t numFrames)
+    void Document::insertFrames(
+        int64_t frameIndex, int64_t numFrames,
+        const SampleOperationProgressCallback &progress)
     {
         std::unique_lock lock(dataMutex);
-        buffer->insertFrames(frameIndex, numFrames);
+        buffer->insertFrames(frameIndex, numFrames, progress);
         ++waveformDataVersion;
 
         if (numFrames <= 0)

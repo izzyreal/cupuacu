@@ -91,6 +91,15 @@ namespace cupuacu
                 }
             }
         }
+
+        void notifyLongTaskObserver(State *state)
+        {
+            if (!state || !state->longTaskObserver)
+            {
+                return;
+            }
+            state->longTaskObserver(state->longTask);
+        }
     } // namespace
 
     void setLongTask(State *state, std::string title, std::string detail,
@@ -105,6 +114,7 @@ namespace cupuacu
         state->longTask.title = std::move(title);
         state->longTask.detail = std::move(detail);
         state->longTask.progress = progress;
+        notifyLongTaskObserver(state);
         refreshLongTaskUi(state, renderNow);
     }
 
@@ -121,6 +131,7 @@ namespace cupuacu
             state->longTask.detail = std::move(detail);
         }
         state->longTask.progress = progress;
+        notifyLongTaskObserver(state);
         refreshLongTaskUi(state, renderNow);
     }
 
@@ -138,6 +149,7 @@ namespace cupuacu
             state->longTask.detail = std::move(detail);
         }
         state->longTask.progress = progress;
+        notifyLongTaskObserver(state);
 
         for (auto *window : state->windows)
         {
@@ -190,6 +202,7 @@ namespace cupuacu
 
         markWindowRootsDirty(state);
         state->longTask = {};
+        notifyLongTaskObserver(state);
         refreshLongTaskUi(state, renderNow);
     }
 
@@ -218,6 +231,7 @@ namespace cupuacu
             markWindowRootsDirty(state);
         }
         state->longTask = std::move(previousStatus);
+        notifyLongTaskObserver(state);
         refreshLongTaskUi(state, renderOnEnd);
     }
 } // namespace cupuacu

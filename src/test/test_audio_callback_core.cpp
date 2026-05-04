@@ -7,6 +7,7 @@
 #include "audio/AudioProcessor.hpp"
 #include "audio/RecordedChunk.hpp"
 #include "effects/AmplifyFadeEffect.hpp"
+#include "effects/DynamicsEffect.hpp"
 
 #include <algorithm>
 #include <readerwriterqueue.h>
@@ -240,6 +241,69 @@ TEST_CASE("Amplify/Fade preview processor picks up updated settings between buff
     REQUIRE(playedUpdatedFrame);
     REQUIRE(out[0] == Catch::Approx(0.5f));
     REQUIRE(out[1] == Catch::Approx(0.5f));
+}
+
+TEST_CASE("Dynamics preview processor picks up updated settings between buffers",
+          "[audio]")
+{
+    cupuacu::Document doc{};
+    doc.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 4);
+    for (int64_t i = 0; i < 4; ++i)
+    {
+        doc.setSample(0, i, 1.0f, false);
+        doc.setSample(1, i, 1.0f, false);
+    }
+
+    auto previewSession =
+        std::make_shared<cupuacu::effects::DynamicsPreviewSession>(
+            cupuacu::effects::DynamicsSettings{100.0, 1});
+    auto processor = previewSession->getProcessor();
+
+    int64_t playbackPosition = 0;
+    uint64_t playbackStartPos = 0;
+    uint64_t playbackEndPos = 2;
+    bool playbackHasPendingSwitch = false;
+    uint64_t playbackPendingStartPos = 0;
+    uint64_t playbackPendingEndPos = 0;
+    bool isPlaying = true;
+    cupuacu::audio::callback_core::StereoMeterLevels meterLevels{};
+    std::vector<float> out(4, 0.0f);
+
+    const bool playedAnyFrame = fillOutputBuffer(
+        doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
+        playbackStartPos, playbackEndPos, false, playbackHasPendingSwitch,
+        playbackPendingStartPos, playbackPendingEndPos, isPlaying, out.data(), 2,
+        meterLevels, processor.get(), playbackStartPos, playbackEndPos,
+        cupuacu::SelectedChannels::BOTH);
+
+    REQUIRE(playedAnyFrame);
+    REQUIRE(out[0] == Catch::Approx(1.0f));
+    REQUIRE(out[1] == Catch::Approx(1.0f));
+
+    previewSession->updateSettings(
+        cupuacu::effects::DynamicsSettings{50.0, 1});
+
+    playbackPosition = 2;
+    playbackStartPos = 2;
+    playbackEndPos = 4;
+    playbackHasPendingSwitch = false;
+    playbackPendingStartPos = 0;
+    playbackPendingEndPos = 0;
+    isPlaying = true;
+    meterLevels = {};
+    out.assign(4, 0.0f);
+
+    const bool playedUpdatedFrame =
+        fillOutputBuffer(
+            doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
+            playbackStartPos, playbackEndPos, false, playbackHasPendingSwitch,
+            playbackPendingStartPos, playbackPendingEndPos, isPlaying,
+            out.data(), 2, meterLevels, processor.get(),
+            playbackStartPos, playbackEndPos, cupuacu::SelectedChannels::BOTH);
+
+    REQUIRE(playedUpdatedFrame);
+    REQUIRE(out[0] == Catch::Approx(0.625f));
+    REQUIRE(out[1] == Catch::Approx(0.625f));
 }
 
 TEST_CASE("AudioCallbackCore computes RMS levels for playback output",

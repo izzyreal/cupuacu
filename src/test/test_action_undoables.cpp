@@ -20,6 +20,7 @@
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/Window.hpp"
 
+#include <algorithm>
 #include <memory>
 #include <chrono>
 #include <thread>
@@ -129,6 +130,57 @@ TEST_CASE("Cut undoable updates clipboard, cursor, and undo state", "[actions]")
     state.redo();
     REQUIRE(readMonoSamples(session.document) ==
             std::vector<float>({0, 1, 5}));
+}
+
+TEST_CASE("Cut undo publishes modal long-task progress", "[actions][long-task]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    initializeMonoDocument(state, {0, 1, 2, 3, 4, 5});
+
+    auto &session = state.getActiveDocumentSession();
+    session.selection.setValue1(2.0);
+    session.selection.setValue2(5.0);
+
+    cupuacu::actions::audio::performCut(&state);
+
+    std::vector<cupuacu::State::LongTaskStatus> snapshots;
+    state.longTaskObserver =
+        [&](const cupuacu::State::LongTaskStatus &status)
+    {
+        snapshots.push_back(status);
+    };
+
+    state.undo();
+
+    REQUIRE_FALSE(snapshots.empty());
+    REQUIRE(std::any_of(
+        snapshots.begin(), snapshots.end(),
+        [](const cupuacu::State::LongTaskStatus &status)
+        {
+            return status.active && status.title == "Undoing cut" &&
+                   status.detail == "Reinserting audio" &&
+                   status.progress.has_value() &&
+                   *status.progress == Catch::Approx(0.0);
+        }));
+    REQUIRE(std::any_of(
+        snapshots.begin(), snapshots.end(),
+        [](const cupuacu::State::LongTaskStatus &status)
+        {
+            return status.active && status.title == "Undoing cut" &&
+                   status.detail == "Restoring samples" &&
+                   status.progress.has_value() &&
+                   *status.progress >= 0.35;
+        }));
+    REQUIRE(std::any_of(
+        snapshots.begin(), snapshots.end(),
+        [](const cupuacu::State::LongTaskStatus &status)
+        {
+            return status.active && status.title == "Undoing cut" &&
+                   status.detail == "Undo complete" &&
+                   status.progress.has_value() &&
+                   *status.progress == Catch::Approx(1.0);
+        }));
+    REQUIRE_FALSE(snapshots.back().active);
 }
 
 TEST_CASE("Clipboard assignSegment preserves PCM provenance without per-sample edits",

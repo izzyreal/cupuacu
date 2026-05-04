@@ -258,45 +258,43 @@ namespace cupuacu::effects
 
         void updateSettings(const DynamicsSettings &settingsToUse)
         {
-            std::atomic_store_explicit(
-                &settingsSnapshot,
-                std::make_shared<const DynamicsSettings>(settingsToUse),
-                std::memory_order_release);
+            thresholdPercent.store(settingsToUse.thresholdPercent,
+                                   std::memory_order_release);
+            ratioIndex.store(settingsToUse.ratioIndex,
+                             std::memory_order_release);
         }
 
         void process(float *interleavedStereo, const unsigned long frameCount,
                      const cupuacu::audio::AudioProcessContext &context) const override
         {
-            const auto settings =
-                std::atomic_load_explicit(&settingsSnapshot, std::memory_order_acquire);
-            if (!settings)
-            {
-                return;
-            }
-
             if (!interleavedStereo || frameCount == 0)
             {
                 return;
             }
 
+            DynamicsSettings settings{};
+            settings.thresholdPercent =
+                thresholdPercent.load(std::memory_order_acquire);
+            settings.ratioIndex = ratioIndex.load(std::memory_order_acquire);
             for (unsigned long i = 0; i < frameCount; ++i)
             {
                 float *frame = interleavedStereo + i * 2;
                 if (context.targetChannels != cupuacu::SelectedChannels::RIGHT)
                 {
                     frame[0] =
-                        DynamicsUndoable::processSampleValue(*settings, frame[0]);
+                        DynamicsUndoable::processSampleValue(settings, frame[0]);
                 }
                 if (context.targetChannels != cupuacu::SelectedChannels::LEFT)
                 {
                     frame[1] =
-                        DynamicsUndoable::processSampleValue(*settings, frame[1]);
+                        DynamicsUndoable::processSampleValue(settings, frame[1]);
                 }
             }
         }
 
     private:
-        mutable std::shared_ptr<const DynamicsSettings> settingsSnapshot;
+        std::atomic<double> thresholdPercent{50.0};
+        std::atomic<int> ratioIndex{1};
     };
 
     class DynamicsPreviewSession : public EffectPreviewSession<DynamicsSettings>

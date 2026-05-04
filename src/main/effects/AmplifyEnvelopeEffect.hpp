@@ -10,6 +10,7 @@
 #include "gui/MainViewAccess.hpp"
 #include "gui/Waveform.hpp"
 
+#include <array>
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -32,6 +33,7 @@ namespace cupuacu::effects
     inline constexpr double kAmplifyEnvelopeMaxPercent = 1000.0;
     inline constexpr double kAmplifyEnvelopeNodeSpacing = 1.0e-4;
     inline constexpr double kAmplifyEnvelopeDefaultFadeLengthMs = 100.0;
+    inline constexpr std::size_t kAmplifyEnvelopePreviewTableSize = 2048;
 
     inline double clampAmplifyEnvelopePercent(const double value)
     {
@@ -482,25 +484,37 @@ namespace cupuacu::effects
         void updateSettings(AmplifyEnvelopeSettings settingsToUse)
         {
             sanitizeAmplifyEnvelopeSettings(settingsToUse);
-            std::atomic_store_explicit(
-                &settingsSnapshot,
-                std::make_shared<const AmplifyEnvelopeSettings>(
-                    std::move(settingsToUse)),
-                std::memory_order_release);
+            const uint8_t inactiveIndex =
+                activeTableIndex.load(std::memory_order_relaxed) == 0 ? 1 : 0;
+            auto &targetTable =
+                inactiveIndex == 0 ? previewGainTableA : previewGainTableB;
+            for (std::size_t index = 0; index < targetTable.size(); ++index)
+            {
+                const double position =
+                    targetTable.size() <= 1
+                        ? 0.0
+                        : static_cast<double>(index) /
+                              static_cast<double>(targetTable.size() - 1);
+                targetTable[index] = static_cast<float>(
+                    amplifyEnvelopeGainForPosition(settingsToUse, position));
+            }
+            activeTableIndex.store(inactiveIndex, std::memory_order_release);
         }
 
         void process(
             float *interleavedStereo, const unsigned long frameCount,
             const cupuacu::audio::AudioProcessContext &context) const override
         {
-            const auto settings = std::atomic_load_explicit(
-                &settingsSnapshot, std::memory_order_acquire);
-            if (!settings || !interleavedStereo || frameCount == 0 ||
+            if (!interleavedStereo || frameCount == 0 ||
                 context.effectEndFrame <= context.effectStartFrame)
             {
                 return;
             }
 
+            const auto &table =
+                activeTableIndex.load(std::memory_order_acquire) == 0
+                    ? previewGainTableA
+                    : previewGainTableB;
             const int64_t totalFrameCount = static_cast<int64_t>(
                 context.effectEndFrame - context.effectStartFrame);
             for (unsigned long i = 0; i < frameCount; ++i)
@@ -518,9 +532,8 @@ namespace cupuacu::effects
                 const int64_t relativeFrame =
                     absoluteFrame -
                     static_cast<int64_t>(context.effectStartFrame);
-                const float gain =
-                    static_cast<float>(amplifyEnvelopeGainForRelativeFrame(
-                        *settings, relativeFrame, totalFrameCount));
+                const float gain = previewGainForRelativeFrame(
+                    table, relativeFrame, totalFrameCount);
                 float *frame = interleavedStereo + i * 2;
                 if (context.targetChannels != cupuacu::SelectedChannels::RIGHT)
                 {
@@ -534,7 +547,40 @@ namespace cupuacu::effects
         }
 
     private:
-        mutable std::shared_ptr<const AmplifyEnvelopeSettings> settingsSnapshot;
+        static float previewGainForRelativeFrame(
+            const std::array<float, kAmplifyEnvelopePreviewTableSize> &table,
+            const int64_t frameIndex, const int64_t totalFrameCount)
+        {
+            if (table.empty())
+            {
+                return 1.0f;
+            }
+            if (totalFrameCount <= 1)
+            {
+                return table.front();
+            }
+
+            const double position = std::clamp(
+                static_cast<double>(frameIndex) /
+                    static_cast<double>(totalFrameCount - 1),
+                0.0, 1.0);
+            const double scaledIndex =
+                position * static_cast<double>(table.size() - 1);
+            const auto leftIndex = static_cast<std::size_t>(
+                std::clamp<int64_t>(static_cast<int64_t>(std::floor(scaledIndex)),
+                                    0, static_cast<int64_t>(table.size() - 1)));
+            const auto rightIndex = std::min<std::size_t>(leftIndex + 1,
+                                                          table.size() - 1);
+            const float leftGain = table[leftIndex];
+            const float rightGain = table[rightIndex];
+            const float weight = static_cast<float>(scaledIndex -
+                                                    static_cast<double>(leftIndex));
+            return leftGain + (rightGain - leftGain) * weight;
+        }
+
+        std::array<float, kAmplifyEnvelopePreviewTableSize> previewGainTableA{};
+        std::array<float, kAmplifyEnvelopePreviewTableSize> previewGainTableB{};
+        std::atomic<uint8_t> activeTableIndex{0};
     };
 
     class AmplifyEnvelopePreviewSession

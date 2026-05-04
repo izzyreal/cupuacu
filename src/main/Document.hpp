@@ -118,7 +118,9 @@ namespace cupuacu
 
         void resizeBuffer(int64_t channels, int64_t frames);
 
-        void insertFrames(int64_t frameIndex, int64_t numFrames);
+        void insertFrames(
+            int64_t frameIndex, int64_t numFrames,
+            const SampleOperationProgressCallback &progress = {});
 
         void removeFrames(
             int64_t frameIndex, int64_t numFrames,

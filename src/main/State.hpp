@@ -207,6 +207,7 @@ namespace cupuacu
             backgroundEffectJob{nullptr, destroyBackgroundEffectJob};
         gui::Window *modalWindow = nullptr;
         LongTaskStatus longTask;
+        std::function<void(const LongTaskStatus &)> longTaskObserver;
         bool mainWindowInitialFrameRendered = false;
 
         ~State();

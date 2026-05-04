@@ -108,12 +108,20 @@ namespace cupuacu::audio
             channels[channel][frame] = value;
         }
 
-        virtual void insertFrames(int64_t frameIndex, int64_t numFrames)
+        virtual void insertFrames(int64_t frameIndex, int64_t numFrames,
+                                  const ProgressCallback &progress = {})
         {
             if (numFrames <= 0)
             {
+                if (progress)
+                {
+                    progress(1, 1);
+                }
                 return;
             }
+            const int64_t channelCount =
+                static_cast<int64_t>(channels.size());
+            int64_t completedChannels = 0;
             for (auto &ch : channels)
             {
                 if (frameIndex == static_cast<int64_t>(ch.size()))
@@ -131,6 +139,17 @@ namespace cupuacu::audio
                 {
                     ch.insert(ch.begin() + frameIndex, numFrames, 0.0f);
                 }
+                ++completedChannels;
+                if (progress)
+                {
+                    progress(completedChannels,
+                             std::max<int64_t>(1, channelCount));
+                }
+            }
+
+            if (progress && completedChannels == 0)
+            {
+                progress(1, 1);
             }
         }
 

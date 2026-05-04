@@ -311,11 +311,16 @@ namespace cupuacu::audio
             }
         }
 
-        void insertFrames(const std::int64_t frameIndex,
-                          const std::int64_t numFrames) override
+        void insertFrames(
+            const std::int64_t frameIndex, const std::int64_t numFrames,
+            const AudioBuffer::ProgressCallback &progress = {}) override
         {
             if (numFrames <= 0)
             {
+                if (progress)
+                {
+                    progress(1, 1);
+                }
                 return;
             }
 
@@ -327,7 +332,35 @@ namespace cupuacu::audio
             oldDirtyFlags.resize(static_cast<std::size_t>((oldSampleCount + 7) / 8),
                                  0);
 
-            AudioBuffer::insertFrames(frameIndex, numFrames);
+            std::int64_t totalRangeCount = 0;
+            for (const auto &ranges : provenanceRanges)
+            {
+                totalRangeCount += static_cast<std::int64_t>(ranges.size());
+            }
+            const std::int64_t phase1Units = std::max<std::int64_t>(1, channelCount);
+            const std::int64_t phase2Units =
+                std::max<std::int64_t>(1, oldFrameCount * channelCount);
+            const std::int64_t phase3Units =
+                std::max<std::int64_t>(1, totalRangeCount);
+            const std::int64_t totalUnits =
+                phase1Units + phase2Units + phase3Units;
+            const auto publishProgress =
+                [&](const std::int64_t completedUnits)
+            {
+                if (progress)
+                {
+                    progress(std::clamp<std::int64_t>(completedUnits, 0, totalUnits),
+                             totalUnits);
+                }
+            };
+
+            AudioBuffer::insertFrames(
+                frameIndex, numFrames,
+                [&](const std::int64_t completed, const std::int64_t total)
+                {
+                    const auto safeTotal = std::max<std::int64_t>(1, total);
+                    publishProgress(completed * phase1Units / safeTotal);
+                });
 
             const auto newFrameCount = getFrameCount();
             const auto newSampleCount = newFrameCount * channelCount;
@@ -342,6 +375,8 @@ namespace cupuacu::audio
                        1;
             };
 
+            constexpr std::int64_t kProgressStrideFrames = 16384;
+            std::int64_t dirtyUnitsCompleted = 0;
             for (std::int64_t frame = 0; frame < frameIndex; ++frame)
             {
                 for (std::int64_t channel = 0; channel < channelCount; ++channel)
@@ -351,6 +386,14 @@ namespace cupuacu::audio
                     {
                         markDirtyByFlatIndex(index);
                     }
+                }
+                dirtyUnitsCompleted += channelCount;
+                if ((frame + 1) % kProgressStrideFrames == 0 ||
+                    frame + 1 == frameIndex)
+                {
+                    publishProgress(phase1Units +
+                                    dirtyUnitsCompleted * phase2Units /
+                                        std::max<std::int64_t>(1, oldFrameCount * channelCount));
                 }
             }
 
@@ -365,12 +408,23 @@ namespace cupuacu::audio
                         markDirtyByFlatIndex(newIndex);
                     }
                 }
+                dirtyUnitsCompleted += channelCount;
+                if ((frame - frameIndex + 1) % kProgressStrideFrames == 0 ||
+                    frame + 1 == oldFrameCount)
+                {
+                    publishProgress(phase1Units +
+                                    dirtyUnitsCompleted * phase2Units /
+                                        std::max<std::int64_t>(1, oldFrameCount * channelCount));
+                }
             }
 
+            std::int64_t provenanceRangesCompleted = 0;
             for (std::int64_t channel = 0; channel < channelCount; ++channel)
             {
                 auto &ranges =
                     provenanceRanges[static_cast<std::size_t>(channel)];
+                const auto originalRangeCount =
+                    static_cast<std::int64_t>(ranges.size());
                 std::vector<ProvenanceRange> updated;
                 updated.reserve(ranges.size() + 1);
                 for (const auto &range : ranges)
@@ -407,7 +461,13 @@ namespace cupuacu::audio
                 }
                 mergeAdjacentRanges(updated);
                 ranges = std::move(updated);
+                provenanceRangesCompleted += originalRangeCount;
+                publishProgress(phase1Units + phase2Units +
+                                provenanceRangesCompleted * phase3Units /
+                                    std::max<std::int64_t>(1, totalRangeCount));
             }
+
+            publishProgress(totalUnits);
         }
 
         void removeFrames(
