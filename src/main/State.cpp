@@ -133,6 +133,7 @@ void cupuacu::State::addAndDoUndoableToTab(
     }
 
     addUndoableToTab(tabIndex, undoable);
+    tabs[static_cast<std::size_t>(tabIndex)].session.stopWaveformCacheBuild();
     undoable->redo();
 
     auto &session = tabs[static_cast<std::size_t>(tabIndex)].session;
@@ -172,6 +173,7 @@ void cupuacu::State::undo()
 
     auto undoable = undoables.back();
     undoables.pop_back();
+    getActiveDocumentSession().stopWaveformCacheBuild();
     undoable->undo();
     cupuacu::file::OverwritePreservationMutationHelper::revertOnSession(
         getActiveDocumentSession(), undoable->overwritePreservationMutation());
@@ -192,6 +194,7 @@ void cupuacu::State::redo()
 
     auto redoable = redoables.back();
     redoables.pop_back();
+    getActiveDocumentSession().stopWaveformCacheBuild();
     redoable->redo();
     cupuacu::file::OverwritePreservationMutationHelper::applyToSession(
         getActiveDocumentSession(), redoable->overwritePreservationMutation());
