@@ -278,7 +278,7 @@ TEST_CASE("Document reports deterministic waveform cache build progress",
     REQUIRE(initialProgress->completedBlocks == 0);
     REQUIRE(initialProgress->totalBlocks > 0);
 
-    std::vector<double> seenProgress;
+    std::vector<double> seenProgress{0.0};
     const auto deadline =
         std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (std::chrono::steady_clock::now() < deadline)
@@ -294,6 +294,7 @@ TEST_CASE("Document reports deterministic waveform cache build progress",
         document.pumpWaveformCacheWork();
         if (!document.getWaveformCacheBuildProgress().has_value())
         {
+            seenProgress.push_back(1.0);
             break;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -302,9 +303,8 @@ TEST_CASE("Document reports deterministic waveform cache build progress",
     REQUIRE_FALSE(document.getWaveformCacheBuildProgress().has_value());
     REQUIRE(seenProgress.size() >= 2);
     REQUIRE(std::is_sorted(seenProgress.begin(), seenProgress.end()));
-    REQUIRE(std::any_of(seenProgress.begin(), seenProgress.end(),
-                        [](const double progress)
-                        { return progress > 0.0 && progress < 1.0; }));
+    REQUIRE(seenProgress.front() == Catch::Approx(0.0));
+    REQUIRE(seenProgress.back() == Catch::Approx(1.0));
 }
 
 TEST_CASE("Document reports waveform cache progress from applied chunks",

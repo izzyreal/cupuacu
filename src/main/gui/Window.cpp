@@ -922,7 +922,31 @@ bool Window::handleMouseEvent(const MouseEvent &mouseEvent)
         capturingComponent->mouseLeave();
     }
 
-    if (plan.dispatchToRoot)
+    bool handledByCapture = false;
+    if (capturingComponent != nullptr &&
+        (mouseEvent.type == MOVE ||
+         (mouseEvent.type == UP && mouseEvent.buttonState.left)))
+    {
+        const auto captureBounds = capturingComponent->getAbsoluteBounds();
+        const float localXf = mouseEvent.mouseXf - captureBounds.x;
+        const float localYf = mouseEvent.mouseYf - captureBounds.y;
+        const MouseEvent captureEvent{
+            mouseEvent.type,
+            static_cast<int>(std::floor(localXf)),
+            static_cast<int>(std::floor(localYf)),
+            localXf,
+            localYf,
+            mouseEvent.wheelX,
+            mouseEvent.wheelY,
+            mouseEvent.buttonState,
+            mouseEvent.numClicks};
+
+        handledByCapture =
+            mouseEvent.type == MOVE ? capturingComponent->mouseMove(captureEvent)
+                                    : capturingComponent->mouseUp(captureEvent);
+    }
+
+    if (plan.dispatchToRoot && !handledByCapture)
     {
         rootComponent->handleMouseEvent(mouseEvent);
     }
