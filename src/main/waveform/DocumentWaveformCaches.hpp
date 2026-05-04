@@ -96,6 +96,7 @@ namespace cupuacu::waveform
 
             void start();
             [[nodiscard]] bool isCompleted() const;
+            [[nodiscard]] uint64_t waveformDataVersion() const;
             [[nodiscard]] std::vector<BuildOutput>
             takePublishedOutputs(std::size_t maxCount);
             [[nodiscard]] bool hasPublishedOutputs() const;

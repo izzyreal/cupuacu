@@ -59,6 +59,11 @@ namespace cupuacu::waveform
         return completed;
     }
 
+    uint64_t DocumentWaveformCaches::BuildJob::waveformDataVersion() const
+    {
+        return request.waveformDataVersion;
+    }
+
     std::vector<DocumentWaveformCaches::BuildOutput>
     DocumentWaveformCaches::BuildJob::takePublishedOutputs(
         const std::size_t maxCount)
@@ -429,6 +434,14 @@ namespace cupuacu::waveform
                                           const uint64_t waveformDataVersion)
     {
         constexpr std::size_t kMaxPublishedOutputsPerPump = 256;
+
+        if (buildJob &&
+            buildJob->waveformDataVersion() != waveformDataVersion)
+        {
+            // Mutation jobs read directly from the live document, so any
+            // version change invalidates the in-flight build request.
+            stopBuild();
+        }
 
         bool applied = false;
         bool stateChanged = false;

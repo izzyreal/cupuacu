@@ -808,6 +808,67 @@ TEST_CASE("RecordEdit restores overwritten samples and session state on undo",
             std::vector<float>({0.0f, 1.0f, 100.0f, 101.0f}));
 }
 
+TEST_CASE("RecordEdit cancels stale waveform builds when undo changes channel count",
+          "[actions]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    auto &session = state.getActiveDocumentSession();
+    auto &doc = session.document;
+    doc.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 500000);
+    doc.setSample(0, 10, 0.25f, false);
+    doc.setSample(0, 11, -0.25f, false);
+
+    cupuacu::actions::audio::RecordEditData data;
+    data.startFrame = 10;
+    data.endFrame = 12;
+    data.oldFrameCount = 500000;
+    data.oldChannelCount = 1;
+    data.targetChannelCount = 2;
+    data.oldSampleRate = 44100;
+    data.newSampleRate = 44100;
+    data.oldFormat = cupuacu::SampleFormat::FLOAT32;
+    data.newFormat = cupuacu::SampleFormat::FLOAT32;
+    data.oldCursor = 10;
+    data.newCursor = 12;
+    data.overwrittenOldSamples = {{0.25f, -0.25f}};
+    data.recordedSamples = {{0.5f, -0.5f}, {-0.75f, 0.75f}};
+
+    state.addAndDoUndoable(
+        std::make_shared<cupuacu::actions::audio::RecordEdit>(&state, data));
+
+    bool observedBuildInFlight = false;
+    for (int attempt = 0; attempt < 50; ++attempt)
+    {
+        if (session.getWaveformCacheBuildProgress().has_value())
+        {
+            observedBuildInFlight = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    REQUIRE(observedBuildInFlight);
+
+    state.undo();
+
+    REQUIRE(doc.getChannelCount() == 1);
+    REQUIRE(doc.getSample(0, 10) == Catch::Approx(0.25f));
+    REQUIRE(doc.getSample(0, 11) == Catch::Approx(-0.25f));
+
+    for (int attempt = 0; attempt < 5000; ++attempt)
+    {
+        if (!session.getWaveformCacheBuildProgress().has_value())
+        {
+            break;
+        }
+        if (!session.pumpWaveformCacheWork())
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
+
+    REQUIRE_FALSE(session.getWaveformCacheBuildProgress().has_value());
+}
+
 TEST_CASE("RecordEdit appends recorded frames and removes them on undo",
           "[actions]")
 {
