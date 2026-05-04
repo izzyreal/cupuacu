@@ -15,7 +15,7 @@
 #include "actions/io/BackgroundOpen.hpp"
 #include "actions/io/BackgroundSave.hpp"
 #include "actions/Undoable.hpp"
-#include "actions/DocumentLifecycle.hpp"
+#include "actions/DocumentSessionPersistence.hpp"
 #include "file/OverwritePreservation.hpp"
 #include "file/OverwritePreservationMutation.hpp"
 

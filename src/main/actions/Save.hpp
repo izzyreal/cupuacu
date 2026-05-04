@@ -8,7 +8,8 @@
 #include "../file/OverwritePreservation.hpp"
 #include "../file/PreservationBackend.hpp"
 #include "../file/SaveWritePlan.hpp"
-#include "DocumentLifecycle.hpp"
+#include "DocumentSessionPersistence.hpp"
+#include "DocumentUi.hpp"
 
 #include <SDL3/SDL.h>
 

@@ -337,7 +337,8 @@ Waveform::captureBackgroundBlockRenderRequest(
         return std::nullopt;
     }
 
-    const auto &document = state->getActiveDocumentSession().document;
+    const auto &session = state->getActiveDocumentSession();
+    const auto &document = session.document;
     auto lease = document.acquireReadLease();
     const int64_t frameCount = lease.getFrameCount();
     const int64_t channelCount = lease.getChannelCount();
@@ -346,7 +347,7 @@ Waveform::captureBackgroundBlockRenderRequest(
         return std::nullopt;
     }
 
-    const auto &waveformCache = document.getWaveformCache(channelIndex);
+    const auto &waveformCache = session.getWaveformCache(channelIndex);
     if (waveformCache.hasDirtyBlocks())
     {
         return std::nullopt;
@@ -713,8 +714,7 @@ bool Waveform::isWaveformCacheBuildActive() const
     {
         return false;
     }
-    return state->getActiveDocumentSession()
-        .document.getWaveformCacheBuildProgress()
+    return state->getActiveDocumentSession().getWaveformCacheBuildProgress()
         .has_value();
 }
 
@@ -725,8 +725,9 @@ int64_t Waveform::currentBuiltSamplePrefixEnd() const
         return 0;
     }
 
-    const auto &document = state->getActiveDocumentSession().document;
-    const auto &waveformCache = document.getWaveformCache(channelIndex);
+    const auto &session = state->getActiveDocumentSession();
+    const auto &document = session.document;
+    const auto &waveformCache = session.getWaveformCache(channelIndex);
     return std::clamp<int64_t>(waveformCache.builtSamplePrefixEnd(), 0,
                                document.getFrameCount());
 }
@@ -1012,7 +1013,8 @@ void Waveform::appendBlockWaveformGeometryRange(
         }
 
         return computeWaveformPeakForSampleWindow(
-            doc, channelIndex, sampleOffset, samplesPerPixel, state->pixelScale,
+            session, channelIndex, sampleOffset, samplesPerPixel,
+            state->pixelScale,
             aD, bD, out);
     };
 
@@ -1849,8 +1851,8 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
         }
 
         return computeWaveformPeakForSampleWindow(
-            doc, channelIndex, sampleOffset, samplesPerPixel, state->pixelScale, aD,
-            bD, out);
+            session, channelIndex, sampleOffset, samplesPerPixel,
+            state->pixelScale, aD, bD, out);
     };
 
     int prevX = 0;
@@ -2136,7 +2138,7 @@ void Waveform::drawMarkers(SDL_Renderer *renderer) const
 
 void Waveform::timerCallback()
 {
-    if (state && state->getActiveDocumentSession().document.pumpWaveformCacheWork())
+    if (state && state->getActiveDocumentSession().pumpWaveformCacheWork())
     {
         for (auto *waveform : state->waveforms)
         {

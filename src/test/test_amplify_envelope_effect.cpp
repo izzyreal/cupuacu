@@ -10,6 +10,7 @@
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/Window.hpp"
 
+#include <algorithm>
 #include <vector>
 
 namespace
@@ -186,7 +187,9 @@ TEST_CASE(
     std::vector<float> out(4, 0.0f);
 
     const bool playedAnyFrame = cupuacu::audio::callback_core::fillOutputBuffer(
-        &doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
+        doc.getAudioBuffer(),
+        static_cast<uint8_t>(std::clamp<int64_t>(doc.getChannelCount(), 0, 2)),
+        false, cupuacu::SelectedChannels::BOTH, playbackPosition,
         playbackStartPos, playbackEndPos, false, playbackHasPendingSwitch,
         playbackPendingStartPos, playbackPendingEndPos, isPlaying, out.data(),
         2, meterLevels, processor.get(), playbackStartPos, playbackEndPos,
@@ -208,7 +211,9 @@ TEST_CASE(
 
     const bool playedUpdatedFrame =
         cupuacu::audio::callback_core::fillOutputBuffer(
-            &doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
+            doc.getAudioBuffer(),
+            static_cast<uint8_t>(std::clamp<int64_t>(doc.getChannelCount(), 0, 2)),
+            false, cupuacu::SelectedChannels::BOTH, playbackPosition,
             playbackStartPos, playbackEndPos, false, playbackHasPendingSwitch,
             playbackPendingStartPos, playbackPendingEndPos, isPlaying,
             out.data(), 2, meterLevels, processor.get(), playbackStartPos,

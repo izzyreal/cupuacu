@@ -97,10 +97,10 @@ namespace cupuacu::actions::audio
 
             if (doc.getFrameCount() > 0)
             {
-                doc.invalidateWaveformSamples(startFrame,
-                                              doc.getFrameCount() - 1);
+                session.invalidateWaveformSamples(startFrame,
+                                                 doc.getFrameCount() - 1);
             }
-            doc.updateWaveformCache();
+            session.updateWaveformCache();
             session.syncSelectionAndCursorToDocumentLength();
 
             session.selection.setValue1(startFrame);
@@ -132,10 +132,10 @@ namespace cupuacu::actions::audio
 
             if (doc.getFrameCount() > 0)
             {
-                doc.invalidateWaveformSamples(startFrame,
-                                              doc.getFrameCount() - 1);
+                session.invalidateWaveformSamples(startFrame,
+                                                 doc.getFrameCount() - 1);
             }
-            doc.updateWaveformCache();
+            session.updateWaveformCache();
             session.syncSelectionAndCursorToDocumentLength();
 
             if (hadOldSelection)

@@ -11,7 +11,7 @@
 #include "gui/Waveform.hpp"
 
 #include "State.hpp"
-#include "actions/DocumentLifecycle.hpp"
+#include "actions/DocumentSessionPersistence.hpp"
 #include "file/SampleQuantization.hpp"
 
 #include <SDL3/SDL.h>

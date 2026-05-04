@@ -172,8 +172,9 @@ namespace cupuacu::effects
                 return;
             }
 
-            auto &document =
-                state->tabs[static_cast<std::size_t>(tabIndex)].session.document;
+            auto &session =
+                state->tabs[static_cast<std::size_t>(tabIndex)].session;
+            auto &document = session.document;
             oldSamples.resize(targetChannels.size());
             newSamples.resize(targetChannels.size());
             for (size_t channelIndex = 0; channelIndex < targetChannels.size();
@@ -207,8 +208,9 @@ namespace cupuacu::effects
                 return;
             }
 
-            auto &document =
-                state->tabs[static_cast<std::size_t>(tabIndex)].session.document;
+            auto &session =
+                state->tabs[static_cast<std::size_t>(tabIndex)].session;
+            auto &document = session.document;
             for (size_t channelIndex = 0; channelIndex < targetChannels.size();
                  ++channelIndex)
             {
@@ -219,10 +221,10 @@ namespace cupuacu::effects
                         channel, startFrame + frame,
                         samples[channelIndex][static_cast<size_t>(frame)], true);
                 }
-                document.getWaveformCache(channel).invalidateSamples(
+                session.getWaveformCache(channel).invalidateSamples(
                     startFrame, startFrame + frameCount - 1);
             }
-            document.updateWaveformCache();
+            session.updateWaveformCache();
         }
     };
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "concurrency/AtomicStateExchange.hpp"
+#include "audio/AudioBuffer.hpp"
 #include "audio/AudioDeviceState.hpp"
 #include "audio/AudioDeviceView.hpp"
 #include "audio/AudioMessage.hpp"
@@ -34,6 +35,10 @@ namespace cupuacu::audio
         : public concurrency::AtomicStateExchange<AudioDeviceState,
                                                   AudioDeviceView, AudioMessage>
     {
+        using Base = concurrency::AtomicStateExchange<AudioDeviceState,
+                                                      AudioDeviceView,
+                                                      AudioMessage>;
+
     public:
         static constexpr std::size_t kMaxRecordedChannels =
             cupuacu::audio::kMaxRecordedChannels;
@@ -62,6 +67,10 @@ namespace cupuacu::audio
         explicit AudioDevices(bool openDefaultDevice = true);
         ~AudioDevices();
 
+        using Base::enqueue;
+        void enqueue(Play msg) noexcept;
+        void enqueue(Record msg) noexcept;
+
         void openDevice(int inputDeviceIndex, int outputDeviceIndex);
         void closeDevice();
 
@@ -83,12 +92,12 @@ namespace cupuacu::audio
     private:
         struct PaData
         {
-            cupuacu::Document *playbackDocument = nullptr;
-            cupuacu::Document *recordingDocument = nullptr;
+            std::shared_ptr<cupuacu::audio::AudioBuffer> playbackBuffer;
             bool selectionIsActive = false;
             cupuacu::SelectedChannels selectedChannels =
                 cupuacu::SelectedChannels::BOTH;
             AudioDevices *device = nullptr;
+            uint8_t playbackChannelCount = 0;
             uint64_t playbackStartPos = 0;
             uint64_t playbackEndPos = 0;
             bool playbackLoopEnabled = false;
@@ -98,6 +107,7 @@ namespace cupuacu::audio
             std::shared_ptr<const AudioProcessor> previewProcessor;
             uint64_t recordingEndPos = std::numeric_limits<uint64_t>::max();
             bool recordingBoundedToEnd = false;
+            uint8_t recordingDocumentChannelCount = 0;
             uint8_t recordingChannelCount = 0;
             gui::VuMeter *vuMeter = nullptr;
         };
@@ -119,6 +129,8 @@ namespace cupuacu::audio
                                        const callback_core::StereoMeterLevels &meterLevels,
                                        bool isPlaying,
                                        bool isRecording);
+        static void snapshotQueuedPlayMessage(Play &msg);
+        static void snapshotQueuedRecordMessage(Record &msg);
 
         void closeDeviceLocked();
 

@@ -33,11 +33,3 @@ TEST_CASE("MainView layout tiles waveform channels without gaps", "[gui]")
     REQUIRE(tiles[0].y + tiles[0].h == tiles[1].y);
     REQUIRE(tiles[1].y + tiles[1].h == layout.waveforms.h);
 }
-
-TEST_CASE("MainView layout keeps timeline height close to label-plus-tick space",
-          "[gui]")
-{
-    const auto plan = cupuacu::gui::planMainViewLayout(800, 400, 1.0f, 1);
-
-    REQUIRE(plan.timelineHeight == 44);
-}

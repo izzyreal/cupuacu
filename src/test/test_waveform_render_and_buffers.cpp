@@ -68,7 +68,7 @@ namespace
     };
 
     std::vector<cupuacu::gui::BlockWaveformPeakColumnPlan>
-    planBlockPeaks(const cupuacu::Document &document,
+    planBlockPeaks(const cupuacu::DocumentSession &session,
                    const int channelIndex,
                    const int64_t sampleOffset,
                    const double samplesPerPixel,
@@ -76,7 +76,7 @@ namespace
                    const uint8_t pixelScale)
     {
         return cupuacu::gui::planWaveformOverviewPeakColumns(
-            document, channelIndex, sampleOffset, samplesPerPixel, widthToUse,
+            session, channelIndex, sampleOffset, samplesPerPixel, widthToUse,
             pixelScale);
     }
 } // namespace
@@ -184,10 +184,11 @@ TEST_CASE("Waveform tolerates a temporary channel mismatch during transitions",
     REQUIRE(waveform.getChildren().empty());
 }
 
-TEST_CASE("Document publishes waveform cache results from background work",
+TEST_CASE("DocumentSession publishes waveform cache results from background work",
           "[gui][waveform]")
 {
-    cupuacu::Document document;
+    cupuacu::DocumentSession session;
+    auto &document = session.document;
     document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 256);
     for (int64_t frame = 0; frame < 256; ++frame)
     {
@@ -195,16 +196,16 @@ TEST_CASE("Document publishes waveform cache results from background work",
                            (frame % 32) < 16 ? -0.5f : 0.5f, false);
     }
 
-    document.invalidateWaveformSamples(0, 255);
-    document.updateWaveformCache();
+    session.invalidateWaveformSamples(0, 255);
+    session.updateWaveformCache();
 
     const auto deadline =
         std::chrono::steady_clock::now() + std::chrono::seconds(2);
     bool built = false;
     while (std::chrono::steady_clock::now() < deadline)
     {
-        document.pumpWaveformCacheWork();
-        const auto &cache = document.getWaveformCache(0);
+        session.pumpWaveformCacheWork();
+        const auto &cache = session.getWaveformCache(0);
         if (cache.levelsCount() > 0 && !cache.hasDirtyBlocks())
         {
             built = true;
@@ -219,7 +220,8 @@ TEST_CASE("Document publishes waveform cache results from background work",
 TEST_CASE("Waveform overview planning keeps drawing the clean prefix after frame erasure while cache rebuild is pending",
           "[gui][waveform]")
 {
-    cupuacu::Document document;
+    cupuacu::DocumentSession session;
+    auto &document = session.document;
     const int64_t frameCount = 4096;
     document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, frameCount);
     for (int64_t frame = 0; frame < frameCount; ++frame)
@@ -228,16 +230,16 @@ TEST_CASE("Waveform overview planning keeps drawing the clean prefix after frame
         document.setSample(0, frame, value, false);
     }
 
-    document.invalidateWaveformSamples(0, frameCount - 1);
-    document.updateWaveformCache();
+    session.invalidateWaveformSamples(0, frameCount - 1);
+    session.updateWaveformCache();
 
     const auto deadline =
         std::chrono::steady_clock::now() + std::chrono::seconds(2);
     bool built = false;
     while (std::chrono::steady_clock::now() < deadline)
     {
-        document.pumpWaveformCacheWork();
-        const auto &cache = document.getWaveformCache(0);
+        session.pumpWaveformCacheWork();
+        const auto &cache = session.getWaveformCache(0);
         if (cache.levelsCount() > 0 && !cache.hasDirtyBlocks())
         {
             built = true;
@@ -251,17 +253,18 @@ TEST_CASE("Waveform overview planning keeps drawing the clean prefix after frame
 
     cupuacu::gui::Peak peak{};
     const bool hasPeak = cupuacu::gui::computeWaveformPeakForSampleWindow(
-        document, 0, 0, 64.0, 1, 768.0, 832.0, peak);
+        session, 0, 0, 64.0, 1, 768.0, 832.0, peak);
 
     REQUIRE(hasPeak);
     REQUIRE(peak.min < 0.0f);
     REQUIRE(peak.max > 0.0f);
 }
 
-TEST_CASE("Document reports deterministic waveform cache build progress",
+TEST_CASE("DocumentSession reports deterministic waveform cache build progress",
           "[gui][waveform]")
 {
-    cupuacu::Document document;
+    cupuacu::DocumentSession session;
+    auto &document = session.document;
     constexpr int64_t frameCount = 1 << 22;
     document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, frameCount);
     for (int64_t frame = 0; frame < frameCount; ++frame)
@@ -270,10 +273,10 @@ TEST_CASE("Document reports deterministic waveform cache build progress",
                            (frame % 64) < 32 ? -0.75f : 0.75f, false);
     }
 
-    document.invalidateWaveformSamples(0, frameCount - 1);
-    document.updateWaveformCache();
+    session.invalidateWaveformSamples(0, frameCount - 1);
+    session.updateWaveformCache();
 
-    const auto initialProgress = document.getWaveformCacheBuildProgress();
+    const auto initialProgress = session.getWaveformCacheBuildProgress();
     REQUIRE(initialProgress.has_value());
     REQUIRE(initialProgress->completedBlocks == 0);
     REQUIRE(initialProgress->totalBlocks > 0);
@@ -283,7 +286,7 @@ TEST_CASE("Document reports deterministic waveform cache build progress",
         std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (std::chrono::steady_clock::now() < deadline)
     {
-        if (const auto progress = document.getWaveformCacheBuildProgress();
+        if (const auto progress = session.getWaveformCacheBuildProgress();
             progress.has_value() && progress->totalBlocks > 0)
         {
             seenProgress.push_back(
@@ -291,8 +294,8 @@ TEST_CASE("Document reports deterministic waveform cache build progress",
                 static_cast<double>(progress->totalBlocks));
         }
 
-        document.pumpWaveformCacheWork();
-        if (!document.getWaveformCacheBuildProgress().has_value())
+        session.pumpWaveformCacheWork();
+        if (!session.getWaveformCacheBuildProgress().has_value())
         {
             seenProgress.push_back(1.0);
             break;
@@ -300,17 +303,18 @@ TEST_CASE("Document reports deterministic waveform cache build progress",
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    REQUIRE_FALSE(document.getWaveformCacheBuildProgress().has_value());
+    REQUIRE_FALSE(session.getWaveformCacheBuildProgress().has_value());
     REQUIRE(seenProgress.size() >= 2);
     REQUIRE(std::is_sorted(seenProgress.begin(), seenProgress.end()));
     REQUIRE(seenProgress.front() == Catch::Approx(0.0));
     REQUIRE(seenProgress.back() == Catch::Approx(1.0));
 }
 
-TEST_CASE("Document reports waveform cache progress from applied chunks",
+TEST_CASE("DocumentSession reports waveform cache progress from applied chunks",
           "[gui][waveform]")
 {
-    cupuacu::Document document;
+    cupuacu::DocumentSession session;
+    auto &document = session.document;
     constexpr int64_t frameCount = 1 << 22;
     document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, frameCount);
     for (int64_t frame = 0; frame < frameCount; ++frame)
@@ -319,12 +323,12 @@ TEST_CASE("Document reports waveform cache progress from applied chunks",
                            (frame % 64) < 32 ? -0.5f : 0.5f, false);
     }
 
-    document.invalidateWaveformSamples(0, frameCount - 1);
-    document.updateWaveformCache();
+    session.invalidateWaveformSamples(0, frameCount - 1);
+    session.updateWaveformCache();
 
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
-    const auto beforePump = document.getWaveformCacheBuildProgress();
+    const auto beforePump = session.getWaveformCacheBuildProgress();
     REQUIRE(beforePump.has_value());
     REQUIRE(beforePump->completedBlocks == 0);
     REQUIRE(beforePump->totalBlocks > 0);
@@ -334,11 +338,11 @@ TEST_CASE("Document reports waveform cache progress from applied chunks",
         std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (std::chrono::steady_clock::now() < deadline)
     {
-        if (document.pumpWaveformCacheWork())
+        if (session.pumpWaveformCacheWork())
         {
             observedAppliedAdvance = true;
         }
-        if (const auto progress = document.getWaveformCacheBuildProgress();
+        if (const auto progress = session.getWaveformCacheBuildProgress();
             progress.has_value() && progress->completedBlocks > 0)
         {
             observedAppliedAdvance = true;
@@ -347,7 +351,7 @@ TEST_CASE("Document reports waveform cache progress from applied chunks",
         {
             break;
         }
-        if (!document.getWaveformCacheBuildProgress().has_value())
+        if (!session.getWaveformCacheBuildProgress().has_value())
         {
             break;
         }
@@ -360,7 +364,8 @@ TEST_CASE("Document reports waveform cache progress from applied chunks",
 TEST_CASE("Overview rendering falls back to raw samples past the dirty cache frontier",
           "[gui][waveform]")
 {
-    cupuacu::Document document;
+    cupuacu::DocumentSession session;
+    auto &document = session.document;
     constexpr int64_t frameCount = 32768;
     document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, frameCount);
     for (int64_t frame = 0; frame < frameCount; ++frame)
@@ -369,17 +374,17 @@ TEST_CASE("Overview rendering falls back to raw samples past the dirty cache fro
                            false);
     }
 
-    document.rebuildWaveformCacheSynchronously();
-    document.invalidateWaveformSamples(frameCount / 2, frameCount - 1);
+    session.rebuildWaveformCacheSynchronously();
+    session.invalidateWaveformSamples(frameCount / 2, frameCount - 1);
 
     cupuacu::gui::Peak peak{};
     REQUIRE(cupuacu::gui::computeWaveformPeakForSampleWindow(
-        document, 0, 0, 1024.0, 1, 15 * 1024.0, 16 * 1024.0, peak));
+        session, 0, 0, 1024.0, 1, 15 * 1024.0, 16 * 1024.0, peak));
     REQUIRE(peak.min == Catch::Approx(0.25f));
     REQUIRE(peak.max == Catch::Approx(0.25f));
 
     REQUIRE(cupuacu::gui::computeWaveformPeakForSampleWindow(
-        document, 0, 0, 1024.0, 1, 20 * 1024.0, 21 * 1024.0, peak));
+        session, 0, 0, 1024.0, 1, 20 * 1024.0, 21 * 1024.0, peak));
     REQUIRE(peak.min == Catch::Approx(-0.75f));
     REQUIRE(peak.max == Catch::Approx(-0.75f));
 }
@@ -451,13 +456,13 @@ TEST_CASE("Block waveform overview preserves pasted-copy peaks in the former com
     auto &originalSession = originalState.getActiveDocumentSession();
     originalSession.currentFile = wavPath.string();
     cupuacu::file::loadSampleData(&originalState);
-    originalSession.document.rebuildWaveformCacheSynchronously();
+    originalSession.rebuildWaveformCacheSynchronously();
 
     cupuacu::test::StateWithTestPaths pastedState(cleanup.path() / "pasted");
     auto &pastedSession = pastedState.getActiveDocumentSession();
     pastedSession.currentFile = wavPath.string();
     cupuacu::file::loadSampleData(&pastedState);
-    pastedSession.document.rebuildWaveformCacheSynchronously();
+    pastedSession.rebuildWaveformCacheSynchronously();
 
     const int64_t pasteOffset = 42197;
     pastedSession.selection.setValue1(0.0);
@@ -467,7 +472,7 @@ TEST_CASE("Block waveform overview preserves pasted-copy peaks in the former com
     pastedSession.selection.reset();
     pastedSession.cursor = pasteOffset;
     cupuacu::actions::audio::performPaste(&pastedState);
-    pastedSession.document.rebuildWaveformCacheSynchronously();
+    pastedSession.rebuildWaveformCacheSynchronously();
 
     for (const int totalWidth : {756, 1200})
     {
@@ -480,10 +485,10 @@ TEST_CASE("Block waveform overview preserves pasted-copy peaks in the former com
             samplesPerPixel));
 
         const auto originalColumns =
-            planBlockPeaks(originalSession.document, 0, 0, samplesPerPixel,
+            planBlockPeaks(originalSession, 0, 0, samplesPerPixel,
                            copyWidth, pastedState.pixelScale);
         const auto pastedColumns =
-            planBlockPeaks(pastedSession.document, 0, pasteOffset,
+            planBlockPeaks(pastedSession, 0, pasteOffset,
                            samplesPerPixel, copyWidth, pastedState.pixelScale);
 
         std::map<int, cupuacu::gui::Peak> originalByDrawXi;

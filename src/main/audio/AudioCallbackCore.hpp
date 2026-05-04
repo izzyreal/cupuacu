@@ -1,11 +1,12 @@
 #pragma once
 
-#include "../Document.hpp"
 #include "../SelectedChannels.hpp"
+#include "AudioBuffer.hpp"
 #include "AudioProcessor.hpp"
 #include "RecordedChunk.hpp"
 
 #include <cstdint>
+#include <memory>
 
 namespace cupuacu::audio::callback_core
 {
@@ -22,7 +23,9 @@ namespace cupuacu::audio::callback_core
 
     void writeSilenceToOutput(float *out, unsigned long frames);
 
-    bool fillOutputBuffer(const cupuacu::Document *document,
+    bool fillOutputBuffer(
+                          const std::shared_ptr<cupuacu::audio::AudioBuffer> &buffer,
+                          uint8_t channelCount,
                           bool selectionIsActive,
                           cupuacu::SelectedChannels selectedChannels,
                           int64_t &playbackPosition, uint64_t &playbackStartPos,

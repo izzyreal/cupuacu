@@ -99,7 +99,8 @@ TEST_CASE("State applies undoable preservation mutation on redo and undo",
 TEST_CASE("Recorded chunk applier reports incompatible mutation when channel count expands",
           "[file]")
 {
-    cupuacu::Document document{};
+    cupuacu::DocumentSession session{};
+    auto &document = session.document;
     document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 4);
 
     cupuacu::audio::RecordedChunk chunk{};
@@ -112,7 +113,7 @@ TEST_CASE("Recorded chunk applier reports incompatible mutation when channel cou
     chunk.interleavedSamples[3] = -0.5f;
 
     const auto result =
-        cupuacu::actions::audio::applyRecordedChunk(document, chunk);
+        cupuacu::actions::audio::applyRecordedChunk(session, chunk);
 
     REQUIRE(result.channelLayoutChanged);
     REQUIRE(result.preservationMutation.impact ==

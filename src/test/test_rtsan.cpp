@@ -1,7 +1,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include "Document.hpp"
+#include "DocumentSession.hpp"
 #include "effects/AmplifyFadeEffect.hpp"
 #include "audio/AudioDevices.hpp"
 #include "audio/AudioMessage.hpp"
@@ -56,7 +56,8 @@ TEST_CASE("recording overwrite scenario is safe", "[rtsan]")
 {
     __rtsan::Initialize();
 
-    cupuacu::Document doc;
+    cupuacu::DocumentSession session;
+    auto &doc = session.document;
     doc.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 8);
     for (int64_t i = 0; i < 8; ++i)
     {
@@ -88,7 +89,8 @@ TEST_CASE("recording overwrite scenario is safe", "[rtsan]")
     cupuacu::audio::RecordedChunk chunk{};
     REQUIRE(devices.popRecordedChunk(chunk));
     REQUIRE(chunk.channelCount == 2);
-    const auto applyResult = cupuacu::actions::audio::applyRecordedChunk(doc, chunk);
+    const auto applyResult =
+        cupuacu::actions::audio::applyRecordedChunk(session, chunk);
 
     REQUIRE(applyResult.requiredFrameCount == 6);
     REQUIRE(doc.getFrameCount() == 8);
@@ -102,7 +104,8 @@ TEST_CASE("recording append scenario is safe", "[rtsan]")
 {
     __rtsan::Initialize();
 
-    cupuacu::Document doc;
+    cupuacu::DocumentSession session;
+    auto &doc = session.document;
     doc.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 4);
     for (int64_t i = 0; i < 4; ++i)
     {
@@ -133,7 +136,8 @@ TEST_CASE("recording append scenario is safe", "[rtsan]")
     cupuacu::audio::RecordedChunk chunk{};
     REQUIRE(devices.popRecordedChunk(chunk));
     REQUIRE(chunk.channelCount == 2);
-    const auto applyResult = cupuacu::actions::audio::applyRecordedChunk(doc, chunk);
+    const auto applyResult =
+        cupuacu::actions::audio::applyRecordedChunk(session, chunk);
 
     REQUIRE(applyResult.requiredFrameCount == 7);
     REQUIRE(doc.getFrameCount() == 7);

@@ -19,8 +19,10 @@ void cupuacu::audio::callback_core::writeSilenceToOutput(
 }
 
 bool cupuacu::audio::callback_core::fillOutputBuffer(
-    const cupuacu::Document *document, const bool selectionIsActive,
-    const cupuacu::SelectedChannels selectedChannels, int64_t &playbackPosition,
+    const std::shared_ptr<cupuacu::audio::AudioBuffer> &buffer,
+    const uint8_t channelCount, const bool selectionIsActive,
+    const cupuacu::SelectedChannels selectedChannels,
+    int64_t &playbackPosition,
     uint64_t &playbackStartPos, uint64_t &playbackEndPos,
     const bool playbackLoopEnabled, bool &playbackHasPendingSwitch,
     uint64_t &playbackPendingStartPos, uint64_t &playbackPendingEndPos,
@@ -35,17 +37,14 @@ bool cupuacu::audio::callback_core::fillOutputBuffer(
         return false;
     }
 
-    if (!document || (document->getChannelCount() != 1 &&
-                      document->getChannelCount() != 2))
+    if (!buffer || (channelCount != 1 && channelCount != 2))
     {
         writeSilenceToOutput(out, framesPerBuffer);
         return false;
     }
 
-    const auto docBuf = document->getAudioBuffer();
-    const auto chBufL = docBuf->getImmutableChannelData(0);
-    const auto chBufR =
-        docBuf->getImmutableChannelData(docBuf->getChannelCount() == 2 ? 1 : 0);
+    const auto chBufL = buffer->getImmutableChannelData(0);
+    const auto chBufR = buffer->getImmutableChannelData(channelCount == 2 ? 1 : 0);
 
     const bool shouldPlayChannelL =
         !selectionIsActive || selectedChannels == cupuacu::SelectedChannels::BOTH ||

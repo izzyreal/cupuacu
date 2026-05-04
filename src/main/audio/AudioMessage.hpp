@@ -1,7 +1,9 @@
 #pragma once
 
 #include "SelectedChannels.hpp"
+#include "AudioBuffer.hpp"
 
+#include <cstdint>
 #include <memory>
 #include <variant>
 
@@ -22,6 +24,8 @@ namespace cupuacu::audio
     struct Play
     {
         cupuacu::Document *document;
+        std::shared_ptr<cupuacu::audio::AudioBuffer> bufferSnapshot;
+        uint8_t channelCountSnapshot = 0;
         uint64_t startPos;
         uint64_t endPos;
         bool loopEnabled;
@@ -47,6 +51,7 @@ namespace cupuacu::audio
     struct Record
     {
         cupuacu::Document *document;
+        uint8_t channelCountSnapshot = 0;
         uint64_t startPos;
         uint64_t endPos;
         bool boundedToEnd;

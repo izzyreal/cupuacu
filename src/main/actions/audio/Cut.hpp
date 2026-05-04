@@ -120,10 +120,10 @@ namespace cupuacu::actions::audio
                 });
             publishProgress("Updating waveform", 0.95, true);
 
-            doc.updateWaveformCache();
+            session.updateWaveformCache();
             while (true)
             {
-                const auto buildProgress = doc.getWaveformCacheBuildProgress();
+                const auto buildProgress = session.getWaveformCacheBuildProgress();
                 if (!buildProgress.has_value())
                 {
                     break;
@@ -132,7 +132,7 @@ namespace cupuacu::actions::audio
                     "Updating waveform", 0.95, 1.0,
                     buildProgress->completedBlocks,
                     std::max<int64_t>(1, buildProgress->totalBlocks));
-                if (!doc.pumpWaveformCacheWork())
+                if (!session.pumpWaveformCacheWork())
                 {
                     std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 }
@@ -153,10 +153,10 @@ namespace cupuacu::actions::audio
 
             if (doc.getFrameCount() > 0)
             {
-                doc.invalidateWaveformSamples(startFrame,
-                                              doc.getFrameCount() - 1);
+                session.invalidateWaveformSamples(startFrame,
+                                                 doc.getFrameCount() - 1);
             }
-            doc.updateWaveformCache();
+            session.updateWaveformCache();
             session.syncSelectionAndCursorToDocumentLength();
 
             if (oldSel1 != 0.0 || oldSel2 != 0.0)

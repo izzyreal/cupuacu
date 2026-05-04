@@ -59,12 +59,10 @@ bool SamplePoint::mouseUp(const MouseEvent &e)
     };
 
     state->addUndoable(undoable);
-    auto &waveformCache =
-        state->getActiveDocumentSession().document.getWaveformCache(
-            channelIndex);
+    auto &session = state->getActiveDocumentSession();
+    auto &waveformCache = session.getWaveformCache(channelIndex);
     waveformCache.invalidateSample(sampleIndex);
-    waveformCache.rebuildDirty(state->getActiveDocumentSession()
-                                   .document.getAudioBuffer()
+    waveformCache.rebuildDirty(session.document.getAudioBuffer()
                                    ->getImmutableChannelData(channelIndex)
                                    .data());
 

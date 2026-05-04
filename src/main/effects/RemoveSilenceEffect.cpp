@@ -257,7 +257,8 @@ namespace
                 return;
             }
 
-            const auto &document = state->getActiveDocumentSession().document;
+            const auto &session = state->getActiveDocumentSession();
+            const auto &document = session.document;
             const CacheKey key{
                 .width = width,
                 .startFrame = startFrame,
@@ -298,7 +299,7 @@ namespace
             {
                 cachedChannelColumns.push_back(
                     cupuacu::gui::planWaveformOverviewPeakColumns(
-                        document, static_cast<int>(channels[laneIndex]),
+                        session, static_cast<int>(channels[laneIndex]),
                         startFrame, cachedSamplesPerPixel, width,
                         state->pixelScale));
             }

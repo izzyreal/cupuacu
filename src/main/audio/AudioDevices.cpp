@@ -90,6 +90,18 @@ AudioDevices::~AudioDevices()
     Pa_Terminate();
 }
 
+void AudioDevices::enqueue(Play msg) noexcept
+{
+    snapshotQueuedPlayMessage(msg);
+    Base::enqueue(std::move(msg));
+}
+
+void AudioDevices::enqueue(Record msg) noexcept
+{
+    snapshotQueuedRecordMessage(msg);
+    Base::enqueue(std::move(msg));
+}
+
 void AudioDevices::writeSilenceToOutput(float *out, const unsigned long frames)
 {
     callback_core::writeSilenceToOutput(out, frames);
@@ -101,7 +113,8 @@ bool AudioDevices::fillOutputBuffer(PaData &data, float *out,
 {
     AudioDeviceState *state = &data.device->activeState;
     const bool playedAnyFrame = callback_core::fillOutputBuffer(
-        data.playbackDocument, data.selectionIsActive, data.selectedChannels,
+        data.playbackBuffer, data.playbackChannelCount, data.selectionIsActive,
+        data.selectedChannels,
         state->playbackPosition, data.playbackStartPos, data.playbackEndPos,
         data.playbackLoopEnabled, data.playbackHasPendingSwitch,
         data.playbackPendingStartPos, data.playbackPendingEndPos,
@@ -110,7 +123,8 @@ bool AudioDevices::fillOutputBuffer(PaData &data, float *out,
         data.selectedChannels);
     if (!state->isPlaying)
     {
-        data.playbackDocument = nullptr;
+        data.playbackBuffer.reset();
+        data.playbackChannelCount = 0;
         data.previewProcessor.reset();
     }
     return playedAnyFrame;
@@ -121,7 +135,7 @@ void AudioDevices::recordInputIntoQueue(PaData &data, const float *input,
                                         callback_core::StereoMeterLevels &meterLevels)
 {
     AudioDeviceState *state = &data.device->activeState;
-    if (!state->isRecording || !data.recordingDocument || !input)
+    if (!state->isRecording || !input)
     {
         return;
     }
@@ -129,8 +143,8 @@ void AudioDevices::recordInputIntoQueue(PaData &data, const float *input,
     int recordingChannels = data.recordingChannelCount;
     if (recordingChannels <= 0)
     {
-        recordingChannels = static_cast<int>(std::clamp<int64_t>(
-            data.recordingDocument->getChannelCount(), 1, 2));
+        recordingChannels = static_cast<int>(std::max<uint8_t>(
+            data.recordingDocumentChannelCount, uint8_t{1}));
     }
     if (recordingChannels <= 0)
     {
@@ -143,7 +157,6 @@ void AudioDevices::recordInputIntoQueue(PaData &data, const float *input,
         if (state->recordingPosition >= static_cast<int64_t>(data.recordingEndPos))
         {
             state->isRecording = false;
-            data.recordingDocument = nullptr;
             return;
         }
         const uint64_t remaining =
@@ -155,7 +168,6 @@ void AudioDevices::recordInputIntoQueue(PaData &data, const float *input,
     if (framesToRecord == 0)
     {
         state->isRecording = false;
-        data.recordingDocument = nullptr;
         return;
     }
 
@@ -169,7 +181,6 @@ void AudioDevices::recordInputIntoQueue(PaData &data, const float *input,
         state->recordingPosition >= static_cast<int64_t>(data.recordingEndPos))
     {
         state->isRecording = false;
-        data.recordingDocument = nullptr;
     }
 }
 
@@ -339,11 +350,54 @@ void AudioDevices::closeDeviceLocked()
     stream = nullptr;
 }
 
+void AudioDevices::snapshotQueuedPlayMessage(Play &msg)
+{
+    if (!msg.document)
+    {
+        msg.bufferSnapshot.reset();
+        msg.channelCountSnapshot = 0;
+        return;
+    }
+
+    msg.bufferSnapshot = msg.document->getAudioBuffer();
+    msg.channelCountSnapshot =
+        static_cast<uint8_t>(std::clamp<int64_t>(msg.document->getChannelCount(),
+                                                 0, 2));
+}
+
+void AudioDevices::snapshotQueuedRecordMessage(Record &msg)
+{
+    if (!msg.document)
+    {
+        msg.channelCountSnapshot = 0;
+        return;
+    }
+
+    msg.channelCountSnapshot =
+        static_cast<uint8_t>(std::clamp<int64_t>(msg.document->getChannelCount(),
+                                                 0, 2));
+}
+
 void AudioDevices::applyMessage(const AudioMessage &msg) noexcept
 {
     auto visitor = Overload{[&](const Play &m)
                             {
-                                paData.playbackDocument = m.document;
+                                paData.playbackBuffer = m.bufferSnapshot;
+                                paData.playbackChannelCount =
+                                    m.channelCountSnapshot;
+                                if (!paData.playbackBuffer && m.document)
+                                {
+                                    paData.playbackBuffer =
+                                        m.document->getAudioBuffer();
+                                }
+                                if (paData.playbackChannelCount == 0 && m.document)
+                                {
+                                    paData.playbackChannelCount =
+                                        static_cast<uint8_t>(
+                                            std::clamp<int64_t>(
+                                                m.document->getChannelCount(),
+                                                0, 2));
+                                }
                                 paData.device = this;
                                 activeState.playbackPosition = m.startPos;
                                 paData.playbackStartPos = m.startPos;
@@ -358,12 +412,13 @@ void AudioDevices::applyMessage(const AudioMessage &msg) noexcept
                             },
                             [&](const Stop &)
                             {
-                                paData.playbackDocument = nullptr;
-                                paData.recordingDocument = nullptr;
+                                paData.playbackBuffer.reset();
+                                paData.playbackChannelCount = 0;
                                 paData.playbackLoopEnabled = false;
                                 paData.playbackHasPendingSwitch = false;
                                 paData.previewProcessor.reset();
                                 paData.recordingBoundedToEnd = false;
+                                paData.recordingDocumentChannelCount = 0;
                                 activeState.playbackPosition = -1;
                                 activeState.recordingPosition = -1;
                                 activeState.isPlaying = false;
@@ -371,11 +426,21 @@ void AudioDevices::applyMessage(const AudioMessage &msg) noexcept
                             },
                             [&](const Record &m)
                             {
-                                paData.recordingDocument = m.document;
                                 paData.device = this;
                                 activeState.recordingPosition = m.startPos;
                                 paData.recordingEndPos = m.endPos;
                                 paData.recordingBoundedToEnd = m.boundedToEnd;
+                                paData.recordingDocumentChannelCount =
+                                    m.channelCountSnapshot;
+                                if (paData.recordingDocumentChannelCount == 0 &&
+                                    m.document)
+                                {
+                                    paData.recordingDocumentChannelCount =
+                                        static_cast<uint8_t>(
+                                            std::clamp<int64_t>(
+                                                m.document->getChannelCount(),
+                                                0, 2));
+                                }
                                 activeState.isRecording = true;
                                 paData.vuMeter = m.vuMeter;
                             },
@@ -390,7 +455,8 @@ void AudioDevices::applyMessage(const AudioMessage &msg) noexcept
 
                                 if (m.endPos <= m.startPos)
                                 {
-                                    paData.playbackDocument = nullptr;
+                                    paData.playbackBuffer.reset();
+                                    paData.playbackChannelCount = 0;
                                     activeState.isPlaying = false;
                                     activeState.playbackPosition = -1;
                                     return;
@@ -446,7 +512,8 @@ void AudioDevices::applyMessage(const AudioMessage &msg) noexcept
                                 if (activeState.playbackPosition >=
                                     static_cast<int64_t>(paData.playbackEndPos))
                                 {
-                                    paData.playbackDocument = nullptr;
+                                    paData.playbackBuffer.reset();
+                                    paData.playbackChannelCount = 0;
                                     activeState.isPlaying = false;
                                     activeState.playbackPosition = -1;
                                 }

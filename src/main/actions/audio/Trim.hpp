@@ -151,7 +151,7 @@ namespace cupuacu::actions::audio
 
             doc.removeFrames(endFrame, afterCount);
             doc.removeFrames(0, beforeCount);
-            doc.updateWaveformCache();
+            session.updateWaveformCache();
             session.syncSelectionAndCursorToDocumentLength();
 
             updateCursorPos(state, 0);
@@ -181,9 +181,9 @@ namespace cupuacu::actions::audio
 
             if (doc.getFrameCount() > 0)
             {
-                doc.invalidateWaveformSamples(0, doc.getFrameCount() - 1);
+                session.invalidateWaveformSamples(0, doc.getFrameCount() - 1);
             }
-            doc.updateWaveformCache();
+            session.updateWaveformCache();
             session.syncSelectionAndCursorToDocumentLength();
 
             updateCursorPos(state, beforeCount);

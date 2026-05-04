@@ -650,7 +650,8 @@ TEST_CASE("Dynamics compresses selected samples and respects undo", "[actions]")
 
 TEST_CASE("Recorded chunk applier initializes empty document from chunk", "[actions]")
 {
-    cupuacu::Document doc;
+    cupuacu::DocumentSession session;
+    auto &doc = session.document;
     cupuacu::audio::RecordedChunk chunk{};
     chunk.startFrame = 0;
     chunk.frameCount = 3;
@@ -663,7 +664,7 @@ TEST_CASE("Recorded chunk applier initializes empty document from chunk", "[acti
     chunk.interleavedSamples[5] = -0.25f;
 
     const auto result =
-        cupuacu::actions::audio::applyRecordedChunk(doc, chunk);
+        cupuacu::actions::audio::applyRecordedChunk(session, chunk);
 
     REQUIRE(result.channelLayoutChanged);
     REQUIRE(result.waveformCacheChanged);
@@ -679,7 +680,8 @@ TEST_CASE("Recorded chunk applier initializes empty document from chunk", "[acti
 TEST_CASE("Recorded chunk applier expands channel layout and appends frames",
           "[actions]")
 {
-    cupuacu::Document doc;
+    cupuacu::DocumentSession session;
+    auto &doc = session.document;
     doc.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 2);
     doc.setSample(0, 0, 10.0f, false);
     doc.setSample(0, 1, 20.0f, false);
@@ -696,7 +698,7 @@ TEST_CASE("Recorded chunk applier expands channel layout and appends frames",
     chunk.interleavedSamples[5] = 6.0f;
 
     const auto result =
-        cupuacu::actions::audio::applyRecordedChunk(doc, chunk);
+        cupuacu::actions::audio::applyRecordedChunk(session, chunk);
 
     REQUIRE(result.channelLayoutChanged);
     REQUIRE(result.waveformCacheChanged);

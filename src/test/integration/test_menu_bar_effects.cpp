@@ -88,19 +88,6 @@ namespace
         return harness;
     }
 
-    void clickButton(cupuacu::gui::TextButton *button)
-    {
-        REQUIRE(button != nullptr);
-        REQUIRE(button->mouseDown(cupuacu::test::integration::leftMouseDown()));
-        REQUIRE(button->mouseUp(cupuacu::test::integration::leftMouseUp()));
-        if (auto *window = button->getWindow())
-        {
-            window->handleMouseEvent(cupuacu::gui::MouseEvent{
-                cupuacu::gui::MOVE, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f,
-                cupuacu::gui::MouseButtonState{false, false, false}, 0});
-        }
-    }
-
     void sendKeyDown(cupuacu::gui::Window *window, const SDL_Scancode scancode)
     {
         REQUIRE(window != nullptr);
@@ -110,15 +97,6 @@ namespace
         event.key.windowID = window->getId();
         event.key.scancode = scancode;
         window->handleEvent(event);
-    }
-
-    void processPendingSdlWindowEvents(cupuacu::State *state)
-    {
-        SDL_Event event{};
-        while (SDL_PollEvent(&event))
-        {
-            cupuacu::gui::handleAppEvent(state, &event);
-        }
     }
 
     void drainPendingEffectWork(cupuacu::State *state)
@@ -307,7 +285,7 @@ TEST_CASE(
     REQUIRE(fadeButton != nullptr);
     REQUIRE(fadeLengthInput != nullptr);
 
-    clickButton(snapButton);
+    cupuacu::test::integration::clickButton(snapButton);
     REQUIRE(state.effectSettings.amplifyEnvelope.snapEnabled);
 
     window->setFocusedComponent(fadeLengthInput);
@@ -315,7 +293,7 @@ TEST_CASE(
     window->setFocusedComponent(nullptr);
     REQUIRE(state.effectSettings.amplifyEnvelope.fadeLengthMs == Approx(250.0));
 
-    clickButton(fadeButton);
+    cupuacu::test::integration::clickButton(fadeButton);
     const auto &settings = state.amplifyEnvelopeDialog->getSettings();
     REQUIRE(settings.points.size() == 4);
     REQUIRE(settings.points[0].percent == Approx(0.0));
@@ -618,7 +596,7 @@ TEST_CASE(
         state.amplifyFadeDialog->getWindow()->getRootComponent(),
         "TextButton:Preview");
 
-    clickButton(previewButton);
+    cupuacu::test::integration::clickButton(previewButton);
     state.audioDevices->drainQueue();
 
     REQUIRE(state.audioDevices->isPlaying());
@@ -630,16 +608,16 @@ TEST_CASE(
     state.audioDevices->processCallbackCycle(nullptr, output.data(), 4);
     REQUIRE(state.audioDevices->getPlaybackPosition() == 14);
 
-    clickButton(previewButton);
+    cupuacu::test::integration::clickButton(previewButton);
     state.audioDevices->drainQueue();
     REQUIRE_FALSE(state.audioDevices->isPlaying());
 
-    clickButton(previewButton);
+    cupuacu::test::integration::clickButton(previewButton);
     state.audioDevices->drainQueue();
     REQUIRE(state.audioDevices->isPlaying());
     REQUIRE(state.audioDevices->getPlaybackPosition() == 10);
 
-    clickButton(previewButton);
+    cupuacu::test::integration::clickButton(previewButton);
     state.audioDevices->drainQueue();
     REQUIRE_FALSE(state.audioDevices->isPlaying());
 }
@@ -674,8 +652,8 @@ TEST_CASE(
     auto *applyButton = cupuacu::test::integration::findByNameRecursive<
         cupuacu::gui::TextButton>(root, "TextButton:Apply");
 
-    clickButton(fadeOutButton);
-    clickButton(applyButton);
+    cupuacu::test::integration::clickButton(fadeOutButton);
+    cupuacu::test::integration::clickButton(applyButton);
     drainPendingEffectWork(&state);
 
     REQUIRE(state.getActiveUndoables().size() == 1);
@@ -707,8 +685,8 @@ TEST_CASE(
     auto *cancelButton = cupuacu::test::integration::findByNameRecursive<
         cupuacu::gui::TextButton>(root, "TextButton:Cancel");
 
-    clickButton(fadeInButton);
-    clickButton(cancelButton);
+    cupuacu::test::integration::clickButton(fadeInButton);
+    cupuacu::test::integration::clickButton(cancelButton);
 
     REQUIRE(state.getActiveUndoables().empty());
     REQUIRE(state.modalWindow == nullptr);
@@ -748,10 +726,10 @@ TEST_CASE("AmplifyFade dialog treats Enter as Apply", "[integration]")
     auto *root = state.amplifyFadeDialog->getWindow()->getRootComponent();
     auto *fadeOutButton = cupuacu::test::integration::findByNameRecursive<
         cupuacu::gui::TextButton>(root, "TextButton:Fade out");
-    clickButton(fadeOutButton);
+    cupuacu::test::integration::clickButton(fadeOutButton);
 
     sendKeyDown(state.amplifyFadeDialog->getWindow(), SDL_SCANCODE_RETURN);
-    processPendingSdlWindowEvents(&state);
+    cupuacu::test::integration::processPendingSdlWindowEvents(&state);
     drainPendingEffectWork(&state);
 
     REQUIRE(state.getActiveUndoables().size() == 1);
@@ -783,7 +761,7 @@ TEST_CASE(
         state.dynamicsDialog->getWindow()->getRootComponent(),
         "TextButton:Preview");
 
-    clickButton(previewButton);
+    cupuacu::test::integration::clickButton(previewButton);
     state.audioDevices->drainQueue();
 
     REQUIRE(state.audioDevices->isPlaying());
@@ -795,11 +773,11 @@ TEST_CASE(
     state.audioDevices->processCallbackCycle(nullptr, output.data(), 3);
     REQUIRE(state.audioDevices->getPlaybackPosition() == 3);
 
-    clickButton(previewButton);
+    cupuacu::test::integration::clickButton(previewButton);
     state.audioDevices->drainQueue();
     REQUIRE_FALSE(state.audioDevices->isPlaying());
 
-    clickButton(previewButton);
+    cupuacu::test::integration::clickButton(previewButton);
     state.audioDevices->drainQueue();
     REQUIRE(state.audioDevices->isPlaying());
     REQUIRE(state.audioDevices->getPlaybackPosition() == 0);

@@ -200,7 +200,7 @@ TEST_CASE("Pending open work loads queued dialog files asynchronously",
     for (int attempt = 0; attempt < 200; ++attempt)
     {
         cupuacu::actions::io::processPendingOpenWork(&state);
-        state.getActiveDocumentSession().document.pumpWaveformCacheWork();
+        state.getActiveDocumentSession().pumpWaveformCacheWork();
         for (auto *window : state.windows)
         {
             if (window && window->isOpen() && window->getRootComponent())
@@ -259,7 +259,7 @@ TEST_CASE("Pending open work commits the document before waveform cache build co
     for (int attempt = 0; attempt < 5000; ++attempt)
     {
         cupuacu::actions::io::processPendingOpenWork(&state);
-        state.getActiveDocumentSession().document.pumpWaveformCacheWork();
+        state.getActiveDocumentSession().pumpWaveformCacheWork();
         for (auto *window : state.windows)
         {
             if (window && window->isOpen() && window->getRootComponent())

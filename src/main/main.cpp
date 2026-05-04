@@ -16,9 +16,10 @@
 #include "gui/UiScale.hpp"
 #include "gui/Window.hpp"
 #include "actions/effects/BackgroundEffect.hpp"
+#include "actions/DocumentRestore.hpp"
+#include "actions/DocumentSessionPersistence.hpp"
 #include "actions/io/BackgroundOpen.hpp"
 #include "actions/io/BackgroundSave.hpp"
-#include "actions/DocumentLifecycle.hpp"
 
 #include <cstdint>
 #include <filesystem>

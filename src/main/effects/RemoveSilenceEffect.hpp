@@ -454,9 +454,10 @@ namespace cupuacu::effects
             }
             if (document.getFrameCount() > 0)
             {
-                document.invalidateWaveformSamples(0, document.getFrameCount() - 1);
+                session.invalidateWaveformSamples(0,
+                                                  document.getFrameCount() - 1);
             }
-            document.updateWaveformCache();
+            session.updateWaveformCache();
             session.syncSelectionAndCursorToDocumentLength();
             const int64_t newRelevantLength =
                 std::max<int64_t>(0, originalRelevantLength - removedFrameCount);
@@ -504,9 +505,10 @@ namespace cupuacu::effects
             }
             if (document.getFrameCount() > 0)
             {
-                document.invalidateWaveformSamples(0, document.getFrameCount() - 1);
+                session.invalidateWaveformSamples(0,
+                                                  document.getFrameCount() - 1);
             }
-            document.updateWaveformCache();
+            session.updateWaveformCache();
             session.syncSelectionAndCursorToDocumentLength();
             session.cursor = originalCursor;
             if (hadSelection)
@@ -754,8 +756,9 @@ namespace cupuacu::effects
                 return;
             }
 
-            auto &document =
-                state->tabs[static_cast<std::size_t>(tabIndex)].session.document;
+            auto &session =
+                state->tabs[static_cast<std::size_t>(tabIndex)].session;
+            auto &document = session.document;
             for (std::size_t channelIndex = 0; channelIndex < targetChannels.size();
                  ++channelIndex)
             {
@@ -766,10 +769,10 @@ namespace cupuacu::effects
                         channel, startFrame + frame,
                         samples[channelIndex][static_cast<std::size_t>(frame)], true);
                 }
-                document.getWaveformCache(channel).invalidateSamples(
+                session.getWaveformCache(channel).invalidateSamples(
                     startFrame, startFrame + frameCount - 1);
             }
-            document.updateWaveformCache();
+            session.updateWaveformCache();
         }
     };
 

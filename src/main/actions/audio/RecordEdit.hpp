@@ -93,12 +93,12 @@ namespace cupuacu::actions::audio
                 }
                 if (framesToWrite > 0)
                 {
-                    doc.getWaveformCache(ch).invalidateSamples(
+                    session.getWaveformCache(ch).invalidateSamples(
                         data.startFrame, data.startFrame + framesToWrite - 1);
                 }
             }
 
-            doc.updateWaveformCache();
+            session.updateWaveformCache();
             session.syncSelectionAndCursorToDocumentLength();
             restoreNewSessionState();
         }
@@ -144,7 +144,7 @@ namespace cupuacu::actions::audio
                 }
                 if (framesToRestore > 0)
                 {
-                    doc.getWaveformCache(ch).invalidateSamples(
+                    session.getWaveformCache(ch).invalidateSamples(
                         data.startFrame, data.startFrame + framesToRestore - 1);
                 }
             }
@@ -161,7 +161,7 @@ namespace cupuacu::actions::audio
                 }
             }
 
-            doc.updateWaveformCache();
+            session.updateWaveformCache();
             session.syncSelectionAndCursorToDocumentLength();
             restoreOldSessionState();
         }

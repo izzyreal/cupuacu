@@ -55,9 +55,10 @@ namespace cupuacu::actions::io
         }
 
         std::optional<double>
-        normalizedWaveformCacheBuildProgress(const cupuacu::Document &document)
+        normalizedWaveformCacheBuildProgress(
+            const cupuacu::DocumentSession &session)
         {
-            const auto progress = document.getWaveformCacheBuildProgress();
+            const auto progress = session.getWaveformCacheBuildProgress();
             if (!progress.has_value())
             {
                 return std::nullopt;
@@ -174,9 +175,9 @@ namespace cupuacu::actions::io
             {
                 rememberRecentFile(state, snapshot.path);
             }
-            session.document.updateWaveformCache();
+            session.updateWaveformCache();
             if (const auto progress =
-                    normalizedWaveformCacheBuildProgress(session.document);
+                    normalizedWaveformCacheBuildProgress(session);
                 progress.has_value())
             {
                 state->pendingOpenWaveformBuild = {
@@ -401,11 +402,11 @@ namespace cupuacu::actions::io
             }
             else
             {
-                auto &document =
-                    state->tabs[static_cast<std::size_t>(tabIndex)].session.document;
-                const bool cacheStateChanged = document.pumpWaveformCacheWork();
+                auto &session =
+                    state->tabs[static_cast<std::size_t>(tabIndex)].session;
+                const bool cacheStateChanged = session.pumpWaveformCacheWork();
                 if (const auto progress =
-                        normalizedWaveformCacheBuildProgress(document);
+                        normalizedWaveformCacheBuildProgress(session);
                     progress.has_value())
                 {
                     cupuacu::updateLongTask(state, "Building waveform cache",

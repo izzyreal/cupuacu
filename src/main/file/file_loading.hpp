@@ -520,9 +520,12 @@ namespace cupuacu::file
                                       const std::string &path,
                                       LoadedAudioFile loaded)
     {
+        session.stopWaveformCacheBuild();
         session.currentFileExportSettings = loaded.exportSettings;
         session.setPreservationReference(path, session.currentFileExportSettings);
         session.document = std::move(loaded.document);
+        session.waveformCaches.resetToChannelCount(
+            session.document.getChannelCount());
         session.selection.reset();
         session.cursor = 0;
         session.syncSelectionAndCursorToDocumentLength();

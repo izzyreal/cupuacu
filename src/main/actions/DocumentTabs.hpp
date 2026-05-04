@@ -4,7 +4,7 @@
 #include "../State.hpp"
 #include "../gui/MainViewAccess.hpp"
 #include "../gui/Waveform.hpp"
-#include "DocumentLifecycle.hpp"
+#include "DocumentUi.hpp"
 #include "Play.hpp"
 
 #include <algorithm>

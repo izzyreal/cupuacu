@@ -190,8 +190,8 @@ TEST_CASE("Loading a second file fully reinitializes document cache and shape",
 
     session.currentFile = firstPath.string();
     cupuacu::file::loadSampleData(&state);
-    session.document.rebuildWaveformCacheSynchronously();
-    REQUIRE(session.document.getWaveformCache(0).levelsCount() > 0);
+    session.rebuildWaveformCacheSynchronously();
+    REQUIRE(session.getWaveformCache(0).levelsCount() > 0);
 
     session.selection.setHighest(1'000'000.0);
     session.selection.setValue1(10.0);
@@ -206,7 +206,7 @@ TEST_CASE("Loading a second file fully reinitializes document cache and shape",
     REQUIRE(session.document.getSampleRate() == 22050);
     REQUIRE(session.document.getChannelCount() == 1);
     REQUIRE(session.document.getFrameCount() == 32);
-    REQUIRE(session.document.getWaveformCache(0).levelsCount() == 0);
+    REQUIRE(session.getWaveformCache(0).levelsCount() == 0);
     REQUIRE_FALSE(session.selection.isActive());
     REQUIRE(session.cursor == 0);
 

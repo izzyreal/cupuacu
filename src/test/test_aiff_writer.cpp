@@ -544,7 +544,7 @@ TEST_CASE("Overwrite preserves non-audio AIFF chunks around SSND", "[file]")
     state.getActiveDocumentSession().currentFile = aiffPath.string();
     cupuacu::file::loadSampleData(&state);
     state.getActiveDocumentSession().document.setSample(0, 1, 0.25f);
-    state.getActiveDocumentSession().document.rebuildWaveformCacheSynchronously();
+    state.getActiveDocumentSession().rebuildWaveformCacheSynchronously();
     REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
     REQUIRE(readChunkBytes(aiffPath, "NAME") == originalNameChunk);
@@ -589,10 +589,11 @@ TEST_CASE("Overwrite after length change keeps AIFF sizes and chunk order consis
     state.getActiveDocumentSession().currentFile = aiffPath.string();
     cupuacu::file::loadSampleData(&state);
 
+    auto &session = state.getActiveDocumentSession();
     auto &doc = state.getActiveDocumentSession().document;
     doc.insertFrames(4, 1);
     doc.setSample(0, 4, 0.5f, true);
-    doc.rebuildWaveformCacheSynchronously();
+    session.rebuildWaveformCacheSynchronously();
 
     REQUIRE(cupuacu::actions::overwritePreserving(&state));
 

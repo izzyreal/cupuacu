@@ -184,8 +184,9 @@ namespace cupuacu::effects
                 return;
             }
 
-            auto &document =
-                state->tabs[static_cast<std::size_t>(tabIndex)].session.document;
+            auto &session =
+                state->tabs[static_cast<std::size_t>(tabIndex)].session;
+            auto &document = session.document;
             if (document.getChannelCount() <= 0)
             {
                 return;
@@ -235,8 +236,9 @@ namespace cupuacu::effects
                 return;
             }
 
-            auto &document =
-                state->tabs[static_cast<std::size_t>(tabIndex)].session.document;
+            auto &session =
+                state->tabs[static_cast<std::size_t>(tabIndex)].session;
+            auto &document = session.document;
             for (size_t channelIndex = 0; channelIndex < targetChannels.size();
                  ++channelIndex)
             {
@@ -247,10 +249,10 @@ namespace cupuacu::effects
                         channel, startFrame + frame,
                         samples[channelIndex][static_cast<size_t>(frame)], true);
                 }
-                document.getWaveformCache(channel).invalidateSamples(
+                session.getWaveformCache(channel).invalidateSamples(
                     startFrame, startFrame + frameCount - 1);
             }
-            document.updateWaveformCache();
+            session.updateWaveformCache();
         }
     };
 
@@ -295,30 +297,30 @@ namespace cupuacu::effects
 
         void updateSettings(const AmplifyFadeSettings &settingsToUse)
         {
-            std::atomic_store_explicit(
-                &settingsSnapshot,
-                std::make_shared<const AmplifyFadeSettings>(settingsToUse),
-                std::memory_order_release);
+            startPercent.store(settingsToUse.startPercent,
+                               std::memory_order_release);
+            endPercent.store(settingsToUse.endPercent,
+                             std::memory_order_release);
+            curveIndex.store(settingsToUse.curveIndex,
+                             std::memory_order_release);
         }
 
         void process(float *interleavedStereo, const unsigned long frameCount,
                      const cupuacu::audio::AudioProcessContext &context) const override
         {
-            const auto settings =
-                std::atomic_load_explicit(&settingsSnapshot, std::memory_order_acquire);
-            if (!settings)
-            {
-                return;
-            }
-
             if (!interleavedStereo || frameCount == 0 ||
                 context.effectEndFrame <= context.effectStartFrame)
             {
                 return;
             }
 
+            AmplifyFadeSettings settings{};
+            settings.startPercent =
+                startPercent.load(std::memory_order_acquire);
+            settings.endPercent = endPercent.load(std::memory_order_acquire);
+            settings.curveIndex = curveIndex.load(std::memory_order_acquire);
             const auto curve =
-                AmplifyFadeUndoable::clampCurve(settings->curveIndex);
+                AmplifyFadeUndoable::clampCurve(settings.curveIndex);
             const int64_t totalFrameCount = static_cast<int64_t>(
                 context.effectEndFrame - context.effectStartFrame);
             for (unsigned long i = 0; i < frameCount; ++i)
@@ -335,7 +337,7 @@ namespace cupuacu::effects
                     absoluteFrame - static_cast<int64_t>(context.effectStartFrame);
                 const float gain = static_cast<float>(
                     AmplifyFadeUndoable::gainForRelativeFrame(
-                        *settings, curve, relativeFrame, totalFrameCount));
+                        settings, curve, relativeFrame, totalFrameCount));
                 float *frame = interleavedStereo + i * 2;
                 if (context.targetChannels != cupuacu::SelectedChannels::RIGHT)
                 {
@@ -349,7 +351,9 @@ namespace cupuacu::effects
         }
 
     private:
-        mutable std::shared_ptr<const AmplifyFadeSettings> settingsSnapshot;
+        std::atomic<double> startPercent{100.0};
+        std::atomic<double> endPercent{100.0};
+        std::atomic<int> curveIndex{0};
     };
 
     class AmplifyFadePreviewSession

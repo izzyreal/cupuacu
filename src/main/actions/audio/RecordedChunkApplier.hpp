@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../Document.hpp"
+#include "../../DocumentSession.hpp"
 #include "../../audio/RecordedChunk.hpp"
 #include "../../file/OverwritePreservationMutation.hpp"
 
@@ -18,9 +18,10 @@ namespace cupuacu::actions::audio
     };
 
     inline RecordedChunkApplyResult
-    applyRecordedChunk(cupuacu::Document &doc,
+    applyRecordedChunk(cupuacu::DocumentSession &session,
                        const cupuacu::audio::RecordedChunk &chunk)
     {
+        auto &doc = session.document;
         RecordedChunkApplyResult result{};
         result.requiredFrameCount =
             chunk.startFrame + static_cast<int64_t>(chunk.frameCount);
@@ -46,7 +47,7 @@ namespace cupuacu::actions::audio
 
             for (int ch = oldChannelCount; ch < chunkChannelCount; ++ch)
             {
-                auto &cache = doc.getWaveformCache(ch);
+                auto &cache = session.getWaveformCache(ch);
                 cache.clear();
                 cache.applyInsert(0, doc.getFrameCount());
                 if (doc.getFrameCount() > 0)
@@ -73,8 +74,8 @@ namespace cupuacu::actions::audio
         {
             for (int ch = 0; ch < doc.getChannelCount(); ++ch)
             {
-                doc.getWaveformCache(ch).invalidateSamples(overwriteStart,
-                                                           overwriteEnd);
+                session.getWaveformCache(ch).invalidateSamples(overwriteStart,
+                                                               overwriteEnd);
             }
             result.waveformCacheChanged = true;
         }

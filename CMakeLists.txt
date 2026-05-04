@@ -144,6 +144,7 @@ FetchContent_MakeAvailable(json)
 
 set(CUPUACU_SHARED_SOURCES
     src/main/Document.cpp
+    src/main/waveform/DocumentWaveformCaches.cpp
     src/main/State.cpp
     src/main/Paths.cpp
     src/main/LongTask.cpp

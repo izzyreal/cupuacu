@@ -8,6 +8,7 @@
 #include "audio/RecordedChunk.hpp"
 #include "effects/AmplifyFadeEffect.hpp"
 
+#include <algorithm>
 #include <readerwriterqueue.h>
 #include <vector>
 
@@ -25,6 +26,34 @@ namespace
             }
         }
     };
+
+    bool fillOutputBuffer(cupuacu::Document &doc,
+                          const bool selectionIsActive,
+                          const cupuacu::SelectedChannels selectedChannels,
+                          int64_t &playbackPosition,
+                          uint64_t &playbackStartPos,
+                          uint64_t &playbackEndPos,
+                          const bool playbackLoopEnabled,
+                          bool &playbackHasPendingSwitch,
+                          uint64_t &playbackPendingStartPos,
+                          uint64_t &playbackPendingEndPos, bool &isPlaying,
+                          float *out, const unsigned long framesPerBuffer,
+                          cupuacu::audio::callback_core::StereoMeterLevels &meterLevels,
+                          const cupuacu::audio::AudioProcessor *processor = nullptr,
+                          const uint64_t effectStartPos = 0,
+                          const uint64_t effectEndPos = 0,
+                          const cupuacu::SelectedChannels processorChannels =
+                              cupuacu::SelectedChannels::BOTH)
+    {
+        return cupuacu::audio::callback_core::fillOutputBuffer(
+            doc.getAudioBuffer(),
+            static_cast<uint8_t>(std::clamp<int64_t>(doc.getChannelCount(), 0, 2)),
+            selectionIsActive, selectedChannels, playbackPosition,
+            playbackStartPos, playbackEndPos, playbackLoopEnabled,
+            playbackHasPendingSwitch, playbackPendingStartPos,
+            playbackPendingEndPos, isPlaying, out, framesPerBuffer, meterLevels,
+            processor, effectStartPos, effectEndPos, processorChannels);
+    }
 }
 
 TEST_CASE("AudioCallbackCore fillOutputBuffer handles invalid negative playback position",
@@ -48,8 +77,8 @@ TEST_CASE("AudioCallbackCore fillOutputBuffer handles invalid negative playback 
     cupuacu::audio::callback_core::StereoMeterLevels meterLevels{};
     std::vector<float> out(8, 1.0f);
 
-    const bool playedAnyFrame = cupuacu::audio::callback_core::fillOutputBuffer(
-        &doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
+    const bool playedAnyFrame = fillOutputBuffer(
+        doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
         playbackStartPos, playbackEndPos, false, playbackHasPendingSwitch,
         playbackPendingStartPos, playbackPendingEndPos, isPlaying, out.data(), 4,
         meterLevels);
@@ -87,8 +116,8 @@ TEST_CASE("AudioCallbackCore writes silence after non-loop stop in buffer",
     cupuacu::audio::callback_core::StereoMeterLevels meterLevels{};
     std::vector<float> out(8, 1.0f); // 4 stereo frames
 
-    const bool playedAnyFrame = cupuacu::audio::callback_core::fillOutputBuffer(
-        &doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
+    const bool playedAnyFrame = fillOutputBuffer(
+        doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
         playbackStartPos, playbackEndPos, false, playbackHasPendingSwitch,
         playbackPendingStartPos, playbackPendingEndPos, isPlaying, out.data(), 4,
         meterLevels);
@@ -132,8 +161,8 @@ TEST_CASE("AudioCallbackCore preview processor transforms only played frames",
     std::vector<float> out(8, 0.0f);
     HalfGainProcessor processor{};
 
-    const bool playedAnyFrame = cupuacu::audio::callback_core::fillOutputBuffer(
-        &doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
+    const bool playedAnyFrame = fillOutputBuffer(
+        doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
         playbackStartPos, playbackEndPos, false, playbackHasPendingSwitch,
         playbackPendingStartPos, playbackPendingEndPos, isPlaying, out.data(), 4,
         meterLevels, &processor, playbackStartPos, playbackEndPos,
@@ -176,8 +205,8 @@ TEST_CASE("Amplify/Fade preview processor picks up updated settings between buff
     cupuacu::audio::callback_core::StereoMeterLevels meterLevels{};
     std::vector<float> out(4, 0.0f);
 
-    const bool playedAnyFrame = cupuacu::audio::callback_core::fillOutputBuffer(
-        &doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
+    const bool playedAnyFrame = fillOutputBuffer(
+        doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
         playbackStartPos, playbackEndPos, false, playbackHasPendingSwitch,
         playbackPendingStartPos, playbackPendingEndPos, isPlaying, out.data(), 2,
         meterLevels, processor.get(), playbackStartPos, playbackEndPos,
@@ -201,8 +230,8 @@ TEST_CASE("Amplify/Fade preview processor picks up updated settings between buff
     out.assign(4, 0.0f);
 
     const bool playedUpdatedFrame =
-        cupuacu::audio::callback_core::fillOutputBuffer(
-            &doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
+        fillOutputBuffer(
+            doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
             playbackStartPos, playbackEndPos, false, playbackHasPendingSwitch,
             playbackPendingStartPos, playbackPendingEndPos, isPlaying,
             out.data(), 2, meterLevels, processor.get(),
@@ -233,8 +262,8 @@ TEST_CASE("AudioCallbackCore computes RMS levels for playback output",
     cupuacu::audio::callback_core::StereoMeterLevels meterLevels{};
     std::vector<float> out(4, 0.0f);
 
-    const bool playedAnyFrame = cupuacu::audio::callback_core::fillOutputBuffer(
-        &doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
+    const bool playedAnyFrame = fillOutputBuffer(
+        doc, false, cupuacu::SelectedChannels::BOTH, playbackPosition,
         playbackStartPos, playbackEndPos, false, playbackHasPendingSwitch,
         playbackPendingStartPos, playbackPendingEndPos, isPlaying, out.data(), 2,
         meterLevels);

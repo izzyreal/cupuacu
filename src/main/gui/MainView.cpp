@@ -284,7 +284,7 @@ void MainView::applyRecordedChunkToSession(
     capturePreOverwriteSamples(overwriteEnd + 1);
 
     const auto applyResult =
-        cupuacu::actions::audio::applyRecordedChunk(doc, chunk);
+        cupuacu::actions::audio::applyRecordedChunk(session, chunk);
     cupuacu::file::OverwritePreservationMutationHelper::applyToSession(
         session, applyResult.preservationMutation);
     waveformCacheChanged =
@@ -299,11 +299,12 @@ void MainView::applyRecordedChunkToSession(
 void MainView::refreshWaveformsAfterRecordedAudio(
     const bool channelLayoutChanged, const bool waveformCacheChanged)
 {
-    auto &doc = state->getActiveDocumentSession().document;
+    auto &session = state->getActiveDocumentSession();
+    auto &doc = session.document;
 
     if (waveformCacheChanged)
     {
-        doc.updateWaveformCache();
+        session.updateWaveformCache();
     }
 
     if (channelLayoutChanged ||

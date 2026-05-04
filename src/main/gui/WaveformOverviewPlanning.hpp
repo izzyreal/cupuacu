@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../Document.hpp"
+#include "../DocumentSession.hpp"
 #include "Waveform.hpp"
 #include "WaveformBlockRenderPlanning.hpp"
 #include "WaveformCache.hpp"
@@ -65,12 +65,13 @@ namespace cupuacu::gui
     };
 
     inline bool computeWaveformPeakForSampleWindow(
-        const cupuacu::Document &document, const int channelIndex,
+        const cupuacu::DocumentSession &session, const int channelIndex,
         const int64_t sampleOffset, const double samplesPerPixel,
         const uint8_t pixelScale, const double startSampleInclusive,
         const double endSampleExclusive, Peak &outPeak,
         WaveformOverviewDebugStats *debugStats = nullptr)
     {
+        const auto &document = session.document;
         const auto &sampleData =
             document.getAudioBuffer()->getImmutableChannelData(channelIndex);
         const int64_t frameCount = document.getFrameCount();
@@ -86,7 +87,7 @@ namespace cupuacu::gui
             static_cast<double>(WaveformCache::BASE_BLOCK_SIZE) *
             static_cast<double>(std::max<uint8_t>(1, pixelScale));
         const bool bypassCache = samplesPerPixel < cacheBypassThreshold;
-        const auto &waveformCache = document.getWaveformCache(channelIndex);
+        const auto &waveformCache = session.getWaveformCache(channelIndex);
         const int cacheLevel =
             bypassCache ? 0 : waveformCache.getLevelIndex(samplesPerPixel);
         const int64_t samplesPerPeak =
@@ -221,7 +222,7 @@ namespace cupuacu::gui
     }
 
     inline std::vector<BlockWaveformPeakColumnPlan> planWaveformOverviewPeakColumns(
-        const cupuacu::Document &document, const int channelIndex,
+        const cupuacu::DocumentSession &session, const int channelIndex,
         const int64_t sampleOffset, const double samplesPerPixel,
         const int widthToUse, const uint8_t pixelScale)
     {
@@ -232,7 +233,7 @@ namespace cupuacu::gui
             Waveform::getBlockRenderSampleWindowForPixel(
                 x, sampleOffset, samplesPerPixel, aD, bD);
             return computeWaveformPeakForSampleWindow(
-                document, channelIndex, sampleOffset, samplesPerPixel, pixelScale, aD,
+                session, channelIndex, sampleOffset, samplesPerPixel, pixelScale, aD,
                 bD, out);
         };
 
