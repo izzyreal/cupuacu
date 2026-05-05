@@ -20,6 +20,7 @@
 #include "actions/DocumentSessionPersistence.hpp"
 #include "actions/io/BackgroundOpen.hpp"
 #include "actions/io/BackgroundSave.hpp"
+#include "undo/UndoManifestPersistence.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -274,6 +275,9 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
     TTF_Quit();
     cupuacu::State *state = (cupuacu::State *)appstate;
     cupuacu::actions::persistSessionState(state);
+    cupuacu::undo::pruneUndoStores(
+        state->paths->undoPath(),
+        cupuacu::actions::buildPersistedOpenSessionState(state));
     cupuacu::persistence::DisplayPropertiesPersistence::save(
         state->paths->displayPropertiesPath(),
         {.pixelScale = state->pixelScale, .vuMeterScale = state->vuMeterScale});

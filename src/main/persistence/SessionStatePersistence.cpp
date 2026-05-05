@@ -12,7 +12,7 @@ namespace cupuacu::persistence
 {
     namespace
     {
-        constexpr int kFormatVersion = 8;
+        constexpr int kFormatVersion = 9;
 
         std::vector<std::string> filterFiles(const std::vector<std::string> &files)
         {
@@ -192,6 +192,15 @@ namespace cupuacu::persistence
                     documentState.autosaveSnapshotPath =
                         entry.at("autosaveSnapshotPath").get<std::string>();
                 }
+                if (entry.contains("undoStorePath"))
+                {
+                    if (!entry.at("undoStorePath").is_string())
+                    {
+                        return std::nullopt;
+                    }
+                    documentState.undoStorePath =
+                        entry.at("undoStorePath").get<std::string>();
+                }
                 if (documentState.filePath.empty() &&
                     documentState.autosaveSnapshotPath.empty())
                 {
@@ -252,7 +261,7 @@ namespace cupuacu::persistence
         const int version = json.value("version", 0);
         if (version != 1 && version != 2 && version != 3 && version != 4 &&
             version != 5 && version != 6 && version != 7 &&
-            version != kFormatVersion)
+            version != 8 && version != kFormatVersion)
         {
             return {};
         }
@@ -384,6 +393,10 @@ namespace cupuacu::persistence
             {
                 entry["autosaveSnapshotPath"] =
                     documentState.autosaveSnapshotPath;
+            }
+            if (!documentState.undoStorePath.empty())
+            {
+                entry["undoStorePath"] = documentState.undoStorePath;
             }
             if (documentState.samplesPerPixel.has_value())
             {

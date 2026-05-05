@@ -162,6 +162,7 @@ namespace cupuacu::actions
 
         auto previousSession = previousTab.session;
         detail::discardAutosaveSnapshot(previousSession);
+        detail::discardUndoStore(previousSession);
         if (updateRecentFiles)
         {
             rememberRecentFile(state, absoluteFilePath);

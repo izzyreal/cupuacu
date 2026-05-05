@@ -19,6 +19,7 @@ namespace cupuacu::persistence
     {
         std::string filePath;
         std::string autosaveSnapshotPath;
+        std::string undoStorePath;
         std::optional<double> samplesPerPixel;
         std::optional<int64_t> sampleOffset;
         std::optional<int64_t> cursor;

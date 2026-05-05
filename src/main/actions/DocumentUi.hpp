@@ -158,6 +158,7 @@ namespace cupuacu::actions
         prepareForDocumentTransition(state);
 
         auto &session = state->getActiveDocumentSession();
+        detail::discardUndoStore(session);
         session.clearCurrentFile();
         session.document.initialize(cupuacu::SampleFormat::Unknown, 0, 0, 0);
         session.selection.reset();
@@ -186,6 +187,7 @@ namespace cupuacu::actions
         prepareForDocumentTransition(state);
 
         auto &session = state->getActiveDocumentSession();
+        detail::discardUndoStore(session);
         session.clearCurrentFile();
         session.document.initialize(format, sampleRate, channels, 0);
         session.selection.reset();

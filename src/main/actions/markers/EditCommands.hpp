@@ -137,6 +137,11 @@ namespace cupuacu::actions::markers
             return description;
         }
 
+        [[nodiscard]] bool canPersistForRestart() const override
+        {
+            return false;
+        }
+
         [[nodiscard]] cupuacu::file::OverwritePreservationMutation
         overwritePreservationMutation() const override
         {

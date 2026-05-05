@@ -86,6 +86,11 @@ namespace cupuacu::actions::audio
             return "Copy";
         }
 
+        [[nodiscard]] bool canPersistForRestart() const override
+        {
+            return false;
+        }
+
         [[nodiscard]] cupuacu::file::OverwritePreservationMutation
         overwritePreservationMutation() const override
         {

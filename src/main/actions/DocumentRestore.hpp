@@ -3,6 +3,7 @@
 #include "../State.hpp"
 #include "../gui/MainViewAccess.hpp"
 #include "../gui/Waveform.hpp"
+#include "../undo/UndoManifestPersistence.hpp"
 #include "DocumentIo.hpp"
 
 #include <algorithm>
@@ -290,6 +291,12 @@ namespace cupuacu::actions
             return;
         }
 
+        if (state->paths)
+        {
+            cupuacu::undo::pruneUndoStores(state->paths->undoPath(),
+                                           persistedSessionState);
+        }
+
         const auto plan = planStartupDocumentRestore(
             persistedRecentFiles, persistedSessionState);
         state->recentFiles = plan.recentFiles;
@@ -330,6 +337,7 @@ namespace cupuacu::actions
         if (!plan.openFiles.empty())
         {
             int restoredActiveOpenFileIndex = -1;
+            bool restoredAnyDocument = false;
             std::vector<detail::DocumentRestoreFailure> restoreFailures;
             for (size_t index = 0; index < plan.openFiles.size(); ++index)
             {
@@ -394,7 +402,14 @@ namespace cupuacu::actions
                     continue;
                 }
 
+                restoredAnyDocument = true;
                 applyPersistedOpenDocumentState(state, documentState);
+                if (!documentState.undoStorePath.empty())
+                {
+                    (void)cupuacu::undo::restoreUndoManifest(
+                        state, static_cast<int>(state->tabs.size()) - 1,
+                        documentState.undoStorePath);
+                }
 
                 if (static_cast<int>(index) == plan.activeOpenFileIndex)
                 {
@@ -421,7 +436,7 @@ namespace cupuacu::actions
                 persistSessionState(state);
             }
             detail::reportStartupRestoreFailures(state, restoreFailures);
-            if (!state->getActiveDocumentSession().currentFile.empty())
+            if (restoredAnyDocument)
             {
                 return;
             }

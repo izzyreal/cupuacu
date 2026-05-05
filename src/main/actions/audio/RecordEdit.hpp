@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DurationMutationUndoable.hpp"
+#include "SampleStore.hpp"
 
 #include "../../Document.hpp"
 #include "../../file/OverwritePreservationMutation.hpp"
@@ -9,6 +10,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace cupuacu::actions::audio
@@ -43,7 +45,23 @@ namespace cupuacu::actions::audio
     {
     public:
         RecordEdit(State *stateToUse, RecordEditData dataToUse)
-            : DurationMutationUndoable(stateToUse), data(std::move(dataToUse))
+            : DurationMutationUndoable(stateToUse), data(std::move(dataToUse)),
+              pendingOverwrittenOldSamples(
+                  std::move(data.overwrittenOldSamples)),
+              pendingRecordedSamples(std::move(data.recordedSamples))
+        {
+            data.overwrittenOldSamples.clear();
+            data.recordedSamples.clear();
+        }
+
+        RecordEdit(
+            State *stateToUse, RecordEditData dataToUse,
+            undo::UndoStore::SampleMatrixHandle overwrittenOldSamplesHandleToUse,
+            undo::UndoStore::SampleMatrixHandle recordedSamplesHandleToUse)
+            : DurationMutationUndoable(stateToUse), data(std::move(dataToUse)),
+              overwrittenOldSamplesHandle(
+                  std::move(overwrittenOldSamplesHandleToUse)),
+              recordedSamplesHandle(std::move(recordedSamplesHandleToUse))
         {
         }
 
@@ -79,12 +97,19 @@ namespace cupuacu::actions::audio
                                  data.endFrame - doc.getFrameCount());
             }
 
+            overwrittenOldSamplesHandle = detail::storeSampleMatrixIfNeeded(
+                session, overwrittenOldSamplesHandle, pendingOverwrittenOldSamples,
+                "record-edit-overwritten");
+            pendingOverwrittenOldSamples.reset();
+            auto recordedSamples = detail::materializeSampleMatrix(
+                session, pendingRecordedSamples, recordedSamplesHandle,
+                "record-edit-recorded");
             const int64_t recordedFrameCount = data.endFrame - data.startFrame;
             for (int ch = 0;
-                 ch < doc.getChannelCount() && ch < (int)data.recordedSamples.size();
+                 ch < doc.getChannelCount() && ch < (int)recordedSamples.size();
                  ++ch)
             {
-                const auto &samples = data.recordedSamples[ch];
+                const auto &samples = recordedSamples[ch];
                 const int64_t framesToWrite = std::min<int64_t>(
                     recordedFrameCount, static_cast<int64_t>(samples.size()));
                 for (int64_t i = 0; i < framesToWrite; ++i)
@@ -130,12 +155,19 @@ namespace cupuacu::actions::audio
             const int64_t overlapFrameCount =
                 std::max<int64_t>(0, overlapEnd - data.startFrame);
 
+            recordedSamplesHandle = detail::storeSampleMatrixIfNeeded(
+                session, recordedSamplesHandle, pendingRecordedSamples,
+                "record-edit-recorded");
+            pendingRecordedSamples.reset();
+            auto overwrittenOldSamples = detail::materializeSampleMatrix(
+                session, pendingOverwrittenOldSamples,
+                overwrittenOldSamplesHandle, "record-edit-overwritten");
             for (int ch = 0;
                  ch < data.oldChannelCount && ch < doc.getChannelCount() &&
-                 ch < (int)data.overwrittenOldSamples.size();
+                 ch < (int)overwrittenOldSamples.size();
                  ++ch)
             {
-                const auto &samples = data.overwrittenOldSamples[ch];
+                const auto &samples = overwrittenOldSamples[ch];
                 const int64_t framesToRestore = std::min<int64_t>(
                     overlapFrameCount, static_cast<int64_t>(samples.size()));
                 for (int64_t i = 0; i < framesToRestore; ++i)
@@ -176,8 +208,67 @@ namespace cupuacu::actions::audio
             return "Record";
         }
 
+        [[nodiscard]] bool canPersistForRestart() const override
+        {
+            return !overwrittenOldSamplesHandle.empty() &&
+                   !recordedSamplesHandle.empty();
+        }
+
+        [[nodiscard]] std::optional<nlohmann::json>
+        serializeForRestart() const override
+        {
+            if (!canPersistForRestart())
+            {
+                return std::nullopt;
+            }
+            return nlohmann::json{
+                {"kind", "record-edit"},
+                {"startFrame", data.startFrame},
+                {"endFrame", data.endFrame},
+                {"oldFrameCount", data.oldFrameCount},
+                {"oldChannelCount", data.oldChannelCount},
+                {"targetChannelCount", data.targetChannelCount},
+                {"oldSampleRate", data.oldSampleRate},
+                {"newSampleRate", data.newSampleRate},
+                {"oldFormat", static_cast<int>(data.oldFormat)},
+                {"newFormat", static_cast<int>(data.newFormat)},
+                {"hadOldSelection", data.hadOldSelection},
+                {"hadNewSelection", data.hadNewSelection},
+                {"oldSelectionStart", data.oldSelectionStart},
+                {"oldSelectionEnd", data.oldSelectionEnd},
+                {"newSelectionStart", data.newSelectionStart},
+                {"newSelectionEnd", data.newSelectionEnd},
+                {"oldCursor", data.oldCursor},
+                {"newCursor", data.newCursor},
+                {"overwrittenOldSamplesHandle",
+                 overwrittenOldSamplesHandle.path.string()},
+                {"recordedSamplesHandle", recordedSamplesHandle.path.string()},
+            };
+        }
+
+        [[nodiscard]] const RecordEditData &getData() const
+        {
+            return data;
+        }
+
+        [[nodiscard]] const undo::UndoStore::SampleMatrixHandle &
+        getOverwrittenOldSamplesHandle() const
+        {
+            return overwrittenOldSamplesHandle;
+        }
+
+        [[nodiscard]] const undo::UndoStore::SampleMatrixHandle &
+        getRecordedSamplesHandle() const
+        {
+            return recordedSamplesHandle;
+        }
+
     private:
         RecordEditData data;
+        std::optional<detail::SampleMatrix> pendingOverwrittenOldSamples;
+        std::optional<detail::SampleMatrix> pendingRecordedSamples;
+        undo::UndoStore::SampleMatrixHandle overwrittenOldSamplesHandle;
+        undo::UndoStore::SampleMatrixHandle recordedSamplesHandle;
 
         [[nodiscard]] cupuacu::file::OverwritePreservationMutation
         overwritePreservationMutation() const override

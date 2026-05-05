@@ -5,6 +5,7 @@
 #include "../persistence/DocumentAutosave.hpp"
 #include "../persistence/RecentFilesPersistence.hpp"
 #include "../persistence/SessionStatePersistence.hpp"
+#include "../undo/UndoManifestPersistence.hpp"
 #include "SessionWindowGeometryPlanning.hpp"
 #include "io/BackgroundSave.hpp"
 
@@ -39,11 +40,56 @@ namespace cupuacu::actions
                     std::to_string(index) + ".cupuacu-autosave");
         }
 
+        inline std::filesystem::path makeUndoStorePath(
+            const cupuacu::State *state, const uint64_t tabId)
+        {
+            static std::atomic<uint64_t> counter{0};
+
+            if (!state || !state->paths)
+            {
+                return {};
+            }
+
+            const auto tick = static_cast<unsigned long long>(
+                std::chrono::steady_clock::now().time_since_epoch().count());
+            const auto index = counter.fetch_add(1);
+            return state->paths->undoPath() /
+                   ("tab-" + std::to_string(tabId) + "-" +
+                    std::to_string(tick) + "-" + std::to_string(index));
+        }
+
         inline void discardAutosaveSnapshot(cupuacu::DocumentSession &session)
         {
             cupuacu::persistence::removeDocumentAutosaveSnapshot(
                 session.autosaveSnapshotPath);
             session.clearAutosaveSnapshotReference();
+        }
+
+        inline void discardUndoStore(cupuacu::DocumentSession &session)
+        {
+            session.undoStore.clear();
+        }
+
+        inline void ensureUndoStoreForTab(cupuacu::State *state, const int tabIndex)
+        {
+            if (!state || tabIndex < 0 ||
+                tabIndex >= static_cast<int>(state->tabs.size()))
+            {
+                return;
+            }
+
+            auto &tab = state->tabs[static_cast<std::size_t>(tabIndex)];
+            if (tab.session.undoStore.isAttached())
+            {
+                return;
+            }
+
+            const auto path = makeUndoStorePath(state, tab.id);
+            if (path.empty())
+            {
+                return;
+            }
+            tab.session.undoStore.attach(path);
         }
     } // namespace detail
 
@@ -139,6 +185,16 @@ namespace cupuacu::actions
             documentState.filePath = tab.session.currentFile;
             documentState.autosaveSnapshotPath =
                 tab.session.autosaveSnapshotPath.string();
+            if (!tab.session.undoStore.root().empty())
+            {
+                const auto manifestPath =
+                    cupuacu::undo::manifestPathForStore(tab.session.undoStore.root());
+                if (cupuacu::undo::saveUndoManifest(manifestPath, tab))
+                {
+                    documentState.undoStorePath =
+                        tab.session.undoStore.root().string();
+                }
+            }
             documentState.samplesPerPixel = tab.viewState.samplesPerPixel;
             documentState.sampleOffset = tab.viewState.sampleOffset;
             documentState.cursor = tab.session.cursor;
@@ -184,9 +240,9 @@ namespace cupuacu::actions
 
         cupuacu::persistence::RecentFilesPersistence::save(
             state->paths->recentlyOpenedFilesPath(), state->recentFiles);
+        const auto persisted = buildPersistedOpenSessionState(state);
         cupuacu::persistence::SessionStatePersistence::save(
-            state->paths->sessionStatePath(),
-            buildPersistedOpenSessionState(state));
+            state->paths->sessionStatePath(), persisted);
     }
 
     inline void autosaveDocumentAfterMutation(cupuacu::State *state,
