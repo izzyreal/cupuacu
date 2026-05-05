@@ -28,6 +28,10 @@ If Cupuacu starts with only the initial blank tab, opening a file reuses that bl
 
 On startup, Cupuacu restores the previously open file-backed tabs when those files still exist.
 
+If a previously open document has an autosave snapshot, Cupuacu restores that
+snapshot instead. This includes unsaved untitled documents and unsaved changes
+to file-backed documents.
+
 If the saved session data only contains the older recent-files list, Cupuacu falls back to reopening the most recent existing file.
 
 ## Recent Files
@@ -87,13 +91,28 @@ Use `File -> Exit` to quit Cupuacu.
 
 Use `File -> Overwrite` to write the current document back to the current file path.
 
+Use `File -> Save as` to write the current document to a new file.
+
+Shortcut:
+
+- `Cmd/Ctrl + Shift + S`
+
+Use `File -> Preserving overwrite` to rewrite the current file in preservation
+mode, keeping unchanged source audio bytes intact where possible for supported
+preserving formats.
+
+Use `File -> Preserving save as...` to write a new file in preservation mode,
+using the latest opened or saved file as the preservation reference.
+
 Notes:
 
-- there is no `Save As` yet
-- `Overwrite` is only available when the current document came from a file path
-- the current overwrite path is a WAV overwrite workflow, not a general-purpose exporter
-- in practice, it is intended for overwriting an existing 16-bit PCM WAV file
-- a brand new untitled document cannot be written through a separate save dialog
+- `Overwrite` and `Preserving overwrite` are only available when the active
+  document already has a current file path
+- `Save as` is available for any active document, including a new untitled one
+- the export flow is not limited to WAV; the available formats depend on the
+  current build and runtime support
+- marker persistence depends on the chosen target format; some formats support
+  native markers, while others rely on Cupuacu fallback persistence
 
 ## Selecting Audio
 
@@ -138,6 +157,9 @@ The `Edit` menu contains:
 - `Cut`
 - `Copy`
 - `Paste`
+- `Insert marker`
+- `Markers`
+- `Split by markers`
 
 Shortcuts shown in the menu are platform-aware:
 
@@ -161,6 +183,7 @@ App-wide shortcuts:
 - `Cmd/Ctrl + N`: open the New File dialog
 - `Cmd/Ctrl + W`: close the current file
 - `Cmd/Ctrl + S`: overwrite the current file
+- `Cmd/Ctrl + Shift + S`: save as
 - `Cmd/Ctrl + Z`: undo
 - `Cmd/Ctrl + Shift + Z`: redo
 - `Cmd/Ctrl + X`: cut the current selection
@@ -195,6 +218,7 @@ The `View` menu contains:
 - `Zoom in horiz.`
 - `Zoom out vert.`
 - `Zoom in vert.`
+- `Snap`
 
 The menu labels also show the current keyboard shortcuts:
 
@@ -240,7 +264,9 @@ The `Effects` menu contains:
 
 - `Reverse`
 - `Amplify/Fade`
+- `Amplify Envelope`
 - `Dynamics`
+- `Remove silence`
 
 This menu is disabled when no document is open.
 
@@ -333,11 +359,13 @@ User-visible behavior:
 
 ### session_state.json
 
-This file stores the restorable file-backed tab session.
+This file stores the restorable document session.
 
 User-visible behavior:
 
 - file-backed tabs from the last session are reopened on startup when those paths still exist
+- autosaved untitled documents can be restored on startup
+- autosaved file-backed documents restore the autosaved snapshot over the source file state
 - the active restored tab is remembered when it refers to a file-backed tab
 
 ### audio_device_properties.json
