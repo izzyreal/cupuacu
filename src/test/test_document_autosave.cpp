@@ -175,3 +175,34 @@ TEST_CASE("Autosaved file-backed sessions restore the snapshot over the source",
     REQUIRE(session.document.getFrameCount() == 2);
     REQUIRE(session.document.getSample(0, 1) == Catch::Approx(-0.5f));
 }
+
+TEST_CASE("Undoing file-backed edits back to the open-file baseline clears autosave",
+          "[autosave]")
+{
+    const auto root = cupuacu::test::makeUniqueTestRoot("document-autosave");
+    cupuacu::test::StateWithTestPaths state{root};
+    const auto sourcePath = root / "source.wav";
+    initializeMonoDocument(state, {0.0f, 0.0f, 0.0f});
+    state.getActiveDocumentSession().setCurrentFile(sourcePath.string());
+
+    state.addAndDoUndoable(
+        std::make_shared<SetSampleUndoable>(&state, 1, -0.5f));
+    drainPendingAutosave(state);
+
+    const auto autosavePath =
+        state.getActiveDocumentSession().autosaveSnapshotPath;
+    REQUIRE_FALSE(autosavePath.empty());
+    REQUIRE(std::filesystem::exists(autosavePath));
+
+    state.undo();
+
+    REQUIRE(state.getActiveUndoables().empty());
+    REQUIRE(state.getActiveDocumentSession().autosaveSnapshotPath.empty());
+    REQUIRE_FALSE(std::filesystem::exists(autosavePath));
+
+    const auto persisted = cupuacu::persistence::SessionStatePersistence::load(
+        state.paths->sessionStatePath());
+    REQUIRE(persisted.openDocuments.size() == 1);
+    REQUIRE(persisted.openDocuments[0].filePath == sourcePath.string());
+    REQUIRE(persisted.openDocuments[0].autosaveSnapshotPath.empty());
+}

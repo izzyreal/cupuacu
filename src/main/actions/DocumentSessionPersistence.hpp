@@ -198,10 +198,20 @@ namespace cupuacu::actions
             return;
         }
 
-        auto &session = state->tabs[static_cast<std::size_t>(tabIndex)].session;
+        auto &tab = state->tabs[static_cast<std::size_t>(tabIndex)];
+        auto &session = tab.session;
         const auto &document = session.document;
         if (document.getChannelCount() <= 0)
         {
+            return;
+        }
+        if (!session.currentFile.empty() && tab.undoables.empty())
+        {
+            if (!session.autosaveSnapshotPath.empty())
+            {
+                detail::discardAutosaveSnapshot(session);
+                persistSessionState(state);
+            }
             return;
         }
         if (session.autosavedWaveformDataVersion ==
