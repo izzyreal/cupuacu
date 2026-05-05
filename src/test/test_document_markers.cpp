@@ -1,9 +1,12 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "Document.hpp"
+#include "audio/AudioBuffer.hpp"
 
 #include <chrono>
 #include <future>
+#include <utility>
+#include <vector>
 
 TEST_CASE("Document markers are assigned stable ids and clamped to bounds",
           "[document][markers]")
@@ -113,6 +116,83 @@ TEST_CASE("Document markers follow insert and remove frame edits",
                 .frame = 65,
                 .label = "C",
             });
+}
+
+TEST_CASE("Document remove progress stays monotonic across internal phases",
+          "[document][progress]")
+{
+    cupuacu::Document document;
+    document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 2, 100);
+
+    std::vector<std::pair<int64_t, int64_t>> updates;
+    document.removeFrames(
+        20, 30,
+        [&](const int64_t completed, const int64_t total)
+        {
+            updates.emplace_back(completed, total);
+        });
+
+    REQUIRE(updates.size() >= 2);
+    const auto expectedTotal = updates.front().second;
+    REQUIRE(expectedTotal > 0);
+
+    int64_t previousCompleted = 0;
+    for (const auto &[completed, total] : updates)
+    {
+        REQUIRE(total == expectedTotal);
+        REQUIRE(completed >= previousCompleted);
+        previousCompleted = completed;
+    }
+
+    REQUIRE(updates.back().first == expectedTotal);
+}
+
+TEST_CASE("Audio buffer remove progress reports within a large channel move",
+          "[document][progress]")
+{
+    cupuacu::audio::AudioBuffer buffer;
+    buffer.resize(1, 400000);
+
+    std::vector<std::pair<int64_t, int64_t>> updates;
+    buffer.removeFrames(
+        1000, 1000,
+        [&](const int64_t completed, const int64_t total)
+        {
+            updates.emplace_back(completed, total);
+        });
+
+    REQUIRE(updates.size() > 2);
+    const auto expectedTotal = updates.front().second;
+    REQUIRE(expectedTotal > 1);
+
+    int64_t previousCompleted = 0;
+    for (const auto &[completed, total] : updates)
+    {
+        REQUIRE(total == expectedTotal);
+        REQUIRE(completed >= previousCompleted);
+        previousCompleted = completed;
+    }
+
+    REQUIRE(updates.back().first == expectedTotal);
+}
+
+TEST_CASE("Document remove progress advances during the initial sample shift",
+          "[document][progress]")
+{
+    cupuacu::Document document;
+    document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 2, 400000);
+
+    std::vector<std::pair<int64_t, int64_t>> updates;
+    document.removeFrames(
+        1000, 1000,
+        [&](const int64_t completed, const int64_t total)
+        {
+            updates.emplace_back(completed, total);
+        });
+
+    REQUIRE(updates.size() > 3);
+    REQUIRE(updates[0].second == updates[1].second);
+    REQUIRE(updates[1].first > updates[0].first);
 }
 
 TEST_CASE("Replacing document markers normalizes ids and clears on initialize",

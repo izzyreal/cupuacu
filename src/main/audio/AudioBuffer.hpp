@@ -3,6 +3,7 @@
 #include "SampleProvenance.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <cstdint>
 #include <functional>
 #include <span>
@@ -156,17 +157,68 @@ namespace cupuacu::audio
         virtual void removeFrames(int64_t frameIndex, int64_t numFrames,
                                   const ProgressCallback &progress = {})
         {
-            int64_t chCount = channels.size();
-            int64_t completedChannels = 0;
-            for (auto &ch : channels)
+            if (numFrames <= 0)
             {
-                ch.erase(ch.begin() + frameIndex,
-                         ch.begin() + frameIndex + numFrames);
-                ++completedChannels;
                 if (progress)
                 {
-                    progress(completedChannels, std::max<int64_t>(1, chCount));
+                    progress(1, 1);
                 }
+                return;
+            }
+
+            constexpr int64_t kProgressStrideFrames = 16384;
+
+            int64_t totalFramesToShift = 0;
+            for (const auto &ch : channels)
+            {
+                const int64_t oldSize = static_cast<int64_t>(ch.size());
+                const int64_t newSize = oldSize - numFrames;
+                totalFramesToShift += std::max<int64_t>(1, newSize - frameIndex);
+            }
+
+            int64_t completedFrames = 0;
+            for (auto &ch : channels)
+            {
+                const int64_t oldSize = static_cast<int64_t>(ch.size());
+                const int64_t newSize = oldSize - numFrames;
+                const int64_t framesToShift = newSize - frameIndex;
+
+                if (framesToShift > 0)
+                {
+                    for (int64_t movedFrames = 0; movedFrames < framesToShift;
+                         movedFrames += kProgressStrideFrames)
+                    {
+                        const int64_t chunkFrames = std::min<int64_t>(
+                            kProgressStrideFrames, framesToShift - movedFrames);
+                        std::memmove(ch.data() + frameIndex + movedFrames,
+                                     ch.data() + frameIndex + numFrames + movedFrames,
+                                     static_cast<std::size_t>(chunkFrames) *
+                                         sizeof(float));
+                        completedFrames += chunkFrames;
+                        if (progress)
+                        {
+                            progress(completedFrames,
+                                     std::max<int64_t>(1, totalFramesToShift));
+                        }
+                    }
+                }
+                else
+                {
+                    completedFrames += 1;
+                    if (progress)
+                    {
+                        progress(completedFrames,
+                                 std::max<int64_t>(1, totalFramesToShift));
+                    }
+                }
+
+                ch.resize(static_cast<std::size_t>(newSize));
+            }
+
+            if (progress)
+            {
+                progress(std::max<int64_t>(1, totalFramesToShift),
+                         std::max<int64_t>(1, totalFramesToShift));
             }
         }
 
