@@ -144,6 +144,8 @@ FetchContent_MakeAvailable(json)
 
 set(CUPUACU_SHARED_SOURCES
     src/main/Document.cpp
+    src/main/undo/UndoManifestPersistence.cpp
+    src/main/undo/UndoStore.cpp
     src/main/waveform/DocumentWaveformCaches.cpp
     src/main/State.cpp
     src/main/Paths.cpp

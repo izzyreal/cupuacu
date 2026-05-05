@@ -1,10 +1,12 @@
 #pragma once
 #include "DurationMutationUndoable.hpp"
+#include "SegmentStore.hpp"
 #include "../../Document.hpp"
 #include "../../LongTask.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <optional>
 #include <thread>
 #include <vector>
 
@@ -72,7 +74,7 @@ namespace cupuacu::actions::audio
         int64_t startFrame;
         int64_t numFrames;
 
-        Document::AudioSegment removed;
+        undo::UndoStore::SegmentHandle removedHandle;
 
         double oldSel1 = 0.0;
         double oldSel2 = 0.0;
@@ -91,6 +93,17 @@ namespace cupuacu::actions::audio
             }
 
             oldCursorPos = session.cursor;
+        }
+
+        Cut(State *state, int64_t start, int64_t count,
+            undo::UndoStore::SegmentHandle removedHandleToUse,
+            const double oldSel1ToUse, const double oldSel2ToUse,
+            const int64_t oldCursorPosToUse)
+            : DurationMutationUndoable(state), startFrame(start),
+              numFrames(count), removedHandle(std::move(removedHandleToUse)),
+              oldSel1(oldSel1ToUse), oldSel2(oldSel2ToUse),
+              oldCursorPos(oldCursorPosToUse)
+        {
         }
 
         void redo() override
@@ -112,13 +125,28 @@ namespace cupuacu::actions::audio
             cupuacu::renderLongTaskOverlayNow(state);
             detail::OperationProgressUi progressUi(state, "Capturing selection");
 
-            removed = doc.captureSegment(
-                startFrame, numFrames,
-                [&](const int64_t completed, const int64_t total)
+            Document::AudioSegment removed = detail::captureOrLoadSegment(
+                session, removedHandle,
+                [&]
                 {
-                    progressUi.publishPhaseProgress("Capturing selection", 0.0,
-                                                    0.35, completed, total);
+                    return doc.captureSegment(
+                        startFrame, numFrames,
+                        [&](const int64_t completed, const int64_t total)
+                        {
+                            progressUi.publishPhaseProgress(
+                                "Capturing selection", 0.0, 0.35, completed,
+                                total);
+                        });
                 });
+            if (removedHandle.empty())
+            {
+                removedHandle = detail::storeSegmentIfNeeded(
+                    session, removedHandle, removed, "cut");
+            }
+            else
+            {
+                progressUi.publishProgress("Capturing selection", 0.35, true);
+            }
             progressUi.publishProgress("Writing clipboard", 0.35, true);
 
             state->clipboard.assignSegment(
@@ -171,6 +199,7 @@ namespace cupuacu::actions::audio
                 state, "Undoing cut", "Reinserting audio", 0.0, false);
             cupuacu::renderLongTaskOverlayNow(state);
             detail::OperationProgressUi progressUi(state, "Reinserting audio");
+            const auto removed = session.undoStore.readSegment(removedHandle);
 
             doc.insertFrames(
                 startFrame, numFrames,
@@ -235,6 +264,59 @@ namespace cupuacu::actions::audio
         std::string getRedoDescription() override
         {
             return "Cut";
+        }
+
+        [[nodiscard]] bool canPersistForRestart() const override
+        {
+            return !removedHandle.empty();
+        }
+
+        [[nodiscard]] std::optional<nlohmann::json>
+        serializeForRestart() const override
+        {
+            if (!canPersistForRestart())
+            {
+                return std::nullopt;
+            }
+            return nlohmann::json{
+                {"kind", "cut"},
+                {"startFrame", startFrame},
+                {"frameCount", numFrames},
+                {"removedHandle", removedHandle.path.string()},
+                {"oldSelectionStart", oldSel1},
+                {"oldSelectionEnd", oldSel2},
+                {"oldCursorPos", oldCursorPos},
+            };
+        }
+
+        [[nodiscard]] int64_t getStartFrame() const
+        {
+            return startFrame;
+        }
+
+        [[nodiscard]] int64_t getFrameCount() const
+        {
+            return numFrames;
+        }
+
+        [[nodiscard]] const undo::UndoStore::SegmentHandle &getRemovedHandle() const
+        {
+            return removedHandle;
+        }
+
+        [[nodiscard]] double getOldSelectionStart() const
+        {
+            return oldSel1;
+        }
+
+        [[nodiscard]] double getOldSelectionEnd() const
+        {
+            return oldSel2;
+        }
+
+        [[nodiscard]] int64_t getOldCursorPos() const
+        {
+            return oldCursorPos;
         }
 
         [[nodiscard]] cupuacu::file::OverwritePreservationMutation

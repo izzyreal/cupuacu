@@ -6,6 +6,7 @@
 #include "LongTask.hpp"
 
 #include "actions/audio/DurationMutationUndoable.hpp"
+#include "actions/audio/SampleStore.hpp"
 #include "file/SampleQuantization.hpp"
 #include "gui/DropdownMenu.hpp"
 #include "gui/Label.hpp"
@@ -412,7 +413,37 @@ namespace cupuacu::effects
             : DurationMutationUndoable(stateToUse),
               tabIndex(tabIndexToUse),
               runs(std::move(runsToRemove)),
-              removedSamples(std::move(removedSamplesToUse)),
+              pendingRemovedSamples(std::move(removedSamplesToUse)),
+              relevantStart(relevantStartToUse),
+              originalRelevantLength(relevantLengthToUse),
+              originalCursor(originalCursorToUse),
+              hadSelection(hadSelectionToUse)
+        {
+            updateGui = [this]
+            {
+                if (!state || state->activeTabIndex != tabIndex)
+                {
+                    return;
+                }
+                afterDurationMutationUi();
+                cupuacu::actions::applyDurationChangeViewPolicy(state);
+            };
+            for (const auto &run : runs)
+            {
+                removedFrameCount += run.frameCount;
+            }
+        }
+
+        RemoveSilenceUndoable(
+            cupuacu::State *stateToUse, const int tabIndexToUse,
+            std::vector<SilenceRange> runsToRemove,
+            const int64_t relevantStartToUse,
+            const int64_t relevantLengthToUse,
+            undo::UndoStore::SampleCubeHandle removedSamplesHandleToUse,
+            const int64_t originalCursorToUse, const bool hadSelectionToUse)
+            : DurationMutationUndoable(stateToUse), tabIndex(tabIndexToUse),
+              runs(std::move(runsToRemove)),
+              removedSamplesHandle(std::move(removedSamplesHandleToUse)),
               relevantStart(relevantStartToUse),
               originalRelevantLength(relevantLengthToUse),
               originalCursor(originalCursorToUse),
@@ -448,6 +479,11 @@ namespace cupuacu::effects
             auto &session =
                 state->tabs[static_cast<std::size_t>(tabIndex)].session;
             auto &document = session.document;
+            removedSamplesHandle = cupuacu::actions::audio::detail::
+                storeSampleCubeIfNeeded(session, removedSamplesHandle,
+                                        pendingRemovedSamples,
+                                        "remove-silence-removed");
+            pendingRemovedSamples.reset();
             for (auto it = runs.rbegin(); it != runs.rend(); ++it)
             {
                 document.removeFrames(it->startFrame, it->frameCount);
@@ -488,6 +524,10 @@ namespace cupuacu::effects
             auto &session =
                 state->tabs[static_cast<std::size_t>(tabIndex)].session;
             auto &document = session.document;
+            const auto removedSamples =
+                cupuacu::actions::audio::detail::materializeSampleCube(
+                    session, pendingRemovedSamples, removedSamplesHandle,
+                    "remove-silence-removed");
             const int64_t channelCount = document.getChannelCount();
             for (std::size_t runIndex = 0; runIndex < runs.size(); ++runIndex)
             {
@@ -532,6 +572,75 @@ namespace cupuacu::effects
             return "Remove silence";
         }
 
+        [[nodiscard]] bool canPersistForRestart() const override
+        {
+            return !removedSamplesHandle.empty();
+        }
+
+        [[nodiscard]] std::optional<nlohmann::json>
+        serializeForRestart() const override
+        {
+            if (!canPersistForRestart())
+            {
+                return std::nullopt;
+            }
+
+            nlohmann::json runsJson = nlohmann::json::array();
+            for (const auto &run : runs)
+            {
+                runsJson.push_back({
+                    {"startFrame", run.startFrame},
+                    {"frameCount", run.frameCount},
+                });
+            }
+
+            return nlohmann::json{
+                {"kind", "remove-silence-duration"},
+                {"runs", std::move(runsJson)},
+                {"relevantStart", relevantStart},
+                {"originalRelevantLength", originalRelevantLength},
+                {"removedSamplesHandle", removedSamplesHandle.path.string()},
+                {"originalCursor", originalCursor},
+                {"hadSelection", hadSelection},
+            };
+        }
+
+        [[nodiscard]] int getTabIndex() const
+        {
+            return tabIndex;
+        }
+
+        [[nodiscard]] const std::vector<SilenceRange> &getRuns() const
+        {
+            return runs;
+        }
+
+        [[nodiscard]] const undo::UndoStore::SampleCubeHandle &
+        getRemovedSamplesHandle() const
+        {
+            return removedSamplesHandle;
+        }
+
+        [[nodiscard]] int64_t getRelevantStart() const
+        {
+            return relevantStart;
+        }
+
+        [[nodiscard]] int64_t getOriginalRelevantLength() const
+        {
+            return originalRelevantLength;
+        }
+
+        [[nodiscard]] int64_t getOriginalCursor() const
+        {
+            return originalCursor;
+        }
+
+        [[nodiscard]] bool getHadSelection() const
+        {
+            return hadSelection;
+        }
+
         [[nodiscard]] cupuacu::file::OverwritePreservationMutation
         overwritePreservationMutation() const override
         {
@@ -549,7 +658,9 @@ namespace cupuacu::effects
     private:
         int tabIndex = -1;
         std::vector<SilenceRange> runs;
-        std::vector<std::vector<std::vector<float>>> removedSamples;
+        std::optional<cupuacu::actions::audio::detail::SampleCube>
+            pendingRemovedSamples;
+        undo::UndoStore::SampleCubeHandle removedSamplesHandle;
         int64_t relevantStart = 0;
         int64_t originalRelevantLength = 0;
         int64_t removedFrameCount = 0;
@@ -574,6 +685,7 @@ namespace cupuacu::effects
             const int64_t channelCount = document.getChannelCount();
             originalCursor = session.cursor;
             hadSelection = session.selection.isActive();
+            cupuacu::actions::audio::detail::SampleCube removedSamples;
             removedSamples.resize(runs.size());
             for (std::size_t runIndex = 0; runIndex < runs.size(); ++runIndex)
             {
@@ -591,6 +703,7 @@ namespace cupuacu::effects
                     }
                 }
             }
+            pendingRemovedSamples = std::move(removedSamples);
         }
     };
 
@@ -630,8 +743,34 @@ namespace cupuacu::effects
               runs(std::move(runsToRemove)),
               startFrame(startFrameToUse),
               frameCount(frameCountToUse),
-              oldSamples(std::move(oldSamplesToUse)),
-              newSamples(std::move(newSamplesToUse))
+              pendingOldSamples(std::move(oldSamplesToUse)),
+              pendingNewSamples(std::move(newSamplesToUse))
+        {
+            updateGui = [this]
+            {
+                if (!state || state->activeTabIndex != tabIndex)
+                {
+                    return;
+                }
+                cupuacu::gui::Waveform::updateAllSamplePoints(state);
+                cupuacu::gui::Waveform::setAllWaveformsDirty(state);
+                cupuacu::gui::requestMainViewRefresh(state);
+            };
+        }
+
+        RemoveSilenceChannelCompactUndoable(
+            cupuacu::State *stateToUse, const int tabIndexToUse,
+            std::vector<int64_t> targetChannelsToUse,
+            std::vector<SilenceRange> runsToRemove,
+            const int64_t startFrameToUse, const int64_t frameCountToUse,
+            undo::UndoStore::SampleMatrixHandle oldSamplesHandleToUse,
+            undo::UndoStore::SampleMatrixHandle newSamplesHandleToUse)
+            : Undoable(stateToUse), tabIndex(tabIndexToUse),
+              targetChannels(std::move(targetChannelsToUse)),
+              runs(std::move(runsToRemove)), startFrame(startFrameToUse),
+              frameCount(frameCountToUse),
+              oldSamplesHandle(std::move(oldSamplesHandleToUse)),
+              newSamplesHandle(std::move(newSamplesHandleToUse))
         {
             updateGui = [this]
             {
@@ -647,12 +786,38 @@ namespace cupuacu::effects
 
         void redo() override
         {
-            applySamples(newSamples);
+            auto *session = sessionForTab();
+            if (!session)
+            {
+                return;
+            }
+
+            oldSamplesHandle = cupuacu::actions::audio::detail::
+                storeSampleMatrixIfNeeded(*session, oldSamplesHandle,
+                                          pendingOldSamples,
+                                          "remove-silence-compact-old");
+            pendingOldSamples.reset();
+            applySamples(cupuacu::actions::audio::detail::materializeSampleMatrix(
+                *session, pendingNewSamples, newSamplesHandle,
+                "remove-silence-compact-new"));
         }
 
         void undo() override
         {
-            applySamples(oldSamples);
+            auto *session = sessionForTab();
+            if (!session)
+            {
+                return;
+            }
+
+            newSamplesHandle = cupuacu::actions::audio::detail::
+                storeSampleMatrixIfNeeded(*session, newSamplesHandle,
+                                          pendingNewSamples,
+                                          "remove-silence-compact-new");
+            pendingNewSamples.reset();
+            applySamples(cupuacu::actions::audio::detail::materializeSampleMatrix(
+                *session, pendingOldSamples, oldSamplesHandle,
+                "remove-silence-compact-old"));
         }
 
         std::string getUndoDescription() override
@@ -663,6 +828,76 @@ namespace cupuacu::effects
         std::string getRedoDescription() override
         {
             return "Remove silence";
+        }
+
+        [[nodiscard]] bool canPersistForRestart() const override
+        {
+            return !oldSamplesHandle.empty() && !newSamplesHandle.empty();
+        }
+
+        [[nodiscard]] std::optional<nlohmann::json>
+        serializeForRestart() const override
+        {
+            if (!canPersistForRestart())
+            {
+                return std::nullopt;
+            }
+
+            nlohmann::json runsJson = nlohmann::json::array();
+            for (const auto &run : runs)
+            {
+                runsJson.push_back({
+                    {"startFrame", run.startFrame},
+                    {"frameCount", run.frameCount},
+                });
+            }
+
+            return nlohmann::json{
+                {"kind", "remove-silence-compact"},
+                {"targetChannels", targetChannels},
+                {"runs", std::move(runsJson)},
+                {"startFrame", startFrame},
+                {"frameCount", frameCount},
+                {"oldSamplesHandle", oldSamplesHandle.path.string()},
+                {"newSamplesHandle", newSamplesHandle.path.string()},
+            };
+        }
+
+        [[nodiscard]] int getTabIndex() const
+        {
+            return tabIndex;
+        }
+
+        [[nodiscard]] const std::vector<int64_t> &getTargetChannels() const
+        {
+            return targetChannels;
+        }
+
+        [[nodiscard]] const std::vector<SilenceRange> &getRuns() const
+        {
+            return runs;
+        }
+
+        [[nodiscard]] int64_t getStartFrame() const
+        {
+            return startFrame;
+        }
+
+        [[nodiscard]] int64_t getFrameCount() const
+        {
+            return frameCount;
+        }
+
+        [[nodiscard]] const undo::UndoStore::SampleMatrixHandle &
+        getOldSamplesHandle() const
+        {
+            return oldSamplesHandle;
+        }
+
+        [[nodiscard]] const undo::UndoStore::SampleMatrixHandle &
+        getNewSamplesHandle() const
+        {
+            return newSamplesHandle;
         }
 
         [[nodiscard]] cupuacu::file::OverwritePreservationMutation
@@ -677,8 +912,12 @@ namespace cupuacu::effects
         std::vector<SilenceRange> runs;
         int64_t startFrame = 0;
         int64_t frameCount = 0;
-        std::vector<std::vector<float>> oldSamples;
-        std::vector<std::vector<float>> newSamples;
+        std::optional<cupuacu::actions::audio::detail::SampleMatrix>
+            pendingOldSamples;
+        std::optional<cupuacu::actions::audio::detail::SampleMatrix>
+            pendingNewSamples;
+        undo::UndoStore::SampleMatrixHandle oldSamplesHandle;
+        undo::UndoStore::SampleMatrixHandle newSamplesHandle;
 
         void captureSamples()
         {
@@ -694,6 +933,8 @@ namespace cupuacu::effects
 
             const auto &document =
                 state->tabs[static_cast<std::size_t>(tabIndex)].session.document;
+            cupuacu::actions::audio::detail::SampleMatrix oldSamples;
+            cupuacu::actions::audio::detail::SampleMatrix newSamples;
             oldSamples.resize(targetChannels.size());
             newSamples.resize(targetChannels.size());
 
@@ -742,23 +983,40 @@ namespace cupuacu::effects
                     }
                 }
             }
+            pendingOldSamples = std::move(oldSamples);
+            pendingNewSamples = std::move(newSamples);
         }
 
-        void applySamples(const std::vector<std::vector<float>> &samples) const
+        [[nodiscard]] cupuacu::DocumentSession *sessionForTab() const
+        {
+            if (!state)
+            {
+                return nullptr;
+            }
+
+            if (tabIndex < 0 || tabIndex >= static_cast<int>(state->tabs.size()))
+            {
+                return nullptr;
+            }
+
+            return &state->tabs[static_cast<std::size_t>(tabIndex)].session;
+        }
+
+        void applySamples(
+            const cupuacu::actions::audio::detail::SampleMatrix &samples) const
         {
             if (!state || frameCount <= 0 || targetChannels.empty())
             {
                 return;
             }
 
-            if (tabIndex < 0 || tabIndex >= static_cast<int>(state->tabs.size()))
+            auto *session = sessionForTab();
+            if (!session)
             {
                 return;
             }
 
-            auto &session =
-                state->tabs[static_cast<std::size_t>(tabIndex)].session;
-            auto &document = session.document;
+            auto &document = session->document;
             for (std::size_t channelIndex = 0; channelIndex < targetChannels.size();
                  ++channelIndex)
             {
@@ -769,10 +1027,10 @@ namespace cupuacu::effects
                         channel, startFrame + frame,
                         samples[channelIndex][static_cast<std::size_t>(frame)], true);
                 }
-                session.getWaveformCache(channel).invalidateSamples(
+                session->getWaveformCache(channel).invalidateSamples(
                     startFrame, startFrame + frameCount - 1);
             }
-            session.updateWaveformCache();
+            session->updateWaveformCache();
         }
     };
 

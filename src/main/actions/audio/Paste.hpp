@@ -1,7 +1,9 @@
 #pragma once
 #include "DurationMutationUndoable.hpp"
+#include "SegmentStore.hpp"
 #include "../../Document.hpp"
 #include <algorithm>
+#include <optional>
 #include <vector>
 #include <cstdint>
 
@@ -16,8 +18,8 @@ namespace cupuacu::actions::audio
         int64_t insertedFrameCount = 0;
         int64_t overwrittenFrameCount = 0;
 
-        Document::AudioSegment inserted;
-        Document::AudioSegment overwritten;
+        undo::UndoStore::SegmentHandle insertedHandle;
+        undo::UndoStore::SegmentHandle overwrittenHandle;
 
         bool hadOldSelection = false;
         double oldSel1 = 0;
@@ -46,6 +48,23 @@ namespace cupuacu::actions::audio
             oldCursorPos = session.cursor;
         }
 
+        Paste(State *state, const int64_t start, const int64_t end,
+              const int64_t insertedFrameCountToUse,
+              const int64_t overwrittenFrameCountToUse,
+              undo::UndoStore::SegmentHandle insertedHandleToUse,
+              undo::UndoStore::SegmentHandle overwrittenHandleToUse,
+              const bool hadOldSelectionToUse, const double oldSel1ToUse,
+              const double oldSel2ToUse, const int64_t oldCursorPosToUse)
+            : DurationMutationUndoable(state), startFrame(start), endFrame(end),
+              insertedFrameCount(insertedFrameCountToUse),
+              overwrittenFrameCount(overwrittenFrameCountToUse),
+              insertedHandle(std::move(insertedHandleToUse)),
+              overwrittenHandle(std::move(overwrittenHandleToUse)),
+              hadOldSelection(hadOldSelectionToUse), oldSel1(oldSel1ToUse),
+              oldSel2(oldSel2ToUse), oldCursorPos(oldCursorPosToUse)
+        {
+        }
+
         void redo() override
         {
             auto &session = state->getActiveDocumentSession();
@@ -66,10 +85,13 @@ namespace cupuacu::actions::audio
             }
 
             insertedFrameCount = clipFrames;
-            inserted = clip.captureSegment(0, insertedFrameCount);
+            const auto inserted = detail::captureOrLoadSegment(
+                session, insertedHandle,
+                [&] { return clip.captureSegment(0, insertedFrameCount); });
+            insertedHandle = detail::storeSegmentIfNeeded(
+                session, insertedHandle, inserted, "paste-inserted");
 
             overwrittenFrameCount = 0;
-            overwritten = {};
 
             if (endFrame >= 0 && endFrame > startFrame)
             {
@@ -78,10 +100,18 @@ namespace cupuacu::actions::audio
                 overwrittenFrameCount =
                     std::max<int64_t>(0, overwrittenFrameCount);
 
-                overwritten = {};
                 if (overwrittenFrameCount > 0)
                 {
-                    overwritten = doc.captureSegment(startFrame, overwrittenFrameCount);
+                    const auto overwritten = detail::captureOrLoadSegment(
+                        session, overwrittenHandle,
+                        [&]
+                        {
+                            return doc.captureSegment(startFrame,
+                                                      overwrittenFrameCount);
+                        });
+                    overwrittenHandle = detail::storeSegmentIfNeeded(
+                        session, overwrittenHandle, overwritten,
+                        "paste-overwritten");
 
                     doc.removeFrames(startFrame, overwrittenFrameCount);
                 }
@@ -126,6 +156,8 @@ namespace cupuacu::actions::audio
 
             if (endFrame >= 0 && overwrittenFrameCount > 0)
             {
+                const auto overwritten =
+                    session.undoStore.readSegment(overwrittenHandle);
                 doc.insertFrames(startFrame, overwrittenFrameCount);
                 doc.writeSegment(startFrame, overwritten, false);
             }
@@ -158,6 +190,85 @@ namespace cupuacu::actions::audio
         std::string getRedoDescription() override
         {
             return getUndoDescription();
+        }
+
+        [[nodiscard]] bool canPersistForRestart() const override
+        {
+            return !insertedHandle.empty() &&
+                   (overwrittenFrameCount <= 0 || !overwrittenHandle.empty());
+        }
+
+        [[nodiscard]] std::optional<nlohmann::json>
+        serializeForRestart() const override
+        {
+            if (!canPersistForRestart())
+            {
+                return std::nullopt;
+            }
+            return nlohmann::json{
+                {"kind", "paste"},
+                {"startFrame", startFrame},
+                {"endFrame", endFrame},
+                {"insertedFrameCount", insertedFrameCount},
+                {"overwrittenFrameCount", overwrittenFrameCount},
+                {"insertedHandle", insertedHandle.path.string()},
+                {"overwrittenHandle", overwrittenHandle.path.string()},
+                {"hadOldSelection", hadOldSelection},
+                {"oldSelectionStart", oldSel1},
+                {"oldSelectionEnd", oldSel2},
+                {"oldCursorPos", oldCursorPos},
+            };
+        }
+
+        [[nodiscard]] int64_t getStartFrame() const
+        {
+            return startFrame;
+        }
+
+        [[nodiscard]] int64_t getEndFrame() const
+        {
+            return endFrame;
+        }
+
+        [[nodiscard]] int64_t getInsertedFrameCount() const
+        {
+            return insertedFrameCount;
+        }
+
+        [[nodiscard]] int64_t getOverwrittenFrameCount() const
+        {
+            return overwrittenFrameCount;
+        }
+
+        [[nodiscard]] const undo::UndoStore::SegmentHandle &getInsertedHandle() const
+        {
+            return insertedHandle;
+        }
+
+        [[nodiscard]] const undo::UndoStore::SegmentHandle &
+        getOverwrittenHandle() const
+        {
+            return overwrittenHandle;
+        }
+
+        [[nodiscard]] bool getHadOldSelection() const
+        {
+            return hadOldSelection;
+        }
+
+        [[nodiscard]] double getOldSelectionStart() const
+        {
+            return oldSel1;
+        }
+
+        [[nodiscard]] double getOldSelectionEnd() const
+        {
+            return oldSel2;
+        }
+
+        [[nodiscard]] int64_t getOldCursorPos() const
+        {
+            return oldCursorPos;
         }
 
         [[nodiscard]] cupuacu::file::OverwritePreservationMutation

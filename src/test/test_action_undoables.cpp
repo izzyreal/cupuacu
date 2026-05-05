@@ -1,6 +1,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include "effects/RemoveSilenceEffect.hpp"
 #include "effects/AmplifyFadeEffect.hpp"
 #include "effects/DynamicsEffect.hpp"
 #include "effects/ReverseEffect.hpp"
@@ -21,8 +22,9 @@
 #include "gui/Window.hpp"
 
 #include <algorithm>
-#include <memory>
 #include <chrono>
+#include <filesystem>
+#include <memory>
 #include <thread>
 #include <vector>
 
@@ -130,6 +132,37 @@ TEST_CASE("Cut undoable updates clipboard, cursor, and undo state", "[actions]")
     state.redo();
     REQUIRE(readMonoSamples(session.document) ==
             std::vector<float>({0, 1, 5}));
+}
+
+TEST_CASE("Cut stores undo payload in the session undo store", "[actions]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    initializeMonoDocument(state, {0, 1, 2, 3, 4, 5});
+
+    auto &session = state.getActiveDocumentSession();
+    session.selection.setValue1(2.0);
+    session.selection.setValue2(5.0);
+
+    cupuacu::actions::audio::performCut(&state);
+
+    REQUIRE(session.undoStore.isAttached());
+    REQUIRE_FALSE(session.undoStore.root().empty());
+
+    bool foundPayload = false;
+    for (const auto &entry : std::filesystem::directory_iterator(
+             session.undoStore.root()))
+    {
+        if (entry.is_regular_file())
+        {
+            foundPayload = true;
+            break;
+        }
+    }
+    REQUIRE(foundPayload);
+
+    state.undo();
+    REQUIRE(readMonoSamples(session.document) ==
+            std::vector<float>({0, 1, 2, 3, 4, 5}));
 }
 
 TEST_CASE("Cut undo publishes modal long-task progress", "[actions][long-task]")
@@ -293,6 +326,38 @@ TEST_CASE("Paste insert undoable inserts clipboard content and restores on undo"
     REQUIRE(session.cursor == 4);
 }
 
+TEST_CASE("Paste stores undo payloads in the session undo store", "[actions]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    initializeMonoDocument(state, {0, 1, 2, 3, 4});
+    state.clipboard.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 2);
+    state.clipboard.setSample(0, 0, 9.0f, false);
+    state.clipboard.setSample(0, 1, 8.0f, false);
+
+    auto &session = state.getActiveDocumentSession();
+    session.cursor = 4;
+
+    state.addAndDoUndoable(
+        std::make_shared<cupuacu::actions::audio::Paste>(&state, 2, -1));
+
+    REQUIRE(session.undoStore.isAttached());
+
+    int payloadCount = 0;
+    for (const auto &entry :
+         std::filesystem::directory_iterator(session.undoStore.root()))
+    {
+        if (entry.is_regular_file())
+        {
+            ++payloadCount;
+        }
+    }
+    REQUIRE(payloadCount >= 1);
+
+    state.undo();
+    REQUIRE(readMonoSamples(session.document) ==
+            std::vector<float>({0, 1, 2, 3, 4}));
+}
+
 TEST_CASE("Paste overwrite undoable replaces selected range and restores it",
           "[actions]")
 {
@@ -353,6 +418,35 @@ TEST_CASE("Trim undoable keeps requested middle range and restores document",
     REQUIRE(session.cursor == 1);
 }
 
+TEST_CASE("Trim stores undo payloads in the session undo store", "[actions]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    initializeMonoDocument(state, {0, 1, 2, 3, 4, 5});
+
+    auto &session = state.getActiveDocumentSession();
+    session.selection.setValue1(1.0);
+    session.selection.setValue2(4.0);
+
+    cupuacu::actions::audio::performTrim(&state);
+
+    REQUIRE(session.undoStore.isAttached());
+
+    int payloadCount = 0;
+    for (const auto &entry :
+         std::filesystem::directory_iterator(session.undoStore.root()))
+    {
+        if (entry.is_regular_file())
+        {
+            ++payloadCount;
+        }
+    }
+    REQUIRE(payloadCount >= 2);
+
+    state.undo();
+    REQUIRE(readMonoSamples(session.document) ==
+            std::vector<float>({0, 1, 2, 3, 4, 5}));
+}
+
 TEST_CASE("Reverse applies across the whole mono document and respects undo",
           "[actions]")
 {
@@ -396,6 +490,23 @@ TEST_CASE("Reverse respects the selected range and selected channel",
             std::vector<float>({0, 1, 2, 3, 4}));
     REQUIRE(readChannelSamples(session.document, 1) ==
             std::vector<float>({10, 11, 12, 13, 14}));
+}
+
+TEST_CASE("Reverse stores undo payloads in the session undo store", "[actions]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    initializeMonoDocument(state, {0, 1, 2, 3, 4});
+
+    cupuacu::effects::performReverse(&state);
+    drainPendingEffectWork(&state);
+
+    const auto stats = state.getActiveDocumentSession().undoStore.stats();
+    REQUIRE(stats.fileCount >= 2);
+    REQUIRE(stats.totalBytes > 0);
+
+    state.undo();
+    REQUIRE(readMonoSamples(state.getActiveDocumentSession().document) ==
+            std::vector<float>({0, 1, 2, 3, 4}));
 }
 
 TEST_CASE("Cut at document tail removes trailing frames and restores on undo",
@@ -700,6 +811,38 @@ TEST_CASE("Dynamics compresses selected samples and respects undo", "[actions]")
             std::vector<float>({0.2f, 0.5f, 0.9f, -1.0f}));
 }
 
+TEST_CASE("Remove silence stores undo payloads in the session undo store",
+          "[actions]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    std::vector<float> samples(100, 0.0f);
+    samples.insert(samples.end(), 10, 1.0f);
+    samples.insert(samples.end(), 100, 0.0f);
+    initializeMonoDocument(state, samples);
+    state.getActiveDocumentSession().selection.setValue1(0.0);
+    state.getActiveDocumentSession().selection.setValue2(
+        static_cast<double>(samples.size()));
+
+    cupuacu::effects::performRemoveSilence(
+        &state,
+        cupuacu::effects::RemoveSilenceSettings{
+            .modeIndex = 0,
+            .thresholdUnitIndex = 0,
+            .thresholdDb = -60.0,
+            .thresholdSampleValue = 0.0,
+            .minimumSilenceLengthMs = 1.0,
+        });
+    drainPendingEffectWork(&state);
+
+    const auto stats = state.getActiveDocumentSession().undoStore.stats();
+    REQUIRE(stats.fileCount >= 1);
+    REQUIRE(stats.totalBytes > 0);
+
+    state.undo();
+    REQUIRE(readMonoSamples(state.getActiveDocumentSession().document) ==
+            samples);
+}
+
 TEST_CASE("Recorded chunk applier initializes empty document from chunk", "[actions]")
 {
     cupuacu::DocumentSession session;
@@ -806,6 +949,37 @@ TEST_CASE("RecordEdit restores overwritten samples and session state on undo",
     state.redo();
     REQUIRE(readChannelSamples(state.getActiveDocumentSession().document, 0) ==
             std::vector<float>({0.0f, 1.0f, 100.0f, 101.0f}));
+}
+
+TEST_CASE("RecordEdit stores undo payloads in the session undo store",
+          "[actions]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    initializeMonoDocument(state, {0.0f, 1.0f, 2.0f, 3.0f});
+
+    cupuacu::actions::audio::RecordEditData data;
+    data.startFrame = 1;
+    data.endFrame = 3;
+    data.oldFrameCount = 4;
+    data.oldChannelCount = 1;
+    data.targetChannelCount = 1;
+    data.oldSampleRate = 44100;
+    data.newSampleRate = 44100;
+    data.oldFormat = cupuacu::SampleFormat::FLOAT32;
+    data.newFormat = cupuacu::SampleFormat::FLOAT32;
+    data.overwrittenOldSamples = {{1.0f, 2.0f}};
+    data.recordedSamples = {{9.0f, 8.0f}};
+
+    state.addAndDoUndoable(
+        std::make_shared<cupuacu::actions::audio::RecordEdit>(&state, data));
+
+    const auto stats = state.getActiveDocumentSession().undoStore.stats();
+    REQUIRE(stats.fileCount >= 2);
+    REQUIRE(stats.totalBytes > 0);
+
+    state.undo();
+    REQUIRE(readMonoSamples(state.getActiveDocumentSession().document) ==
+            std::vector<float>({0.0f, 1.0f, 2.0f, 3.0f}));
 }
 
 TEST_CASE("RecordEdit cancels stale waveform builds when undo changes channel count",

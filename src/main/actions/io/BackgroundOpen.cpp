@@ -3,6 +3,7 @@
 #include "../../LongTask.hpp"
 #include "../../file/OverwritePreservation.hpp"
 #include "../../gui/Waveform.hpp"
+#include "../../undo/UndoManifestPersistence.hpp"
 #include "../../gui/Window.hpp"
 #include "../DocumentLifecycle.hpp"
 
@@ -142,6 +143,16 @@ namespace cupuacu::actions::io
             {
                 applyPersistedOpenDocumentState(
                     state, *snapshot.request.persistedDocumentState);
+                if (!snapshot.request.persistedDocumentState->undoStorePath.empty())
+                {
+                    if (!cupuacu::undo::restoreUndoManifest(
+                            state, static_cast<int>(state->tabs.size()) - 1,
+                            snapshot.request.persistedDocumentState
+                                ->undoStorePath))
+                    {
+                        state->startupRestore.historyRestoreFailed = true;
+                    }
+                }
                 if (snapshot.request.targetTabIndex ==
                     state->startupRestore.activeOpenFileIndex)
                 {
@@ -213,7 +224,9 @@ namespace cupuacu::actions::io
             {
                 persistSessionState(state);
             }
-            detail::reportStartupRestoreFailures(state, failures);
+            detail::reportStartupRestoreOutcome(
+                state, failures, state->startupRestore.clipboardRestoreFailed,
+                state->startupRestore.historyRestoreFailed);
             if (state->getActiveDocumentSession().currentFile.empty())
             {
                 state->getActiveDocumentSession().clearCurrentFile();

@@ -4,6 +4,8 @@
 #include "../file/OverwritePreservationMutation.hpp"
 
 #include <functional>
+#include <nlohmann/json.hpp>
+#include <optional>
 #include <string>
 
 namespace cupuacu::actions
@@ -15,6 +17,7 @@ namespace cupuacu::actions
 
     public:
         explicit Undoable(cupuacu::State *stateToUse) : state(stateToUse) {}
+        virtual ~Undoable() = default;
 
         std::function<void()> updateGui = [] {};
 
@@ -26,5 +29,16 @@ namespace cupuacu::actions
 
         [[nodiscard]] virtual cupuacu::file::OverwritePreservationMutation
         overwritePreservationMutation() const = 0;
+
+        [[nodiscard]] virtual bool canPersistForRestart() const
+        {
+            return false;
+        }
+
+        [[nodiscard]] virtual std::optional<nlohmann::json>
+        serializeForRestart() const
+        {
+            return std::nullopt;
+        }
     };
 } // namespace cupuacu::actions

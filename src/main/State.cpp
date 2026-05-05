@@ -133,6 +133,7 @@ void cupuacu::State::addAndDoUndoableToTab(
     }
 
     addUndoableToTab(tabIndex, undoable);
+    cupuacu::actions::detail::ensureUndoStoreForTab(this, tabIndex);
     tabs[static_cast<std::size_t>(tabIndex)].session.stopWaveformCacheBuild();
     undoable->redo();
 

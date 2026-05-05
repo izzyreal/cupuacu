@@ -12,5 +12,13 @@ namespace cupuacu::persistence
     bool loadDocumentAutosaveSnapshot(const std::filesystem::path &path,
                                       cupuacu::DocumentSession &session);
 
+    bool saveClipboardSnapshot(const std::filesystem::path &path,
+                               const cupuacu::Document &clipboard);
+
+    bool loadClipboardSnapshot(const std::filesystem::path &path,
+                               cupuacu::Document &clipboard);
+
     void removeDocumentAutosaveSnapshot(const std::filesystem::path &path);
+
+    void removeClipboardSnapshot(const std::filesystem::path &path);
 } // namespace cupuacu::persistence

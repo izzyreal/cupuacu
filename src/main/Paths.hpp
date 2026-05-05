@@ -42,7 +42,13 @@ namespace cupuacu
 
         std::filesystem::path sessionStatePath() const;
 
+        std::filesystem::path statePath() const;
+
         std::filesystem::path autosavePath() const;
+
+        std::filesystem::path undoPath() const;
+
+        std::filesystem::path clipboardPath() const;
 
         std::filesystem::path logPath() const;
 

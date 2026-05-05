@@ -19,6 +19,7 @@ namespace cupuacu::persistence
     {
         std::string filePath;
         std::string autosaveSnapshotPath;
+        std::string undoStorePath;
         std::optional<double> samplesPerPixel;
         std::optional<int64_t> sampleOffset;
         std::optional<int64_t> cursor;
@@ -31,6 +32,7 @@ namespace cupuacu::persistence
     {
         std::vector<PersistedOpenDocumentState> openDocuments;
         std::vector<std::string> openFiles;
+        std::string clipboardSnapshotPath;
         int activeOpenFileIndex = -1;
         bool snapEnabled = false;
         std::optional<int> windowWidth;

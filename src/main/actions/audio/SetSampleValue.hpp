@@ -3,6 +3,8 @@
 #include "../Undoable.hpp"
 
 #include <cstdint>
+#include <nlohmann/json.hpp>
+#include <optional>
 
 namespace cupuacu::actions::audio
 {
@@ -22,6 +24,17 @@ namespace cupuacu::actions::audio
                                 const float oldValueToUse)
             : Undoable(state), channel(channelToUse),
               sampleIndex(sampleIndexToUse), oldValue(oldValueToUse)
+        {
+        }
+
+        explicit SetSampleValue(cupuacu::State *state,
+                                const uint32_t channelToUse,
+                                const int64_t sampleIndexToUse,
+                                const float oldValueToUse,
+                                const float newValueToUse)
+            : Undoable(state), channel(channelToUse),
+              sampleIndex(sampleIndexToUse), oldValue(oldValueToUse),
+              newValue(newValueToUse)
         {
         }
 
@@ -54,6 +67,23 @@ namespace cupuacu::actions::audio
         std::string getRedoDescription() override
         {
             return getUndoDescription();
+        }
+
+        [[nodiscard]] bool canPersistForRestart() const override
+        {
+            return true;
+        }
+
+        [[nodiscard]] std::optional<nlohmann::json>
+        serializeForRestart() const override
+        {
+            return nlohmann::json{
+                {"kind", "set-sample-value"},
+                {"channel", channel},
+                {"sampleIndex", sampleIndex},
+                {"oldValue", oldValue},
+                {"newValue", newValue},
+            };
         }
 
         [[nodiscard]] cupuacu::file::OverwritePreservationMutation

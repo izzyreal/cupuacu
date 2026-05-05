@@ -83,9 +83,24 @@ std::filesystem::path Paths::sessionStatePath() const
     return path;
 }
 
+std::filesystem::path Paths::statePath() const
+{
+    return appConfigHome() / "state";
+}
+
 std::filesystem::path Paths::autosavePath() const
 {
-    return configPath() / "autosave";
+    return statePath() / "autosave";
+}
+
+std::filesystem::path Paths::undoPath() const
+{
+    return statePath() / "undo";
+}
+
+std::filesystem::path Paths::clipboardPath() const
+{
+    return statePath() / "clipboard";
 }
 
 std::filesystem::path Paths::logPath() const
