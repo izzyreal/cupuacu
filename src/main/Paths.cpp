@@ -79,7 +79,7 @@ std::filesystem::path Paths::recentlyOpenedFilesPath() const
 
 std::filesystem::path Paths::sessionStatePath() const
 {
-    auto path = configPath() / "session_state.json";
+    auto path = statePath() / "session_state.json";
     return path;
 }
 

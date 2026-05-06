@@ -308,28 +308,24 @@ Changes are persisted automatically when you select a different display configur
 
 ## Persisted Settings
 
-Cupuacu persists four JSON settings files:
+Cupuacu persists three JSON settings files in its `config` directory:
 
 - `recently_opened_files.json`
-- `session_state.json`
 - `audio_device_properties.json`
 - `display_properties.json`
 
-These files are stored in Cupuacu's config directory. The current paths are:
+Current paths:
 
 - macOS:
   - `~/Library/Application Support/Cupuacu/config/recently_opened_files.json`
-  - `~/Library/Application Support/Cupuacu/config/session_state.json`
   - `~/Library/Application Support/Cupuacu/config/audio_device_properties.json`
   - `~/Library/Application Support/Cupuacu/config/display_properties.json`
 - Linux:
   - `~/.config/Cupuacu/config/recently_opened_files.json`
-  - `~/.config/Cupuacu/config/session_state.json`
   - `~/.config/Cupuacu/config/audio_device_properties.json`
   - `~/.config/Cupuacu/config/display_properties.json`
 - Windows:
   - `%AppData%\Cupuacu\config\recently_opened_files.json`
-  - `%AppData%\Cupuacu\config\session_state.json`
   - `%AppData%\Cupuacu\config\audio_device_properties.json`
   - `%AppData%\Cupuacu\config\display_properties.json`
 
@@ -367,6 +363,17 @@ User-visible behavior:
 - autosaved untitled documents can be restored on startup
 - autosaved file-backed documents restore the autosaved snapshot over the source file state
 - the active restored tab is remembered when it refers to a file-backed tab
+
+This file is stored in the `state` directory.
+
+Current paths:
+
+- macOS:
+  - `~/Library/Application Support/Cupuacu/state/session_state.json`
+- Linux:
+  - `~/.config/Cupuacu/state/session_state.json`
+- Windows:
+  - `%AppData%\Cupuacu\state\session_state.json`
 
 ## Runtime State And Recovery
 
@@ -431,10 +438,10 @@ Use these rules when troubleshooting:
 
 - delete `state/autosave`, `state/undo`, or `state/clipboard` to clear
   disposable recovery state without resetting preferences
-- delete `config/session_state.json` to stop Cupuacu from reopening the
+- delete `state/session_state.json` to stop Cupuacu from reopening the
   previous session on startup
 - delete the whole `config` directory only if you want to reset preferences,
-  recent files, and saved session metadata as well
+  recent files, and saved preferences as well
 
 ### audio_device_properties.json
 
