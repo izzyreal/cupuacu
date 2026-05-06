@@ -12,7 +12,7 @@ namespace cupuacu::persistence
 {
     namespace
     {
-        constexpr int kFormatVersion = 9;
+        constexpr int kFormatVersion = 10;
 
         std::vector<std::string> filterFiles(const std::vector<std::string> &files)
         {
@@ -261,9 +261,19 @@ namespace cupuacu::persistence
         const int version = json.value("version", 0);
         if (version != 1 && version != 2 && version != 3 && version != 4 &&
             version != 5 && version != 6 && version != 7 &&
-            version != 8 && version != kFormatVersion)
+            version != 8 && version != 9 && version != kFormatVersion)
         {
             return {};
+        }
+
+        if (json.contains("clipboardSnapshotPath"))
+        {
+            if (!json.at("clipboardSnapshotPath").is_string())
+            {
+                return {};
+            }
+            state.clipboardSnapshotPath =
+                json.at("clipboardSnapshotPath").get<std::string>();
         }
 
         if (version >= 2)
@@ -450,6 +460,10 @@ namespace cupuacu::persistence
         };
 
         nlohmann::json outputJson = json;
+        if (!state.clipboardSnapshotPath.empty())
+        {
+            outputJson["clipboardSnapshotPath"] = state.clipboardSnapshotPath;
+        }
         if (state.windowWidth.has_value())
         {
             outputJson["windowWidth"] = *state.windowWidth;

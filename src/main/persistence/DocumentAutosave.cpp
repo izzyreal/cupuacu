@@ -293,6 +293,32 @@ namespace cupuacu::persistence
         }
     }
 
+    bool saveClipboardSnapshot(const std::filesystem::path &path,
+                               const cupuacu::Document &clipboard)
+    {
+        if (path.empty() || clipboard.getChannelCount() <= 0)
+        {
+            return false;
+        }
+
+        cupuacu::DocumentSession session;
+        session.document = clipboard;
+        session.clearCurrentFile();
+        return saveDocumentAutosaveSnapshot(path, session);
+    }
+
+    bool loadClipboardSnapshot(const std::filesystem::path &path,
+                               cupuacu::Document &clipboard)
+    {
+        cupuacu::DocumentSession session;
+        if (!loadDocumentAutosaveSnapshot(path, session))
+        {
+            return false;
+        }
+        clipboard = std::move(session.document);
+        return clipboard.getChannelCount() > 0;
+    }
+
     void removeDocumentAutosaveSnapshot(const std::filesystem::path &path)
     {
         if (path.empty())
@@ -302,5 +328,10 @@ namespace cupuacu::persistence
 
         std::error_code ec;
         std::filesystem::remove(path, ec);
+    }
+
+    void removeClipboardSnapshot(const std::filesystem::path &path)
+    {
+        removeDocumentAutosaveSnapshot(path);
     }
 } // namespace cupuacu::persistence

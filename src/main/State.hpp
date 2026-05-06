@@ -112,6 +112,8 @@ namespace cupuacu
         int activeOpenFileIndex = -1;
         int restoredActiveTabIndex = -1;
         bool shouldPersistState = false;
+        bool clipboardRestoreFailed = false;
+        bool historyRestoreFailed = false;
         std::vector<StartupRestoreFailure> failures;
     };
 

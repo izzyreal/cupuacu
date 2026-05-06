@@ -3,6 +3,9 @@
 #include "../../Document.hpp"
 #include "../../gui/MainViewAccess.hpp"
 
+#include <nlohmann/json.hpp>
+#include <optional>
+
 namespace cupuacu::actions::audio
 {
 
@@ -30,6 +33,19 @@ namespace cupuacu::actions::audio
             }
             oldCursorPos = session.cursor;
 
+            updateGui = [state = state]
+            {
+                gui::requestMainViewRefresh(state);
+            };
+        }
+
+        Copy(State *state, int64_t start, int64_t count,
+             bool hadOldSelectionToUse, double oldSel1ToUse,
+             double oldSel2ToUse, int64_t oldCursorPosToUse)
+            : Undoable(state), startFrame(start), numFrames(count),
+              hadOldSelection(hadOldSelectionToUse), oldSel1(oldSel1ToUse),
+              oldSel2(oldSel2ToUse), oldCursorPos(oldCursorPosToUse)
+        {
             updateGui = [state = state]
             {
                 gui::requestMainViewRefresh(state);
@@ -88,7 +104,21 @@ namespace cupuacu::actions::audio
 
         [[nodiscard]] bool canPersistForRestart() const override
         {
-            return false;
+            return true;
+        }
+
+        [[nodiscard]] std::optional<nlohmann::json>
+        serializeForRestart() const override
+        {
+            return nlohmann::json{
+                {"kind", "copy"},
+                {"startFrame", startFrame},
+                {"numFrames", numFrames},
+                {"hadOldSelection", hadOldSelection},
+                {"oldSel1", oldSel1},
+                {"oldSel2", oldSel2},
+                {"oldCursorPos", oldCursorPos},
+            };
         }
 
         [[nodiscard]] cupuacu::file::OverwritePreservationMutation

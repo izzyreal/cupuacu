@@ -1,9 +1,13 @@
 #include "UndoManifestPersistence.hpp"
 
+#include "../Logger.hpp"
+#include "../actions/audio/Copy.hpp"
 #include "../actions/audio/Cut.hpp"
 #include "../actions/audio/Paste.hpp"
 #include "../actions/audio/RecordEdit.hpp"
+#include "../actions/audio/SetSampleValue.hpp"
 #include "../actions/audio/Trim.hpp"
+#include "../actions/markers/EditCommands.hpp"
 #include "../effects/AmplifyEnvelopeEffect.hpp"
 #include "../effects/AmplifyFadeEffect.hpp"
 #include "../effects/DynamicsEffect.hpp"
@@ -16,6 +20,7 @@
 #include <fstream>
 #include <functional>
 #include <map>
+#include <sstream>
 #include <set>
 
 namespace cupuacu::undo
@@ -23,6 +28,8 @@ namespace cupuacu::undo
     namespace
     {
         constexpr int kFormatVersion = 1;
+        constexpr std::uint64_t kMaxRestartUndoStoreBytes =
+            512ull * 1024ull * 1024ull;
 
         undo::UndoStore::PayloadHandle handleFromString(const std::string &path)
         {
@@ -376,6 +383,50 @@ namespace cupuacu::undo
                          undo::UndoStore::SampleMatrixHandle{
                              handleFromString(newHandlePath).path});
                  }},
+                {"set-sample-value",
+                 [](State *state, int, const nlohmann::json &json)
+                     -> std::shared_ptr<actions::Undoable>
+                 {
+                     return std::make_shared<actions::audio::SetSampleValue>(
+                         state, json.value("channel", uint32_t{0}),
+                         json.value("sampleIndex", int64_t{0}),
+                         json.value("oldValue", 0.0f),
+                         json.value("newValue", 0.0f));
+                 }},
+                {"set-marker-state",
+                 [](State *state, int, const nlohmann::json &json)
+                     -> std::shared_ptr<actions::Undoable>
+                 {
+                     if (!json.contains("oldState") || !json.contains("newState"))
+                     {
+                         return {};
+                     }
+                     const auto oldState =
+                         actions::markers::markerSnapshotFromJson(
+                             json.at("oldState"));
+                     const auto newState =
+                         actions::markers::markerSnapshotFromJson(
+                             json.at("newState"));
+                     if (!oldState.has_value() || !newState.has_value())
+                     {
+                         return {};
+                     }
+                     return std::make_shared<actions::markers::SetMarkerState>(
+                         state, *oldState, *newState,
+                         json.value("description", std::string{"Edit marker"}));
+                 }},
+                {"copy",
+                 [](State *state, int, const nlohmann::json &json)
+                     -> std::shared_ptr<actions::Undoable>
+                 {
+                     auto undoable = std::make_shared<actions::audio::Copy>(
+                         state, json.value("startFrame", int64_t{0}),
+                         json.value("numFrames", int64_t{0}),
+                         json.value("hadOldSelection", false),
+                         json.value("oldSel1", 0.0), json.value("oldSel2", 0.0),
+                         json.value("oldCursorPos", int64_t{0}));
+                     return undoable;
+                 }},
             };
             return registry;
         }
@@ -394,6 +445,24 @@ namespace cupuacu::undo
         }
     } // namespace
 
+    std::uint64_t maxRestartUndoStoreBytes()
+    {
+        return kMaxRestartUndoStoreBytes;
+    }
+
+    bool shouldPersistUndoStoreForRestart(const UndoStore::Stats &stats,
+                                          const std::uint64_t maxBytes)
+    {
+        return maxBytes == 0 || stats.totalBytes <= maxBytes;
+    }
+
+    std::string describeUndoStoreStats(const UndoStore::Stats &stats)
+    {
+        std::ostringstream output;
+        output << stats.fileCount << " file(s), " << stats.totalBytes << " byte(s)";
+        return output.str();
+    }
+
     std::filesystem::path
     manifestPathForStore(const std::filesystem::path &undoStorePath)
     {
@@ -403,29 +472,43 @@ namespace cupuacu::undo
     bool saveUndoManifest(const std::filesystem::path &manifestPath,
                           const cupuacu::DocumentTab &tab)
     {
-        if (manifestPath.empty() || tab.undoables.empty() || !tab.redoables.empty())
+        if (manifestPath.empty() ||
+            (tab.undoables.empty() && tab.redoables.empty()))
         {
             return false;
         }
 
-        nlohmann::json entries = nlohmann::json::array();
-        for (const auto &undoable : tab.undoables)
+        const auto serializeEntries =
+            [](const auto &undoables) -> std::optional<nlohmann::json>
         {
-            if (!undoable || !undoable->canPersistForRestart())
+            nlohmann::json entries = nlohmann::json::array();
+            for (const auto &undoable : undoables)
             {
-                return false;
+                if (!undoable || !undoable->canPersistForRestart())
+                {
+                    return std::nullopt;
+                }
+                const auto entry = undoable->serializeForRestart();
+                if (!entry.has_value() || entry->is_null() || entry->empty())
+                {
+                    return std::nullopt;
+                }
+                entries.push_back(*entry);
             }
-            const auto entry = undoable->serializeForRestart();
-            if (!entry.has_value() || entry->is_null() || entry->empty())
-            {
-                return false;
-            }
-            entries.push_back(*entry);
+            return entries;
+        };
+
+        const auto undoEntries = serializeEntries(tab.undoables);
+        const auto redoEntries = serializeEntries(tab.redoables);
+        if (!undoEntries.has_value() || !redoEntries.has_value())
+        {
+            return false;
         }
 
         const nlohmann::json json{
             {"version", kFormatVersion},
-            {"entries", std::move(entries)},
+            {"entries", std::move(*undoEntries)},
+            {"redoEntries", std::move(*redoEntries)},
         };
 
         try
@@ -481,6 +564,10 @@ namespace cupuacu::undo
         {
             return false;
         }
+        if (json.contains("redoEntries") && !json.at("redoEntries").is_array())
+        {
+            return false;
+        }
 
         auto &tab = state->tabs[static_cast<std::size_t>(tabIndex)];
         tab.session.undoStore.attach(undoStorePath);
@@ -494,12 +581,36 @@ namespace cupuacu::undo
             {
                 tab.undoables.clear();
                 tab.redoables.clear();
+                cupuacu::logging::warn(
+                    "Failed to restore restart undo history from " +
+                    undoStorePath.string());
                 return false;
             }
             tab.undoables.push_back(std::move(undoable));
         }
 
-        return !tab.undoables.empty();
+        if (json.contains("redoEntries"))
+        {
+            for (const auto &entry : json.at("redoEntries"))
+            {
+                auto redoable = restoreUndoable(state, tabIndex, entry);
+                if (!redoable)
+                {
+                    tab.undoables.clear();
+                    tab.redoables.clear();
+                    cupuacu::logging::warn(
+                        "Failed to restore restart redo history from " +
+                        undoStorePath.string());
+                    return false;
+                }
+                tab.redoables.push_back(std::move(redoable));
+            }
+        }
+
+        cupuacu::logging::info(
+            "Restored restart undo history from " + undoStorePath.string() +
+            " (" + describeUndoStoreStats(tab.session.undoStore.stats()) + ")");
+        return !tab.undoables.empty() || !tab.redoables.empty();
     }
 
     void pruneUndoStores(const std::filesystem::path &undoRoot,
@@ -521,6 +632,7 @@ namespace cupuacu::undo
         }
 
         std::error_code ec;
+        std::uint64_t removedCount = 0;
         for (const auto &entry : std::filesystem::directory_iterator(undoRoot, ec))
         {
             if (ec)
@@ -531,8 +643,18 @@ namespace cupuacu::undo
             if (keep.find(normalized) == keep.end())
             {
                 std::filesystem::remove_all(entry.path(), ec);
+                if (!ec)
+                {
+                    ++removedCount;
+                }
                 ec.clear();
             }
+        }
+        if (removedCount > 0)
+        {
+            cupuacu::logging::info(
+                "Pruned " + std::to_string(removedCount) +
+                " stale undo store(s) from " + undoRoot.string());
         }
     }
 } // namespace cupuacu::undo

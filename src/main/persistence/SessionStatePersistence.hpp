@@ -32,6 +32,7 @@ namespace cupuacu::persistence
     {
         std::vector<PersistedOpenDocumentState> openDocuments;
         std::vector<std::string> openFiles;
+        std::string clipboardSnapshotPath;
         int activeOpenFileIndex = -1;
         bool snapEnabled = false;
         std::optional<int> windowWidth;

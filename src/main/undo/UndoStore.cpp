@@ -1,5 +1,6 @@
 #include "UndoStore.hpp"
 
+#include "../Logger.hpp"
 #include "../file/FileIo.hpp"
 
 #include <atomic>
@@ -344,6 +345,7 @@ namespace cupuacu::undo
             throw std::runtime_error("Failed to create undo store directory: " +
                                      ec.message());
         }
+        cupuacu::logging::info("Attached undo store at " + rootPath.string());
     }
 
     bool UndoStore::isAttached() const
@@ -363,9 +365,15 @@ namespace cupuacu::undo
             return;
         }
 
+        const auto previousRoot = rootPath;
+        const auto previousStats = stats();
         std::error_code ec;
         std::filesystem::remove_all(rootPath, ec);
         rootPath.clear();
+        cupuacu::logging::info(
+            "Cleared undo store at " + previousRoot.string() + " (" +
+            std::to_string(previousStats.fileCount) + " file(s), " +
+            std::to_string(previousStats.totalBytes) + " byte(s))");
     }
 
     std::filesystem::path UndoStore::allocatePath(

@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
 #include <utility>
@@ -89,6 +90,66 @@ namespace cupuacu::actions::markers
         gui::Waveform::setAllWaveformsDirty(state);
     }
 
+    inline nlohmann::json markerSnapshotToJson(const MarkerSnapshot &snapshot)
+    {
+        nlohmann::json json{
+            {"exists", snapshot.exists},
+            {"marker",
+             {
+                 {"id", snapshot.marker.id},
+                 {"frame", snapshot.marker.frame},
+                 {"label", snapshot.marker.label},
+             }},
+        };
+        if (snapshot.selectedMarkerId.has_value())
+        {
+            json["selectedMarkerId"] = *snapshot.selectedMarkerId;
+        }
+        return json;
+    }
+
+    inline std::optional<MarkerSnapshot>
+    markerSnapshotFromJson(const nlohmann::json &json)
+    {
+        if (!json.is_object() || !json.contains("exists") ||
+            !json.at("exists").is_boolean() || !json.contains("marker") ||
+            !json.at("marker").is_object())
+        {
+            return std::nullopt;
+        }
+
+        const auto &markerJson = json.at("marker");
+        if (!markerJson.contains("id") || !markerJson.at("id").is_number_unsigned() ||
+            !markerJson.contains("frame") ||
+            !markerJson.at("frame").is_number_integer())
+        {
+            return std::nullopt;
+        }
+
+        MarkerSnapshot snapshot{};
+        snapshot.exists = json.at("exists").get<bool>();
+        snapshot.marker.id = markerJson.at("id").get<uint64_t>();
+        snapshot.marker.frame = markerJson.at("frame").get<int64_t>();
+        if (markerJson.contains("label"))
+        {
+            if (!markerJson.at("label").is_string())
+            {
+                return std::nullopt;
+            }
+            snapshot.marker.label = markerJson.at("label").get<std::string>();
+        }
+        if (json.contains("selectedMarkerId"))
+        {
+            if (!json.at("selectedMarkerId").is_number_unsigned())
+            {
+                return std::nullopt;
+            }
+            snapshot.selectedMarkerId =
+                json.at("selectedMarkerId").get<uint64_t>();
+        }
+        return snapshot;
+    }
+
     class SetMarkerState final : public Undoable
     {
     public:
@@ -139,7 +200,18 @@ namespace cupuacu::actions::markers
 
         [[nodiscard]] bool canPersistForRestart() const override
         {
-            return false;
+            return true;
+        }
+
+        [[nodiscard]] std::optional<nlohmann::json>
+        serializeForRestart() const override
+        {
+            return nlohmann::json{
+                {"kind", "set-marker-state"},
+                {"oldState", markerSnapshotToJson(oldState)},
+                {"newState", markerSnapshotToJson(newState)},
+                {"description", description},
+            };
         }
 
         [[nodiscard]] cupuacu::file::OverwritePreservationMutation

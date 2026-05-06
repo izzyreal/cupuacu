@@ -48,6 +48,8 @@ namespace cupuacu
 
         std::filesystem::path undoPath() const;
 
+        std::filesystem::path clipboardPath() const;
+
         std::filesystem::path logPath() const;
 
         Documents *getDocuments() const;

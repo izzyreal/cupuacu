@@ -98,6 +98,11 @@ std::filesystem::path Paths::undoPath() const
     return statePath() / "undo";
 }
 
+std::filesystem::path Paths::clipboardPath() const
+{
+    return statePath() / "clipboard";
+}
+
 std::filesystem::path Paths::logPath() const
 {
     return appLogHome() / "cupuacu.log";

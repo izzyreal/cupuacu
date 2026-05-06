@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../State.hpp"
+#include "../persistence/DocumentAutosave.hpp"
 #include "../gui/MainViewAccess.hpp"
 #include "../gui/Waveform.hpp"
 #include "../undo/UndoManifestPersistence.hpp"
@@ -57,6 +58,46 @@ namespace cupuacu::actions
             return message;
         }
 
+        inline std::string buildRestoreOutcomeMessage(
+            const std::vector<DocumentRestoreFailure> &failures,
+            const bool clipboardRestoreFailed,
+            const bool historyRestoreFailed)
+        {
+            if (!failures.empty())
+            {
+                std::string message = buildRestoreSummaryMessage(failures);
+                if (clipboardRestoreFailed || historyRestoreFailed)
+                {
+                    message += "\n\nSome session state could not be restored:";
+                    if (clipboardRestoreFailed)
+                    {
+                        message += "\n- Clipboard from the previous session";
+                    }
+                    if (historyRestoreFailed)
+                    {
+                        message +=
+                            "\n- Some undo/redo history for one or more tabs";
+                    }
+                }
+                return message;
+            }
+
+            std::string message = "Cupuacu could not fully restore the previous session.";
+            if (clipboardRestoreFailed || historyRestoreFailed)
+            {
+                if (clipboardRestoreFailed)
+                {
+                    message += "\n\nClipboard from the previous session could not be restored.";
+                }
+                if (historyRestoreFailed)
+                {
+                    message +=
+                        "\n\nSome undo/redo history could not be restored for one or more tabs.";
+                }
+            }
+            return message;
+        }
+
         inline std::string condensedRestoreReason(const std::string &path,
                                                   const std::string &reason)
         {
@@ -76,17 +117,23 @@ namespace cupuacu::actions
             return reason;
         }
 
-        inline void reportStartupRestoreFailures(
+        inline void reportStartupRestoreOutcome(
             cupuacu::State *state,
-            const std::vector<DocumentRestoreFailure> &failures)
+            const std::vector<DocumentRestoreFailure> &failures,
+            const bool clipboardRestoreFailed,
+            const bool historyRestoreFailed)
         {
-            if (failures.empty())
+            if (failures.empty() && !clipboardRestoreFailed &&
+                !historyRestoreFailed)
             {
                 return;
             }
 
-            const std::string title = "Some files could not be reopened";
-            const std::string message = buildRestoreSummaryMessage(failures);
+            const std::string title =
+                failures.empty() ? "Some session state could not be restored"
+                                 : "Some files could not be reopened";
+            const std::string message = buildRestoreOutcomeMessage(
+                failures, clipboardRestoreFailed, historyRestoreFailed);
             if (state && state->errorReporter)
             {
                 state->errorReporter(title, message);
@@ -299,8 +346,18 @@ namespace cupuacu::actions
 
         const auto plan = planStartupDocumentRestore(
             persistedRecentFiles, persistedSessionState);
-        state->recentFiles = plan.recentFiles;
+            state->recentFiles = plan.recentFiles;
         state->snapEnabled = persistedSessionState.snapEnabled;
+        state->clipboard = cupuacu::Document{};
+        if (!persistedSessionState.clipboardSnapshotPath.empty())
+        {
+            if (!cupuacu::persistence::loadClipboardSnapshot(
+                    persistedSessionState.clipboardSnapshotPath,
+                    state->clipboard))
+            {
+                state->startupRestore.clipboardRestoreFailed = true;
+            }
+        }
 
         const bool hasAutosaveSnapshotRestore = std::any_of(
             plan.openDocuments.begin(), plan.openDocuments.end(),
@@ -319,6 +376,9 @@ namespace cupuacu::actions
                 .activeOpenFileIndex = plan.activeOpenFileIndex,
                 .restoredActiveTabIndex = -1,
                 .shouldPersistState = plan.shouldPersistState,
+                .clipboardRestoreFailed =
+                    state->startupRestore.clipboardRestoreFailed,
+                .historyRestoreFailed = false,
                 .failures = {},
             };
             for (size_t index = 0; index < plan.openFiles.size(); ++index)
@@ -406,9 +466,12 @@ namespace cupuacu::actions
                 applyPersistedOpenDocumentState(state, documentState);
                 if (!documentState.undoStorePath.empty())
                 {
-                    (void)cupuacu::undo::restoreUndoManifest(
-                        state, static_cast<int>(state->tabs.size()) - 1,
-                        documentState.undoStorePath);
+                    if (!cupuacu::undo::restoreUndoManifest(
+                            state, static_cast<int>(state->tabs.size()) - 1,
+                            documentState.undoStorePath))
+                    {
+                        state->startupRestore.historyRestoreFailed = true;
+                    }
                 }
 
                 if (static_cast<int>(index) == plan.activeOpenFileIndex)
@@ -435,9 +498,13 @@ namespace cupuacu::actions
             {
                 persistSessionState(state);
             }
-            detail::reportStartupRestoreFailures(state, restoreFailures);
+            detail::reportStartupRestoreOutcome(
+                state, restoreFailures, state->startupRestore.clipboardRestoreFailed,
+                state->startupRestore.historyRestoreFailed);
             if (restoredAnyDocument)
             {
+                state->startupRestore.clipboardRestoreFailed = false;
+                state->startupRestore.historyRestoreFailed = false;
                 return;
             }
         }
@@ -447,5 +514,10 @@ namespace cupuacu::actions
         {
             persistSessionState(state);
         }
+        detail::reportStartupRestoreOutcome(
+            state, {}, state->startupRestore.clipboardRestoreFailed,
+            state->startupRestore.historyRestoreFailed);
+        state->startupRestore.clipboardRestoreFailed = false;
+        state->startupRestore.historyRestoreFailed = false;
     }
 } // namespace cupuacu::actions

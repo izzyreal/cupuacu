@@ -30,6 +30,7 @@ namespace cupuacu
         gui::Selection<double> selection = gui::Selection<double>(0.0);
         int64_t cursor = 0;
         undo::UndoStore undoStore;
+        mutable bool loggedRestartUndoPersistenceSizeWarning = false;
         std::filesystem::path autosaveSnapshotPath;
         uint64_t autosavedWaveformDataVersion = 0;
         uint64_t autosavedMarkerDataVersion = 0;
@@ -90,6 +91,7 @@ namespace cupuacu
             overwritePreservation = {};
             overwritePreservationBrokenByOperation = false;
             overwritePreservationBrokenReason.clear();
+            loggedRestartUndoPersistenceSizeWarning = false;
             clearAutosaveSnapshotReference();
         }
 
@@ -104,6 +106,7 @@ namespace cupuacu
             overwritePreservation = {};
             overwritePreservationBrokenByOperation = false;
             overwritePreservationBrokenReason.clear();
+            loggedRestartUndoPersistenceSizeWarning = false;
             clearAutosaveSnapshotReference();
         }
 
