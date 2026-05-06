@@ -69,14 +69,7 @@ namespace cupuacu::actions::audio
         {
             auto &session = state->getActiveDocumentSession();
             const auto &clip = state->clipboard;
-            if (clip.getFrameCount() == 0)
-            {
-                return;
-            }
-
             auto &doc = session.document;
-            const int64_t ch = doc.getChannelCount();
-            const int64_t clipFrames = clip.getFrameCount();
             const int64_t docFrames = doc.getFrameCount();
 
             if (startFrame < 0 || startFrame > docFrames)
@@ -84,12 +77,21 @@ namespace cupuacu::actions::audio
                 return;
             }
 
-            insertedFrameCount = clipFrames;
+            if (insertedHandle.empty() && clip.getFrameCount() == 0)
+            {
+                return;
+            }
+
+            if (insertedHandle.empty())
+            {
+                insertedFrameCount = clip.getFrameCount();
+            }
             const auto inserted = detail::captureOrLoadSegment(
                 session, insertedHandle,
                 [&] { return clip.captureSegment(0, insertedFrameCount); });
             insertedHandle = detail::storeSegmentIfNeeded(
                 session, insertedHandle, inserted, "paste-inserted");
+            insertedFrameCount = inserted.frameCount;
 
             overwrittenFrameCount = 0;
 

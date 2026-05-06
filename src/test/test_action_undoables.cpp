@@ -4,6 +4,7 @@
 #include "effects/RemoveSilenceEffect.hpp"
 #include "effects/AmplifyFadeEffect.hpp"
 #include "effects/DynamicsEffect.hpp"
+#include "effects/MakeSilentEffect.hpp"
 #include "effects/ReverseEffect.hpp"
 #include "TestPaths.hpp"
 #include "actions/effects/BackgroundEffect.hpp"
@@ -507,6 +508,54 @@ TEST_CASE("Reverse stores undo payloads in the session undo store", "[actions]")
     state.undo();
     REQUIRE(readMonoSamples(state.getActiveDocumentSession().document) ==
             std::vector<float>({0, 1, 2, 3, 4}));
+}
+
+TEST_CASE("Make silent zeros the selected range and respects selected channels",
+          "[actions]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    initializeStereoDocument(
+        state, {1, 2, 3, 4, 5}, {10, 11, 12, 13, 14});
+
+    auto &session = state.getActiveDocumentSession();
+    session.selection.setValue1(1.0);
+    session.selection.setValue2(4.0);
+    state.getActiveViewState().selectedChannels = cupuacu::SelectedChannels::LEFT;
+
+    cupuacu::effects::performMakeSilent(&state);
+
+    REQUIRE(readChannelSamples(session.document, 0) ==
+            std::vector<float>({1, 0, 0, 0, 5}));
+    REQUIRE(readChannelSamples(session.document, 1) ==
+            std::vector<float>({10, 11, 12, 13, 14}));
+    REQUIRE(state.getUndoDescription() == "Make silent");
+
+    state.undo();
+    REQUIRE(readChannelSamples(session.document, 0) ==
+            std::vector<float>({1, 2, 3, 4, 5}));
+    REQUIRE(readChannelSamples(session.document, 1) ==
+            std::vector<float>({10, 11, 12, 13, 14}));
+
+    state.redo();
+    REQUIRE(readChannelSamples(session.document, 0) ==
+            std::vector<float>({1, 0, 0, 0, 5}));
+    REQUIRE(readChannelSamples(session.document, 1) ==
+            std::vector<float>({10, 11, 12, 13, 14}));
+    REQUIRE(state.getUndoDescription() == "Make silent");
+}
+
+TEST_CASE("Make silent without an active selection is a no-op", "[actions]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    initializeMonoDocument(state, {1, 2, 3});
+
+    auto &session = state.getActiveDocumentSession();
+    session.selection.reset();
+
+    cupuacu::effects::performMakeSilent(&state);
+
+    REQUIRE(readMonoSamples(session.document) == std::vector<float>({1, 2, 3}));
+    REQUIRE(state.getActiveUndoables().empty());
 }
 
 TEST_CASE("Cut at document tail removes trailing frames and restores on undo",

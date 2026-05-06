@@ -11,6 +11,7 @@
 #include "../effects/AmplifyEnvelopeEffect.hpp"
 #include "../effects/AmplifyFadeEffect.hpp"
 #include "../effects/DynamicsEffect.hpp"
+#include "../effects/MakeSilentEffect.hpp"
 #include "../effects/RemoveSilenceEffect.hpp"
 #include "../effects/ReverseEffect.hpp"
 #include "../file/FileIo.hpp"
@@ -159,6 +160,29 @@ namespace cupuacu::undo
                              handleFromString(insertedHandlePath).path},
                          undo::UndoStore::SegmentHandle{
                              handleFromString(overwrittenHandlePath).path},
+                         json.value("hadOldSelection", false),
+                         json.value("oldSelectionStart", 0.0),
+                         json.value("oldSelectionEnd", 0.0),
+                         json.value("oldCursorPos", int64_t{0}));
+                 }},
+                {"make-silent",
+                 [](State *state, int, const nlohmann::json &json)
+                     -> std::shared_ptr<actions::Undoable>
+                 {
+                     const auto originalHandlePath =
+                         json.value("originalHandle", std::string{});
+                     if (!payloadPathsExist({originalHandlePath}))
+                     {
+                         return std::shared_ptr<actions::Undoable>{};
+                     }
+                     return std::make_shared<effects::MakeSilentUndoable>(
+                         state, json.value("startFrame", int64_t{0}),
+                         json.value("frameCount", int64_t{0}),
+                         targetChannelsFromJson(
+                             json.value("targetChannels",
+                                        nlohmann::json::array())),
+                         undo::UndoStore::SegmentHandle{
+                             handleFromString(originalHandlePath).path},
                          json.value("hadOldSelection", false),
                          json.value("oldSelectionStart", 0.0),
                          json.value("oldSelectionEnd", 0.0),

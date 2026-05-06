@@ -7,6 +7,7 @@
 #include "effects/AmplifyEnvelopeEffect.hpp"
 #include "effects/AmplifyFadeEffect.hpp"
 #include "effects/DynamicsEffect.hpp"
+#include "effects/MakeSilentEffect.hpp"
 #include "effects/RemoveSilenceEffect.hpp"
 #include "effects/ReverseEffect.hpp"
 
@@ -433,6 +434,17 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
                             {
                                 effects::performReverse(state);
                             });
+    auto *makeSilentMenu = effectsMenu->addSubMenu(
+        state, "Make silent",
+        [&]
+        {
+            effects::performMakeSilent(state);
+        });
+    makeSilentMenu->setIsAvailable(
+        [&]
+        {
+            return actions::audio::hasActiveSelection(state);
+        });
     effectsMenu->addSubMenu(state, "Amplify/Fade",
                             [&]
                             {
