@@ -368,6 +368,74 @@ User-visible behavior:
 - autosaved file-backed documents restore the autosaved snapshot over the source file state
 - the active restored tab is remembered when it refers to a file-backed tab
 
+## Runtime State And Recovery
+
+In addition to the `config` directory, Cupuacu stores disposable runtime state
+under a sibling `state` directory.
+
+Current paths:
+
+- macOS:
+  - `~/Library/Application Support/Cupuacu/state/`
+- Linux:
+  - `~/.config/Cupuacu/state/`
+- Windows:
+  - `%AppData%\Cupuacu\state\`
+
+This runtime state is not meant to be edited by hand during normal use, but it
+is safe to remove when Cupuacu is closed if you need to clear broken recovery
+state.
+
+### state/autosave
+
+This directory stores autosave snapshots for unsaved documents and unsaved
+changes to file-backed documents.
+
+If you remove it while Cupuacu is closed:
+
+- startup recovery snapshots are discarded
+- unsaved restored documents from a previous session will no longer reopen
+- your normal saved audio files are not modified
+
+Delete this directory if you want to clear stale or broken autosave recovery
+data.
+
+### state/undo
+
+This directory stores disk-backed undo and redo payloads, including restartable
+edit history for supported undoables.
+
+If you remove it while Cupuacu is closed:
+
+- restored undo/redo history from the previous session is discarded
+- the current document files themselves are not changed
+
+Delete this directory if restored undo history seems broken or takes too much
+space.
+
+### state/clipboard
+
+This directory stores the internal Cupuacu clipboard snapshot that can be
+restored on startup.
+
+If you remove it while Cupuacu is closed:
+
+- the restored clipboard from the previous session is discarded
+- `Paste` after restart will not use the old session clipboard contents
+
+Delete this directory if restored clipboard state seems wrong or stale.
+
+### config vs state
+
+Use these rules when troubleshooting:
+
+- delete `state/autosave`, `state/undo`, or `state/clipboard` to clear
+  disposable recovery state without resetting preferences
+- delete `config/session_state.json` to stop Cupuacu from reopening the
+  previous session on startup
+- delete the whole `config` directory only if you want to reset preferences,
+  recent files, and saved session metadata as well
+
 ### audio_device_properties.json
 
 This file stores the selected audio device configuration used by the `Options -> Audio` section.
