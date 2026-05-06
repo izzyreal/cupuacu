@@ -530,6 +530,33 @@ TEST_CASE("TextInput escape cancels without submitting", "[gui]")
     REQUIRE(canceledCount == 1);
 }
 
+TEST_CASE("TextInput can avoid submitting when focus is lost", "[gui]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    cupuacu::gui::TextInput input(&state);
+    input.setText("42");
+    input.setSubmitOnFocusLost(false);
+
+    int finishedCount = 0;
+    int canceledCount = 0;
+    input.setOnEditingFinished(
+        [&](const std::string &)
+        {
+            ++finishedCount;
+        });
+    input.setOnEditingCanceled(
+        [&]()
+        {
+            ++canceledCount;
+        });
+
+    input.focusGained();
+    input.focusLost();
+
+    REQUIRE(finishedCount == 0);
+    REQUIRE(canceledCount == 1);
+}
+
 TEST_CASE("StatusBar edit logic updates the cursor from position input", "[gui]")
 {
     cupuacu::test::StateWithTestPaths state{};

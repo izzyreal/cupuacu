@@ -61,6 +61,8 @@ namespace cupuacu::gui
         unitLabel->setFontSize(labelFontSize);
         durationInput->setFontSize(controlFontSize);
         durationInput->setAllowedCharacters("0123456789.");
+        durationInput->setSubmitOnFocusLost(false);
+        durationInput->setConsumeEnterKey(true);
         durationInput->setText("1");
         unitDropdown->setFontSize(labelFontSize);
         unitDropdown->setItems({"samples", "seconds", "milliseconds"});

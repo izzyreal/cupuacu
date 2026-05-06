@@ -1557,6 +1557,45 @@ TEST_CASE("Generate silence dialog integration treats Enter as OK",
     REQUIRE(doc.getSample(0, 5) == 4.0f);
 }
 
+TEST_CASE("Generate silence dialog integration does not treat unit dropdown focus as OK",
+          "[integration]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    createBuiltSessionUi(&state, 4, 44100, 1, 800, 400);
+
+    auto &doc = state.getActiveDocumentSession().document;
+    for (int i = 0; i < 4; ++i)
+    {
+        doc.setSample(0, i, static_cast<float>(i + 1), false);
+    }
+    state.getActiveDocumentSession().cursor = 1;
+
+    state.generateSilenceDialogWindow.reset(
+        new cupuacu::gui::GenerateSilenceDialogWindow(&state));
+    REQUIRE(state.generateSilenceDialogWindow != nullptr);
+    REQUIRE(state.generateSilenceDialogWindow->isOpen());
+
+    auto *window = state.generateSilenceDialogWindow->getWindow();
+    auto *root = window->getRootComponent();
+    auto *durationInput = findFirstRecursive<cupuacu::gui::TextInput>(root);
+    auto *unitDropdown = findFirstRecursive<cupuacu::gui::DropdownMenu>(root);
+    REQUIRE(durationInput != nullptr);
+    REQUIRE(unitDropdown != nullptr);
+
+    durationInput->setText("2");
+    unitDropdown->setSelectedIndex(0);
+    window->setFocusedComponent(durationInput);
+
+    REQUIRE(unitDropdown->mouseDown(cupuacu::test::integration::leftMouseDown()));
+
+    REQUIRE(state.generateSilenceDialogWindow->isOpen());
+    REQUIRE(doc.getFrameCount() == 4);
+    REQUIRE(doc.getSample(0, 0) == 1.0f);
+    REQUIRE(doc.getSample(0, 1) == 2.0f);
+    REQUIRE(doc.getSample(0, 2) == 3.0f);
+    REQUIRE(doc.getSample(0, 3) == 4.0f);
+}
+
 TEST_CASE("Waveform integration toggles sample points with playback state",
           "[integration]")
 {
