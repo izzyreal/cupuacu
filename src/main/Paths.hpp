@@ -46,6 +46,8 @@ namespace cupuacu
 
         std::filesystem::path autosavePath() const;
 
+        std::filesystem::path waveformCachePath() const;
+
         std::filesystem::path undoPath() const;
 
         std::filesystem::path clipboardPath() const;

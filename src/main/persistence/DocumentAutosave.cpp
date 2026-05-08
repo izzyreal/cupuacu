@@ -15,7 +15,7 @@ namespace cupuacu::persistence
     namespace
     {
         constexpr char kMagic[] = "CUPUACU_AUTOSAVE";
-        constexpr uint32_t kVersion = 1;
+        constexpr uint32_t kVersion = 2;
 
         void writeU32(std::ostream &output, const uint32_t value)
         {
@@ -120,6 +120,54 @@ namespace cupuacu::persistence
             return value;
         }
 
+        void writeWaveformCacheState(
+            std::ostream &output, const gui::WaveformCache::BuildState &state)
+        {
+            writeI64(output, state.numSamples);
+            writeI64(output, state.dirtyFromBlock);
+            writeI64(output, state.dirtyToBlock);
+            writeU32(output, static_cast<uint32_t>(state.levels.size()));
+            for (const auto &level : state.levels)
+            {
+                if (level.size() > std::numeric_limits<uint32_t>::max())
+                {
+                    throw std::runtime_error(
+                        "Autosave waveform cache level is too large");
+                }
+                writeU32(output, static_cast<uint32_t>(level.size()));
+                for (const auto &peak : level)
+                {
+                    writeFloat(output, peak.min);
+                    writeFloat(output, peak.max);
+                }
+            }
+        }
+
+        gui::WaveformCache::BuildResult readWaveformCacheResult(
+            std::istream &input)
+        {
+            gui::WaveformCache::BuildResult result;
+            result.numSamples = readI64(input);
+            result.dirtyFromBlock = readI64(input);
+            result.dirtyToBlock = readI64(input);
+            const auto levelCount = readU32(input);
+            result.levels.resize(levelCount);
+            for (uint32_t levelIndex = 0; levelIndex < levelCount; ++levelIndex)
+            {
+                const auto peakCount = readU32(input);
+                auto &level = result.levels[static_cast<std::size_t>(levelIndex)];
+                level.resize(peakCount);
+                for (uint32_t peakIndex = 0; peakIndex < peakCount; ++peakIndex)
+                {
+                    level[static_cast<std::size_t>(peakIndex)] = {
+                        .min = readFloat(input),
+                        .max = readFloat(input),
+                    };
+                }
+            }
+            return result;
+        }
+
         cupuacu::SampleFormat sampleFormatFromInt(const uint32_t value)
         {
             switch (static_cast<cupuacu::SampleFormat>(value))
@@ -161,6 +209,15 @@ namespace cupuacu::persistence
                 writeU64(output, marker.id);
                 writeI64(output, marker.frame);
                 writeString(output, marker.label);
+            }
+
+            writeI64(output, document.getChannelCount());
+            for (int64_t channel = 0; channel < document.getChannelCount();
+                 ++channel)
+            {
+                writeWaveformCacheState(
+                    output, session.getWaveformCache(static_cast<int>(channel))
+                                .snapshotBuildState());
             }
 
             for (int64_t frame = 0; frame < document.getFrameCount(); ++frame)
@@ -261,6 +318,20 @@ namespace cupuacu::persistence
                 });
             }
 
+            const auto waveformCacheChannelCount = readI64(input);
+            if (waveformCacheChannelCount != channels)
+            {
+                return false;
+            }
+            std::vector<gui::WaveformCache::BuildResult> waveformCacheResults;
+            waveformCacheResults.reserve(
+                static_cast<std::size_t>(waveformCacheChannelCount));
+            for (int64_t channel = 0; channel < waveformCacheChannelCount;
+                 ++channel)
+            {
+                waveformCacheResults.push_back(readWaveformCacheResult(input));
+            }
+
             cupuacu::Document document;
             document.initialize(format, sampleRate, static_cast<uint32_t>(channels),
                                 frames);
@@ -279,6 +350,13 @@ namespace cupuacu::persistence
                 session.setCurrentFile(currentFile);
             }
             session.document = std::move(document);
+            session.waveformCaches.resetToChannelCount(channels);
+            for (int64_t channel = 0; channel < channels; ++channel)
+            {
+                session.getWaveformCache(static_cast<int>(channel))
+                    .applyBuildResult(std::move(
+                        waveformCacheResults[static_cast<std::size_t>(channel)]));
+            }
             session.autosaveSnapshotPath = path;
             session.autosavedWaveformDataVersion =
                 session.document.getWaveformDataVersion();

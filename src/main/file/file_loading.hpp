@@ -518,7 +518,8 @@ namespace cupuacu::file
 
     static void commitLoadedAudioFile(cupuacu::DocumentSession &session,
                                       const std::string &path,
-                                      LoadedAudioFile loaded)
+                                      LoadedAudioFile loaded,
+                                      const cupuacu::Paths *paths = nullptr)
     {
         session.stopWaveformCacheBuild();
         session.currentFileExportSettings = loaded.exportSettings;
@@ -529,6 +530,18 @@ namespace cupuacu::file
         session.selection.reset();
         session.cursor = 0;
         session.syncSelectionAndCursorToDocumentLength();
+        if (paths)
+        {
+            if (cupuacu::waveform::loadPersistentWaveformCache(session, *paths))
+            {
+                session.clearPendingPersistentWaveformCacheSave();
+            }
+            else
+            {
+                session.markPendingPersistentWaveformCacheSave();
+                session.updateWaveformCache();
+            }
+        }
     }
 
     static void loadSampleData(cupuacu::State *state)
@@ -542,7 +555,7 @@ namespace cupuacu::file
             {
                 cupuacu::updateLongTask(state, detail, progress, true);
             });
-        commitLoadedAudioFile(session, path, std::move(loaded));
+        commitLoadedAudioFile(session, path, std::move(loaded), state->paths.get());
         cupuacu::file::OverwritePreservation::refreshActiveSession(state);
     }
 } // namespace cupuacu::file

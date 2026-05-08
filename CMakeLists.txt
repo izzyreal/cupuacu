@@ -147,6 +147,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/undo/UndoManifestPersistence.cpp
     src/main/undo/UndoStore.cpp
     src/main/waveform/DocumentWaveformCaches.cpp
+    src/main/waveform/WaveformCachePersistence.cpp
     src/main/State.cpp
     src/main/Paths.cpp
     src/main/LongTask.cpp
@@ -257,6 +258,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_tooltip_planning.cpp
     src/test/test_latest_wins_background_worker.cpp
     src/test/test_waveform_render_and_buffers.cpp
+    src/test/test_waveform_cache_persistence.cpp
 )
 
 set(CUPUACU_INTEGRATION_TEST_SOURCES

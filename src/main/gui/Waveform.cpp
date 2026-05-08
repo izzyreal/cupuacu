@@ -2138,7 +2138,9 @@ void Waveform::drawMarkers(SDL_Renderer *renderer) const
 
 void Waveform::timerCallback()
 {
-    if (state && state->getActiveDocumentSession().pumpWaveformCacheWork())
+    if (state &&
+        state->getActiveDocumentSession().pumpWaveformCacheWork(
+            state->paths.get()))
     {
         applyAllPendingCacheUpdates(state);
     }

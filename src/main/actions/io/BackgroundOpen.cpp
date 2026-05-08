@@ -135,7 +135,8 @@ namespace cupuacu::actions::io
             auto &session = state->getActiveDocumentSession();
             session.setCurrentFile(snapshot.path);
             cupuacu::file::commitLoadedAudioFile(session, snapshot.path,
-                                                 std::move(*loaded));
+                                                 std::move(*loaded),
+                                                 state->paths.get());
             cupuacu::file::OverwritePreservation::refreshActiveSession(state);
             refreshDocumentUi(state);
             if (isStartupRestore &&
@@ -396,7 +397,8 @@ namespace cupuacu::actions::io
             {
                 auto &session =
                     state->tabs[static_cast<std::size_t>(tabIndex)].session;
-                const bool cacheStateChanged = session.pumpWaveformCacheWork();
+                const bool cacheStateChanged =
+                    session.pumpWaveformCacheWork(state->paths.get());
                 if (const auto progress =
                         normalizedWaveformCacheBuildProgress(session);
                     progress.has_value())

@@ -93,6 +93,11 @@ std::filesystem::path Paths::autosavePath() const
     return statePath() / "autosave";
 }
 
+std::filesystem::path Paths::waveformCachePath() const
+{
+    return statePath() / "waveform-cache";
+}
+
 std::filesystem::path Paths::undoPath() const
 {
     return statePath() / "undo";

@@ -1,10 +1,12 @@
 #pragma once
 
 #include "Document.hpp"
+#include "Paths.hpp"
 #include "file/AudioExport.hpp"
 #include "file/OverwritePreservationState.hpp"
 #include "gui/Selection.hpp"
 #include "undo/UndoStore.hpp"
+#include "waveform/WaveformCachePersistence.hpp"
 #include "waveform/DocumentWaveformCaches.hpp"
 
 #include <algorithm>
@@ -34,6 +36,7 @@ namespace cupuacu
         std::filesystem::path autosaveSnapshotPath;
         uint64_t autosavedWaveformDataVersion = 0;
         uint64_t autosavedMarkerDataVersion = 0;
+        bool pendingPersistentWaveformCacheSave = false;
 
         using WaveformCacheBuildProgress =
             waveform::DocumentWaveformCaches::BuildProgress;
@@ -59,10 +62,27 @@ namespace cupuacu
             waveformCaches.update(document, document.getWaveformDataVersion());
         }
 
-        bool pumpWaveformCacheWork()
+        void markPendingPersistentWaveformCacheSave()
         {
-            return waveformCaches.pumpWork(document,
-                                           document.getWaveformDataVersion());
+            pendingPersistentWaveformCacheSave = true;
+        }
+
+        void clearPendingPersistentWaveformCacheSave()
+        {
+            pendingPersistentWaveformCacheSave = false;
+        }
+
+        [[nodiscard]] bool pumpWaveformCacheWork(const Paths *paths = nullptr)
+        {
+            const bool stateChanged = waveformCaches.pumpWork(
+                document, document.getWaveformDataVersion());
+            if (pendingPersistentWaveformCacheSave && paths &&
+                !getWaveformCacheBuildProgress().has_value())
+            {
+                (void)waveform::savePersistentWaveformCache(*this, *paths);
+                pendingPersistentWaveformCacheSave = false;
+            }
+            return stateChanged;
         }
 
         [[nodiscard]] std::optional<WaveformCacheBuildProgress>
@@ -70,6 +90,23 @@ namespace cupuacu
         {
             return waveformCaches.getBuildProgress(
                 document, document.getWaveformDataVersion());
+        }
+
+        [[nodiscard]] std::optional<waveform::PersistentCacheKey>
+        getPersistentWaveformCacheKey() const
+        {
+            return waveform::makePersistentCacheKey(currentFile, document);
+        }
+
+        [[nodiscard]] std::filesystem::path
+        getPersistentWaveformCachePath(const Paths &paths) const
+        {
+            const auto key = getPersistentWaveformCacheKey();
+            if (!key.has_value())
+            {
+                return {};
+            }
+            return key->cachePath(paths);
         }
 
         void rebuildWaveformCacheSynchronously()
@@ -93,6 +130,7 @@ namespace cupuacu
             overwritePreservationBrokenReason.clear();
             loggedRestartUndoPersistenceSizeWarning = false;
             clearAutosaveSnapshotReference();
+            clearPendingPersistentWaveformCacheSave();
         }
 
         void setCurrentFile(
@@ -108,6 +146,7 @@ namespace cupuacu
             overwritePreservationBrokenReason.clear();
             loggedRestartUndoPersistenceSizeWarning = false;
             clearAutosaveSnapshotReference();
+            clearPendingPersistentWaveformCacheSave();
         }
 
         void setPreservationReference(

@@ -47,6 +47,31 @@ namespace
         return result;
     }
 
+    void requireBuildStatesEqual(
+        const cupuacu::gui::WaveformCache::BuildState &expected,
+        const cupuacu::gui::WaveformCache::BuildState &actual)
+    {
+        REQUIRE(actual.numSamples == expected.numSamples);
+        REQUIRE(actual.dirtyFromBlock == expected.dirtyFromBlock);
+        REQUIRE(actual.dirtyToBlock == expected.dirtyToBlock);
+        REQUIRE(actual.levels.size() == expected.levels.size());
+        for (std::size_t levelIndex = 0; levelIndex < expected.levels.size();
+             ++levelIndex)
+        {
+            const auto &expectedLevel = expected.levels[levelIndex];
+            const auto &actualLevel = actual.levels[levelIndex];
+            REQUIRE(actualLevel.size() == expectedLevel.size());
+            for (std::size_t peakIndex = 0; peakIndex < expectedLevel.size();
+                 ++peakIndex)
+            {
+                REQUIRE(actualLevel[peakIndex].min ==
+                        Catch::Approx(expectedLevel[peakIndex].min));
+                REQUIRE(actualLevel[peakIndex].max ==
+                        Catch::Approx(expectedLevel[peakIndex].max));
+            }
+        }
+    }
+
     class SetSampleUndoable : public cupuacu::actions::Undoable
     {
     public:
@@ -114,6 +139,9 @@ TEST_CASE("Document autosave snapshots preserve untitled audio and markers",
     cupuacu::test::StateWithTestPaths state{root};
     initializeMonoDocument(state, {0.25f, -0.5f, 0.75f});
     state.getActiveDocumentSession().document.addMarker(2, "point");
+    state.getActiveDocumentSession().rebuildWaveformCacheSynchronously();
+    const auto cacheState =
+        state.getActiveDocumentSession().getWaveformCache(0).snapshotBuildState();
 
     const auto path = state.paths->autosavePath() / "snapshot.cupuacu-autosave";
     REQUIRE(cupuacu::persistence::saveDocumentAutosaveSnapshot(
@@ -131,6 +159,9 @@ TEST_CASE("Document autosave snapshots preserve untitled audio and markers",
     REQUIRE(restored.document.getMarkers().size() == 1);
     REQUIRE(restored.document.getMarkers()[0].frame == 2);
     REQUIRE(restored.document.getMarkers()[0].label == "point");
+    requireBuildStatesEqual(
+        cacheState, restored.getWaveformCache(0).snapshotBuildState());
+    REQUIRE_FALSE(restored.getWaveformCacheBuildProgress().has_value());
 }
 
 TEST_CASE("Paths place runtime autosave and undo state outside config",
@@ -143,6 +174,9 @@ TEST_CASE("Paths place runtime autosave and undo state outside config",
     REQUIRE(state.paths->statePath().filename() == "state");
     REQUIRE(state.paths->autosavePath().parent_path() == state.paths->statePath());
     REQUIRE(state.paths->autosavePath().filename() == "autosave");
+    REQUIRE(state.paths->waveformCachePath().parent_path() ==
+            state.paths->statePath());
+    REQUIRE(state.paths->waveformCachePath().filename() == "waveform-cache");
     REQUIRE(state.paths->undoPath().parent_path() == state.paths->statePath());
     REQUIRE(state.paths->undoPath().filename() == "undo");
     REQUIRE(state.paths->clipboardPath().parent_path() == state.paths->statePath());
@@ -160,6 +194,7 @@ TEST_CASE("Undoable mutations autosave and restore untitled sessions",
 
         state.addAndDoUndoable(
             std::make_shared<SetSampleUndoable>(&state, 2, 0.75f));
+        state.getActiveDocumentSession().rebuildWaveformCacheSynchronously();
         drainPendingAutosave(state);
 
         const auto persisted = cupuacu::persistence::SessionStatePersistence::load(
@@ -182,6 +217,11 @@ TEST_CASE("Undoable mutations autosave and restore untitled sessions",
     REQUIRE(session.document.getSample(0, 2) == Catch::Approx(0.75f));
     REQUIRE(session.document.getMarkers().size() == 1);
     REQUIRE(session.document.getMarkers()[0].label == "middle");
+    REQUIRE_FALSE(session.getWaveformCacheBuildProgress().has_value());
+    const auto restoredCacheState = session.getWaveformCache(0).snapshotBuildState();
+    REQUIRE(restoredCacheState.numSamples == 3);
+    REQUIRE(restoredCacheState.dirtyToBlock < restoredCacheState.dirtyFromBlock);
+    REQUIRE_FALSE(restoredCacheState.levels.empty());
 }
 
 TEST_CASE("Autosaved file-backed sessions restore the snapshot over the source",

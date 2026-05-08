@@ -204,7 +204,7 @@ TEST_CASE("DocumentSession publishes waveform cache results from background work
     bool built = false;
     while (std::chrono::steady_clock::now() < deadline)
     {
-        session.pumpWaveformCacheWork();
+        (void)session.pumpWaveformCacheWork();
         const auto &cache = session.getWaveformCache(0);
         if (cache.levelsCount() > 0 && !cache.hasDirtyBlocks())
         {
@@ -238,7 +238,7 @@ TEST_CASE("Waveform overview planning keeps drawing the clean prefix after frame
     bool built = false;
     while (std::chrono::steady_clock::now() < deadline)
     {
-        session.pumpWaveformCacheWork();
+        (void)session.pumpWaveformCacheWork();
         const auto &cache = session.getWaveformCache(0);
         if (cache.levelsCount() > 0 && !cache.hasDirtyBlocks())
         {
@@ -294,7 +294,7 @@ TEST_CASE("DocumentSession reports deterministic waveform cache build progress",
                 static_cast<double>(progress->totalBlocks));
         }
 
-        session.pumpWaveformCacheWork();
+        (void)session.pumpWaveformCacheWork();
         if (!session.getWaveformCacheBuildProgress().has_value())
         {
             seenProgress.push_back(1.0);

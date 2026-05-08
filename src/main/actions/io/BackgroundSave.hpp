@@ -109,12 +109,18 @@ namespace cupuacu::actions::io
             std::string label;
         };
 
+        struct WaveformCacheSnapshot
+        {
+            gui::WaveformCache::BuildState buildState;
+        };
+
         uint64_t tabId = 0;
         std::filesystem::path path;
         uint64_t waveformDataVersion = 0;
         uint64_t markerDataVersion = 0;
         std::string currentFile;
         std::vector<MarkerSnapshot> markers;
+        std::vector<WaveformCacheSnapshot> waveformCaches;
         bool initialized = false;
         bool completed = false;
         bool success = false;

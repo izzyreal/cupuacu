@@ -26,7 +26,7 @@ namespace cupuacu::actions::io
         }
 
         constexpr char kAutosaveMagic[] = "CUPUACU_AUTOSAVE";
-        constexpr uint32_t kAutosaveVersion = 1;
+        constexpr uint32_t kAutosaveVersion = 2;
         constexpr int64_t kAutosaveFramesPerChunk = 32768;
         constexpr auto kAutosavePumpBudget = std::chrono::milliseconds(8);
 
@@ -121,6 +121,24 @@ namespace cupuacu::actions::io
             static_assert(sizeof(bits) == sizeof(value));
             std::memcpy(&bits, &value, sizeof(bits));
             writeU32(output, bits);
+        }
+
+        void writeWaveformCacheState(
+            std::ostream &output, const gui::WaveformCache::BuildState &state)
+        {
+            writeI64(output, state.numSamples);
+            writeI64(output, state.dirtyFromBlock);
+            writeI64(output, state.dirtyToBlock);
+            writeU32(output, static_cast<uint32_t>(state.levels.size()));
+            for (const auto &level : state.levels)
+            {
+                writeU32(output, static_cast<uint32_t>(level.size()));
+                for (const auto &peak : level)
+                {
+                    writeFloat(output, peak.min);
+                    writeFloat(output, peak.max);
+                }
+            }
         }
 
         int findTabIndexById(const cupuacu::State *state, const uint64_t tabId)
@@ -241,6 +259,14 @@ namespace cupuacu::actions::io
             markers.push_back(
                 {.id = marker.id, .frame = marker.frame, .label = marker.label});
         }
+        waveformCaches.clear();
+        waveformCaches.reserve(static_cast<std::size_t>(channelCount));
+        for (int64_t channel = 0; channel < channelCount; ++channel)
+        {
+            waveformCaches.push_back(
+                {.buildState = session.getWaveformCache(static_cast<int>(channel))
+                                   .snapshotBuildState()});
+        }
 
         cupuacu::file::ensureParentDirectoryExists(path);
         temporaryPath = cupuacu::file::makeTemporarySiblingPath(path);
@@ -264,6 +290,12 @@ namespace cupuacu::actions::io
             writeU64(output, marker.id);
             writeI64(output, marker.frame);
             writeString(output, marker.label);
+        }
+
+        writeI64(output, channelCount);
+        for (const auto &cache : waveformCaches)
+        {
+            writeWaveformCacheState(output, cache.buildState);
         }
 
         if (!output.good())

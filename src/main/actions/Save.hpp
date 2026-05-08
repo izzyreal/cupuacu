@@ -212,6 +212,11 @@ namespace cupuacu::actions
             {
                 session.document.markCurrentStateAsSavedSource();
             }
+            if (state->paths)
+            {
+                (void)cupuacu::waveform::savePersistentWaveformCache(
+                    session, *state->paths);
+            }
         }
     } // namespace detail
 
