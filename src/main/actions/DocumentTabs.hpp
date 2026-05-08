@@ -23,13 +23,31 @@ namespace cupuacu::actions
                  !state->audioDevices->isRecording()));
     }
 
+    inline bool documentTabHasUnsavedChanges(const cupuacu::DocumentTab &tab)
+    {
+        const auto &session = tab.session;
+        if (!session.autosaveSnapshotPath.empty())
+        {
+            return true;
+        }
+
+        return session.currentFile.empty() &&
+               session.document.getChannelCount() > 0;
+    }
+
     inline std::string documentTabTitle(const cupuacu::DocumentTab &tab)
     {
-        if (!tab.session.currentFile.empty())
+        const std::string baseTitle =
+            !tab.session.currentFile.empty()
+                ? std::filesystem::path(tab.session.currentFile).filename().string()
+                : kUntitledDocumentTitle;
+
+        if (documentTabHasUnsavedChanges(tab))
         {
-            return std::filesystem::path(tab.session.currentFile).filename().string();
+            return baseTitle + "*";
         }
-        return kUntitledDocumentTitle;
+
+        return baseTitle;
     }
 
     inline void refreshActiveTabUi(cupuacu::State *state)

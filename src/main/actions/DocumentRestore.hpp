@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../Logger.hpp"
 #include "../State.hpp"
 #include "../persistence/DocumentAutosave.hpp"
 #include "../gui/MainViewAccess.hpp"
@@ -8,6 +9,7 @@
 #include "DocumentIo.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -409,6 +411,10 @@ namespace cupuacu::actions
                 {
                     if (index == 0 || prepareTabForOpenedDocument(state))
                     {
+                        const auto restoreStartedAt =
+                            std::chrono::steady_clock::now();
+                        auto lastProgressRenderAt = restoreStartedAt;
+                        double lastRenderedProgress = -1.0;
                         cupuacu::LongTaskScope longTask(
                             state, "Restoring document",
                             documentState.filePath.empty()
@@ -418,15 +424,66 @@ namespace cupuacu::actions
                         loaded =
                             cupuacu::persistence::loadDocumentAutosaveSnapshot(
                                 documentState.autosaveSnapshotPath,
-                                state->getActiveDocumentSession());
+                                state->getActiveDocumentSession(),
+                                [state, &lastProgressRenderAt,
+                                 &lastRenderedProgress](
+                                    const std::optional<double> progress)
+                                {
+                                    if (!progress.has_value())
+                                    {
+                                        cupuacu::updateLongTaskOverlayOnly(
+                                            state, {}, progress, false);
+                                        return;
+                                    }
+
+                                    const auto now =
+                                        std::chrono::steady_clock::now();
+                                    const double clampedProgress =
+                                        std::clamp(*progress, 0.0, 1.0);
+                                    const bool shouldRenderNow =
+                                        lastRenderedProgress < 0.0 ||
+                                        clampedProgress >= 1.0 ||
+                                        (now - lastProgressRenderAt) >=
+                                            std::chrono::milliseconds(100);
+                                    cupuacu::updateLongTaskOverlayOnly(
+                                        state, {}, clampedProgress,
+                                        shouldRenderNow);
+                                    if (shouldRenderNow)
+                                    {
+                                        lastProgressRenderAt = now;
+                                        lastRenderedProgress = clampedProgress;
+                                    }
+                                });
+                        const auto snapshotLoadedAt =
+                            std::chrono::steady_clock::now();
                         if (loaded)
                         {
                             refreshDocumentUi(state);
-                            setMainWindowTitle(
-                                state,
-                                state->getActiveDocumentSession().currentFile.empty()
-                                    ? kUntitledDocumentTitle
-                                    : state->getActiveDocumentSession().currentFile);
+                            setMainWindowTitleToActiveDocument(state);
+                            const auto uiRefreshedAt =
+                                std::chrono::steady_clock::now();
+                            cupuacu::logging::info(
+                                "Startup autosave restore timings: path=" +
+                                documentState.autosaveSnapshotPath +
+                                " snapshot_ms=" +
+                                std::to_string(
+                                    std::chrono::duration_cast<
+                                        std::chrono::milliseconds>(
+                                        snapshotLoadedAt - restoreStartedAt)
+                                        .count()) +
+                                " ui_ms=" +
+                                std::to_string(
+                                    std::chrono::duration_cast<
+                                        std::chrono::milliseconds>(
+                                        uiRefreshedAt - snapshotLoadedAt)
+                                        .count()) +
+                                " total_ms=" +
+                                std::to_string(
+                                    std::chrono::duration_cast<
+                                        std::chrono::milliseconds>(
+                                        uiRefreshedAt - restoreStartedAt)
+                                        .count()));
+                            cupuacu::logging::flush();
                         }
                         else
                         {
@@ -487,11 +544,7 @@ namespace cupuacu::actions
                 state->activeTabIndex = restoredActiveOpenFileIndex;
                 bindMainWindowToActiveDocument(state);
                 refreshBoundDocumentUi(state);
-                setMainWindowTitle(
-                    state,
-                    state->getActiveDocumentSession().currentFile.empty()
-                        ? kUntitledDocumentTitle
-                        : state->getActiveDocumentSession().currentFile);
+                setMainWindowTitleToActiveDocument(state);
             }
 
             if (plan.shouldPersistState)

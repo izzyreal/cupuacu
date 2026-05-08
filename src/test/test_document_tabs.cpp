@@ -21,9 +21,17 @@ TEST_CASE("Document tab title uses the file name when present", "[tabs]")
 
     REQUIRE(cupuacu::actions::documentTabTitle(tab) == "example.wav");
 
+    tab.session.autosaveSnapshotPath = "/tmp/document.cupuacu-autosave";
+    REQUIRE(cupuacu::actions::documentTabTitle(tab) == "example.wav*");
+
     tab.session.currentFile.clear();
+    tab.session.autosaveSnapshotPath.clear();
     REQUIRE(cupuacu::actions::documentTabTitle(tab) ==
             cupuacu::actions::kUntitledDocumentTitle);
+
+    tab.session.document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 16);
+    REQUIRE(cupuacu::actions::documentTabTitle(tab) ==
+            std::string(cupuacu::actions::kUntitledDocumentTitle) + "*");
 }
 
 TEST_CASE("Creating an empty tab appends and activates it", "[tabs]")

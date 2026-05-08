@@ -166,7 +166,7 @@ namespace cupuacu::actions::io
             {
                 --state->startupRestore.remaining;
             }
-            setMainWindowTitle(state, snapshot.path);
+            setMainWindowTitleToActiveDocument(state);
             if (snapshot.request.updateRecentFiles)
             {
                 rememberRecentFile(state, snapshot.path);
@@ -207,11 +207,7 @@ namespace cupuacu::actions::io
                     state->startupRestore.restoredActiveTabIndex;
                 bindMainWindowToActiveDocument(state);
                 refreshBoundDocumentUi(state);
-                setMainWindowTitle(
-                    state,
-                    state->getActiveDocumentSession().currentFile.empty()
-                        ? kUntitledDocumentTitle
-                        : state->getActiveDocumentSession().currentFile);
+                setMainWindowTitleToActiveDocument(state);
             }
 
             std::vector<detail::DocumentRestoreFailure> failures;

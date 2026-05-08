@@ -189,6 +189,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     cupuacu::gui::buildComponents(state, mainWindow);
 
+    mainWindow->renderFrame();
+    state->mainWindowInitialFrameRendered = true;
+
     cupuacu::actions::restoreStartupDocument(
         state, persistedRecentFiles, persistedSessionState, true);
 
@@ -198,7 +201,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     }
 
     mainWindow->renderFrame();
-    state->mainWindowInitialFrameRendered = true;
     if (state->pendingStartupWarning.has_value())
     {
         const auto [title, message] = *state->pendingStartupWarning;
@@ -274,6 +276,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
     TTF_Quit();
     cupuacu::State *state = (cupuacu::State *)appstate;
+    cupuacu::actions::flushAutosaveSnapshotsForShutdown(state);
     cupuacu::actions::persistSessionState(state);
     cupuacu::undo::pruneUndoStores(
         state->paths->undoPath(),

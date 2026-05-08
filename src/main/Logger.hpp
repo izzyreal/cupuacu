@@ -10,6 +10,7 @@ namespace cupuacu
     {
         void initialize(const Paths *paths);
         void shutdown();
+        void flush();
 
         void debug(std::string_view message);
         void info(std::string_view message);

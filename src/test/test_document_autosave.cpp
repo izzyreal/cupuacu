@@ -5,6 +5,7 @@
 #include "actions/DocumentRestore.hpp"
 #include "actions/DocumentSessionPersistence.hpp"
 #include "actions/DocumentLifecycle.hpp"
+#include "actions/DocumentTabs.hpp"
 #include "actions/DocumentUi.hpp"
 #include "actions/audio/EditCommands.hpp"
 #include "actions/audio/SetSampleValue.hpp"
@@ -19,6 +20,8 @@
 
 #include <filesystem>
 #include <fstream>
+#include <chrono>
+#include <thread>
 #include <memory>
 #include <vector>
 
@@ -164,6 +167,36 @@ TEST_CASE("Document autosave snapshots preserve untitled audio and markers",
     REQUIRE_FALSE(restored.getWaveformCacheBuildProgress().has_value());
 }
 
+TEST_CASE("Document autosave snapshot load reports frame progress", "[autosave]")
+{
+    const auto root = cupuacu::test::makeUniqueTestRoot("document-autosave");
+    cupuacu::test::StateWithTestPaths state{root};
+    std::vector<float> samples(70000, 0.0f);
+    for (std::size_t i = 0; i < samples.size(); ++i)
+    {
+        samples[i] = static_cast<float>(i % 1024) / 1024.0f;
+    }
+    initializeMonoDocument(state, samples);
+
+    const auto path = state.paths->autosavePath() / "progress.cupuacu-autosave";
+    REQUIRE(cupuacu::persistence::saveDocumentAutosaveSnapshot(
+        path, state.getActiveDocumentSession()));
+
+    cupuacu::DocumentSession restored;
+    std::vector<double> progressValues;
+    REQUIRE(cupuacu::persistence::loadDocumentAutosaveSnapshot(
+        path, restored,
+        [&](const std::optional<double> progress)
+        {
+            REQUIRE(progress.has_value());
+            progressValues.push_back(*progress);
+        }));
+    REQUIRE_FALSE(progressValues.empty());
+    REQUIRE(progressValues.front() == Catch::Approx(0.0));
+    REQUIRE(progressValues.back() == Catch::Approx(1.0));
+    REQUIRE(progressValues.size() >= 3);
+}
+
 TEST_CASE("Paths place runtime autosave and undo state outside config",
           "[autosave]")
 {
@@ -251,6 +284,87 @@ TEST_CASE("Autosaved file-backed sessions restore the snapshot over the source",
     REQUIRE(session.currentFile == sourcePath.string());
     REQUIRE(session.document.getFrameCount() == 2);
     REQUIRE(session.document.getSample(0, 1) == Catch::Approx(-0.5f));
+    REQUIRE(cupuacu::actions::documentTabTitle(*restored.getActiveTab()) ==
+            "source.wav*");
+}
+
+TEST_CASE("Shutdown flush persists dirty file-backed sessions for restart",
+          "[autosave]")
+{
+    const auto root = cupuacu::test::makeUniqueTestRoot("document-autosave");
+    const auto sourcePath = root / "source.wav";
+    {
+        cupuacu::test::StateWithTestPaths state{root};
+        initializeMonoDocument(state, {0.0f, 0.0f});
+        state.getActiveDocumentSession().setCurrentFile(sourcePath.string());
+
+        state.addAndDoUndoable(
+            std::make_shared<SetSampleUndoable>(&state, 1, -0.5f));
+        REQUIRE(state.backgroundAutosaveJob != nullptr);
+
+        cupuacu::actions::flushAutosaveSnapshotsForShutdown(&state);
+        cupuacu::actions::persistSessionState(&state);
+
+        const auto persisted =
+            cupuacu::persistence::SessionStatePersistence::load(
+                state.paths->sessionStatePath());
+        REQUIRE(persisted.openDocuments.size() == 1);
+        REQUIRE_FALSE(persisted.openDocuments[0].autosaveSnapshotPath.empty());
+        REQUIRE(std::filesystem::exists(
+            persisted.openDocuments[0].autosaveSnapshotPath));
+    }
+
+    cupuacu::test::StateWithTestPaths restored{root};
+    const auto persisted = cupuacu::persistence::SessionStatePersistence::load(
+        restored.paths->sessionStatePath());
+    cupuacu::actions::restoreStartupDocument(&restored, {}, persisted);
+
+    const auto &session = restored.getActiveDocumentSession();
+    REQUIRE(session.currentFile == sourcePath.string());
+    REQUIRE(session.document.getSample(0, 1) == Catch::Approx(-0.5f));
+    REQUIRE(cupuacu::actions::documentTabTitle(*restored.getActiveTab()) ==
+            "source.wav*");
+}
+
+TEST_CASE("Shutdown flush does not rewrite current restored autosave snapshots",
+          "[autosave]")
+{
+    const auto root = cupuacu::test::makeUniqueTestRoot("document-autosave");
+    const auto sourcePath = root / "source.wav";
+    std::filesystem::path autosavePath;
+    std::int64_t originalWriteTimeNs = 0;
+    {
+        cupuacu::test::StateWithTestPaths state{root};
+        initializeMonoDocument(state, {0.0f, 0.0f});
+        state.getActiveDocumentSession().setCurrentFile(sourcePath.string());
+
+        state.addAndDoUndoable(
+            std::make_shared<SetSampleUndoable>(&state, 1, -0.5f));
+        drainPendingAutosave(state);
+
+        autosavePath = state.getActiveDocumentSession().autosaveSnapshotPath;
+        REQUIRE_FALSE(autosavePath.empty());
+        REQUIRE(std::filesystem::exists(autosavePath));
+        originalWriteTimeNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                  std::filesystem::last_write_time(autosavePath)
+                                      .time_since_epoch())
+                                  .count();
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+    cupuacu::test::StateWithTestPaths restored{root};
+    const auto persisted = cupuacu::persistence::SessionStatePersistence::load(
+        restored.paths->sessionStatePath());
+    cupuacu::actions::restoreStartupDocument(&restored, {}, persisted);
+
+    cupuacu::actions::flushAutosaveSnapshotsForShutdown(&restored);
+    REQUIRE(std::filesystem::exists(autosavePath));
+    const auto flushedWriteTimeNs =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::filesystem::last_write_time(autosavePath).time_since_epoch())
+            .count();
+    REQUIRE(flushedWriteTimeNs == originalWriteTimeNs);
 }
 
 TEST_CASE("Undoing file-backed edits back to the open-file baseline clears autosave",

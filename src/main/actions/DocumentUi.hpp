@@ -40,6 +40,26 @@ namespace cupuacu::actions
         SDL_SetWindowTitle(mainWindow->getSdlWindow(), title.c_str());
     }
 
+    inline void setMainWindowTitleToActiveDocument(cupuacu::State *state)
+    {
+        if (!state)
+        {
+            return;
+        }
+
+        const auto &session = state->getActiveDocumentSession();
+        const std::string baseTitle =
+            !session.currentFile.empty()
+                ? std::filesystem::path(session.currentFile).filename().string()
+                : kUntitledDocumentTitle;
+        const bool hasUnsavedChanges =
+            !session.autosaveSnapshotPath.empty() ||
+            (session.currentFile.empty() &&
+             session.document.getChannelCount() > 0);
+        setMainWindowTitle(state,
+                           hasUnsavedChanges ? baseTitle + "*" : baseTitle);
+    }
+
     inline void prepareForDocumentTransition(cupuacu::State *state)
     {
         if (!state)
@@ -166,7 +186,7 @@ namespace cupuacu::actions
         session.syncSelectionAndCursorToDocumentLength();
 
         refreshDocumentUi(state);
-        setMainWindowTitle(state, kUntitledDocumentTitle);
+        setMainWindowTitleToActiveDocument(state);
         if (shouldPersistState)
         {
             persistSessionState(state);
@@ -195,7 +215,7 @@ namespace cupuacu::actions
         session.syncSelectionAndCursorToDocumentLength();
 
         refreshDocumentUi(state);
-        setMainWindowTitle(state, kUntitledDocumentTitle);
+        setMainWindowTitleToActiveDocument(state);
         if (shouldPersistState)
         {
             persistSessionState(state);

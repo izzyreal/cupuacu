@@ -145,18 +145,14 @@ namespace cupuacu::actions
                 state->getActiveDocumentSession().setCurrentFile(absoluteFilePath);
                 cupuacu::file::loadSampleData(state);
                 refreshDocumentUi(state);
-                setMainWindowTitle(state, absoluteFilePath);
+                setMainWindowTitleToActiveDocument(state);
             });
         if (!loaded)
         {
             state->tabs[static_cast<size_t>(activeTabIndex)] = previousTab;
             bindMainWindowToActiveDocument(state);
             refreshDocumentUi(state);
-            setMainWindowTitle(
-                state,
-                state->getActiveDocumentSession().currentFile.empty()
-                    ? kUntitledDocumentTitle
-                    : state->getActiveDocumentSession().currentFile);
+            setMainWindowTitleToActiveDocument(state);
             return false;
         }
 
@@ -213,11 +209,7 @@ namespace cupuacu::actions
             originalActiveTabIndex, 0, static_cast<int>(state->tabs.size()) - 1);
         bindMainWindowToActiveDocument(state);
         refreshDocumentUi(state);
-        setMainWindowTitle(
-            state,
-            state->getActiveDocumentSession().currentFile.empty()
-                ? kUntitledDocumentTitle
-                : state->getActiveDocumentSession().currentFile);
+        setMainWindowTitleToActiveDocument(state);
         return false;
     }
 } // namespace cupuacu::actions

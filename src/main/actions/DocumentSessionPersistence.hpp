@@ -296,6 +296,64 @@ namespace cupuacu::actions
             state->paths->sessionStatePath(), persisted);
     }
 
+    inline void flushAutosaveSnapshotsForShutdown(cupuacu::State *state)
+    {
+        if (!state || !state->paths)
+        {
+            return;
+        }
+
+        state->backgroundAutosaveJob.reset();
+
+        for (auto &tab : state->tabs)
+        {
+            auto &session = tab.session;
+            const auto &document = session.document;
+            if (document.getChannelCount() <= 0)
+            {
+                continue;
+            }
+
+            const bool cleanFileBackedDocument =
+                !session.currentFile.empty() && tab.undoables.empty();
+            if (cleanFileBackedDocument)
+            {
+                continue;
+            }
+
+            if (session.autosaveSnapshotPath.empty())
+            {
+                session.autosaveSnapshotPath = detail::makeAutosaveSnapshotPath(
+                    state);
+            }
+            if (session.autosaveSnapshotPath.empty())
+            {
+                continue;
+            }
+
+            const bool autosaveAlreadyCurrent =
+                !session.autosaveSnapshotPath.empty() &&
+                session.autosavedWaveformDataVersion ==
+                    document.getWaveformDataVersion() &&
+                session.autosavedMarkerDataVersion ==
+                    document.getMarkerDataVersion() &&
+                std::filesystem::exists(session.autosaveSnapshotPath);
+            if (autosaveAlreadyCurrent)
+            {
+                continue;
+            }
+
+            if (cupuacu::persistence::saveDocumentAutosaveSnapshot(
+                    session.autosaveSnapshotPath, session))
+            {
+                session.autosavedWaveformDataVersion =
+                    document.getWaveformDataVersion();
+                session.autosavedMarkerDataVersion =
+                    document.getMarkerDataVersion();
+            }
+        }
+    }
+
     inline void autosaveDocumentAfterMutation(cupuacu::State *state,
                                               const int tabIndex)
     {

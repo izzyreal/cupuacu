@@ -130,6 +130,15 @@ namespace cupuacu::logging
         gLogger.reset();
     }
 
+    void flush()
+    {
+        std::lock_guard<std::mutex> lock(gLoggerMutex);
+        if (gLogger)
+        {
+            gLogger->flush();
+        }
+    }
+
     void debug(std::string_view message)
     {
         log(spdlog::level::debug, message);

@@ -1,7 +1,9 @@
 #include "persistence/DocumentAutosave.hpp"
 
+#include "Logger.hpp"
 #include "file/FileIo.hpp"
 
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
@@ -16,6 +18,7 @@ namespace cupuacu::persistence
     {
         constexpr char kMagic[] = "CUPUACU_AUTOSAVE";
         constexpr uint32_t kVersion = 2;
+        constexpr int64_t kAudioBlockFrames = 16384;
 
         void writeU32(std::ostream &output, const uint32_t value)
         {
@@ -111,6 +114,21 @@ namespace cupuacu::persistence
             writeU32(output, bits);
         }
 
+        void writeFloatBlock(std::ostream &output, const float *values,
+                             const std::size_t sampleCount)
+        {
+            if (sampleCount == 0)
+            {
+                return;
+            }
+            output.write(reinterpret_cast<const char *>(values),
+                         static_cast<std::streamsize>(sampleCount * sizeof(float)));
+            if (!output)
+            {
+                throw std::runtime_error("Failed to write autosave snapshot");
+            }
+        }
+
         float readFloat(std::istream &input)
         {
             const uint32_t bits = readU32(input);
@@ -118,6 +136,21 @@ namespace cupuacu::persistence
             static_assert(sizeof(value) == sizeof(bits));
             std::memcpy(&value, &bits, sizeof(value));
             return value;
+        }
+
+        void readFloatBlock(std::istream &input, float *values,
+                            const std::size_t sampleCount)
+        {
+            if (sampleCount == 0)
+            {
+                return;
+            }
+            input.read(reinterpret_cast<char *>(values),
+                       static_cast<std::streamsize>(sampleCount * sizeof(float)));
+            if (!input)
+            {
+                throw std::runtime_error("Truncated autosave snapshot");
+            }
         }
 
         void writeWaveformCacheState(
@@ -220,13 +253,30 @@ namespace cupuacu::persistence
                                 .snapshotBuildState());
             }
 
-            for (int64_t frame = 0; frame < document.getFrameCount(); ++frame)
+            const auto lease = document.acquireReadLease();
+            const int64_t channelCount = lease.getChannelCount();
+            std::vector<float> interleaved(
+                static_cast<std::size_t>(std::max<int64_t>(1, channelCount)) *
+                static_cast<std::size_t>(kAudioBlockFrames));
+            for (int64_t frameStart = 0; frameStart < lease.getFrameCount();
+                 frameStart += kAudioBlockFrames)
             {
-                for (int64_t channel = 0; channel < document.getChannelCount();
-                     ++channel)
+                const auto framesToWrite = std::min<int64_t>(
+                    kAudioBlockFrames, lease.getFrameCount() - frameStart);
+                for (int64_t frame = 0; frame < framesToWrite; ++frame)
                 {
-                    writeFloat(output, document.getSample(channel, frame));
+                    for (int64_t channel = 0; channel < channelCount; ++channel)
+                    {
+                        interleaved[static_cast<std::size_t>(frame) *
+                                        static_cast<std::size_t>(channelCount) +
+                                    static_cast<std::size_t>(channel)] =
+                            lease.getSample(channel, frameStart + frame);
+                    }
                 }
+
+                const auto sampleCount = framesToWrite * channelCount;
+                writeFloatBlock(output, interleaved.data(),
+                                static_cast<std::size_t>(sampleCount));
             }
 
             if (!output.good())
@@ -267,6 +317,13 @@ namespace cupuacu::persistence
     bool loadDocumentAutosaveSnapshot(const std::filesystem::path &path,
                                       cupuacu::DocumentSession &session)
     {
+        return loadDocumentAutosaveSnapshot(path, session, {});
+    }
+
+    bool loadDocumentAutosaveSnapshot(
+        const std::filesystem::path &path, cupuacu::DocumentSession &session,
+        const DocumentAutosaveLoadProgress &progress)
+    {
         if (path.empty())
         {
             return false;
@@ -274,6 +331,7 @@ namespace cupuacu::persistence
 
         try
         {
+            const auto startedAt = std::chrono::steady_clock::now();
             std::ifstream input(path, std::ios::binary);
             if (!input.is_open())
             {
@@ -331,17 +389,38 @@ namespace cupuacu::persistence
             {
                 waveformCacheResults.push_back(readWaveformCacheResult(input));
             }
+            const auto parsedMetadataAt = std::chrono::steady_clock::now();
 
             cupuacu::Document document;
             document.initialize(format, sampleRate, static_cast<uint32_t>(channels),
                                 frames);
-            for (int64_t frame = 0; frame < frames; ++frame)
+            if (progress)
             {
-                for (int64_t channel = 0; channel < channels; ++channel)
+                progress(frames > 0 ? std::optional<double>(0.0)
+                                    : std::optional<double>(1.0));
+            }
+            std::vector<float> interleaved(
+                static_cast<std::size_t>(std::max<int64_t>(1, channels)) *
+                static_cast<std::size_t>(kAudioBlockFrames));
+            for (int64_t frameStart = 0; frameStart < frames;
+                 frameStart += kAudioBlockFrames)
+            {
+                const auto framesToRead = std::min<int64_t>(
+                    kAudioBlockFrames, frames - frameStart);
+                const auto sampleCount = framesToRead * channels;
+                readFloatBlock(input, interleaved.data(),
+                               static_cast<std::size_t>(sampleCount));
+
+                document.writeInterleavedFloatBlock(frameStart, interleaved.data(),
+                                                    framesToRead, channels, false);
+
+                if (progress)
                 {
-                    document.setSample(channel, frame, readFloat(input), false);
+                    progress(static_cast<double>(frameStart + framesToRead) /
+                             static_cast<double>(frames));
                 }
             }
+            const auto loadedAudioAt = std::chrono::steady_clock::now();
             document.replaceMarkers(std::move(markers));
 
             session.clearCurrentFile();
@@ -357,12 +436,40 @@ namespace cupuacu::persistence
                     .applyBuildResult(std::move(
                         waveformCacheResults[static_cast<std::size_t>(channel)]));
             }
+            const auto appliedStateAt = std::chrono::steady_clock::now();
             session.autosaveSnapshotPath = path;
             session.autosavedWaveformDataVersion =
                 session.document.getWaveformDataVersion();
             session.autosavedMarkerDataVersion =
                 session.document.getMarkerDataVersion();
             session.syncSelectionAndCursorToDocumentLength();
+            const auto finishedAt = std::chrono::steady_clock::now();
+
+            const auto metadataMs = std::chrono::duration_cast<
+                std::chrono::milliseconds>(parsedMetadataAt - startedAt)
+                                        .count();
+            const auto audioMs = std::chrono::duration_cast<
+                std::chrono::milliseconds>(loadedAudioAt - parsedMetadataAt)
+                                     .count();
+            const auto applyMs = std::chrono::duration_cast<
+                std::chrono::milliseconds>(appliedStateAt - loadedAudioAt)
+                                     .count();
+            const auto finalizeMs = std::chrono::duration_cast<
+                std::chrono::milliseconds>(finishedAt - appliedStateAt)
+                                        .count();
+            const auto totalMs = std::chrono::duration_cast<
+                std::chrono::milliseconds>(finishedAt - startedAt)
+                                     .count();
+            cupuacu::logging::info(
+                "Autosave snapshot load timings: path=" + path.string() +
+                " frames=" + std::to_string(frames) +
+                " channels=" + std::to_string(channels) +
+                " metadata_ms=" + std::to_string(metadataMs) +
+                " audio_ms=" + std::to_string(audioMs) +
+                " apply_ms=" + std::to_string(applyMs) +
+                " finalize_ms=" + std::to_string(finalizeMs) +
+                " total_ms=" + std::to_string(totalMs));
+            cupuacu::logging::flush();
             return true;
         }
         catch (...)
