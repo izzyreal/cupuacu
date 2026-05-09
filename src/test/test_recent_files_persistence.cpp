@@ -3,6 +3,7 @@
 
 #include "TestSdlTtfGuard.hpp"
 #include "TestPaths.hpp"
+#include "actions/DocumentSessionPersistence.hpp"
 #include "actions/DocumentLifecycle.hpp"
 #include "actions/SessionWindowGeometryPlanning.hpp"
 #include "actions/Zoom.hpp"
@@ -438,6 +439,48 @@ TEST_CASE("Persisted session state saves updated zoom and offset for an open doc
             1602);
     REQUIRE(loadedSession.openDocuments[0].cursor == 321);
     REQUIRE(loadedSession.snapEnabled);
+}
+
+TEST_CASE("Shutdown persistence can preserve the startup session after canceled startup restore",
+          "[persistence]")
+{
+    const auto root =
+        cupuacu::test::makeUniqueTestRoot("shutdown-preserve-startup-session");
+    ScopedCleanup cleanup(root / "placeholder");
+
+    cupuacu::test::StateWithTestPaths state{root};
+    state.startupPersistedRecentFiles = {"/tmp/recent-before.wav"};
+    state.startupPersistedSessionState.openDocuments = {
+        {.filePath = "/tmp/restore-before.wav"},
+    };
+    state.startupPersistedSessionState.openFiles = {
+        "/tmp/restore-before.wav",
+    };
+    state.startupPersistedSessionState.activeOpenFileIndex = 0;
+    state.preserveStartupSessionStateOnShutdown = true;
+
+    state.recentFiles = {"/tmp/recent-after.wav"};
+    state.tabs[0].session.currentFile = "/tmp/restore-after.wav";
+
+    const auto resolved =
+        cupuacu::actions::resolvePersistedOpenSessionStateForShutdown(&state);
+    REQUIRE(resolved.openFiles ==
+            std::vector<std::string>{"/tmp/restore-before.wav"});
+
+    cupuacu::actions::persistSessionStateForShutdown(&state, resolved);
+
+    const auto loadedRecentFiles =
+        cupuacu::persistence::RecentFilesPersistence::load(
+            state.paths->recentlyOpenedFilesPath());
+    const auto loadedSession =
+        cupuacu::persistence::SessionStatePersistence::load(
+            state.paths->sessionStatePath());
+
+    REQUIRE(loadedRecentFiles ==
+            std::vector<std::string>{"/tmp/recent-before.wav"});
+    REQUIRE(loadedSession.openFiles ==
+            std::vector<std::string>{"/tmp/restore-before.wav"});
+    REQUIRE(loadedSession.activeOpenFileIndex == 0);
 }
 
 TEST_CASE("Persisted open document state restores per-document cursor",

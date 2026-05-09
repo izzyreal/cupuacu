@@ -229,6 +229,9 @@ namespace cupuacu
         std::function<void(const LongTaskStatus &)> longTaskObserver;
         bool mainWindowInitialFrameRendered = false;
         bool quitRequestedAfterLongTaskCancel = false;
+        std::vector<std::string> startupPersistedRecentFiles;
+        persistence::PersistedSessionState startupPersistedSessionState;
+        bool preserveStartupSessionStateOnShutdown = false;
 
         ~State();
 

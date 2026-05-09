@@ -468,6 +468,11 @@ namespace cupuacu::actions
                         }
                         catch (const cupuacu::LongTaskCanceledError &)
                         {
+                            if (state->quitRequestedAfterLongTaskCancel)
+                            {
+                                state->preserveStartupSessionStateOnShutdown =
+                                    true;
+                            }
                             state->startupRestore = {};
                             state->pendingOpenFiles.clear();
                             state->pendingOpenWaveformBuild = {};

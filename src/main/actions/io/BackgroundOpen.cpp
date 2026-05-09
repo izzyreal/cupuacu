@@ -449,6 +449,10 @@ namespace cupuacu::actions::io
                     if (snapshot.request.kind == PendingOpenKind::StartupRestore ||
                         state->quitRequestedAfterLongTaskCancel)
                     {
+                        if (state->quitRequestedAfterLongTaskCancel)
+                        {
+                            state->preserveStartupSessionStateOnShutdown = true;
+                        }
                         state->startupRestore = {};
                         state->pendingOpenFiles.clear();
                     }
@@ -472,6 +476,7 @@ namespace cupuacu::actions::io
                 cancelPendingOpenWaveformBuild(state);
                 if (state->quitRequestedAfterLongTaskCancel)
                 {
+                    state->preserveStartupSessionStateOnShutdown = true;
                     state->startupRestore = {};
                     state->pendingOpenFiles.clear();
                 }

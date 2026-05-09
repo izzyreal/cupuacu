@@ -311,6 +311,40 @@ namespace cupuacu::actions
             state->paths->sessionStatePath(), persisted);
     }
 
+    inline cupuacu::persistence::PersistedSessionState
+    resolvePersistedOpenSessionStateForShutdown(const cupuacu::State *state)
+    {
+        if (!state)
+        {
+            return {};
+        }
+
+        if (state->preserveStartupSessionStateOnShutdown)
+        {
+            return state->startupPersistedSessionState;
+        }
+
+        return buildPersistedOpenSessionState(state);
+    }
+
+    inline void persistSessionStateForShutdown(
+        cupuacu::State *state,
+        const cupuacu::persistence::PersistedSessionState &persisted)
+    {
+        if (!state || !state->paths)
+        {
+            return;
+        }
+
+        const auto &recentFiles = state->preserveStartupSessionStateOnShutdown
+                                      ? state->startupPersistedRecentFiles
+                                      : state->recentFiles;
+        cupuacu::persistence::RecentFilesPersistence::save(
+            state->paths->recentlyOpenedFilesPath(), recentFiles);
+        cupuacu::persistence::SessionStatePersistence::save(
+            state->paths->sessionStatePath(), persisted);
+    }
+
     inline void flushAutosaveSnapshotsForShutdown(cupuacu::State *state)
     {
         if (!state || !state->paths)

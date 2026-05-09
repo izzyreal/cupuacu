@@ -126,9 +126,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
         cupuacu::persistence::RecentFilesPersistence::load(
             state->paths->recentlyOpenedFilesPath());
     state->recentFiles = persistedRecentFiles;
+    state->startupPersistedRecentFiles = persistedRecentFiles;
     const auto persistedSessionState =
         cupuacu::persistence::SessionStatePersistence::load(
             state->paths->sessionStatePath());
+    state->startupPersistedSessionState = persistedSessionState;
     const SDL_Point initialMainWindowSize =
         resolveInitialMainWindowSize(persistedSessionState);
 
@@ -288,9 +290,10 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
     cupuacu::actions::flushAutosaveSnapshotsForShutdown(state);
     const auto autosaveFlushedAt = std::chrono::steady_clock::now();
     const auto persistedSessionState =
-        cupuacu::actions::buildPersistedOpenSessionState(state);
+        cupuacu::actions::resolvePersistedOpenSessionStateForShutdown(state);
     const auto sessionBuiltAt = std::chrono::steady_clock::now();
-    cupuacu::actions::persistSessionState(state, persistedSessionState);
+    cupuacu::actions::persistSessionStateForShutdown(state,
+                                                     persistedSessionState);
     const auto sessionPersistedAt = std::chrono::steady_clock::now();
     cupuacu::undo::pruneUndoStores(
         state->paths->undoPath(), persistedSessionState);
