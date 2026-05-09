@@ -89,6 +89,13 @@ namespace cupuacu
         StartupRestore,
     };
 
+    enum class UnsavedChangesChoice
+    {
+        Cancel = 0,
+        Save = 1,
+        Discard = 2,
+    };
+
     struct PendingOpenRequest
     {
         PendingOpenKind kind = PendingOpenKind::UserOpen;
@@ -190,8 +197,12 @@ namespace cupuacu
             errorReporter;
         std::function<bool(const std::string &, const std::string &)>
             confirmationReporter;
+        std::function<UnsavedChangesChoice(const std::string &,
+                                           const std::string &)>
+            unsavedChangesReporter;
         std::optional<std::pair<std::string, std::string>>
             pendingStartupWarning;
+        std::optional<std::uint64_t> pendingCloseTabAfterSaveId;
         std::deque<PendingOpenRequest> pendingOpenFiles;
         StartupRestoreStatus startupRestore;
         PendingOpenWaveformBuildStatus pendingOpenWaveformBuild;

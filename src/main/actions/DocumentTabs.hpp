@@ -4,8 +4,10 @@
 #include "../State.hpp"
 #include "../gui/MainViewAccess.hpp"
 #include "../gui/Waveform.hpp"
+#include "DocumentDialogs.hpp"
 #include "DocumentUi.hpp"
 #include "Play.hpp"
+#include "Save.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -25,14 +27,55 @@ namespace cupuacu::actions
 
     inline bool documentTabHasUnsavedChanges(const cupuacu::DocumentTab &tab)
     {
-        const auto &session = tab.session;
-        if (!session.autosaveSnapshotPath.empty())
+        return documentSessionHasUnsavedChanges(tab.session);
+    }
+
+    inline cupuacu::UnsavedChangesChoice confirmCloseUnsavedTab(
+        cupuacu::State *state, const cupuacu::DocumentTab &tab)
+    {
+        const std::string title =
+            !tab.session.currentFile.empty()
+                ? std::filesystem::path(tab.session.currentFile).filename().string()
+                : kUntitledDocumentTitle;
+        const std::string dialogTitle = "Unsaved changes";
+        const std::string message =
+            "Save changes to \"" + title + "\" before closing?";
+
+        if (state && state->unsavedChangesReporter)
         {
-            return true;
+            return state->unsavedChangesReporter(dialogTitle, message);
+        }
+        if (SDL_WasInit(SDL_INIT_VIDEO) == 0)
+        {
+            return cupuacu::UnsavedChangesChoice::Cancel;
         }
 
-        return session.currentFile.empty() &&
-               session.document.getChannelCount() > 0;
+        const SDL_MessageBoxButtonData buttons[] = {
+            {SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1, "Save"},
+            {0, 2, "Discard"},
+            {SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, "Cancel"},
+        };
+        const SDL_MessageBoxData data{
+            .flags = SDL_MESSAGEBOX_WARNING,
+            .window = state && state->mainDocumentSessionWindow &&
+                              state->mainDocumentSessionWindow->getWindow()
+                          ? state->mainDocumentSessionWindow->getWindow()
+                                ->getSdlWindow()
+                          : nullptr,
+            .title = dialogTitle.c_str(),
+            .message = message.c_str(),
+            .numbuttons = 3,
+            .buttons = buttons,
+            .colorScheme = nullptr,
+        };
+
+        int pressedButtonId = 0;
+        if (!SDL_ShowMessageBox(&data, &pressedButtonId))
+        {
+            return cupuacu::UnsavedChangesChoice::Cancel;
+        }
+
+        return static_cast<cupuacu::UnsavedChangesChoice>(pressedButtonId);
     }
 
     inline std::string documentTabTitle(const cupuacu::DocumentTab &tab)
@@ -187,13 +230,10 @@ namespace cupuacu::actions
         return closeTab(state, removeIndex);
     }
 
-    inline bool closeTab(cupuacu::State *state, const int index)
+    inline bool closeTabWithoutConfirmation(cupuacu::State *state,
+                                            const int index)
     {
         if (!state || state->tabs.empty())
-        {
-            return false;
-        }
-        if (!canSwitchTabs(state))
         {
             return false;
         }
@@ -232,5 +272,54 @@ namespace cupuacu::actions
         resetSampleValueUnderMouseCursor(state);
         refreshActiveTabUi(state);
         return true;
+    }
+
+    inline bool closeTab(cupuacu::State *state, const int index)
+    {
+        if (!state || state->tabs.empty())
+        {
+            return false;
+        }
+        if (!canSwitchTabs(state))
+        {
+            return false;
+        }
+        if (index < 0 || index >= static_cast<int>(state->tabs.size()))
+        {
+            return false;
+        }
+
+        auto &tab = state->tabs[static_cast<std::size_t>(index)];
+        if (!documentTabHasUnsavedChanges(tab))
+        {
+            return closeTabWithoutConfirmation(state, index);
+        }
+
+        switch (confirmCloseUnsavedTab(state, tab))
+        {
+            case cupuacu::UnsavedChangesChoice::Discard:
+                state->pendingCloseTabAfterSaveId.reset();
+                return closeTabWithoutConfirmation(state, index);
+            case cupuacu::UnsavedChangesChoice::Save:
+                state->activeTabIndex = index;
+                refreshActiveTabUi(state);
+                if (tab.session.currentFile.empty())
+                {
+                    state->pendingCloseTabAfterSaveId = tab.id;
+                    showExportAudioDialog(state);
+                    return true;
+                }
+
+                state->pendingCloseTabAfterSaveId.reset();
+                if (!overwrite(state))
+                {
+                    return false;
+                }
+                return closeTabWithoutConfirmation(state, state->activeTabIndex);
+            case cupuacu::UnsavedChangesChoice::Cancel:
+            default:
+                state->pendingCloseTabAfterSaveId.reset();
+                return false;
+        }
     }
 } // namespace cupuacu::actions

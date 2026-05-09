@@ -23,6 +23,18 @@ namespace cupuacu::actions
                state->getActiveDocumentSession().document.getChannelCount() > 0;
     }
 
+    inline bool documentSessionHasUnsavedChanges(
+        const cupuacu::DocumentSession &session)
+    {
+        if (!session.autosaveSnapshotPath.empty())
+        {
+            return true;
+        }
+
+        return session.currentFile.empty() &&
+               session.document.getChannelCount() > 0;
+    }
+
     inline void setMainWindowTitle(cupuacu::State *state,
                                    const std::string &title)
     {
@@ -52,12 +64,10 @@ namespace cupuacu::actions
             !session.currentFile.empty()
                 ? std::filesystem::path(session.currentFile).filename().string()
                 : kUntitledDocumentTitle;
-        const bool hasUnsavedChanges =
-            !session.autosaveSnapshotPath.empty() ||
-            (session.currentFile.empty() &&
-             session.document.getChannelCount() > 0);
         setMainWindowTitle(state,
-                           hasUnsavedChanges ? baseTitle + "*" : baseTitle);
+                           documentSessionHasUnsavedChanges(session)
+                               ? baseTitle + "*"
+                               : baseTitle);
     }
 
     inline void prepareForDocumentTransition(cupuacu::State *state)

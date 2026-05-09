@@ -81,6 +81,7 @@ namespace cupuacu::actions
             if (state)
             {
                 state->pendingSaveAsMarkerWarningConfirmed = false;
+                state->pendingCloseTabAfterSaveId.reset();
             }
             SDL_Log("An error occured: %s", SDL_GetError());
             return;
@@ -90,6 +91,7 @@ namespace cupuacu::actions
             if (state)
             {
                 state->pendingSaveAsMarkerWarningConfirmed = false;
+                state->pendingCloseTabAfterSaveId.reset();
             }
             SDL_Log("The user did not select any file.");
             SDL_Log("Most likely, the dialog was canceled.");
@@ -101,13 +103,19 @@ namespace cupuacu::actions
             if (state)
             {
                 state->pendingSaveAsMarkerWarningConfirmed = false;
+                state->pendingCloseTabAfterSaveId.reset();
             }
             return;
         }
 
         if (mode == cupuacu::PendingSaveAsMode::Preserving)
         {
-            actions::io::queueSaveAsPreserving(state, *filelist, *settings);
+            const bool queued =
+                actions::io::queueSaveAsPreserving(state, *filelist, *settings);
+            if (state && !queued)
+            {
+                state->pendingCloseTabAfterSaveId.reset();
+            }
             if (state)
             {
                 state->pendingSaveAsMarkerWarningConfirmed = false;
@@ -115,10 +123,14 @@ namespace cupuacu::actions
             return;
         }
 
-        actions::io::queueSaveAs(state, *filelist, *settings);
+        const bool queued = actions::io::queueSaveAs(state, *filelist, *settings);
         if (state)
         {
             state->pendingSaveAsMarkerWarningConfirmed = false;
+            if (!queued)
+            {
+                state->pendingCloseTabAfterSaveId.reset();
+            }
         }
     }
 

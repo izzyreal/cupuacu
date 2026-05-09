@@ -4,8 +4,32 @@
 #include "TestPaths.hpp"
 #include "actions/DocumentLifecycle.hpp"
 #include "actions/DocumentTabs.hpp"
+#include "actions/io/BackgroundSave.hpp"
+#include "file/AudioExport.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/TabStrip.hpp"
+
+#include <chrono>
+#include <filesystem>
+#include <thread>
+
+namespace
+{
+    void drainPendingSaveWork(cupuacu::State *state)
+    {
+        for (int attempt = 0; attempt < 5000; ++attempt)
+        {
+            cupuacu::actions::io::processPendingSaveWork(state);
+            if (!state->backgroundSaveJob)
+            {
+                return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+
+        FAIL("Timed out waiting for background save work");
+    }
+} // namespace
 
 TEST_CASE("Document tabs can switch without an audio backend", "[tabs]")
 {
@@ -32,6 +56,22 @@ TEST_CASE("Document tab title uses the file name when present", "[tabs]")
     tab.session.document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 16);
     REQUIRE(cupuacu::actions::documentTabTitle(tab) ==
             std::string(cupuacu::actions::kUntitledDocumentTitle) + "*");
+}
+
+TEST_CASE("Document session unsaved helper matches title logic", "[tabs]")
+{
+    cupuacu::DocumentSession session;
+
+    REQUIRE_FALSE(cupuacu::actions::documentSessionHasUnsavedChanges(session));
+
+    session.currentFile = "/tmp/projects/example.wav";
+    session.autosaveSnapshotPath = "/tmp/document.cupuacu-autosave";
+    REQUIRE(cupuacu::actions::documentSessionHasUnsavedChanges(session));
+
+    session.currentFile.clear();
+    session.autosaveSnapshotPath.clear();
+    session.document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 16);
+    REQUIRE(cupuacu::actions::documentSessionHasUnsavedChanges(session));
 }
 
 TEST_CASE("Creating an empty tab appends and activates it", "[tabs]")
@@ -151,6 +191,107 @@ TEST_CASE("Closing the active tab removes it and keeps a valid selection",
     REQUIRE(state.tabs.size() == 2);
     REQUIRE(state.activeTabIndex == 1);
     REQUIRE(state.getActiveDocumentSession().currentFile == "/tmp/third.wav");
+}
+
+TEST_CASE("Closing a dirty tab can be canceled", "[tabs]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    state.tabs.resize(2);
+    state.activeTabIndex = 0;
+    state.tabs[0].session.currentFile = "/tmp/dirty.wav";
+    state.tabs[0].session.autosaveSnapshotPath = "/tmp/dirty.cupuacu-autosave";
+    state.tabs[0].session.document.initialize(
+        cupuacu::SampleFormat::PCM_S16, 44100, 2, 64);
+    state.tabs[1].session.currentFile = "/tmp/other.wav";
+
+    state.unsavedChangesReporter = [](const std::string &, const std::string &)
+    {
+        return cupuacu::UnsavedChangesChoice::Cancel;
+    };
+
+    REQUIRE_FALSE(cupuacu::actions::closeActiveTab(&state));
+    REQUIRE(state.tabs.size() == 2);
+    REQUIRE(state.activeTabIndex == 0);
+    REQUIRE(state.getActiveDocumentSession().currentFile == "/tmp/dirty.wav");
+}
+
+TEST_CASE("Closing a dirty tab can discard unsaved edits", "[tabs]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    state.tabs.resize(2);
+    state.activeTabIndex = 0;
+    state.tabs[0].session.currentFile = "/tmp/dirty.wav";
+    state.tabs[0].session.autosaveSnapshotPath = "/tmp/dirty.cupuacu-autosave";
+    state.tabs[0].session.document.initialize(
+        cupuacu::SampleFormat::PCM_S16, 44100, 2, 64);
+    state.tabs[1].session.currentFile = "/tmp/other.wav";
+
+    state.unsavedChangesReporter = [](const std::string &, const std::string &)
+    {
+        return cupuacu::UnsavedChangesChoice::Discard;
+    };
+
+    REQUIRE(cupuacu::actions::closeActiveTab(&state));
+    REQUIRE(state.tabs.size() == 1);
+    REQUIRE(state.activeTabIndex == 0);
+    REQUIRE(state.getActiveDocumentSession().currentFile == "/tmp/other.wav");
+}
+
+TEST_CASE("Closing a dirty file-backed tab can save before closing", "[tabs]")
+{
+    const auto root = cupuacu::test::makeUniqueTestRoot("close-tab-save");
+    const auto outputPath = root / "documents" / "dirty.wav";
+
+    cupuacu::test::StateWithTestPaths state{root};
+    state.tabs.resize(2);
+    state.activeTabIndex = 0;
+    state.tabs[0].session.currentFile = outputPath.string();
+    state.tabs[0].session.autosaveSnapshotPath = "/tmp/dirty.cupuacu-autosave";
+    state.tabs[0].session.document.initialize(
+        cupuacu::SampleFormat::PCM_S16, 44100, 2, 64);
+    state.tabs[1].session.currentFile = "/tmp/other.wav";
+
+    state.unsavedChangesReporter = [](const std::string &, const std::string &)
+    {
+        return cupuacu::UnsavedChangesChoice::Save;
+    };
+
+    REQUIRE(cupuacu::actions::closeActiveTab(&state));
+    REQUIRE(state.tabs.size() == 1);
+    REQUIRE(state.activeTabIndex == 0);
+    REQUIRE(state.getActiveDocumentSession().currentFile == "/tmp/other.wav");
+    REQUIRE(std::filesystem::exists(outputPath));
+}
+
+TEST_CASE("Pending close completes after save as finishes", "[tabs]")
+{
+    const auto root = cupuacu::test::makeUniqueTestRoot("close-tab-save-as");
+    const auto outputPath = root / "documents" / "saved.wav";
+
+    cupuacu::test::StateWithTestPaths state{root};
+    state.tabs.resize(2);
+    state.activeTabIndex = 0;
+    state.tabs[0].session.document.initialize(
+        cupuacu::SampleFormat::PCM_S16, 44100, 2, 64);
+    state.tabs[0].session.autosaveSnapshotPath = "/tmp/dirty.cupuacu-autosave";
+    state.tabs[1].session.currentFile = "/tmp/other.wav";
+
+    auto settings = cupuacu::file::defaultExportSettingsForPath(
+        outputPath, state.tabs[0].session.document.getSampleFormat());
+    REQUIRE(settings.has_value());
+
+    state.pendingCloseTabAfterSaveId = state.tabs[0].id;
+    REQUIRE(cupuacu::actions::io::queueSaveAs(&state, outputPath.string(),
+                                              *settings));
+    REQUIRE(state.backgroundSaveJob != nullptr);
+
+    drainPendingSaveWork(&state);
+
+    REQUIRE(state.tabs.size() == 1);
+    REQUIRE(state.activeTabIndex == 0);
+    REQUIRE(state.getActiveDocumentSession().currentFile == "/tmp/other.wav");
+    REQUIRE(std::filesystem::exists(outputPath));
+    REQUIRE_FALSE(state.pendingCloseTabAfterSaveId.has_value());
 }
 
 TEST_CASE("Closing an inactive tab preserves the active document context",

@@ -7,6 +7,7 @@
 #include "../../file/PreservationBackend.hpp"
 #include "../../file/SaveWritePlan.hpp"
 #include "../DocumentLifecycle.hpp"
+#include "../DocumentTabs.hpp"
 #include "../Save.hpp"
 
 #include <algorithm>
@@ -176,6 +177,10 @@ namespace cupuacu::actions::io
             cupuacu::clearLongTask(state, false);
             if (!snapshot.success)
             {
+                if (state)
+                {
+                    state->pendingCloseTabAfterSaveId.reset();
+                }
                 detail::reportSaveFailure(
                     state, operationForKind(snapshot.request.kind),
                     snapshot.request.path.string(), snapshot.error);
@@ -193,6 +198,19 @@ namespace cupuacu::actions::io
             else
             {
                 persistSessionState(state);
+            }
+
+            if (!state || !state->pendingCloseTabAfterSaveId.has_value())
+            {
+                return;
+            }
+
+            const auto tabIndex =
+                findTabIndexById(state, *state->pendingCloseTabAfterSaveId);
+            state->pendingCloseTabAfterSaveId.reset();
+            if (tabIndex >= 0)
+            {
+                (void)closeTab(state, tabIndex);
             }
         }
     } // namespace
