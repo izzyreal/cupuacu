@@ -2,8 +2,12 @@
 
 #include "EffectTargeting.hpp"
 
+#include "../LongTask.hpp"
 #include "actions/Undoable.hpp"
 #include "actions/audio/SegmentStore.hpp"
+#include "actions/audio/TransactionalAudioEdit.hpp"
+
+#include "gui/MainViewAccess.hpp"
 
 #include <memory>
 #include <nlohmann/json.hpp>
@@ -20,6 +24,7 @@ namespace cupuacu::effects
             : Undoable(stateToUse)
         {
             captureTargetsAndState();
+            installGuiUpdate();
         }
 
         MakeSilentUndoable(cupuacu::State *stateToUse,
@@ -40,10 +45,12 @@ namespace cupuacu::effects
               oldSelectionEnd(oldSelectionEndToUse),
               oldCursorPos(oldCursorPosToUse)
         {
+            installGuiUpdate();
         }
 
         void redo() override
         {
+            lastCommitted = false;
             if (!state || frameCount <= 0 || targetChannels.empty())
             {
                 return;
@@ -56,31 +63,80 @@ namespace cupuacu::effects
                 return;
             }
 
-            const auto original = cupuacu::actions::audio::detail::captureOrLoadSegment(
-                session, originalHandle,
-                [&] { return document.captureSegment(startFrame, frameCount); });
-            originalHandle = cupuacu::actions::audio::detail::storeSegmentIfNeeded(
-                session, originalHandle, original, "make-silent-original");
+            cupuacu::LongTaskScope longTask(
+                state, "Making audio silent", "Capturing original audio", 0.0,
+                false, true);
+            cupuacu::renderLongTaskOverlayNow(state);
+            cupuacu::actions::audio::detail::OperationProgressUi progressUi(
+                state, "Capturing original audio");
 
-            auto silenced = original;
-            for (const int64_t channel : targetChannels)
+            try
             {
-                if (channel < 0 || channel >= silenced.channelCount)
-                {
-                    continue;
-                }
-                auto &samples =
-                    silenced.samples[static_cast<std::size_t>(channel)];
-                std::fill(samples.begin(), samples.end(), 0.0f);
-            }
+                const auto original =
+                    cupuacu::actions::audio::detail::captureOrLoadSegment(
+                        session, originalHandle,
+                        [&]
+                        {
+                            return document.captureSegment(
+                                startFrame, frameCount,
+                                [&](const int64_t completed,
+                                    const int64_t totalToCopy)
+                                {
+                                    cupuacu::actions::audio::detail::
+                                        publishCancelablePhaseProgress(
+                                            state, progressUi,
+                                            "Capturing original audio", 0.0,
+                                            0.45, completed, totalToCopy);
+                                });
+                        });
+                progressUi.publishProgress("Capturing original audio", 0.45, true);
 
-            document.writeSegment(startFrame, silenced, true);
-            invalidateWaveforms(session);
-            restoreSelectionAndCursor(session);
+                auto silenced = original;
+                const int64_t totalChannels =
+                    static_cast<int64_t>(targetChannels.size());
+                for (int64_t index = 0; index < totalChannels; ++index)
+                {
+                    const int64_t channel = targetChannels[static_cast<std::size_t>(index)];
+                    if (channel >= 0 && channel < silenced.channelCount)
+                    {
+                        auto &samples =
+                            silenced.samples[static_cast<std::size_t>(channel)];
+                        std::fill(samples.begin(), samples.end(), 0.0f);
+                    }
+                    cupuacu::actions::audio::detail::publishCancelablePhaseProgress(
+                        state, progressUi, "Preparing silent audio", 0.45, 0.9,
+                        index + 1, totalChannels);
+                }
+                cupuacu::throwIfLongTaskCanceled(state);
+
+                if (originalHandle.empty())
+                {
+                    originalHandle =
+                        cupuacu::actions::audio::detail::storeSegmentIfNeeded(
+                            session, originalHandle, original,
+                            "make-silent-original");
+                }
+
+                cupuacu::setLongTask(state, "Making audio silent",
+                                     "Committing change", 0.9, false, false);
+                progressUi.publishProgress("Committing change", 0.9, true);
+                session.stopWaveformCacheBuild();
+                document.writeSegment(startFrame, silenced, true);
+                invalidateWaveforms(session);
+                restoreSelectionAndCursor(session);
+                progressUi.publishProgress("Make silent complete", 1.0, true);
+                lastCommitted = true;
+            }
+            catch (const cupuacu::LongTaskCanceledError &)
+            {
+                progressUi.publishProgress("Make silent canceled", 0.0, true);
+                return;
+            }
         }
 
         void undo() override
         {
+            lastCommitted = false;
             if (!state || frameCount <= 0 || originalHandle.empty())
             {
                 return;
@@ -93,10 +149,34 @@ namespace cupuacu::effects
                 return;
             }
 
-            const auto original = session.undoStore.readSegment(originalHandle);
-            document.writeSegment(startFrame, original, true);
-            invalidateWaveforms(session);
-            restoreSelectionAndCursor(session);
+            cupuacu::LongTaskScope longTask(
+                state, "Undoing make silent", "Loading original audio", 0.0,
+                false, true);
+            cupuacu::renderLongTaskOverlayNow(state);
+            cupuacu::actions::audio::detail::OperationProgressUi progressUi(
+                state, "Loading original audio");
+
+            try
+            {
+                const auto original = session.undoStore.readSegment(originalHandle);
+                progressUi.publishProgress("Loading original audio", 0.9, true);
+                cupuacu::throwIfLongTaskCanceled(state);
+
+                cupuacu::setLongTask(state, "Undoing make silent",
+                                     "Committing undo", 0.9, false, false);
+                progressUi.publishProgress("Committing undo", 0.9, true);
+                session.stopWaveformCacheBuild();
+                document.writeSegment(startFrame, original, true);
+                invalidateWaveforms(session);
+                restoreSelectionAndCursor(session);
+                progressUi.publishProgress("Undo complete", 1.0, true);
+                lastCommitted = true;
+            }
+            catch (const cupuacu::LongTaskCanceledError &)
+            {
+                progressUi.publishProgress("Undo canceled", 0.0, true);
+                return;
+            }
         }
 
         std::string getUndoDescription() override
@@ -141,6 +221,11 @@ namespace cupuacu::effects
             return cupuacu::file::OverwritePreservationMutationHelper::compatible();
         }
 
+        [[nodiscard]] bool lastOperationCommitted() const override
+        {
+            return lastCommitted;
+        }
+
     private:
         int64_t startFrame = 0;
         int64_t frameCount = 0;
@@ -150,6 +235,7 @@ namespace cupuacu::effects
         double oldSelectionStart = 0.0;
         double oldSelectionEnd = 0.0;
         int64_t oldCursorPos = 0;
+        bool lastCommitted = true;
 
         void captureTargetsAndState()
         {
@@ -177,6 +263,11 @@ namespace cupuacu::effects
             oldSelectionStart = session.selection.getStart();
             oldSelectionEnd = session.selection.getEnd();
             oldCursorPos = session.cursor;
+        }
+
+        void installGuiUpdate()
+        {
+            updateGui = [state = state]() { gui::requestMainViewRefresh(state); };
         }
 
         void invalidateWaveforms(cupuacu::DocumentSession &session) const

@@ -600,6 +600,43 @@ TEST_CASE("Make silent without an active selection is a no-op", "[actions]")
     REQUIRE(state.getActiveUndoables().empty());
 }
 
+TEST_CASE("Canceling make silent before commit leaves document and undo state unchanged",
+          "[actions][long-task]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    initializeMonoDocument(state, {0, 1, 2, 3, 4, 5});
+
+    auto &session = state.getActiveDocumentSession();
+    session.selection.setValue1(1.0);
+    session.selection.setValue2(5.0);
+    session.cursor = 5;
+
+    bool cancelRequested = false;
+    state.longTaskObserver =
+        [&](const cupuacu::State::LongTaskStatus &status)
+    {
+        if (!cancelRequested && status.active &&
+            status.title == "Making audio silent" &&
+            status.detail == "Preparing silent audio")
+        {
+            cancelRequested = true;
+            cupuacu::requestLongTaskCancel(&state);
+        }
+    };
+
+    cupuacu::effects::performMakeSilent(&state);
+
+    REQUIRE(cancelRequested);
+    REQUIRE(state.getActiveUndoables().empty());
+    REQUIRE(readMonoSamples(session.document) ==
+            std::vector<float>({0, 1, 2, 3, 4, 5}));
+    REQUIRE(session.selection.isActive());
+    REQUIRE(session.selection.getStartInt() == 1);
+    REQUIRE(session.selection.getLengthInt() == 4);
+    REQUIRE(session.cursor == 5);
+    REQUIRE_FALSE(state.longTask.active);
+}
+
 TEST_CASE("Cut at document tail removes trailing frames and restores on undo",
           "[actions]")
 {
