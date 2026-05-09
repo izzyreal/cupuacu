@@ -23,6 +23,15 @@ namespace
     {
         return cupuacu::gui::scaleUi(state, 3.0f);
     }
+
+    bool primaryModifierHeld(const SDL_KeyboardEvent &event)
+    {
+#if __APPLE__
+        return (event.mod & SDL_KMOD_GUI) != 0;
+#else
+        return (event.mod & SDL_KMOD_CTRL) != 0;
+#endif
+    }
 } // namespace
 
 using namespace cupuacu::gui;
@@ -201,6 +210,40 @@ bool TextInput::keyDown(const SDL_KeyboardEvent &event)
     }
 
     const bool extendSelection = (event.mod & SDL_KMOD_SHIFT) != 0;
+    if (primaryModifierHeld(event))
+    {
+        if (event.scancode == SDL_SCANCODE_A)
+        {
+            selectAll();
+            return true;
+        }
+
+        if (event.scancode == SDL_SCANCODE_C)
+        {
+            if (hasSelection())
+            {
+                const std::string selectedText = text.substr(
+                    getSelectionStart(), getSelectionEnd() - getSelectionStart());
+                (void)SDL_SetClipboardText(selectedText.c_str());
+            }
+            return true;
+        }
+
+        if (event.scancode == SDL_SCANCODE_V)
+        {
+            char *clipboardText = SDL_GetClipboardText();
+            if (clipboardText)
+            {
+                const std::string textToInsert = clipboardText;
+                SDL_free(clipboardText);
+                if (!textToInsert.empty())
+                {
+                    return textInput(textToInsert);
+                }
+            }
+            return true;
+        }
+    }
 
     if (event.scancode == SDL_SCANCODE_LEFT)
     {

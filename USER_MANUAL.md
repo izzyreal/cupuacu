@@ -34,6 +34,9 @@ to file-backed documents.
 
 If the saved session data only contains the older recent-files list, Cupuacu falls back to reopening the most recent existing file.
 
+When restoring a large autosave snapshot on startup, Cupuacu shows progress in
+the startup overlay.
+
 ## Recent Files
 
 Use `File -> Recent` to reopen a recently opened file.
@@ -74,6 +77,7 @@ Behavior:
 
 - clicking a tab activates it
 - clicking the `x` inside a tab closes that tab
+- tabs with unsaved changes show `*` after the file name or `Untitled`
 - if only one tab exists, closing the file clears it back to an empty untitled document
 - Cupuacu allows only one actively playing or recording tab at a time
 
@@ -86,6 +90,12 @@ Shortcut:
 - `Cmd/Ctrl + W`
 
 Use `File -> Exit` to quit Cupuacu.
+
+If you try to close a tab with unsaved changes, Cupuacu asks whether to:
+
+- `Save`
+- `Discard`
+- `Cancel`
 
 ## Saving
 
@@ -204,6 +214,12 @@ App-wide shortcuts:
 - `Right Arrow`: scroll the view right
 - `Shift + .`: increase pixel scale
 - `Shift + ,`: decrease pixel scale
+
+Text input shortcuts inside typable widgets such as dialog text fields:
+
+- `Cmd/Ctrl + A`: select all text
+- `Cmd/Ctrl + C`: copy the selected text
+- `Cmd/Ctrl + V`: paste text from the system clipboard
 
 For the arrow keys and vertical zoom keys, holding modifier keys increases the step size. The current implementation multiplies the step when `Shift`, `Alt`, or `Ctrl` are held.
 
@@ -432,12 +448,27 @@ If you remove it while Cupuacu is closed:
 
 Delete this directory if restored clipboard state seems wrong or stale.
 
+### state/waveform-cache
+
+This directory stores persisted waveform peak caches for opened audio files.
+
+These caches let Cupuacu reopen previously seen files without rebuilding the
+waveform overview from scratch every time.
+
+If you remove it while Cupuacu is closed:
+
+- waveform displays for previously opened files will be rebuilt on next open
+- your saved audio files, autosaves, and undo history are not modified
+
+Delete this directory if waveform cache files become too large or seem stale.
+
 ### config vs state
 
 Use these rules when troubleshooting:
 
 - delete `state/autosave`, `state/undo`, or `state/clipboard` to clear
   disposable recovery state without resetting preferences
+- delete `state/waveform-cache` to force waveform peak caches to be rebuilt
 - delete `state/session_state.json` to stop Cupuacu from reopening the
   previous session on startup
 - delete the whole `config` directory only if you want to reset preferences,

@@ -502,6 +502,63 @@ TEST_CASE("TextInput backspace deletes the selected range", "[gui]")
     REQUIRE(input.getText() == "ab");
 }
 
+TEST_CASE("TextInput select all shortcut replaces the full contents", "[gui]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    cupuacu::gui::TextInput input(&state);
+    input.setText("abcd");
+    input.focusGained();
+
+    SDL_KeyboardEvent selectAll{};
+    selectAll.scancode = SDL_SCANCODE_A;
+#if __APPLE__
+    selectAll.mod = SDL_KMOD_GUI;
+#else
+    selectAll.mod = SDL_KMOD_CTRL;
+#endif
+
+    REQUIRE(input.keyDown(selectAll));
+    REQUIRE(input.textInput("Z"));
+    REQUIRE(input.getText() == "Z");
+}
+
+TEST_CASE("TextInput copy and paste shortcuts use the SDL clipboard", "[gui]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    cupuacu::gui::TextInput source(&state);
+    source.setText("abcd");
+    source.focusGained();
+
+    SDL_KeyboardEvent shiftLeft{};
+    shiftLeft.scancode = SDL_SCANCODE_LEFT;
+    shiftLeft.mod = SDL_KMOD_SHIFT;
+    REQUIRE(source.keyDown(shiftLeft));
+    REQUIRE(source.keyDown(shiftLeft));
+
+    SDL_KeyboardEvent copy{};
+    copy.scancode = SDL_SCANCODE_C;
+#if __APPLE__
+    copy.mod = SDL_KMOD_GUI;
+#else
+    copy.mod = SDL_KMOD_CTRL;
+#endif
+    REQUIRE(source.keyDown(copy));
+
+    cupuacu::gui::TextInput target(&state);
+    target.setText("X");
+    target.focusGained();
+
+    SDL_KeyboardEvent paste{};
+    paste.scancode = SDL_SCANCODE_V;
+#if __APPLE__
+    paste.mod = SDL_KMOD_GUI;
+#else
+    paste.mod = SDL_KMOD_CTRL;
+#endif
+    REQUIRE(target.keyDown(paste));
+    REQUIRE(target.getText() == "Xcd");
+}
+
 TEST_CASE("TextInput escape cancels without submitting", "[gui]")
 {
     cupuacu::test::StateWithTestPaths state{};
