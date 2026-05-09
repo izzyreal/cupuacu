@@ -53,6 +53,10 @@ TEST_CASE("Document tab title uses the file name when present", "[tabs]")
     REQUIRE(cupuacu::actions::documentTabTitle(tab) ==
             cupuacu::actions::kUntitledDocumentTitle);
 
+    tab.session.document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 0);
+    REQUIRE(cupuacu::actions::documentTabTitle(tab) ==
+            cupuacu::actions::kUntitledDocumentTitle);
+
     tab.session.document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 16);
     REQUIRE(cupuacu::actions::documentTabTitle(tab) ==
             std::string(cupuacu::actions::kUntitledDocumentTitle) + "*");
@@ -70,6 +74,9 @@ TEST_CASE("Document session unsaved helper matches title logic", "[tabs]")
 
     session.currentFile.clear();
     session.autosaveSnapshotPath.clear();
+    session.document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 0);
+    REQUIRE_FALSE(cupuacu::actions::documentSessionHasUnsavedChanges(session));
+
     session.document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 16);
     REQUIRE(cupuacu::actions::documentSessionHasUnsavedChanges(session));
 }
@@ -257,6 +264,7 @@ TEST_CASE("Closing a dirty file-backed tab can save before closing", "[tabs]")
     };
 
     REQUIRE(cupuacu::actions::closeActiveTab(&state));
+    drainPendingSaveWork(&state);
     REQUIRE(state.tabs.size() == 1);
     REQUIRE(state.activeTabIndex == 0);
     REQUIRE(state.getActiveDocumentSession().currentFile == "/tmp/other.wav");

@@ -32,7 +32,8 @@ namespace cupuacu::actions
         }
 
         return session.currentFile.empty() &&
-               session.document.getChannelCount() > 0;
+               (session.document.getFrameCount() > 0 ||
+                !session.document.getMarkers().empty());
     }
 
     inline void setMainWindowTitle(cupuacu::State *state,

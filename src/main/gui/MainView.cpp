@@ -19,6 +19,7 @@
 #include "playback/PlaybackRange.hpp"
 #include "Helpers.hpp"
 #include "Colors.hpp"
+#include "../actions/DocumentSessionPersistence.hpp"
 
 #include <SDL3/SDL.h>
 #include <algorithm>
@@ -236,6 +237,7 @@ void MainView::finalizeRecordingUndoCaptureIfComplete()
     data.overwrittenOldSamples = std::move(recordingUndoCapture.overwrittenOldSamples);
     data.recordedSamples = std::move(recordingUndoCapture.recordedSamples);
 
+    cupuacu::actions::detail::ensureUndoStoreForTab(state, state->activeTabIndex);
     state->addUndoable(
         std::make_shared<cupuacu::actions::audio::RecordEdit>(state, std::move(data)));
     recordingUndoCapture = {};

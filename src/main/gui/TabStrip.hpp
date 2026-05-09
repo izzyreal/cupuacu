@@ -94,6 +94,15 @@ namespace cupuacu::gui
             return tooltipText;
         }
 
+        SDL_Point getCloseIconCenter() const
+        {
+            const SDL_Rect closeBounds = getCloseBounds();
+            return {
+                closeBounds.x + closeBounds.w / 2,
+                closeBounds.y + closeBounds.h / 2,
+            };
+        }
+
         void resized() override
         {
             const SDL_Rect closeRect = getCloseBounds();

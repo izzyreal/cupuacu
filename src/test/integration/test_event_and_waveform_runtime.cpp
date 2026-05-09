@@ -190,8 +190,9 @@ namespace
     {
         REQUIRE(tab != nullptr);
 
-        const int x = tab->getWidth() - 8;
-        const int y = tab->getHeight() / 2;
+        const SDL_Point center = tab->getCloseIconCenter();
+        const int x = center.x;
+        const int y = center.y;
         const auto down = cupuacu::gui::MouseEvent{
             cupuacu::gui::DOWN, x, y, static_cast<float>(x),
             static_cast<float>(y), static_cast<float>(x),
