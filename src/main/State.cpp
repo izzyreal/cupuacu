@@ -137,6 +137,16 @@ void cupuacu::State::addAndDoUndoableToTab(
     tabs[static_cast<std::size_t>(tabIndex)].session.stopWaveformCacheBuild();
     undoable->redo();
 
+    if (!undoable->lastOperationCommitted())
+    {
+        auto &undoables = tabs[static_cast<std::size_t>(tabIndex)].undoables;
+        if (!undoables.empty() && undoables.back().get() == undoable.get())
+        {
+            undoables.pop_back();
+        }
+        return;
+    }
+
     auto &session = tabs[static_cast<std::size_t>(tabIndex)].session;
     cupuacu::file::OverwritePreservationMutationHelper::applyToSession(
         session, undoable->overwritePreservationMutation());
@@ -176,6 +186,11 @@ void cupuacu::State::undo()
     undoables.pop_back();
     getActiveDocumentSession().stopWaveformCacheBuild();
     undoable->undo();
+    if (!undoable->lastOperationCommitted())
+    {
+        undoables.push_back(undoable);
+        return;
+    }
     cupuacu::file::OverwritePreservationMutationHelper::revertOnSession(
         getActiveDocumentSession(), undoable->overwritePreservationMutation());
     cupuacu::file::OverwritePreservation::refreshActiveSession(this);
@@ -197,6 +212,11 @@ void cupuacu::State::redo()
     redoables.pop_back();
     getActiveDocumentSession().stopWaveformCacheBuild();
     redoable->redo();
+    if (!redoable->lastOperationCommitted())
+    {
+        redoables.push_back(redoable);
+        return;
+    }
     cupuacu::file::OverwritePreservationMutationHelper::applyToSession(
         getActiveDocumentSession(), redoable->overwritePreservationMutation());
     cupuacu::file::OverwritePreservation::refreshActiveSession(this);

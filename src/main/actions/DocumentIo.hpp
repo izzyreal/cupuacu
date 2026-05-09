@@ -89,6 +89,14 @@ namespace cupuacu::actions
                 fn();
                 return true;
             }
+            catch (const cupuacu::LongTaskCanceledError &)
+            {
+                if (failureReason != nullptr)
+                {
+                    *failureReason = "Operation canceled";
+                }
+                return false;
+            }
             catch (const std::exception &e)
             {
                 if (failureReason != nullptr)
@@ -140,7 +148,8 @@ namespace cupuacu::actions
             [&]
             {
                 cupuacu::LongTaskScope longTask(
-                    state, "Opening file", absoluteFilePath);
+                    state, "Opening file", absoluteFilePath, std::nullopt,
+                    true, true);
                 prepareForDocumentTransition(state);
                 state->getActiveDocumentSession().setCurrentFile(absoluteFilePath);
                 cupuacu::file::loadSampleData(state);

@@ -603,6 +603,23 @@ TEST_CASE("Event handling integration returns success for quit and keeps app ope
         REQUIRE(state.mainDocumentSessionWindow->getWindow()->isOpen());
     }
 
+    SECTION("quit event requests cancellation for cancellable long tasks")
+    {
+        cupuacu::test::StateWithTestPaths state{};
+        createBuiltSessionUi(&state, 256);
+        cupuacu::LongTaskScope longTask(&state, "Opening file", "large.wav",
+                                        std::nullopt, false, true);
+
+        SDL_Event event{};
+        event.type = SDL_EVENT_QUIT;
+
+        REQUIRE(cupuacu::gui::handleAppEvent(&state, &event) ==
+                SDL_APP_CONTINUE);
+        REQUIRE(state.longTask.cancelRequested);
+        REQUIRE(state.quitRequestedAfterLongTaskCancel);
+        REQUIRE(state.mainDocumentSessionWindow->getWindow()->isOpen());
+    }
+
     SECTION("main document close request exits the app")
     {
         cupuacu::test::StateWithTestPaths state{};

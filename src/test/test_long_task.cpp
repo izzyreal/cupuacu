@@ -49,6 +49,22 @@ TEST_CASE("Long task updates detail and progress", "[long-task]")
     REQUIRE(*state.longTask.progress == 0.5);
 }
 
+TEST_CASE("Long task cancellation can be requested for cancellable tasks",
+          "[long-task]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    cupuacu::LongTaskScope scope(&state, "Opening file", "large.wav",
+                                 std::nullopt, false, true);
+
+    REQUIRE(cupuacu::isLongTaskCancellable(&state));
+    REQUIRE_FALSE(cupuacu::isLongTaskCancelRequested(&state));
+
+    cupuacu::requestLongTaskCancel(&state);
+
+    REQUIRE(cupuacu::isLongTaskCancelRequested(&state));
+    REQUIRE(state.longTask.cancelRequested);
+}
+
 TEST_CASE("Long task overlay consumes mouse input while visible", "[long-task]")
 {
     cupuacu::test::StateWithTestPaths state{};

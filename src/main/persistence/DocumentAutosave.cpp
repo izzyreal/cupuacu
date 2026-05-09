@@ -1,5 +1,6 @@
 #include "persistence/DocumentAutosave.hpp"
 
+#include "LongTask.hpp"
 #include "Logger.hpp"
 #include "file/FileIo.hpp"
 
@@ -317,12 +318,20 @@ namespace cupuacu::persistence
     bool loadDocumentAutosaveSnapshot(const std::filesystem::path &path,
                                       cupuacu::DocumentSession &session)
     {
-        return loadDocumentAutosaveSnapshot(path, session, {});
+        return loadDocumentAutosaveSnapshot(path, session, {}, {});
     }
 
     bool loadDocumentAutosaveSnapshot(
         const std::filesystem::path &path, cupuacu::DocumentSession &session,
         const DocumentAutosaveLoadProgress &progress)
+    {
+        return loadDocumentAutosaveSnapshot(path, session, progress, {});
+    }
+
+    bool loadDocumentAutosaveSnapshot(
+        const std::filesystem::path &path, cupuacu::DocumentSession &session,
+        const DocumentAutosaveLoadProgress &progress,
+        const DocumentAutosaveLoadCancelCheck &isCanceled)
     {
         if (path.empty())
         {
@@ -405,6 +414,10 @@ namespace cupuacu::persistence
             for (int64_t frameStart = 0; frameStart < frames;
                  frameStart += kAudioBlockFrames)
             {
+                if (isCanceled && isCanceled())
+                {
+                    throw cupuacu::LongTaskCanceledError{};
+                }
                 const auto framesToRead = std::min<int64_t>(
                     kAudioBlockFrames, frames - frameStart);
                 const auto sampleCount = framesToRead * channels;
@@ -471,6 +484,10 @@ namespace cupuacu::persistence
                 " total_ms=" + std::to_string(totalMs));
             cupuacu::logging::flush();
             return true;
+        }
+        catch (const cupuacu::LongTaskCanceledError &)
+        {
+            throw;
         }
         catch (...)
         {

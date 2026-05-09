@@ -434,6 +434,7 @@ namespace cupuacu
         result.channelCount = getChannelCountUnlocked();
         result.frameCount = std::max<int64_t>(0, frameCount);
         result.samples.assign(static_cast<std::size_t>(result.channelCount), {});
+        result.dirty.assign(static_cast<std::size_t>(result.channelCount), {});
         result.provenance.assign(static_cast<std::size_t>(result.channelCount), {});
 
         const auto boundedStart =
@@ -448,14 +449,18 @@ namespace cupuacu
         for (int64_t channel = 0; channel < result.channelCount; ++channel)
         {
             auto &channelSamples = result.samples[static_cast<std::size_t>(channel)];
+            auto &channelDirty = result.dirty[static_cast<std::size_t>(channel)];
             auto &channelProvenance =
                 result.provenance[static_cast<std::size_t>(channel)];
             channelSamples.resize(static_cast<std::size_t>(boundedCount));
+            channelDirty.resize(static_cast<std::size_t>(boundedCount));
             channelProvenance.resize(static_cast<std::size_t>(boundedCount));
             for (int64_t frame = 0; frame < boundedCount; ++frame)
             {
                 channelSamples[static_cast<std::size_t>(frame)] =
                     getSampleUnlocked(channel, boundedStart + frame);
+                channelDirty[static_cast<std::size_t>(frame)] =
+                    buffer->isDirty(channel, boundedStart + frame) ? 1u : 0u;
                 channelProvenance[static_cast<std::size_t>(frame)] =
                     buffer->getProvenance(channel, boundedStart + frame);
                 if (progress &&
@@ -477,12 +482,7 @@ namespace cupuacu
     {
         initialize(segment.format, static_cast<uint32_t>(segment.sampleRate),
                    static_cast<uint32_t>(segment.channelCount), segment.frameCount);
-        {
-            std::unique_lock lock(dataMutex);
-            buffer->assignChannels(segment.samples, segment.provenance, false,
-                                   progress);
-            ++waveformDataVersion;
-        }
+        writeSegment(0, segment, false, progress);
     }
 
     void Document::writeSegment(
@@ -502,13 +502,23 @@ namespace cupuacu
 
         for (int64_t channel = 0; channel < writableChannels; ++channel)
         {
+            const bool hasDirtyForChannel =
+                channel < static_cast<int64_t>(segment.dirty.size());
             for (int64_t frame = 0; frame < writableFrames; ++frame)
             {
+                const bool sampleShouldMarkDirty =
+                    shouldMarkDirty ||
+                    (hasDirtyForChannel &&
+                     frame < static_cast<int64_t>(
+                                 segment.dirty[static_cast<std::size_t>(channel)]
+                                     .size()) &&
+                     segment.dirty[static_cast<std::size_t>(channel)]
+                                 [static_cast<std::size_t>(frame)] != 0);
                 buffer->setSample(
                     channel, startFrame + frame,
                     segment.samples[static_cast<std::size_t>(channel)]
                                    [static_cast<std::size_t>(frame)],
-                    shouldMarkDirty);
+                    sampleShouldMarkDirty);
                 if (channel < static_cast<int64_t>(segment.provenance.size()) &&
                     frame < static_cast<int64_t>(
                                 segment.provenance[static_cast<std::size_t>(channel)]
@@ -617,5 +627,11 @@ namespace cupuacu
         std::unique_lock lock(dataMutex);
         preservationSourceId = nextPreservationSourceId();
         buffer->establishSequentialProvenance(preservationSourceId);
+    }
+
+    void Document::adoptPreservationSourceId(const uint64_t sourceId)
+    {
+        std::unique_lock lock(dataMutex);
+        preservationSourceId = sourceId;
     }
 } // namespace cupuacu

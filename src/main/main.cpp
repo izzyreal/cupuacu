@@ -219,6 +219,14 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     cupuacu::actions::io::processPendingSaveWork(state);
     cupuacu::actions::io::processPendingAutosaveWork(state);
 
+    if (state->quitRequestedAfterLongTaskCancel &&
+        !state->backgroundOpenJob && !state->pendingOpenWaveformBuild.active &&
+        !state->longTask.active)
+    {
+        cupuacu::gui::cleanupCursors();
+        return SDL_APP_SUCCESS;
+    }
+
     for (auto *window : state->windows)
     {
         if (window && window->isOpen() && window->getRootComponent())

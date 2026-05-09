@@ -32,6 +32,12 @@ namespace
         return (event.mod & SDL_KMOD_CTRL) != 0;
 #endif
     }
+
+    std::string &fallbackClipboardText()
+    {
+        static std::string value;
+        return value;
+    }
 } // namespace
 
 using namespace cupuacu::gui;
@@ -224,6 +230,7 @@ bool TextInput::keyDown(const SDL_KeyboardEvent &event)
             {
                 const std::string selectedText = text.substr(
                     getSelectionStart(), getSelectionEnd() - getSelectionStart());
+                fallbackClipboardText() = selectedText;
                 (void)SDL_SetClipboardText(selectedText.c_str());
             }
             return true;
@@ -232,14 +239,19 @@ bool TextInput::keyDown(const SDL_KeyboardEvent &event)
         if (event.scancode == SDL_SCANCODE_V)
         {
             char *clipboardText = SDL_GetClipboardText();
+            std::string textToInsert = fallbackClipboardText();
             if (clipboardText)
             {
-                const std::string textToInsert = clipboardText;
+                const std::string systemClipboardText = clipboardText;
                 SDL_free(clipboardText);
-                if (!textToInsert.empty())
+                if (!systemClipboardText.empty())
                 {
-                    return textInput(textToInsert);
+                    textToInsert = systemClipboardText;
                 }
+            }
+            if (!textToInsert.empty())
+            {
+                return textInput(textToInsert);
             }
             return true;
         }

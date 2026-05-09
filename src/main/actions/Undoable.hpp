@@ -30,6 +30,11 @@ namespace cupuacu::actions
         [[nodiscard]] virtual cupuacu::file::OverwritePreservationMutation
         overwritePreservationMutation() const = 0;
 
+        [[nodiscard]] virtual bool lastOperationCommitted() const
+        {
+            return true;
+        }
+
         [[nodiscard]] virtual bool canPersistForRestart() const
         {
             return false;

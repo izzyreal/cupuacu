@@ -10,6 +10,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <atomic>
 #include <string>
 #include <thread>
 #include <vector>
@@ -39,6 +40,7 @@ namespace cupuacu::actions::io
         {
             bool completed = false;
             bool success = false;
+            bool canceled = false;
             BackgroundSaveRequest request;
             std::string detail;
             std::optional<double> progress;
@@ -57,6 +59,7 @@ namespace cupuacu::actions::io
         void start();
         [[nodiscard]] Snapshot snapshot() const;
         [[nodiscard]] std::uint64_t getId() const;
+        void cancel();
 
     private:
         std::uint64_t id = 0;
@@ -70,6 +73,7 @@ namespace cupuacu::actions::io
         std::optional<double> progress;
         std::string error;
         std::thread worker;
+        std::atomic<bool> cancelRequested{false};
 
         void run();
         void publishProgress(const std::string &detailToUse,

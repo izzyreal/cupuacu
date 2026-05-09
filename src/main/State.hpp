@@ -132,6 +132,8 @@ namespace cupuacu
             std::string title;
             std::string detail;
             std::optional<double> progress;
+            bool cancellable = false;
+            bool cancelRequested = false;
         };
 
         struct PendingOpenWaveformBuildStatus
@@ -140,6 +142,10 @@ namespace cupuacu
             PendingOpenRequest request;
             std::string path;
             int tabIndex = -1;
+            bool revertOnCancel = false;
+            std::vector<DocumentTab> previousTabs;
+            std::vector<std::string> previousRecentFiles;
+            int previousActiveTabIndex = 0;
         };
 
         std::shared_ptr<audio::AudioDevices> audioDevices;
@@ -222,6 +228,7 @@ namespace cupuacu
         LongTaskStatus longTask;
         std::function<void(const LongTaskStatus &)> longTaskObserver;
         bool mainWindowInitialFrameRendered = false;
+        bool quitRequestedAfterLongTaskCancel = false;
 
         ~State();
 

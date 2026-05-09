@@ -65,7 +65,8 @@ namespace cupuacu::actions::io
             const auto detail = request.path.string();
             state->backgroundSaveJob.reset(
                 new BackgroundSaveJob(id, std::move(request), state, document));
-            cupuacu::setLongTask(state, "Saving file", detail, 0.0, false);
+            cupuacu::setLongTask(state, "Saving file", detail, 0.0, false,
+                                 true);
             state->backgroundSaveJob->start();
         }
 
@@ -175,6 +176,14 @@ namespace cupuacu::actions::io
                                            const BackgroundSaveJob::Snapshot &snapshot)
         {
             cupuacu::clearLongTask(state, false);
+            if (snapshot.canceled)
+            {
+                if (state)
+                {
+                    state->pendingCloseTabAfterSaveId.reset();
+                }
+                return;
+            }
             if (!snapshot.success)
             {
                 if (state)
@@ -463,6 +472,7 @@ namespace cupuacu::actions::io
         return {
             .completed = completed,
             .success = success,
+            .canceled = cancelRequested.load() && completed && !success,
             .request = request,
             .detail = detail,
             .progress = progress,
@@ -473,6 +483,11 @@ namespace cupuacu::actions::io
     std::uint64_t BackgroundSaveJob::getId() const
     {
         return id;
+    }
+
+    void BackgroundSaveJob::cancel()
+    {
+        cancelRequested.store(true);
     }
 
     void BackgroundSaveJob::publishProgress(
@@ -491,6 +506,10 @@ namespace cupuacu::actions::io
                 [this](const std::string &detailToUse,
                        std::optional<double> progressToUse)
             {
+                if (cancelRequested.load())
+                {
+                    throw cupuacu::LongTaskCanceledError{};
+                }
                 publishProgress(detailToUse, progressToUse);
             };
 
@@ -536,6 +555,13 @@ namespace cupuacu::actions::io
 
             std::lock_guard lock(mutex);
             success = true;
+            completed = true;
+        }
+        catch (const cupuacu::LongTaskCanceledError &e)
+        {
+            std::lock_guard lock(mutex);
+            error = e.what();
+            success = false;
             completed = true;
         }
         catch (const std::exception &e)
@@ -721,6 +747,11 @@ namespace cupuacu::actions::io
         if (!state || !state->backgroundSaveJob)
         {
             return;
+        }
+
+        if (cupuacu::isLongTaskCancelRequested(state))
+        {
+            state->backgroundSaveJob->cancel();
         }
 
         const auto snapshot = state->backgroundSaveJob->snapshot();

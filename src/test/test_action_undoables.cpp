@@ -192,7 +192,7 @@ TEST_CASE("Cut undo publishes modal long-task progress", "[actions][long-task]")
         [](const cupuacu::State::LongTaskStatus &status)
         {
             return status.active && status.title == "Undoing cut" &&
-                   status.detail == "Reinserting audio" &&
+                   status.detail == "Capturing retained audio" &&
                    status.progress.has_value() &&
                    *status.progress == Catch::Approx(0.0);
         }));
@@ -201,9 +201,9 @@ TEST_CASE("Cut undo publishes modal long-task progress", "[actions][long-task]")
         [](const cupuacu::State::LongTaskStatus &status)
         {
             return status.active && status.title == "Undoing cut" &&
-                   status.detail == "Restoring samples" &&
+                   status.detail == "Preparing restored document" &&
                    status.progress.has_value() &&
-                   *status.progress >= 0.35;
+                   *status.progress >= 0.6;
         }));
     REQUIRE(std::any_of(
         snapshots.begin(), snapshots.end(),
@@ -215,6 +215,48 @@ TEST_CASE("Cut undo publishes modal long-task progress", "[actions][long-task]")
                    *status.progress == Catch::Approx(1.0);
         }));
     REQUIRE_FALSE(snapshots.back().active);
+}
+
+TEST_CASE("Canceling cut before commit leaves document, clipboard, and undo state unchanged",
+          "[actions][long-task]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    initializeMonoDocument(state, {0, 1, 2, 3, 4, 5});
+    state.clipboard.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 3);
+    state.clipboard.setSample(0, 0, 9.0f, false);
+    state.clipboard.setSample(0, 1, 8.0f, false);
+    state.clipboard.setSample(0, 2, 7.0f, false);
+
+    auto &session = state.getActiveDocumentSession();
+    session.selection.setValue1(2.0);
+    session.selection.setValue2(5.0);
+    session.cursor = 5;
+
+    bool cancelRequested = false;
+    state.longTaskObserver =
+        [&](const cupuacu::State::LongTaskStatus &status)
+    {
+        if (!cancelRequested && status.active &&
+            status.title == "Cutting audio" &&
+            status.detail == "Writing clipboard")
+        {
+            cancelRequested = true;
+            cupuacu::requestLongTaskCancel(&state);
+        }
+    };
+
+    cupuacu::actions::audio::performCut(&state);
+
+    REQUIRE(cancelRequested);
+    REQUIRE(state.getActiveUndoables().empty());
+    REQUIRE(readMonoSamples(session.document) ==
+            std::vector<float>({0, 1, 2, 3, 4, 5}));
+    REQUIRE(readMonoSamples(state.clipboard) == std::vector<float>({9, 8, 7}));
+    REQUIRE(session.selection.isActive());
+    REQUIRE(session.selection.getStartInt() == 2);
+    REQUIRE(session.selection.getLengthInt() == 3);
+    REQUIRE(session.cursor == 5);
+    REQUIRE_FALSE(state.longTask.active);
 }
 
 TEST_CASE("Clipboard assignSegment preserves PCM provenance without per-sample edits",
@@ -623,7 +665,7 @@ TEST_CASE("Paste with empty clipboard is a no-op", "[actions]")
     cupuacu::actions::audio::performPaste(&state);
 
     REQUIRE(readMonoSamples(session.document) == std::vector<float>({0, 1, 2}));
-    REQUIRE(state.getActiveUndoables().size() == 1);
+    REQUIRE(state.getActiveUndoables().empty());
     REQUIRE_FALSE(session.selection.isActive());
     REQUIRE(session.cursor == 1);
 
@@ -631,6 +673,67 @@ TEST_CASE("Paste with empty clipboard is a no-op", "[actions]")
     REQUIRE(readMonoSamples(session.document) == std::vector<float>({0, 1, 2}));
     REQUIRE_FALSE(session.selection.isActive());
     REQUIRE(session.cursor == 1);
+}
+
+TEST_CASE("Canceling trim before commit leaves document and undo state unchanged",
+          "[actions][long-task]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    initializeMonoDocument(state, {0, 1, 2, 3, 4, 5});
+
+    bool cancelRequested = false;
+    state.longTaskObserver =
+        [&](const cupuacu::State::LongTaskStatus &status)
+    {
+        if (!cancelRequested && status.active &&
+            status.title == "Trimming audio" &&
+            status.detail == "Capturing removed audio")
+        {
+            cancelRequested = true;
+            cupuacu::requestLongTaskCancel(&state);
+        }
+    };
+
+    state.addAndDoUndoable(
+        std::make_shared<cupuacu::actions::audio::Trim>(&state, 1, 3));
+
+    REQUIRE(cancelRequested);
+    REQUIRE(state.getActiveUndoables().empty());
+    REQUIRE(readMonoSamples(state.getActiveDocumentSession().document) ==
+            std::vector<float>({0, 1, 2, 3, 4, 5}));
+    REQUIRE_FALSE(state.longTask.active);
+}
+
+TEST_CASE("Canceling paste before commit leaves document and undo state unchanged",
+          "[actions][long-task]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    initializeMonoDocument(state, {0, 1, 2, 3, 4});
+    state.clipboard.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 2);
+    state.clipboard.setSample(0, 0, 9.0f, false);
+    state.clipboard.setSample(0, 1, 8.0f, false);
+
+    bool cancelRequested = false;
+    state.longTaskObserver =
+        [&](const cupuacu::State::LongTaskStatus &status)
+    {
+        if (!cancelRequested && status.active &&
+            status.title == "Paste insert" &&
+            status.detail == "Capturing surrounding audio")
+        {
+            cancelRequested = true;
+            cupuacu::requestLongTaskCancel(&state);
+        }
+    };
+
+    state.addAndDoUndoable(
+        std::make_shared<cupuacu::actions::audio::Paste>(&state, 2, -1));
+
+    REQUIRE(cancelRequested);
+    REQUIRE(state.getActiveUndoables().empty());
+    REQUIRE(readMonoSamples(state.getActiveDocumentSession().document) ==
+            std::vector<float>({0, 1, 2, 3, 4}));
+    REQUIRE_FALSE(state.longTask.active);
 }
 
 TEST_CASE("Trim full document keeps content and restores selection on undo",

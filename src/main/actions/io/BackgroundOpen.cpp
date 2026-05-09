@@ -35,7 +35,7 @@ namespace cupuacu::actions::io
                 new BackgroundOpenJob(id, std::move(request)));
             const auto detail = state->backgroundOpenJob->getPath();
             cupuacu::setLongTask(state, "Opening file", detail, 0.0,
-                                 false);
+                                 false, true);
             state->backgroundOpenJob->start();
         }
 
@@ -58,10 +58,48 @@ namespace cupuacu::actions::io
                 0.0, 1.0);
         }
 
+        void cancelPendingOpenWaveformBuild(cupuacu::State *state)
+        {
+            if (!state || !state->pendingOpenWaveformBuild.active)
+            {
+                return;
+            }
+
+            auto pending = std::move(state->pendingOpenWaveformBuild);
+            state->pendingOpenWaveformBuild = {};
+            if (pending.tabIndex >= 0 &&
+                pending.tabIndex < static_cast<int>(state->tabs.size()))
+            {
+                state->tabs[static_cast<std::size_t>(pending.tabIndex)]
+                    .session.stopWaveformCacheBuild();
+            }
+
+            if (pending.revertOnCancel)
+            {
+                state->tabs = std::move(pending.previousTabs);
+                state->recentFiles = std::move(pending.previousRecentFiles);
+                if (state->tabs.empty())
+                {
+                    state->tabs.emplace_back();
+                }
+                state->activeTabIndex = std::clamp(
+                    pending.previousActiveTabIndex, 0,
+                    static_cast<int>(state->tabs.size()) - 1);
+                bindMainWindowToActiveDocument(state);
+                refreshBoundDocumentUi(state);
+                setMainWindowTitleToActiveDocument(state);
+            }
+
+            cupuacu::clearLongTask(state, false);
+        }
+
         void commitCompletedBackgroundOpen(cupuacu::State *state,
                                            BackgroundOpenJob &job)
         {
             const auto snapshot = job.snapshot();
+            const auto previousTabs = state->tabs;
+            const auto previousRecentFiles = state->recentFiles;
+            const int previousActiveTabIndex = state->activeTabIndex;
 
             const auto recordStartupFailure = [&]()
             {
@@ -181,6 +219,11 @@ namespace cupuacu::actions::io
                     .request = snapshot.request,
                     .path = snapshot.path,
                     .tabIndex = state->activeTabIndex,
+                    .revertOnCancel =
+                        snapshot.request.kind == PendingOpenKind::UserOpen,
+                    .previousTabs = previousTabs,
+                    .previousRecentFiles = previousRecentFiles,
+                    .previousActiveTabIndex = previousActiveTabIndex,
                 };
                 cupuacu::updateLongTask(state, "Building waveform cache",
                                         progress, false);
@@ -287,6 +330,7 @@ namespace cupuacu::actions::io
         return {
             .completed = completed,
             .success = success,
+            .canceled = cancelRequested.load() && completed && !success,
             .request = request,
             .path = request.path,
             .detail = detail,
@@ -316,6 +360,11 @@ namespace cupuacu::actions::io
         return request;
     }
 
+    void BackgroundOpenJob::cancel()
+    {
+        cancelRequested.store(true);
+    }
+
     void BackgroundOpenJob::publishProgress(
         const std::string &detailToUse, std::optional<double> progressToUse)
     {
@@ -335,10 +384,21 @@ namespace cupuacu::actions::io
                                     {
                                         publishProgress(detailToUse,
                                                         progressToUse);
+                                    },
+                                    [this]()
+                                    {
+                                        return cancelRequested.load();
                                     }));
             std::lock_guard lock(mutex);
             loadedFile = std::move(loaded);
             success = true;
+            completed = true;
+        }
+        catch (const cupuacu::LongTaskCanceledError &e)
+        {
+            std::lock_guard lock(mutex);
+            error = e.what();
+            success = false;
             completed = true;
         }
         catch (const std::exception &e)
@@ -364,12 +424,36 @@ namespace cupuacu::actions::io
             return;
         }
 
+        if (state->quitRequestedAfterLongTaskCancel)
+        {
+            state->pendingOpenFiles.clear();
+            if (state->pendingOpenWaveformBuild.active)
+            {
+                cancelPendingOpenWaveformBuild(state);
+            }
+        }
+
         if (state->backgroundOpenJob)
         {
+            if (cupuacu::isLongTaskCancelRequested(state))
+            {
+                state->backgroundOpenJob->cancel();
+            }
             const auto snapshot = state->backgroundOpenJob->snapshot();
             if (snapshot.completed)
             {
                 auto job = std::move(state->backgroundOpenJob);
+                if (snapshot.canceled)
+                {
+                    cupuacu::clearLongTask(state, false);
+                    if (snapshot.request.kind == PendingOpenKind::StartupRestore ||
+                        state->quitRequestedAfterLongTaskCancel)
+                    {
+                        state->startupRestore = {};
+                        state->pendingOpenFiles.clear();
+                    }
+                    return;
+                }
                 commitCompletedBackgroundOpen(state, *job);
                 finalizeStartupRestoreIfComplete(state);
             }
@@ -383,6 +467,16 @@ namespace cupuacu::actions::io
 
         if (state->pendingOpenWaveformBuild.active)
         {
+            if (cupuacu::isLongTaskCancelRequested(state))
+            {
+                cancelPendingOpenWaveformBuild(state);
+                if (state->quitRequestedAfterLongTaskCancel)
+                {
+                    state->startupRestore = {};
+                    state->pendingOpenFiles.clear();
+                }
+                return;
+            }
             const int tabIndex = state->pendingOpenWaveformBuild.tabIndex;
             if (tabIndex < 0 || tabIndex >= static_cast<int>(state->tabs.size()))
             {

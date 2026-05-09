@@ -422,41 +422,57 @@ namespace cupuacu::actions
                             state, "Restoring document",
                             documentState.filePath.empty()
                                 ? "Unsaved document"
-                                : documentState.filePath);
+                                : documentState.filePath,
+                            std::nullopt, true, true);
                         prepareForDocumentTransition(state);
-                        loaded =
-                            cupuacu::persistence::loadDocumentAutosaveSnapshot(
-                                documentState.autosaveSnapshotPath,
-                                state->getActiveDocumentSession(),
-                                [state, &lastProgressRenderAt,
-                                 &lastRenderedProgress](
-                                    const std::optional<double> progress)
-                                {
-                                    if (!progress.has_value())
+                        try
+                        {
+                            loaded =
+                                cupuacu::persistence::loadDocumentAutosaveSnapshot(
+                                    documentState.autosaveSnapshotPath,
+                                    state->getActiveDocumentSession(),
+                                    [state, &lastProgressRenderAt,
+                                     &lastRenderedProgress](
+                                        const std::optional<double> progress)
                                     {
-                                        cupuacu::updateLongTaskOverlayOnly(
-                                            state, {}, progress, false);
-                                        return;
-                                    }
+                                        if (!progress.has_value())
+                                        {
+                                            cupuacu::updateLongTaskOverlayOnly(
+                                                state, {}, progress, false);
+                                            return;
+                                        }
 
-                                    const auto now =
-                                        std::chrono::steady_clock::now();
-                                    const double clampedProgress =
-                                        std::clamp(*progress, 0.0, 1.0);
-                                    const bool shouldRenderNow =
-                                        lastRenderedProgress < 0.0 ||
-                                        clampedProgress >= 1.0 ||
-                                        (now - lastProgressRenderAt) >=
-                                            std::chrono::milliseconds(100);
-                                    cupuacu::updateLongTaskOverlayOnly(
-                                        state, {}, clampedProgress,
-                                        shouldRenderNow);
-                                    if (shouldRenderNow)
+                                        const auto now =
+                                            std::chrono::steady_clock::now();
+                                        const double clampedProgress =
+                                            std::clamp(*progress, 0.0, 1.0);
+                                        const bool shouldRenderNow =
+                                            lastRenderedProgress < 0.0 ||
+                                            clampedProgress >= 1.0 ||
+                                            (now - lastProgressRenderAt) >=
+                                                std::chrono::milliseconds(100);
+                                        cupuacu::updateLongTaskOverlayOnly(
+                                            state, {}, clampedProgress,
+                                            shouldRenderNow);
+                                        if (shouldRenderNow)
+                                        {
+                                            lastProgressRenderAt = now;
+                                            lastRenderedProgress = clampedProgress;
+                                        }
+                                    },
+                                    [state]()
                                     {
-                                        lastProgressRenderAt = now;
-                                        lastRenderedProgress = clampedProgress;
-                                    }
-                                });
+                                        return cupuacu::isLongTaskCancelRequested(
+                                            state);
+                                    });
+                        }
+                        catch (const cupuacu::LongTaskCanceledError &)
+                        {
+                            state->startupRestore = {};
+                            state->pendingOpenFiles.clear();
+                            state->pendingOpenWaveformBuild = {};
+                            return;
+                        }
                         const auto snapshotLoadedAt =
                             std::chrono::steady_clock::now();
                         if (loaded)

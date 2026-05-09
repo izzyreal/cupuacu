@@ -34,6 +34,7 @@ namespace cupuacu
             int64_t channelCount = 0;
             int64_t frameCount = 0;
             std::vector<std::vector<float>> samples;
+            std::vector<std::vector<std::uint8_t>> dirty;
             std::vector<std::vector<audio::SampleProvenance>> provenance;
         };
 
@@ -149,5 +150,6 @@ namespace cupuacu
         void replaceMarkers(std::vector<DocumentMarker> markersToUse);
         void clearMarkers();
         void markCurrentStateAsSavedSource();
+        void adoptPreservationSourceId(uint64_t sourceId);
     };
 } // namespace cupuacu

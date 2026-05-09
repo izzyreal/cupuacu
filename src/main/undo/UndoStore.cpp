@@ -15,7 +15,7 @@ namespace cupuacu::undo
     namespace
     {
         constexpr char kSegmentMagic[] = "CUPUACU_UNDO_SEGMENT";
-        constexpr std::uint32_t kSegmentVersion = 2;
+        constexpr std::uint32_t kSegmentVersion = 3;
         constexpr char kSampleMatrixMagic[] = "CUPUACU_UNDO_SAMPLE_MATRIX";
         constexpr std::uint32_t kSampleMatrixVersion = 1;
         constexpr char kSampleCubeMagic[] = "CUPUACU_UNDO_SAMPLE_CUBE";
@@ -108,6 +108,21 @@ namespace cupuacu::undo
             static_assert(sizeof(value) == sizeof(bits));
             std::memcpy(&value, &bits, sizeof(value));
             return value;
+        }
+
+        void writeByte(std::ostream &output, const std::uint8_t value)
+        {
+            output.put(static_cast<char>(value));
+        }
+
+        std::uint8_t readByte(std::istream &input)
+        {
+            const int byte = input.get();
+            if (byte == std::char_traits<char>::eof())
+            {
+                throw std::runtime_error("Truncated undo segment");
+            }
+            return static_cast<std::uint8_t>(byte);
         }
 
         cupuacu::SampleFormat sampleFormatFromInt(const std::uint32_t value)
@@ -204,6 +219,10 @@ namespace cupuacu::undo
             {
                 const auto &channelSamples =
                     segment.samples[static_cast<std::size_t>(channel)];
+                const auto *channelDirty =
+                    channel < static_cast<std::int64_t>(segment.dirty.size())
+                        ? &segment.dirty[static_cast<std::size_t>(channel)]
+                        : nullptr;
                 const auto &channelProvenance =
                     segment.provenance[static_cast<std::size_t>(channel)];
                 const auto ranges = compressProvenanceRanges(channelProvenance);
@@ -211,6 +230,15 @@ namespace cupuacu::undo
                 {
                     writeFloat(output,
                                channelSamples[static_cast<std::size_t>(frame)]);
+                }
+                for (std::int64_t frame = 0; frame < segment.frameCount; ++frame)
+                {
+                    writeByte(output,
+                              channelDirty != nullptr &&
+                                      frame < static_cast<std::int64_t>(
+                                                  channelDirty->size())
+                                  ? (*channelDirty)[static_cast<std::size_t>(frame)]
+                                  : 0u);
                 }
                 writeI64(output, static_cast<std::int64_t>(ranges.size()));
                 for (const auto &range : ranges)
@@ -238,7 +266,7 @@ namespace cupuacu::undo
                 throw std::runtime_error("Invalid undo segment");
             }
             const auto version = readU32(input);
-            if (version != 1 && version != kSegmentVersion)
+            if (version != 1 && version != 2 && version != kSegmentVersion)
             {
                 throw std::runtime_error("Unsupported undo segment version");
             }
@@ -255,6 +283,8 @@ namespace cupuacu::undo
 
             segment.samples.assign(
                 static_cast<std::size_t>(segment.channelCount), {});
+            segment.dirty.assign(
+                static_cast<std::size_t>(segment.channelCount), {});
             segment.provenance.assign(
                 static_cast<std::size_t>(segment.channelCount), {});
 
@@ -262,9 +292,12 @@ namespace cupuacu::undo
             {
                 auto &channelSamples =
                     segment.samples[static_cast<std::size_t>(channel)];
+                auto &channelDirty =
+                    segment.dirty[static_cast<std::size_t>(channel)];
                 auto &channelProvenance =
                     segment.provenance[static_cast<std::size_t>(channel)];
                 channelSamples.resize(static_cast<std::size_t>(segment.frameCount));
+                channelDirty.assign(static_cast<std::size_t>(segment.frameCount), 0u);
                 channelProvenance.resize(
                     static_cast<std::size_t>(segment.frameCount));
                 if (version == 1)
@@ -285,6 +318,15 @@ namespace cupuacu::undo
                 {
                     channelSamples[static_cast<std::size_t>(frame)] =
                         readFloat(input);
+                }
+                if (version >= 3)
+                {
+                    for (std::int64_t frame = 0; frame < segment.frameCount;
+                         ++frame)
+                    {
+                        channelDirty[static_cast<std::size_t>(frame)] =
+                            readByte(input);
+                    }
                 }
 
                 const auto rangeCount = readI64(input);

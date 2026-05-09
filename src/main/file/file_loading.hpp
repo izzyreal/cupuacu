@@ -34,6 +34,7 @@ namespace cupuacu::file
 
     using LoadProgressCallback =
         std::function<void(const std::string &, std::optional<double>)>;
+    using LoadCancelCheck = std::function<bool()>;
 
     namespace detail
     {
@@ -229,8 +230,17 @@ namespace cupuacu::file
                      progressValue);
         }
 
+        static void throwIfLoadCanceled(const LoadCancelCheck &isCanceled)
+        {
+            if (isCanceled && isCanceled())
+            {
+                throw cupuacu::LongTaskCanceledError{};
+            }
+        }
+
         static std::optional<LoadedAudioFile> loadNativeAlacM4aIfApplicable(
-            const std::string &path, const LoadProgressCallback &progress)
+            const std::string &path, const LoadProgressCallback &progress,
+            const LoadCancelCheck &isCanceled)
         {
             if (!hasM4aExtension(path))
             {
@@ -353,7 +363,8 @@ namespace cupuacu::file
                         static_cast<std::size_t>(kLoadBlockFrames) *
                         static_cast<std::size_t>(streamInfo.channels));
                 },
-                [progress, path, &lastDecodePercent, &decodeStarted](
+                [progress, path, &lastDecodePercent, &decodeStarted,
+                 isCanceled](
                     const std::uint32_t decodedFrames,
                     const std::uint32_t totalFrames)
                 {
@@ -382,8 +393,10 @@ namespace cupuacu::file
                                     static_cast<double>(totalFrames),
                                 0.0, 1.0) *
                                 0.95);
+                    throwIfLoadCanceled(isCanceled);
                 },
-                [progress, path, &lastReadPercent, &decodeStarted](
+                [progress, path, &lastReadPercent, &decodeStarted,
+                 isCanceled](
                     const std::uint64_t bytesRead,
                     const std::uint64_t totalBytes)
                 {
@@ -410,6 +423,7 @@ namespace cupuacu::file
                                 static_cast<double>(totalBytes),
                             0.0, 1.0) *
                             0.05);
+                    throwIfLoadCanceled(isCanceled);
                 });
             flushInterleaved();
             if (totalFramesLoaded != fileInfo.frameCount)
@@ -423,9 +437,11 @@ namespace cupuacu::file
     } // namespace detail
 
     static LoadedAudioFile loadAudioFile(
-        const std::string &path, const LoadProgressCallback &progress = {})
+        const std::string &path, const LoadProgressCallback &progress = {},
+        const LoadCancelCheck &isCanceled = {})
     {
-        if (auto loaded = detail::loadNativeAlacM4aIfApplicable(path, progress))
+        if (auto loaded = detail::loadNativeAlacM4aIfApplicable(path, progress,
+                                                                isCanceled))
         {
             return std::move(*loaded);
         }
@@ -466,6 +482,7 @@ namespace cupuacu::file
         detail::updateLoadProgress(progress, path, 0, frames);
         while (totalFramesRead < frames)
         {
+            detail::throwIfLoadCanceled(isCanceled);
             const sf_count_t framesToRead =
                 std::min<sf_count_t>(kLoadBlockFrames, frames - totalFramesRead);
             const sf_count_t framesRead =
@@ -554,6 +571,10 @@ namespace cupuacu::file
                     const std::optional<double> progress)
             {
                 cupuacu::updateLongTask(state, detail, progress, true);
+            },
+            [state]()
+            {
+                return cupuacu::isLongTaskCancelRequested(state);
             });
         commitLoadedAudioFile(session, path, std::move(loaded), state->paths.get());
         cupuacu::file::OverwritePreservation::refreshActiveSession(state);

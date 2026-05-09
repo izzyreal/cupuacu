@@ -11,6 +11,7 @@
 #include "../actions/Play.hpp"
 #include "../actions/Zoom.hpp"
 #include "../actions/Save.hpp"
+#include "../actions/io/BackgroundSave.hpp"
 #include "../actions/audio/Copy.hpp"
 #include "../actions/audio/Cut.hpp"
 #include "../actions/audio/Paste.hpp"
@@ -187,7 +188,7 @@ namespace cupuacu::gui
                 }
                 else
                 {
-                    actions::overwrite(state);
+                    actions::io::queueOverwrite(state);
                 }
             }
         }

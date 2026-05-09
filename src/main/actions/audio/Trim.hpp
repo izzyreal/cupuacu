@@ -1,6 +1,7 @@
 #pragma once
 #include "DurationMutationUndoable.hpp"
 #include "SegmentStore.hpp"
+#include "TransactionalAudioEdit.hpp"
 #include "../ViewPolicy.hpp"
 #include "../../Document.hpp"
 #include "../../gui/MainViewAccess.hpp"
@@ -50,6 +51,7 @@ namespace cupuacu::actions::audio
         ViewSnapshot postTrimView{};
         bool hasPostTrimView = false;
         PendingViewRestore pendingViewRestore = PendingViewRestore::None;
+        bool lastCommitted = true;
 
         static ViewSnapshot captureViewSnapshot(const State *state)
         {
@@ -84,6 +86,98 @@ namespace cupuacu::actions::audio
             gui::Waveform::updateAllSamplePoints(state);
             gui::Waveform::setAllWaveformsDirty(state);
             gui::requestMainViewRefresh(state);
+        }
+
+        [[nodiscard]] static std::vector<cupuacu::DocumentMarker>
+        applyTrimMarkerTransform(
+            std::vector<cupuacu::DocumentMarker> markers,
+            const int64_t startFrame, const int64_t endFrame,
+            const int64_t middleCount)
+        {
+            for (auto &marker : markers)
+            {
+                if (marker.frame < startFrame)
+                {
+                    marker.frame = 0;
+                }
+                else if (marker.frame >= endFrame)
+                {
+                    marker.frame = middleCount;
+                }
+                else
+                {
+                    marker.frame -= startFrame;
+                }
+            }
+            return markers;
+        }
+
+        [[nodiscard]] static std::vector<cupuacu::DocumentMarker>
+        applyUndoTrimMarkerTransform(
+            std::vector<cupuacu::DocumentMarker> markers,
+            const int64_t beforeCount, const int64_t middleCount,
+            const int64_t afterCount)
+        {
+            const int64_t trailingInsertFrame = beforeCount + middleCount;
+            for (auto &marker : markers)
+            {
+                marker.frame += beforeCount;
+                if (marker.frame >= trailingInsertFrame)
+                {
+                    marker.frame += afterCount;
+                }
+            }
+            return markers;
+        }
+
+        [[nodiscard]] cupuacu::Document buildTrimmedDocument(
+            const cupuacu::Document &sourceDocument,
+            const cupuacu::Document::AudioSegment &middle,
+            std::vector<cupuacu::DocumentMarker> markers,
+            detail::OperationProgressUi &progressUi) const
+        {
+            cupuacu::Document replacement;
+            replacement.initialize(sourceDocument.getSampleFormat(),
+                                   sourceDocument.getSampleRate(),
+                                   static_cast<uint32_t>(
+                                       sourceDocument.getChannelCount()),
+                                   middleCount);
+            detail::writeSegmentWithCancelableProgress(
+                state, replacement, 0, middle, progressUi,
+                "Preparing trimmed document", 0.75, 0.9);
+            replacement.replaceMarkers(std::move(markers));
+            replacement.adoptPreservationSourceId(
+                sourceDocument.getPreservationSourceId());
+            return replacement;
+        }
+
+        [[nodiscard]] cupuacu::Document buildUndoDocument(
+            const cupuacu::Document &sourceDocument,
+            const cupuacu::Document::AudioSegment &before,
+            const cupuacu::Document::AudioSegment &middle,
+            const cupuacu::Document::AudioSegment &after,
+            std::vector<cupuacu::DocumentMarker> markers,
+            detail::OperationProgressUi &progressUi) const
+        {
+            cupuacu::Document replacement;
+            replacement.initialize(sourceDocument.getSampleFormat(),
+                                   sourceDocument.getSampleRate(),
+                                   static_cast<uint32_t>(
+                                       sourceDocument.getChannelCount()),
+                                   beforeCount + middleCount + afterCount);
+            detail::writeSegmentWithCancelableProgress(
+                state, replacement, 0, before, progressUi,
+                "Preparing restored document", 0.55, 0.67);
+            detail::writeSegmentWithCancelableProgress(
+                state, replacement, beforeCount, middle, progressUi,
+                "Preparing restored document", 0.67, 0.79);
+            detail::writeSegmentWithCancelableProgress(
+                state, replacement, beforeCount + middleCount, after, progressUi,
+                "Preparing restored document", 0.79, 0.9);
+            replacement.replaceMarkers(std::move(markers));
+            replacement.adoptPreservationSourceId(
+                sourceDocument.getPreservationSourceId());
+            return replacement;
         }
 
     public:
@@ -160,6 +254,7 @@ namespace cupuacu::actions::audio
 
         void redo() override
         {
+            lastCommitted = false;
             pendingViewRestore = hasPostTrimView
                                      ? PendingViewRestore::RestorePostRedo
                                      : PendingViewRestore::CapturePostRedo;
@@ -185,67 +280,166 @@ namespace cupuacu::actions::audio
 
             if (beforeCount == 0 && afterCount == 0)
             {
+                lastCommitted = true;
                 updateCursorPos(state, 0);
                 session.selection.setValue1(0);
                 session.selection.setValue2(middleCount);
                 return;
             }
 
-            if (beforeHandle.empty())
-            {
-                beforeHandle = detail::storeSegmentIfNeeded(
-                    session, beforeHandle, doc.captureSegment(0, beforeCount),
-                    "trim-before");
-            }
-            if (afterHandle.empty())
-            {
-                afterHandle = detail::storeSegmentIfNeeded(
-                    session, afterHandle, doc.captureSegment(endFrame, afterCount),
-                    "trim-after");
-            }
+            cupuacu::LongTaskScope longTask(
+                state, "Trimming audio", "Capturing kept selection", 0.0, false,
+                true);
+            cupuacu::renderLongTaskOverlayNow(state);
+            detail::OperationProgressUi progressUi(state,
+                                                   "Capturing kept selection");
 
-            doc.removeFrames(endFrame, afterCount);
-            doc.removeFrames(0, beforeCount);
-            session.updateWaveformCache();
-            session.syncSelectionAndCursorToDocumentLength();
+            try
+            {
+                const auto endFrame = startFrame + middleCount;
+                auto markers = [&]()
+                {
+                    auto lease = doc.acquireReadLease();
+                    return applyTrimMarkerTransform(
+                        std::vector<cupuacu::DocumentMarker>(
+                            lease.getMarkers().begin(), lease.getMarkers().end()),
+                        startFrame, endFrame, middleCount);
+                }();
 
-            updateCursorPos(state, 0);
-            session.selection.setValue1(0);
-            session.selection.setValue2(middleCount);
+                const auto middle = doc.captureSegment(
+                    startFrame, middleCount,
+                    [&](const int64_t completed, const int64_t totalToCopy)
+                    {
+                        detail::publishCancelablePhaseProgress(
+                            state, progressUi, "Capturing kept selection", 0.0,
+                            0.35, completed, totalToCopy);
+                    });
+                if (beforeHandle.empty())
+                {
+                    beforeHandle = detail::storeSegmentIfNeeded(
+                        session, beforeHandle, doc.captureSegment(0, beforeCount),
+                        "trim-before");
+                }
+                progressUi.publishProgress("Capturing removed audio", 0.35, true);
+                if (afterHandle.empty())
+                {
+                    afterHandle = detail::storeSegmentIfNeeded(
+                        session, afterHandle,
+                        doc.captureSegment(
+                            endFrame, afterCount,
+                            [&](const int64_t completed,
+                                const int64_t totalToCopy)
+                            {
+                                detail::publishCancelablePhaseProgress(
+                                    state, progressUi, "Capturing removed audio",
+                                    0.35, 0.75, completed, totalToCopy);
+                            }),
+                        "trim-after");
+                }
+                else
+                {
+                    progressUi.publishProgress("Capturing removed audio", 0.75,
+                                               true);
+                }
+
+                auto replacement = buildTrimmedDocument(doc, middle,
+                                                        std::move(markers),
+                                                        progressUi);
+                cupuacu::throwIfLongTaskCanceled(state);
+
+                cupuacu::setLongTask(state, "Trimming audio", "Committing trim",
+                                     0.9, false, false);
+                progressUi.publishProgress("Committing trim", 0.9, true);
+                session.stopWaveformCacheBuild();
+                session.document = std::move(replacement);
+                session.syncSelectionAndCursorToDocumentLength();
+                updateCursorPos(state, 0);
+                session.selection.setValue1(0);
+                session.selection.setValue2(middleCount);
+                detail::rebuildWaveformCacheAfterTransactionalCommit(
+                    state, session, progressUi, "Trim complete");
+                session.syncSelectionAndCursorToDocumentLength();
+                lastCommitted = true;
+            }
+            catch (const cupuacu::LongTaskCanceledError &)
+            {
+                pendingViewRestore = PendingViewRestore::None;
+                progressUi.publishProgress("Trim canceled", 0.0, true);
+                return;
+            }
         }
 
         void undo() override
         {
+            lastCommitted = false;
             pendingViewRestore = PendingViewRestore::RestorePreUndo;
 
             auto &session = state->getActiveDocumentSession();
             auto &doc = session.document;
             if (beforeCount == 0 && afterCount == 0)
             {
+                lastCommitted = true;
                 updateCursorPos(state, beforeCount);
                 session.selection.setValue1(beforeCount);
                 session.selection.setValue2(beforeCount + middleCount);
                 return;
             }
 
-            const auto before = session.undoStore.readSegment(beforeHandle);
-            const auto after = session.undoStore.readSegment(afterHandle);
-            doc.insertFrames(0, beforeCount);
-            doc.writeSegment(0, before, false);
+            cupuacu::LongTaskScope longTask(
+                state, "Undoing trim", "Capturing kept selection", 0.0, false,
+                true);
+            cupuacu::renderLongTaskOverlayNow(state);
+            detail::OperationProgressUi progressUi(state,
+                                                   "Capturing kept selection");
 
-            doc.insertFrames(beforeCount + middleCount, afterCount);
-            doc.writeSegment(beforeCount + middleCount, after, false);
-
-            if (doc.getFrameCount() > 0)
+            try
             {
-                session.invalidateWaveformSamples(0, doc.getFrameCount() - 1);
-            }
-            session.updateWaveformCache();
-            session.syncSelectionAndCursorToDocumentLength();
+                const auto markers = [&]()
+                {
+                    auto lease = doc.acquireReadLease();
+                    return applyUndoTrimMarkerTransform(
+                        std::vector<cupuacu::DocumentMarker>(
+                            lease.getMarkers().begin(), lease.getMarkers().end()),
+                        beforeCount, middleCount, afterCount);
+                }();
+                const auto before = session.undoStore.readSegment(beforeHandle);
+                const auto after = session.undoStore.readSegment(afterHandle);
+                cupuacu::throwIfLongTaskCanceled(state);
 
-            updateCursorPos(state, beforeCount);
-            session.selection.setValue1(beforeCount);
-            session.selection.setValue2(beforeCount + middleCount);
+                const auto middle = doc.captureSegment(
+                    0, middleCount,
+                    [&](const int64_t completed, const int64_t totalToCopy)
+                    {
+                        detail::publishCancelablePhaseProgress(
+                            state, progressUi, "Capturing kept selection", 0.0,
+                            0.55, completed, totalToCopy);
+                    });
+
+                auto replacement = buildUndoDocument(doc, before, middle, after,
+                                                     std::move(markers),
+                                                     progressUi);
+                cupuacu::throwIfLongTaskCanceled(state);
+
+                cupuacu::setLongTask(state, "Undoing trim", "Committing undo",
+                                     0.9, false, false);
+                progressUi.publishProgress("Committing undo", 0.9, true);
+                session.stopWaveformCacheBuild();
+                session.document = std::move(replacement);
+                session.syncSelectionAndCursorToDocumentLength();
+                updateCursorPos(state, beforeCount);
+                session.selection.setValue1(beforeCount);
+                session.selection.setValue2(beforeCount + middleCount);
+                detail::rebuildWaveformCacheAfterTransactionalCommit(
+                    state, session, progressUi, "Undo complete");
+                session.syncSelectionAndCursorToDocumentLength();
+                lastCommitted = true;
+            }
+            catch (const cupuacu::LongTaskCanceledError &)
+            {
+                pendingViewRestore = PendingViewRestore::None;
+                progressUi.publishProgress("Undo canceled", 0.0, true);
+                return;
+            }
         }
 
         std::string getUndoDescription() override
@@ -348,6 +542,11 @@ namespace cupuacu::actions::audio
         overwritePreservationMutation() const override
         {
             return cupuacu::file::OverwritePreservationMutationHelper::compatible();
+        }
+
+        [[nodiscard]] bool lastOperationCommitted() const override
+        {
+            return lastCommitted;
         }
     };
 

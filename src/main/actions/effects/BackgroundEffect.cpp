@@ -75,7 +75,7 @@ namespace cupuacu::actions::effects
                 nextBackgroundEffectJobId(), std::move(request), document));
             cupuacu::setLongTask(state, "Applying effect",
                                  state->backgroundEffectJob->snapshot().detail,
-                                 0.0, false);
+                                 0.0, false, true);
             state->backgroundEffectJob->start();
         }
 
@@ -554,6 +554,10 @@ namespace cupuacu::actions::effects
             const auto snapshot = job.snapshot();
             cupuacu::clearLongTask(state, false);
 
+            if (snapshot.canceled)
+            {
+                return;
+            }
             if (!snapshot.success)
             {
                 reportEffectFailure(state, snapshot.request.description,
@@ -680,6 +684,7 @@ namespace cupuacu::actions::effects
         return {
             .completed = completed,
             .success = success,
+            .canceled = cancelRequested.load() && completed && !success,
             .request = request,
             .detail = detail,
             .progress = progress,
@@ -696,6 +701,11 @@ namespace cupuacu::actions::effects
     std::uint64_t BackgroundEffectJob::getId() const
     {
         return id;
+    }
+
+    void BackgroundEffectJob::cancel()
+    {
+        cancelRequested.store(true);
     }
 
     void BackgroundEffectJob::publishProgress(
@@ -720,6 +730,10 @@ namespace cupuacu::actions::effects
                 [this](const std::string &detailToUse,
                        std::optional<double> progressToUse)
             {
+                if (cancelRequested.load())
+                {
+                    throw cupuacu::LongTaskCanceledError{};
+                }
                 publishProgress(detailToUse, progressToUse);
             };
 
@@ -752,6 +766,13 @@ namespace cupuacu::actions::effects
             std::lock_guard lock(mutex);
             result = std::move(computedResult);
             success = true;
+            completed = true;
+        }
+        catch (const cupuacu::LongTaskCanceledError &e)
+        {
+            std::lock_guard lock(mutex);
+            error = e.what();
+            success = false;
             completed = true;
         }
         catch (const std::exception &e)
@@ -1008,6 +1029,11 @@ namespace cupuacu::actions::effects
         if (!state || !state->backgroundEffectJob)
         {
             return;
+        }
+
+        if (cupuacu::isLongTaskCancelRequested(state))
+        {
+            state->backgroundEffectJob->cancel();
         }
 
         const auto snapshot = state->backgroundEffectJob->snapshot();

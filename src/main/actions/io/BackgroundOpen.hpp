@@ -7,6 +7,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <atomic>
 #include <string>
 #include <thread>
 
@@ -19,6 +20,7 @@ namespace cupuacu::actions::io
         {
             bool completed = false;
             bool success = false;
+            bool canceled = false;
             PendingOpenRequest request;
             std::string path;
             std::string detail;
@@ -39,6 +41,7 @@ namespace cupuacu::actions::io
         [[nodiscard]] std::uint64_t getId() const;
         [[nodiscard]] const std::string &getPath() const;
         [[nodiscard]] const PendingOpenRequest &getRequest() const;
+        void cancel();
 
     private:
         std::uint64_t id = 0;
@@ -51,6 +54,7 @@ namespace cupuacu::actions::io
         std::string error;
         std::unique_ptr<file::LoadedAudioFile> loadedFile;
         std::thread worker;
+        std::atomic<bool> cancelRequested{false};
 
         void run();
         void publishProgress(const std::string &detailToUse,

@@ -9,6 +9,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <atomic>
 #include <string>
 #include <thread>
 #include <vector>
@@ -67,6 +68,7 @@ namespace cupuacu::actions::effects
         {
             bool completed = false;
             bool success = false;
+            bool canceled = false;
             BackgroundEffectRequest request;
             std::string detail;
             std::optional<double> progress;
@@ -85,6 +87,7 @@ namespace cupuacu::actions::effects
         [[nodiscard]] Snapshot snapshot() const;
         [[nodiscard]] std::unique_ptr<BackgroundEffectResult> takeResult();
         [[nodiscard]] std::uint64_t getId() const;
+        void cancel();
 
     private:
         std::uint64_t id = 0;
@@ -98,6 +101,7 @@ namespace cupuacu::actions::effects
         std::string error;
         std::unique_ptr<BackgroundEffectResult> result;
         std::thread worker;
+        std::atomic<bool> cancelRequested{false};
 
         void run();
         void publishProgress(const std::string &detailToUse,

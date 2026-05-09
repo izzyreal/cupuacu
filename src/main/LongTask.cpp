@@ -1,6 +1,7 @@
 #include "LongTask.hpp"
 
 #include "State.hpp"
+#include "gui/EventHandling.hpp"
 #include "gui/LongTaskOverlay.hpp"
 #include "gui/Window.hpp"
 
@@ -86,7 +87,13 @@ namespace cupuacu
                 }
                 if (renderNow && state->mainWindowInitialFrameRendered)
                 {
+                    SDL_Event event{};
                     SDL_PumpEvents();
+                    while (SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_EVENT_FIRST,
+                                          SDL_EVENT_LAST) == 1)
+                    {
+                        (void)cupuacu::gui::handleAppEvent(state, &event);
+                    }
                     window->renderFrame();
                 }
             }
@@ -103,7 +110,8 @@ namespace cupuacu
     } // namespace
 
     void setLongTask(State *state, std::string title, std::string detail,
-                     std::optional<double> progress, const bool renderNow)
+                     std::optional<double> progress, const bool renderNow,
+                     const bool cancellable)
     {
         if (!state)
         {
@@ -114,6 +122,8 @@ namespace cupuacu
         state->longTask.title = std::move(title);
         state->longTask.detail = std::move(detail);
         state->longTask.progress = progress;
+        state->longTask.cancellable = cancellable;
+        state->longTask.cancelRequested = false;
         notifyLongTaskObserver(state);
         refreshLongTaskUi(state, renderNow);
     }
@@ -164,7 +174,13 @@ namespace cupuacu
             }
             if (renderNow && state->mainWindowInitialFrameRendered)
             {
+                SDL_Event event{};
                 SDL_PumpEvents();
+                while (SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_EVENT_FIRST,
+                                      SDL_EVENT_LAST) == 1)
+                {
+                    (void)cupuacu::gui::handleAppEvent(state, &event);
+                }
                 window->renderOverlayFrame();
             }
         }
@@ -188,7 +204,13 @@ namespace cupuacu
             {
                 continue;
             }
+            SDL_Event event{};
             SDL_PumpEvents();
+            while (SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_EVENT_FIRST,
+                                  SDL_EVENT_LAST) == 1)
+            {
+                (void)cupuacu::gui::handleAppEvent(state, &event);
+            }
             window->renderOverlayFrame();
         }
     }
@@ -206,17 +228,40 @@ namespace cupuacu
         refreshLongTaskUi(state, renderNow);
     }
 
+    void requestLongTaskCancel(State *state)
+    {
+        if (!state || !state->longTask.active || !state->longTask.cancellable)
+        {
+            return;
+        }
+
+        state->longTask.cancelRequested = true;
+        notifyLongTaskObserver(state);
+        refreshLongTaskUi(state, false);
+    }
+
+    bool isLongTaskCancelRequested(const State *state)
+    {
+        return state && state->longTask.active && state->longTask.cancelRequested;
+    }
+
+    bool isLongTaskCancellable(const State *state)
+    {
+        return state && state->longTask.active && state->longTask.cancellable;
+    }
+
     LongTaskScope::LongTaskScope(State *stateToUse, std::string title,
                                  std::string detail,
                                  std::optional<double> progress,
-                                 const bool renderNow)
+                                 const bool renderNow,
+                                 const bool cancellable)
         : state(stateToUse),
           previousStatus(stateToUse ? stateToUse->longTask
                                     : State::LongTaskStatus{}),
           renderOnEnd(renderNow)
     {
         setLongTask(state, std::move(title), std::move(detail), progress,
-                    renderNow);
+                    renderNow, cancellable);
     }
 
     LongTaskScope::~LongTaskScope()

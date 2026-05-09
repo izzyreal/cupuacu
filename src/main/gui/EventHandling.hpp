@@ -1,5 +1,6 @@
 #pragma once
 #include <SDL3/SDL.h>
+#include "../LongTask.hpp"
 #include "../State.hpp"
 #include "Gui.hpp"
 #include "Component.hpp"
@@ -351,6 +352,16 @@ namespace cupuacu::gui
         switch (event->type)
         {
             case SDL_EVENT_QUIT:
+                if (cupuacu::isLongTaskCancellable(state))
+                {
+                    cupuacu::requestLongTaskCancel(state);
+                    state->quitRequestedAfterLongTaskCancel = true;
+                    if (state->backgroundOpenJob)
+                    {
+                        state->backgroundOpenJob->cancel();
+                    }
+                    return SDL_APP_CONTINUE;
+                }
                 cleanupCursors();
                 return SDL_APP_SUCCESS;
             case SDL_EVENT_WINDOW_MAXIMIZED:
@@ -413,6 +424,16 @@ namespace cupuacu::gui
                 {
                     if (mainWindow && eventWindow == mainWindow)
                     {
+                        if (cupuacu::isLongTaskCancellable(state))
+                        {
+                            cupuacu::requestLongTaskCancel(state);
+                            state->quitRequestedAfterLongTaskCancel = true;
+                            if (state->backgroundOpenJob)
+                            {
+                                state->backgroundOpenJob->cancel();
+                            }
+                            return SDL_APP_CONTINUE;
+                        }
                         return SDL_APP_SUCCESS;
                     }
                     else

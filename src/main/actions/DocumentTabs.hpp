@@ -6,6 +6,7 @@
 #include "../gui/Waveform.hpp"
 #include "DocumentDialogs.hpp"
 #include "DocumentUi.hpp"
+#include "io/BackgroundSave.hpp"
 #include "Play.hpp"
 #include "Save.hpp"
 
@@ -310,12 +311,13 @@ namespace cupuacu::actions
                     return true;
                 }
 
-                state->pendingCloseTabAfterSaveId.reset();
-                if (!overwrite(state))
+                state->pendingCloseTabAfterSaveId = tab.id;
+                if (!io::queueOverwrite(state))
                 {
+                    state->pendingCloseTabAfterSaveId.reset();
                     return false;
                 }
-                return closeTabWithoutConfirmation(state, state->activeTabIndex);
+                return true;
             case cupuacu::UnsavedChangesChoice::Cancel:
             default:
                 state->pendingCloseTabAfterSaveId.reset();

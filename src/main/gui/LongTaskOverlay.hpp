@@ -6,6 +6,7 @@
 #include "Component.hpp"
 #include "Helpers.hpp"
 #include "LabelPlanning.hpp"
+#include "TextButton.hpp"
 #include "UiScale.hpp"
 #include "text.hpp"
 
@@ -27,6 +28,18 @@ namespace cupuacu::gui
         {
             setVisible(false);
             setInterceptMouseEnabled(true);
+            cancelButton = emplaceChild<TextButton>(state, "Cancel");
+            cancelButton->setTriggerOnMouseUp(true);
+            cancelButton->setOnPress(
+                [this]()
+                {
+                    if (state)
+                    {
+                        cupuacu::requestLongTaskCancel(state);
+                        syncToState();
+                    }
+                });
+            cancelButton->setVisible(false);
         }
 
         void timerCallback() override
@@ -48,18 +61,34 @@ namespace cupuacu::gui
                 shouldBeVisible ? state->longTask.detail : "";
             const auto progress =
                 shouldBeVisible ? state->longTask.progress : std::nullopt;
+            const bool cancellable =
+                shouldBeVisible && state->longTask.cancellable;
+            const bool cancelRequested =
+                shouldBeVisible && state->longTask.cancelRequested;
             if (title != lastTitle || detail != lastDetail ||
-                progress != lastProgress)
+                progress != lastProgress ||
+                cancellable != lastCancellable ||
+                cancelRequested != lastCancelRequested)
             {
                 lastTitle = title;
                 lastDetail = detail;
                 lastProgress = progress;
+                lastCancellable = cancellable;
+                lastCancelRequested = cancelRequested;
                 setDirty();
             }
             else if (shouldBeVisible && !progress.has_value())
             {
                 setDirty();
             }
+
+            if (cancelButton)
+            {
+                cancelButton->setVisible(cancellable);
+                cancelButton->setEnabled(!cancelRequested);
+                cancelButton->setText(cancelRequested ? "Canceling..." : "Cancel");
+            }
+            resized();
         }
 
         bool mouseDown(const MouseEvent &) override
@@ -101,7 +130,9 @@ namespace cupuacu::gui
             const int panelWidth =
                 std::min(getWidth() - scaleUi(state, 40.0f),
                          scaleUi(state, 520.0f));
-            const int panelHeight = scaleUi(state, 116.0f);
+            const int panelHeight =
+                state->longTask.cancellable ? scaleUi(state, 156.0f)
+                                            : scaleUi(state, 116.0f);
             const int panelX = (getWidth() - panelWidth) / 2;
             const int panelY = (getHeight() - panelHeight) / 2;
             const SDL_Rect panel{panelX, panelY, panelWidth, panelHeight};
@@ -136,8 +167,12 @@ namespace cupuacu::gui
                                   detailRect, true);
 
             const int barX = panel.x + padding;
+            const int buttonHeight = scaleUi(state, 34.0f);
+            const int buttonGap = scaleUi(state, 12.0f);
             const int barY = panel.y + panel.h - padding -
-                             scaleUi(state, 10.0f);
+                             (state->longTask.cancellable
+                                  ? buttonHeight + buttonGap + scaleUi(state, 10.0f)
+                                  : scaleUi(state, 10.0f));
             const int barW = panel.w - padding * 2;
             const int barH = scaleUi(state, 6.0f);
             const SDL_Rect track{barX, barY, barW, barH};
@@ -172,6 +207,29 @@ namespace cupuacu::gui
             }
         }
 
+        void resized() override
+        {
+            if (!cancelButton || !state)
+            {
+                return;
+            }
+
+            const int panelWidth =
+                std::min(getWidth() - scaleUi(state, 40.0f),
+                         scaleUi(state, 520.0f));
+            const int panelHeight =
+                state->longTask.cancellable ? scaleUi(state, 156.0f)
+                                            : scaleUi(state, 116.0f);
+            const int panelX = (getWidth() - panelWidth) / 2;
+            const int panelY = (getHeight() - panelHeight) / 2;
+            const int padding = scaleUi(state, 18.0f);
+            const int buttonWidth = scaleUi(state, 120.0f);
+            const int buttonHeight = scaleUi(state, 34.0f);
+            cancelButton->setBounds(panelX + panelWidth - padding - buttonWidth,
+                                    panelY + panelHeight - padding - buttonHeight,
+                                    buttonWidth, buttonHeight);
+        }
+
     private:
         static void renderEllipsizedText(SDL_Renderer *renderer,
                                          const std::string &text,
@@ -194,5 +252,8 @@ namespace cupuacu::gui
         std::string lastTitle;
         std::string lastDetail;
         std::optional<double> lastProgress;
+        bool lastCancellable = false;
+        bool lastCancelRequested = false;
+        TextButton *cancelButton = nullptr;
     };
 } // namespace cupuacu::gui
