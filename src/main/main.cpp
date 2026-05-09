@@ -276,14 +276,21 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
     TTF_Quit();
     cupuacu::State *state = (cupuacu::State *)appstate;
+    const auto shutdownStartedAt = std::chrono::steady_clock::now();
     cupuacu::actions::flushAutosaveSnapshotsForShutdown(state);
-    cupuacu::actions::persistSessionState(state);
+    const auto autosaveFlushedAt = std::chrono::steady_clock::now();
+    const auto persistedSessionState =
+        cupuacu::actions::buildPersistedOpenSessionState(state);
+    const auto sessionBuiltAt = std::chrono::steady_clock::now();
+    cupuacu::actions::persistSessionState(state, persistedSessionState);
+    const auto sessionPersistedAt = std::chrono::steady_clock::now();
     cupuacu::undo::pruneUndoStores(
-        state->paths->undoPath(),
-        cupuacu::actions::buildPersistedOpenSessionState(state));
+        state->paths->undoPath(), persistedSessionState);
+    const auto undoPrunedAt = std::chrono::steady_clock::now();
     cupuacu::persistence::DisplayPropertiesPersistence::save(
         state->paths->displayPropertiesPath(),
         {.pixelScale = state->pixelScale, .vuMeterScale = state->vuMeterScale});
+    const auto displayPropertiesSavedAt = std::chrono::steady_clock::now();
     state->generateSilenceDialogWindow.reset();
     state->backgroundOpenJob.reset();
     state->backgroundSaveJob.reset();
@@ -292,6 +299,44 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
     state->optionsWindow.reset();
     state->mainDocumentSessionWindow.reset();
     state->windows.clear();
+    const auto teardownFinishedAt = std::chrono::steady_clock::now();
+    cupuacu::logging::info(
+        "Shutdown timings: flush_autosave_ms=" +
+        std::to_string(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                autosaveFlushedAt - shutdownStartedAt)
+                .count()) +
+        " build_session_ms=" +
+        std::to_string(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                sessionBuiltAt - autosaveFlushedAt)
+                .count()) +
+        " persist_session_ms=" +
+        std::to_string(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                sessionPersistedAt - sessionBuiltAt)
+                .count()) +
+        " prune_undo_ms=" +
+        std::to_string(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                undoPrunedAt - sessionPersistedAt)
+                .count()) +
+        " display_props_ms=" +
+        std::to_string(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                displayPropertiesSavedAt - undoPrunedAt)
+                .count()) +
+        " teardown_ms=" +
+        std::to_string(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                teardownFinishedAt - displayPropertiesSavedAt)
+                .count()) +
+        " total_ms=" +
+        std::to_string(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                teardownFinishedAt - shutdownStartedAt)
+                .count()));
+    cupuacu::logging::flush();
     SDL_Quit();
     cupuacu::logging::info("Cupuacu shutting down");
     cupuacu::logging::shutdown();

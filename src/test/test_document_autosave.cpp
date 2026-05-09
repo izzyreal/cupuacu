@@ -340,6 +340,8 @@ TEST_CASE("Shutdown flush does not rewrite current restored autosave snapshots",
 
         state.addAndDoUndoable(
             std::make_shared<SetSampleUndoable>(&state, 1, -0.5f));
+        state.getActiveDocumentSession().cursor = 1;
+        REQUIRE(cupuacu::actions::markers::insertMarkerAtCursor(&state) != 0);
         drainPendingAutosave(state);
 
         autosavePath = state.getActiveDocumentSession().autosaveSnapshotPath;

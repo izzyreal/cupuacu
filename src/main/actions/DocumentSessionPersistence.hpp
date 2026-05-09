@@ -296,6 +296,21 @@ namespace cupuacu::actions
             state->paths->sessionStatePath(), persisted);
     }
 
+    inline void persistSessionState(
+        cupuacu::State *state,
+        const cupuacu::persistence::PersistedSessionState &persisted)
+    {
+        if (!state || !state->paths)
+        {
+            return;
+        }
+
+        cupuacu::persistence::RecentFilesPersistence::save(
+            state->paths->recentlyOpenedFilesPath(), state->recentFiles);
+        cupuacu::persistence::SessionStatePersistence::save(
+            state->paths->sessionStatePath(), persisted);
+    }
+
     inline void flushAutosaveSnapshotsForShutdown(cupuacu::State *state)
     {
         if (!state || !state->paths)
@@ -303,14 +318,23 @@ namespace cupuacu::actions
             return;
         }
 
+        const auto startedAt = std::chrono::steady_clock::now();
         state->backgroundAutosaveJob.reset();
+        int scannedTabs = 0;
+        int skippedEmptyTabs = 0;
+        int skippedCleanFileTabs = 0;
+        int skippedCurrentAutosaves = 0;
+        int savedAutosaves = 0;
+        int failedAutosaves = 0;
 
         for (auto &tab : state->tabs)
         {
+            ++scannedTabs;
             auto &session = tab.session;
             const auto &document = session.document;
             if (document.getChannelCount() <= 0)
             {
+                ++skippedEmptyTabs;
                 continue;
             }
 
@@ -318,6 +342,7 @@ namespace cupuacu::actions
                 !session.currentFile.empty() && tab.undoables.empty();
             if (cleanFileBackedDocument)
             {
+                ++skippedCleanFileTabs;
                 continue;
             }
 
@@ -340,18 +365,40 @@ namespace cupuacu::actions
                 std::filesystem::exists(session.autosaveSnapshotPath);
             if (autosaveAlreadyCurrent)
             {
+                ++skippedCurrentAutosaves;
                 continue;
             }
 
             if (cupuacu::persistence::saveDocumentAutosaveSnapshot(
                     session.autosaveSnapshotPath, session))
             {
+                ++savedAutosaves;
                 session.autosavedWaveformDataVersion =
                     document.getWaveformDataVersion();
                 session.autosavedMarkerDataVersion =
                     document.getMarkerDataVersion();
             }
+            else
+            {
+                ++failedAutosaves;
+            }
         }
+
+        const auto finishedAt = std::chrono::steady_clock::now();
+        cupuacu::logging::info(
+            "Shutdown autosave flush timings: tabs=" +
+            std::to_string(scannedTabs) +
+            " skipped_empty=" + std::to_string(skippedEmptyTabs) +
+            " skipped_clean_file=" + std::to_string(skippedCleanFileTabs) +
+            " skipped_current=" + std::to_string(skippedCurrentAutosaves) +
+            " saved=" + std::to_string(savedAutosaves) +
+            " failed=" + std::to_string(failedAutosaves) +
+            " total_ms=" +
+            std::to_string(
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    finishedAt - startedAt)
+                    .count()));
+        cupuacu::logging::flush();
     }
 
     inline void autosaveDocumentAfterMutation(cupuacu::State *state,

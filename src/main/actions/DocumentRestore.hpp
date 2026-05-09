@@ -301,7 +301,10 @@ namespace cupuacu::actions
                 .label = marker.label,
             });
         }
-        session.document.replaceMarkers(std::move(markers));
+        if (session.document.getMarkers() != markers)
+        {
+            session.document.replaceMarkers(std::move(markers));
+        }
 
         if (documentState.samplesPerPixel.has_value() &&
             *documentState.samplesPerPixel > 0.0)
