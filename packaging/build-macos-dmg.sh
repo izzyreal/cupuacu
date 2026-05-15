@@ -23,17 +23,8 @@ if [ ! -f "$BACKGROUND_SRC" ]; then
     exit 1
 fi
 
-if ! command -v python3 >/dev/null 2>&1; then
-    echo "python3 is required to build macOS DMGs" >&2
-    exit 1
-fi
-
-if [ -n "${DMGBUILD_PYTHONPATH:-}" ]; then
-    export PYTHONPATH="${DMGBUILD_PYTHONPATH}${PYTHONPATH:+:$PYTHONPATH}"
-fi
-
-if ! python3 -c "import dmgbuild" >/dev/null 2>&1; then
-    echo "dmgbuild 1.6.7 is required on the CI agent runtime" >&2
+if ! command -v dmgbuild >/dev/null 2>&1; then
+    echo "dmgbuild is required on the CI agent runtime" >&2
     exit 1
 fi
 
@@ -181,4 +172,4 @@ create_settings_file
 
 mkdir -p "$(dirname "$FINAL_DMG")"
 rm -f "$FINAL_DMG"
-python3 -m dmgbuild -s "$SETTINGS_FILE" "$VOLUME_NAME" "$FINAL_DMG"
+dmgbuild -s "$SETTINGS_FILE" "$VOLUME_NAME" "$FINAL_DMG"
