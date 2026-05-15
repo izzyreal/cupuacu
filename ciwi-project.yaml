@@ -167,8 +167,6 @@ pipelines:
             git: "*"
             cmake: "*"
             ccache: "*"
-            codesign: "*"
-            dmgbuild: "*"
         timeout_seconds: 1800
         artifacts:
           - dist/**
@@ -186,8 +184,119 @@ pipelines:
               command: ./build/macos-universal/cupuacu-tests --reporter JUnit --out build/macos-universal/result-junit.xml
               format: junit-xml
               report: build/macos-universal/result-junit.xml
-          - run: DEV_IDENTITY_APP="$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development/ {print $2; exit}')" && test -n "$DEV_IDENTITY_APP" && codesign --force --deep --sign "$DEV_IDENTITY_APP" -v build/macos-universal/Cupuacu.app
-          - run: VERSION="$(cat VERSION)" && sh packaging/build-macos-dmg.sh build/macos-universal/Cupuacu.app "$VERSION" "dist/Cupuacu-macos-v${VERSION}.dmg"
+          - run: rm -rf dist/macos-unsigned && mkdir -p dist/macos-unsigned
+          - run: cp -R build/macos-universal/Cupuacu.app dist/macos-unsigned/Cupuacu.app
+          - run: cp VERSION dist/version-macos-universal.txt
+
+  - id: codesign-macos
+    trigger: manual
+    depends_on:
+      - build
+    jobs:
+      - id: macos-codesign
+        runs_on:
+          executor: script
+          shell: posix
+          os: darwin
+          arch: arm64
+        requires:
+          tools:
+            codesign: "*"
+        timeout_seconds: 900
+        artifacts:
+          - dist/codesigned-macos/**
+          - dist/version-macos-universal.txt
+        steps:
+          - run: test -n "$DEV_IDENTITY_APP"
+            vault:
+              connection: home-vault
+              secrets:
+                - name: dev-identity-app
+                  mount: kv
+                  path: apple-id
+                  key: dev-identity-app
+            env:
+              DEV_IDENTITY_APP: "{{ secret.dev-identity-app }}"
+          - run: test -d dist/macos-unsigned/Cupuacu.app && test -f dist/version-macos-universal.txt
+          - run: rm -rf binaries dist/codesigned-macos && mkdir -p binaries dist/codesigned-macos
+          - run: cp -R dist/macos-unsigned/Cupuacu.app binaries/Cupuacu.app
+          - run: codesign --force --deep --strict --options=runtime --timestamp --sign "$DEV_IDENTITY_APP" -v binaries/Cupuacu.app
+            vault:
+              connection: home-vault
+              secrets:
+                - name: dev-identity-app
+                  mount: kv
+                  path: apple-id
+                  key: dev-identity-app
+            env:
+              DEV_IDENTITY_APP: "{{ secret.dev-identity-app }}"
+          - run: cp -R binaries/Cupuacu.app dist/codesigned-macos/Cupuacu.app
+
+  - id: package-macos
+    trigger: manual
+    depends_on:
+      - codesign-macos
+    jobs:
+      - id: macos-dmg
+        runs_on:
+          executor: script
+          shell: posix
+          os: darwin
+          arch: arm64
+        requires:
+          tools:
+            dmgbuild: "*"
+            notarytool: "*"
+            stapler: "*"
+        timeout_seconds: 2400
+        artifacts:
+          - dist/Cupuacu-macos-v*.dmg
+        steps:
+          - run: test -n "$NOTARYTOOL_PASSWORD" && test -n "$APPLE_TEAM_ID" && test -n "$APPLE_ID"
+            vault:
+              connection: home-vault
+              secrets:
+                - name: notarytool-password
+                  mount: kv
+                  path: notarytool
+                  key: password
+                - name: apple-team-id
+                  mount: kv
+                  path: apple-id
+                  key: team-id
+                - name: apple-id
+                  mount: kv
+                  path: apple-id
+                  key: email
+            env:
+              NOTARYTOOL_PASSWORD: "{{ secret.notarytool-password }}"
+              APPLE_TEAM_ID: "{{ secret.apple-team-id }}"
+              APPLE_ID: "{{ secret.apple-id }}"
+          - run: test -d dist/codesigned-macos/Cupuacu.app && test -f dist/version-macos-universal.txt
+          - run: VERSION="$(cat dist/version-macos-universal.txt | tr -d '\r\n')" && test -n "$VERSION" && sh packaging/build-macos-dmg.sh dist/codesigned-macos/Cupuacu.app "$VERSION" "dist/Cupuacu-macos-v${VERSION}.dmg"
+          - run: VERSION="$(cat dist/version-macos-universal.txt | tr -d '\r\n')" && RESULT_JSON="$PWD/dist/notary-result-macos.json" && xcrun notarytool submit "$PWD/dist/Cupuacu-macos-v${VERSION}.dmg" --apple-id "$APPLE_ID" --password "$NOTARYTOOL_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait --output-format json > "$RESULT_JSON" && STATUS="$(/usr/bin/plutil -extract status raw -o - "$RESULT_JSON")" && SUBMISSION_ID="$(/usr/bin/plutil -extract id raw -o - "$RESULT_JSON")" && if [ "$STATUS" != "Accepted" ]; then echo "notarytool status=${STATUS} submission_id=${SUBMISSION_ID}"; xcrun notarytool log "$SUBMISSION_ID" --apple-id "$APPLE_ID" --password "$NOTARYTOOL_PASSWORD" --team-id "$APPLE_TEAM_ID"; exit 1; fi
+            vault:
+              connection: home-vault
+              secrets:
+                - name: notarytool-password
+                  mount: kv
+                  path: notarytool
+                  key: password
+                - name: apple-team-id
+                  mount: kv
+                  path: apple-id
+                  key: team-id
+                - name: apple-id
+                  mount: kv
+                  path: apple-id
+                  key: email
+            env:
+              NOTARYTOOL_PASSWORD: "{{ secret.notarytool-password }}"
+              APPLE_TEAM_ID: "{{ secret.apple-team-id }}"
+              APPLE_ID: "{{ secret.apple-id }}"
+            skip_dry_run: true
+          - run: VERSION="$(cat dist/version-macos-universal.txt | tr -d '\r\n')" && xcrun stapler staple "$PWD/dist/Cupuacu-macos-v${VERSION}.dmg"
+            skip_dry_run: true
 
       - id: windows-amd64
         runs_on:
@@ -225,6 +334,7 @@ pipelines:
     trigger: manual
     depends_on:
       - build
+      - package-macos
     vcs_source:
       repo: https://github.com/izzyreal/cupuacu.git
     versioning:
