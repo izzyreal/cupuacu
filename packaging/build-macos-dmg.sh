@@ -28,8 +28,12 @@ if ! command -v python3 >/dev/null 2>&1; then
     exit 1
 fi
 
+if [ -n "${DMGBUILD_PYTHONPATH:-}" ]; then
+    export PYTHONPATH="${DMGBUILD_PYTHONPATH}${PYTHONPATH:+:$PYTHONPATH}"
+fi
+
 if ! python3 -c "import dmgbuild" >/dev/null 2>&1; then
-    echo "dmgbuild is required; install it with python3 -m pip install --user dmgbuild==1.6.7" >&2
+    echo "dmgbuild 1.6.7 is required on the CI agent runtime" >&2
     exit 1
 fi
 
