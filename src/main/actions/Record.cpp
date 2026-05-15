@@ -29,6 +29,8 @@ void cupuacu::actions::record(cupuacu::State *state)
         requestStop(state);
     }
 
+    state->audioDevices->prepareForRecording();
+
     cupuacu::audio::Record recordMessage;
     recordMessage.document = &session.document;
     if (session.selection.isActive())

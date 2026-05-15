@@ -73,6 +73,7 @@ namespace cupuacu::audio
 
         void openDevice(int inputDeviceIndex, int outputDeviceIndex);
         void closeDevice();
+        void prepareForRecording();
 
         bool isPlaying() const;
         bool isRecording() const;

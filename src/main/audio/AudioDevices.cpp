@@ -79,8 +79,7 @@ AudioDevices::AudioDevices(const bool openDefaultDevice)
 
     if (openDefaultDevice && initialSelection.outputDeviceIndex >= 0)
     {
-        openDevice(initialSelection.inputDeviceIndex,
-                   initialSelection.outputDeviceIndex);
+        openDevice(-1, initialSelection.outputDeviceIndex);
     }
 }
 
@@ -329,6 +328,12 @@ void AudioDevices::closeDevice()
     paData.recordingChannelCount = 0;
 }
 
+void AudioDevices::prepareForRecording()
+{
+    const auto selection = getDeviceSelection();
+    openDevice(selection.inputDeviceIndex, selection.outputDeviceIndex);
+}
+
 void AudioDevices::closeDeviceLocked()
 {
     if (!stream)
@@ -572,6 +577,7 @@ bool AudioDevices::setDeviceSelection(const DeviceSelection &selection)
         deviceSelection = selection;
     }
 
-    openDevice(selection.inputDeviceIndex, selection.outputDeviceIndex);
+    // Keep playback ready, but defer microphone access until recording starts.
+    openDevice(-1, selection.outputDeviceIndex);
     return true;
 }
