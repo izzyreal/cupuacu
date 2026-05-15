@@ -236,6 +236,8 @@ pipelines:
     trigger: manual
     depends_on:
       - codesign-macos
+    vcs_source:
+      repo: https://github.com/izzyreal/cupuacu.git
     jobs:
       - id: macos-dmg
         runs_on:
