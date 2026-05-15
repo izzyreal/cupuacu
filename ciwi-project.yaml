@@ -184,6 +184,7 @@ pipelines:
               command: ./build/macos-universal/cupuacu-tests --reporter JUnit --out build/macos-universal/result-junit.xml
               format: junit-xml
               report: build/macos-universal/result-junit.xml
+          - run: python3 -m pip install --user --disable-pip-version-check dmgbuild==1.6.7
           - run: VERSION="$(cat VERSION)" && sh packaging/build-macos-dmg.sh build/macos-universal/Cupuacu.app "$VERSION" "dist/Cupuacu-macos-v${VERSION}.dmg"
 
       - id: windows-amd64

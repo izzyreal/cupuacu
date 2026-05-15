@@ -23,13 +23,27 @@ if [ ! -f "$BACKGROUND_SRC" ]; then
     exit 1
 fi
 
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "python3 is required to build macOS DMGs" >&2
+    exit 1
+fi
+
+if ! python3 -c "import dmgbuild" >/dev/null 2>&1; then
+    echo "dmgbuild is required; install it with python3 -m pip install --user dmgbuild==1.6.7" >&2
+    exit 1
+fi
+
 VOLUME_NAME="Cupuacu"
 WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/cupuacu-dmg.XXXXXX")
-STAGING_DIR="$WORK_DIR/staging"
-RW_DMG="$WORK_DIR/Cupuacu-${VERSION}.dmg"
-MOUNT_DIR="$WORK_DIR/mount"
 BACKGROUND_OUT="$WORK_DIR/background.png"
+SETTINGS_FILE="$WORK_DIR/dmgbuild-settings.py"
 FINAL_DMG=$(cd "$(dirname "$OUTPUT_DMG")" && pwd)/$(basename "$OUTPUT_DMG")
+APP_BUNDLE_ABS=$(cd "$(dirname "$APP_BUNDLE")" && pwd)/$(basename "$APP_BUNDLE")
+
+cleanup() {
+    rm -rf "$WORK_DIR"
+}
+trap cleanup EXIT INT TERM
 
 create_background_image() {
     if ! command -v swift >/dev/null 2>&1; then
@@ -134,68 +148,33 @@ EOF
     fi
 }
 
-cleanup() {
-    if [ "${MOUNT_DIR:-}" ] && [ -d "${MOUNT_DIR:-}" ]; then
-        hdiutil detach "$MOUNT_DIR" >/dev/null 2>&1 || true
-    fi
-    rm -rf "$WORK_DIR"
+create_settings_file() {
+    cat >"$SETTINGS_FILE" <<EOF
+format = "UDZO"
+filesystem = "HFS+"
+files = [("${APP_BUNDLE_ABS}", "Cupuacu.app")]
+symlinks = {"Applications": "/Applications"}
+background = "${BACKGROUND_OUT}"
+window_rect = ((120, 120), (780, 440))
+show_toolbar = False
+show_status_bar = False
+show_tab_view = False
+show_pathbar = False
+show_sidebar = False
+default_view = "icon-view"
+arrange_by = None
+icon_size = 128
+text_size = 14
+icon_locations = {
+    "Cupuacu.app": (190, 190),
+    "Applications": (560, 190),
 }
-trap cleanup EXIT INT TERM
+EOF
+}
 
 create_background_image
-
-mkdir -p "$STAGING_DIR/.background"
-cp -R "$APP_BUNDLE" "$STAGING_DIR/Cupuacu.app"
-ln -s /Applications "$STAGING_DIR/Applications"
-cp "$BACKGROUND_OUT" "$STAGING_DIR/.background/background.png"
-mkdir -p "$MOUNT_DIR"
-
-hdiutil create -quiet -srcfolder "$STAGING_DIR" -volname "$VOLUME_NAME" \
-    -fs HFS+ -format UDRW "$RW_DMG"
-
-ATTACH_OUTPUT=$(hdiutil attach -readwrite -noverify -noautoopen \
-    -mountpoint "$MOUNT_DIR" "$RW_DMG")
-DEVICE=$(printf '%s\n' "$ATTACH_OUTPUT" | awk '/^\/dev\// {print $1; exit}')
-
-if [ -z "$DEVICE" ] || [ ! -d "$MOUNT_DIR" ]; then
-    echo "failed to attach dmg" >&2
-    exit 1
-fi
-
-chflags hidden "$MOUNT_DIR/.background" || true
-
-if ! osascript <<EOF
-set mountDir to POSIX file "$MOUNT_DIR" as alias
-tell application "Finder"
-    with timeout of 120 seconds
-        tell folder mountDir
-            open
-            set current view of container window to icon view
-            set toolbar visible of container window to false
-            set statusbar visible of container window to false
-            set the bounds of container window to {120, 120, 900, 560}
-            set viewOptions to the icon view options of container window
-            set arrangement of viewOptions to not arranged
-            set icon size of viewOptions to 128
-            set text size of viewOptions to 14
-            set background picture of viewOptions to file ".background:background.png"
-            set position of item "Cupuacu.app" of container window to {190, 190}
-            set position of item "Applications" of container window to {560, 190}
-            update without registering applications
-            delay 2
-            close
-        end tell
-    end timeout
-end tell
-EOF
-then
-    echo "warning: Finder customization failed; continuing with default DMG layout" >&2
-fi
-
-sync
-hdiutil detach "$DEVICE" -quiet
-MOUNT_DIR=""
+create_settings_file
 
 mkdir -p "$(dirname "$FINAL_DMG")"
 rm -f "$FINAL_DMG"
-hdiutil convert "$RW_DMG" -quiet -format UDZO -imagekey zlib-level=9 -o "$FINAL_DMG"
+python3 -m dmgbuild -s "$SETTINGS_FILE" "$VOLUME_NAME" "$FINAL_DMG"
