@@ -10,6 +10,10 @@
 #include <algorithm>
 #include <utility>
 
+#if defined(__APPLE__)
+#include "../platform/macos/MicrophonePermission.hpp"
+#endif
+
 void cupuacu::actions::record(cupuacu::State *state)
 {
     if (!state || !state->audioDevices)
@@ -28,6 +32,17 @@ void cupuacu::actions::record(cupuacu::State *state)
     {
         requestStop(state);
     }
+
+#if defined(__APPLE__)
+    if (!cupuacu::platform::macos::ensureMicrophoneAccess())
+    {
+        SDL_ShowSimpleMessageBox(
+            SDL_MESSAGEBOX_WARNING, "Microphone access required",
+            "Allow microphone access for Cupuacu in System Settings to record audio.",
+            nullptr);
+        return;
+    }
+#endif
 
     state->audioDevices->prepareForRecording();
 

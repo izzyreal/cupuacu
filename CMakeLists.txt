@@ -213,6 +213,7 @@ set(CUPUACU_SHARED_SOURCES
 if(APPLE)
     list(APPEND CUPUACU_SHARED_SOURCES
         src/main/actions/CocoaSaveFileDialog.mm
+        src/main/platform/macos/MicrophonePermission.mm
     )
 endif()
 
@@ -317,6 +318,12 @@ target_link_libraries(cupuacu_deps INTERFACE
     spdlog::spdlog
     nlohmann_json::nlohmann_json
 )
+if(APPLE)
+    find_library(CUPUACU_AVFOUNDATION_FRAMEWORK AVFoundation REQUIRED)
+    target_link_libraries(cupuacu_deps INTERFACE
+        "${CUPUACU_AVFOUNDATION_FRAMEWORK}"
+    )
+endif()
 
 function(cupuacu_enable_coverage_for_target target)
     if(NOT CUPUACU_ENABLE_COVERAGE)
