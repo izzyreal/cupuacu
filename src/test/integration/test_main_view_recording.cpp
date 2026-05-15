@@ -8,6 +8,10 @@
 #include "actions/Record.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 
+#if defined(__APPLE__)
+#include "platform/macos/MicrophonePermission.hpp"
+#endif
+
 #include <vector>
 
 using Catch::Approx;
@@ -15,6 +19,16 @@ using Catch::Approx;
 TEST_CASE("MainView integration consumes recorded chunks into the document",
           "[integration]")
 {
+#if defined(__APPLE__)
+    struct MicrophonePermissionReset
+    {
+        ~MicrophonePermissionReset()
+        {
+            cupuacu::platform::macos::resetMicrophoneAccessOverrideForTesting();
+        }
+    } microphonePermissionReset;
+    cupuacu::platform::macos::setMicrophoneAccessOverrideForTesting(true);
+#endif
     cupuacu::test::StateWithTestPaths state{};
     auto ui = cupuacu::test::integration::createSessionUi(&state, 4, true, 2);
     auto &session = state.getActiveDocumentSession();
@@ -48,6 +62,16 @@ TEST_CASE("MainView integration consumes recorded chunks into the document",
 TEST_CASE("MainView integration finalizes recording into an undoable when stopped",
           "[integration]")
 {
+#if defined(__APPLE__)
+    struct MicrophonePermissionReset
+    {
+        ~MicrophonePermissionReset()
+        {
+            cupuacu::platform::macos::resetMicrophoneAccessOverrideForTesting();
+        }
+    } microphonePermissionReset;
+    cupuacu::platform::macos::setMicrophoneAccessOverrideForTesting(true);
+#endif
     cupuacu::test::StateWithTestPaths state{};
     auto ui = cupuacu::test::integration::createSessionUi(&state, 4, true, 2);
     auto &session = state.getActiveDocumentSession();

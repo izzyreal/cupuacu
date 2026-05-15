@@ -14,6 +14,10 @@
 #include "gui/VuMeter.hpp"
 #include "gui/VuMeterModel.hpp"
 
+#if defined(__APPLE__)
+#include "platform/macos/MicrophonePermission.hpp"
+#endif
+
 #include <algorithm>
 #include <memory>
 #include <string_view>
@@ -111,6 +115,16 @@ namespace
 TEST_CASE("Transport buttons container drives record stop play-stop and loop state",
           "[gui][audio]")
 {
+#if defined(__APPLE__)
+    struct MicrophonePermissionReset
+    {
+        ~MicrophonePermissionReset()
+        {
+            cupuacu::platform::macos::resetMicrophoneAccessOverrideForTesting();
+        }
+    } microphonePermissionReset;
+    cupuacu::platform::macos::setMicrophoneAccessOverrideForTesting(true);
+#endif
     cupuacu::test::StateWithTestPaths state{};
     state.audioDevices = std::make_shared<cupuacu::audio::AudioDevices>(false);
     auto &doc = state.getActiveDocumentSession().document;
