@@ -167,6 +167,7 @@ pipelines:
             git: "*"
             cmake: "*"
             ccache: "*"
+            codesign: "*"
             dmgbuild: "*"
         timeout_seconds: 1800
         artifacts:
@@ -185,6 +186,7 @@ pipelines:
               command: ./build/macos-universal/cupuacu-tests --reporter JUnit --out build/macos-universal/result-junit.xml
               format: junit-xml
               report: build/macos-universal/result-junit.xml
+          - run: DEV_IDENTITY_APP="$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development/ {print $2; exit}')" && test -n "$DEV_IDENTITY_APP" && codesign --force --deep --sign "$DEV_IDENTITY_APP" -v build/macos-universal/Cupuacu.app
           - run: VERSION="$(cat VERSION)" && sh packaging/build-macos-dmg.sh build/macos-universal/Cupuacu.app "$VERSION" "dist/Cupuacu-macos-v${VERSION}.dmg"
 
       - id: windows-amd64
