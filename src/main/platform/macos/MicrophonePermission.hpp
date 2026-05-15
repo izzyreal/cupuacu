@@ -3,4 +3,6 @@
 namespace cupuacu::platform::macos
 {
     bool ensureMicrophoneAccess();
+    void setMicrophoneAccessOverrideForTesting(bool granted);
+    void resetMicrophoneAccessOverrideForTesting();
 }

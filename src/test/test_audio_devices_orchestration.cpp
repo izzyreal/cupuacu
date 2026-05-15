@@ -9,11 +9,25 @@
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/Window.hpp"
 
+#if defined(__APPLE__)
+#include "platform/macos/MicrophonePermission.hpp"
+#endif
+
 #include <memory>
 
 TEST_CASE("Record action stops playback and records bounded selection",
           "[audio]")
 {
+#if defined(__APPLE__)
+    struct MicrophonePermissionReset
+    {
+        ~MicrophonePermissionReset()
+        {
+            cupuacu::platform::macos::resetMicrophoneAccessOverrideForTesting();
+        }
+    } microphonePermissionReset;
+    cupuacu::platform::macos::setMicrophoneAccessOverrideForTesting(true);
+#endif
     cupuacu::test::StateWithTestPaths state{};
     state.audioDevices = std::make_shared<cupuacu::audio::AudioDevices>(false);
     auto &document = state.getActiveDocumentSession().document;

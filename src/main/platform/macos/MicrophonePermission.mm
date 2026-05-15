@@ -5,8 +5,28 @@
 
 namespace cupuacu::platform::macos
 {
+    namespace
+    {
+        bool &microphoneAccessOverrideEnabled()
+        {
+            static bool enabled = false;
+            return enabled;
+        }
+
+        bool &microphoneAccessOverrideValue()
+        {
+            static bool granted = false;
+            return granted;
+        }
+    } // namespace
+
     bool ensureMicrophoneAccess()
     {
+        if (microphoneAccessOverrideEnabled())
+        {
+            return microphoneAccessOverrideValue();
+        }
+
         const AVAuthorizationStatus status =
             [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
         switch (status)
@@ -50,5 +70,16 @@ namespace cupuacu::platform::macos
         }
 
         return granted;
+    }
+
+    void setMicrophoneAccessOverrideForTesting(const bool granted)
+    {
+        microphoneAccessOverrideValue() = granted;
+        microphoneAccessOverrideEnabled() = true;
+    }
+
+    void resetMicrophoneAccessOverrideForTesting()
+    {
+        microphoneAccessOverrideEnabled() = false;
     }
 } // namespace cupuacu::platform::macos
