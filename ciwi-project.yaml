@@ -307,7 +307,10 @@ pipelines:
               APPLE_TEAM_ID: "{{ secret.apple-team-id }}"
               APPLE_ID: "{{ secret.apple-id }}"
           - run: test -d dist/codesigned-macos/Cupuacu.app && test -f dist/version-macos-universal.txt
-          - run: VERSION="$(cat dist/version-macos-universal.txt | tr -d '\r\n')" && test -n "$VERSION" && sh packaging/build-macos-dmg.sh dist/codesigned-macos/Cupuacu.app "$VERSION" "dist/Cupuacu-macos-v${VERSION}.dmg"
+          - run: rm -rf binaries && mkdir -p binaries
+          - run: cp -R dist/codesigned-macos/Cupuacu.app binaries/Cupuacu.app
+          - run: test -f binaries/Cupuacu.app/Contents/MacOS/Cupuacu && chmod +x binaries/Cupuacu.app/Contents/MacOS/Cupuacu
+          - run: VERSION="$(cat dist/version-macos-universal.txt | tr -d '\r\n')" && test -n "$VERSION" && sh packaging/build-macos-dmg.sh binaries/Cupuacu.app "$VERSION" "dist/Cupuacu-macos-v${VERSION}.dmg"
           - run: VERSION="$(cat dist/version-macos-universal.txt | tr -d '\r\n')" && RESULT_JSON="$PWD/dist/notary-result-macos.json" && xcrun notarytool submit "$PWD/dist/Cupuacu-macos-v${VERSION}.dmg" --apple-id "$APPLE_ID" --password "$NOTARYTOOL_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait --output-format json > "$RESULT_JSON" && STATUS="$(/usr/bin/plutil -extract status raw -o - "$RESULT_JSON")" && SUBMISSION_ID="$(/usr/bin/plutil -extract id raw -o - "$RESULT_JSON")" && if [ "$STATUS" != "Accepted" ]; then echo "notarytool status=${STATUS} submission_id=${SUBMISSION_ID}"; xcrun notarytool log "$SUBMISSION_ID" --apple-id "$APPLE_ID" --password "$NOTARYTOOL_PASSWORD" --team-id "$APPLE_TEAM_ID"; exit 1; fi
             vault:
               connection: home-vault
