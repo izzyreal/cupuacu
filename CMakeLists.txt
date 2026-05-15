@@ -408,6 +408,7 @@ if(APPLE)
         MACOSX_PACKAGE_LOCATION "Resources")
     target_sources(Cupuacu PRIVATE "${CUPUACU_MAC_ICNS}")
     set_target_properties(Cupuacu PROPERTIES
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/cmake/CupuacuInfo.plist.in"
         MACOSX_BUNDLE_ICON_FILE "Cupuacu.icns"
         MACOSX_BUNDLE_BUNDLE_NAME "Cupuacu"
         MACOSX_BUNDLE_GUI_IDENTIFIER "nl.izmar.cupuacu"
