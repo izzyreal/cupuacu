@@ -1029,9 +1029,9 @@ void Window::renderFrame()
         fullBounds.w = (int)canvasW;
         fullBounds.h = (int)canvasH;
     }
-    dirtyRects.push_back(fullBounds);
-
     rootComponent->setDirty();
+    dirtyRects.clear();
+    dirtyRects.push_back(fullBounds);
 
     SDL_SetRenderTarget(renderer, canvas);
     if (transparentWindow)
