@@ -35,6 +35,9 @@ namespace cupuacu::gui
 
         void setParent(Component *parentToUse);
         void clearWindowPointersForSubtree(Component *subtreeRoot) const;
+        void markDirtySelf();
+        void draw(SDL_Renderer *renderer, const SDL_Rect &invalidRect,
+                  bool ancestorRepainted);
 
     protected:
         State *state;
@@ -172,8 +175,19 @@ namespace cupuacu::gui
         void setYPos(int32_t yPosToUse);
         void setDirty();
         void draw(SDL_Renderer *renderer);
+        void clearDirtyRecursive();
+        void draw(SDL_Renderer *renderer, const SDL_Rect &invalidRect);
 
         virtual void onDraw(SDL_Renderer *renderer) {}
+        virtual void onDraw(SDL_Renderer *renderer,
+                            const SDL_Rect &invalidLocalRect)
+        {
+            onDraw(renderer);
+        }
+        virtual bool isOpaque() const
+        {
+            return true;
+        }
         virtual void mouseLeave() {}
         virtual void mouseEnter() {}
         virtual bool mouseDown(const MouseEvent &)

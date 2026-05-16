@@ -238,28 +238,56 @@ void Component::setYPos(const int32_t yPosToUse)
     setBounds(xPos, yPosToUse, width, height);
 }
 
-void Component::setDirty()
+void Component::markDirtySelf()
 {
     if (!visible)
     {
         return;
     }
     dirty = true;
+}
+
+void Component::setDirty()
+{
+    if (!visible)
+    {
+        return;
+    }
+
     const SDL_Rect r = getAbsoluteBounds();
     if (window && r.w > 0 && r.h > 0)
     {
         window->getDirtyRects().push_back(r);
     }
-    for (const auto &c : children)
+
+    Component *repaintRoot = this;
+    while (repaintRoot && !repaintRoot->isOpaque())
     {
-        if (c->isVisible())
-        {
-            c->setDirty();
-        }
+        repaintRoot = repaintRoot->parent;
     }
+
+    if (!repaintRoot)
+    {
+        repaintRoot = this;
+    }
+
+    repaintRoot->markDirtySelf();
 }
 
 void Component::draw(SDL_Renderer *renderer)
+{
+    SDL_Rect viewport{};
+    SDL_GetRenderViewport(renderer, &viewport);
+    draw(renderer, viewport);
+}
+
+void Component::draw(SDL_Renderer *renderer, const SDL_Rect &invalidRect)
+{
+    draw(renderer, invalidRect, false);
+}
+
+void Component::draw(SDL_Renderer *renderer, const SDL_Rect &invalidRect,
+                     const bool ancestorRepainted)
 {
     if (!visible)
     {
@@ -271,89 +299,48 @@ void Component::draw(SDL_Renderer *renderer)
     }
 
     const SDL_Rect absRect = getAbsoluteBounds();
-    bool intersects = true;
 
-    if (parentClippingEnabled)
+    SDL_Rect parentClipRect;
+    SDL_GetRenderViewport(renderer, &parentClipRect);
+
+    SDL_Rect selfClipRect;
+    if (!SDL_GetRectIntersection(&parentClipRect, &absRect, &selfClipRect))
     {
-        intersects = false;
-        SDL_Rect parentRect;
-        if (parent)
-        {
-            parentRect = parent->getAbsoluteBounds();
-        }
-        else
-        {
-            SDL_GetRenderViewport(renderer, &parentRect);
-        }
-        SDL_Rect intersection;
-        if (SDL_GetRectIntersection(&absRect, &parentRect, &intersection))
-        {
-            for (const auto &dr : window->getDirtyRects())
-            {
-                if (SDL_HasRectIntersection(&intersection, &dr))
-                {
-                    intersects = true;
-                    break;
-                }
-            }
-        }
-    }
-    else
-    {
-        for (const auto &dr : window->getDirtyRects())
-        {
-            if (SDL_HasRectIntersection(&absRect, &dr))
-            {
-                intersects = true;
-                break;
-            }
-        }
+        selfClipRect = {0, 0, 0, 0};
     }
 
-    if (!intersects)
+    SDL_Rect childClipRect = parentClipRect;
+    if (parentClippingEnabled &&
+        !SDL_GetRectIntersection(&parentClipRect, &absRect, &childClipRect))
     {
 #if DEBUG_DRAW
-        printf("Not drawing %s because it doesn't intersect\n",
+        printf("Not drawing %s because child clip is empty\n",
                componentName.c_str());
 #endif
         return;
     }
 
-    SDL_Rect viewPortRect;
-    SDL_GetRenderViewport(renderer, &viewPortRect);
-    const SDL_Rect parentViewPortRect = viewPortRect;
-
-    viewPortRect.x = absRect.x;
-    viewPortRect.y = absRect.y;
-    viewPortRect.w = absRect.w;
-    viewPortRect.h = absRect.h;
-
-    if (parentClippingEnabled)
+    SDL_Rect childInvalidRect;
+    if (!SDL_GetRectIntersection(&childClipRect, &invalidRect, &childInvalidRect))
     {
-        SDL_Rect viewPortRectToUse;
-        if (SDL_GetRectIntersection(&parentViewPortRect, &viewPortRect,
-                                    &viewPortRectToUse))
-
-        {
-            SDL_SetRenderViewport(renderer, &viewPortRectToUse);
-        }
-        else
-        {
 #if DEBUG_DRAW
-            printf("Not drawing %s because it doesn't intersect\n",
-                   componentName.c_str());
+        printf("Not drawing %s because subtree doesn't intersect invalid rect\n",
+               componentName.c_str());
 #endif
-            return;
-        }
-    }
-    else
-    {
-        SDL_SetRenderViewport(renderer, &viewPortRect);
+        return;
     }
 
-    if (dirty)
+    const bool shouldDrawSelf = dirty || ancestorRepainted;
+    SDL_Rect selfDrawRect;
+    if (shouldDrawSelf &&
+        SDL_GetRectIntersection(&selfClipRect, &invalidRect, &selfDrawRect))
     {
-        onDraw(renderer);
+        SDL_SetRenderViewport(renderer, &selfDrawRect);
+
+        SDL_Rect localInvalidRect = selfDrawRect;
+        localInvalidRect.x -= absRect.x;
+        localInvalidRect.y -= absRect.y;
+        onDraw(renderer, localInvalidRect);
 #if DEBUG_DRAW
         printf("drawing %s\n", componentName.c_str());
         Uint8 r = rand() % 256;
@@ -366,20 +353,29 @@ void Component::draw(SDL_Renderer *renderer)
 #endif
     }
 #if DEBUG_DRAW
-    else
+    else if (shouldDrawSelf)
     {
-        printf("Not drawing %s because it's not dirty\n",
+        printf("Not drawing %s because self draw rect is empty\n",
                componentName.c_str());
     }
 #endif
 
+    SDL_SetRenderViewport(renderer, &childClipRect);
     for (const auto &c : children)
     {
-        c->draw(renderer);
+        c->draw(renderer, childInvalidRect, shouldDrawSelf);
     }
 
-    SDL_SetRenderViewport(renderer, &parentViewPortRect);
+    SDL_SetRenderViewport(renderer, &parentClipRect);
+}
+
+void Component::clearDirtyRecursive()
+{
     dirty = false;
+    for (const auto &c : children)
+    {
+        c->clearDirtyRecursive();
+    }
 }
 
 bool Component::handleMouseEvent(const MouseEvent &mouseEvent)

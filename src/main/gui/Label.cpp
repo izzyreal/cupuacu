@@ -67,8 +67,18 @@ void Label::updateTexture(SDL_Renderer *renderer, const int availableWidth)
         return;
     }
 
-    SDL_Surface *surf = TTF_RenderText_Blended(
-        font, renderedText.c_str(), renderedText.size(), textColor);
+    SDL_Surface *surf = nullptr;
+    if (renderedText.find('\n') != std::string::npos)
+    {
+        surf = TTF_RenderText_Blended_Wrapped(
+            font, renderedText.c_str(), renderedText.size(), textColor,
+            std::max(1, availableWidth));
+    }
+    else
+    {
+        surf = TTF_RenderText_Blended(
+            font, renderedText.c_str(), renderedText.size(), textColor);
+    }
     if (!surf)
     {
         return;

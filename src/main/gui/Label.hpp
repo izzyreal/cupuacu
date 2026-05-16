@@ -95,5 +95,9 @@ namespace cupuacu::gui
         }
 
         void onDraw(SDL_Renderer *renderer) override;
+        bool isOpaque() const override
+        {
+            return false;
+        }
     };
 } // namespace cupuacu::gui

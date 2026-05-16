@@ -55,6 +55,42 @@ namespace
         }
     }
 
+    void clearLongTaskOverlaysDirtyOnly(cupuacu::gui::Component *component)
+    {
+        if (!component)
+        {
+            return;
+        }
+
+        if (dynamic_cast<cupuacu::gui::LongTaskOverlay *>(component) != nullptr)
+        {
+            component->clearDirtyRecursive();
+        }
+        for (const auto &child : component->getChildren())
+        {
+            clearLongTaskOverlaysDirtyOnly(child.get());
+        }
+    }
+
+    void drawDirtyPasses(cupuacu::gui::Component *rootComponent,
+                         SDL_Renderer *renderer,
+                         const std::vector<SDL_Rect> &dirtyRects)
+    {
+        if (!rootComponent)
+        {
+            return;
+        }
+
+        for (const auto &dirtyRect : dirtyRects)
+        {
+            if (dirtyRect.w <= 0 || dirtyRect.h <= 0)
+            {
+                continue;
+            }
+            rootComponent->draw(renderer, dirtyRect);
+        }
+    }
+
     float getEffectiveWindowDisplayScale(SDL_Window *window,
                                          SDL_Texture *canvas)
     {
@@ -1003,7 +1039,8 @@ void Window::renderFrame()
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
         SDL_RenderClear(renderer);
     }
-    rootComponent->draw(renderer);
+    drawDirtyPasses(rootComponent.get(), renderer, dirtyRects);
+    rootComponent->clearDirtyRecursive();
     SDL_SetRenderTarget(renderer, nullptr);
     if (transparentWindow)
     {
@@ -1037,7 +1074,8 @@ void Window::renderFrameIfDirty()
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
         SDL_RenderClear(renderer);
     }
-    rootComponent->draw(renderer);
+    drawDirtyPasses(rootComponent.get(), renderer, dirtyRects);
+    rootComponent->clearDirtyRecursive();
     SDL_SetRenderTarget(renderer, nullptr);
     if (transparentWindow)
     {
@@ -1077,6 +1115,7 @@ void Window::renderOverlayFrame()
     }
     SDL_RenderTexture(renderer, canvas, nullptr, nullptr);
     drawLongTaskOverlaysOnly(rootComponent.get(), renderer);
+    clearLongTaskOverlaysDirtyOnly(rootComponent.get());
     SDL_RenderPresent(renderer);
     dirtyRects.clear();
 }
