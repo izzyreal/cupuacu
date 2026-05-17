@@ -302,6 +302,59 @@ TEST_CASE("Pending close completes after save as finishes", "[tabs]")
     REQUIRE_FALSE(state.pendingCloseTabAfterSaveId.has_value());
 }
 
+TEST_CASE("Canceled save as clears pending close and keeps the tab open",
+          "[tabs]")
+{
+    const auto root =
+        cupuacu::test::makeUniqueTestRoot("close-tab-save-as-cancel");
+    const auto outputPath = root / "documents" / "saved.wav";
+
+    cupuacu::test::StateWithTestPaths state{root};
+    state.tabs.resize(2);
+    state.activeTabIndex = 0;
+    state.tabs[0].session.document.initialize(
+        cupuacu::SampleFormat::PCM_S16, 44100, 1, 1 << 22);
+    state.tabs[0].session.autosaveSnapshotPath = "/tmp/dirty.cupuacu-autosave";
+    state.tabs[1].session.currentFile = "/tmp/other.wav";
+
+    auto &document = state.tabs[0].session.document;
+    for (int64_t frame = 0; frame < document.getFrameCount(); ++frame)
+    {
+        document.setSample(0, frame, (frame % 128) < 64 ? -0.5f : 0.5f, false);
+    }
+
+    auto settings = cupuacu::file::defaultExportSettingsForPath(
+        outputPath, document.getSampleFormat());
+    REQUIRE(settings.has_value());
+
+    bool cancelRequested = false;
+    state.longTaskObserver = [&](const cupuacu::State::LongTaskStatus &status)
+    {
+        if (!cancelRequested && status.active && status.title == "Saving file" &&
+            status.progress.has_value() && *status.progress > 0.0)
+        {
+            cancelRequested = true;
+            cupuacu::requestLongTaskCancel(&state);
+        }
+    };
+
+    state.pendingCloseTabAfterSaveId = state.tabs[0].id;
+    REQUIRE(cupuacu::actions::io::queueSaveAs(&state, outputPath.string(),
+                                              *settings));
+    REQUIRE(state.backgroundSaveJob != nullptr);
+
+    drainPendingSaveWork(&state);
+
+    REQUIRE(cancelRequested);
+    REQUIRE(state.tabs.size() == 2);
+    REQUIRE(state.activeTabIndex == 0);
+    REQUIRE(state.getActiveDocumentSession().currentFile.empty());
+    REQUIRE(state.tabs[1].session.currentFile == "/tmp/other.wav");
+    REQUIRE_FALSE(state.pendingCloseTabAfterSaveId.has_value());
+    REQUIRE_FALSE(state.longTask.active);
+    REQUIRE_FALSE(std::filesystem::exists(outputPath));
+}
+
 TEST_CASE("Closing an inactive tab preserves the active document context",
           "[tabs]")
 {

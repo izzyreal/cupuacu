@@ -399,6 +399,23 @@ namespace
 
         FAIL("Timed out waiting for background open work");
     }
+
+    template <typename Predicate>
+    void pumpOpenWorkUntil(cupuacu::State *state, Predicate &&predicate,
+                           const int maxAttempts = 5000)
+    {
+        for (int attempt = 0; attempt < maxAttempts; ++attempt)
+        {
+            cupuacu::actions::io::processPendingOpenWork(state);
+            if (predicate())
+            {
+                return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+
+        FAIL("Timed out waiting for expected pending open state");
+    }
 } // namespace
 
 TEST_CASE("Keyboard integration zooms to selection and scrolls horizontally",
@@ -757,6 +774,117 @@ TEST_CASE("Async startup document restore reopens tabs and restores active view"
     REQUIRE(state.getActiveViewState().sampleOffset == 1);
     REQUIRE(state.recentFiles ==
             std::vector<std::string>{secondPath.string(), firstPath.string()});
+}
+
+TEST_CASE("Canceling a user-open waveform build restores the previous tab state",
+          "[integration]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-open-cancel-waveform-build"));
+    const auto wavPath = cleanup.path() / "cancel-waveform-build.wav";
+    constexpr int sampleRate = 44100;
+    constexpr int channels = 1;
+    constexpr int64_t frameCount = 1 << 22;
+    std::vector<float> frames(static_cast<std::size_t>(frameCount));
+    for (int64_t frame = 0; frame < frameCount; ++frame)
+    {
+        frames[static_cast<std::size_t>(frame)] =
+            (frame % 128) < 64 ? -0.5f : 0.5f;
+    }
+    writeTestWav(wavPath, sampleRate, channels, frames);
+
+    cupuacu::test::StateWithTestPaths state{};
+    createBuiltSessionUi(&state, 16, 22050, 1);
+
+    auto &originalSession = state.getActiveDocumentSession();
+    originalSession.currentFile = "before.wav";
+    originalSession.selection.setValue1(2.0);
+    originalSession.selection.setValue2(6.0);
+    originalSession.cursor = 5;
+    const auto originalSamplesPerPixel = state.getActiveViewState().samplesPerPixel;
+    state.recentFiles = {"before.wav"};
+
+    cupuacu::actions::io::queueOpenFile(&state, wavPath.string());
+    pumpOpenWorkUntil(
+        &state,
+        [&]()
+        {
+            return state.pendingOpenWaveformBuild.active &&
+                   state.getActiveDocumentSession().currentFile == wavPath.string();
+        });
+
+    REQUIRE(state.pendingOpenWaveformBuild.revertOnCancel);
+    REQUIRE(state.recentFiles == std::vector<std::string>{wavPath.string(),
+                                                          "before.wav"});
+
+    cupuacu::requestLongTaskCancel(&state);
+    cupuacu::actions::io::processPendingOpenWork(&state);
+
+    REQUIRE_FALSE(state.pendingOpenWaveformBuild.active);
+    REQUIRE_FALSE(state.longTask.active);
+    REQUIRE(state.getActiveDocumentSession().currentFile == "before.wav");
+    REQUIRE(state.getActiveDocumentSession().document.getSampleRate() == 22050);
+    REQUIRE(state.getActiveDocumentSession().document.getFrameCount() == 16);
+    REQUIRE(state.getActiveDocumentSession().selection.isActive());
+    REQUIRE(state.getActiveDocumentSession().selection.getStart() == 2.0);
+    REQUIRE(state.getActiveDocumentSession().selection.getEnd() == 6.0);
+    REQUIRE(state.getActiveDocumentSession().cursor == 5);
+    REQUIRE(state.getActiveViewState().samplesPerPixel ==
+            Catch::Approx(originalSamplesPerPixel));
+    REQUIRE(state.recentFiles == std::vector<std::string>{"before.wav"});
+}
+
+TEST_CASE("Canceling async startup restore during background open preserves prior session state",
+          "[integration]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-test-startup-restore-cancel"));
+    const auto firstPath = cleanup.path() / "first.wav";
+    const auto secondPath = cleanup.path() / "second.wav";
+    constexpr int64_t frameCount = 1 << 22;
+    std::vector<float> frames(static_cast<std::size_t>(frameCount));
+    for (int64_t frame = 0; frame < frameCount; ++frame)
+    {
+        frames[static_cast<std::size_t>(frame)] =
+            (frame % 64) < 32 ? 0.25f : -0.25f;
+    }
+    writeTestWav(firstPath, 32000, 1, frames);
+    writeTestWav(secondPath, 22050, 1, {0.1f, 0.2f, 0.3f});
+
+    cupuacu::test::StateWithTestPaths state{};
+    createBuiltEmptySessionUi(&state, 800, 400);
+
+    cupuacu::persistence::PersistedSessionState persistedState{};
+    persistedState.openDocuments = {
+        {.filePath = firstPath.string()},
+        {.filePath = secondPath.string()},
+    };
+    persistedState.openFiles = {firstPath.string(), secondPath.string()};
+    persistedState.activeOpenFileIndex = 1;
+
+    cupuacu::actions::restoreStartupDocument(
+        &state, {secondPath.string(), firstPath.string()}, persistedState, true);
+
+    pumpOpenWorkUntil(&state, [&]() { return state.backgroundOpenJob != nullptr; });
+    REQUIRE(state.startupRestore.active);
+    REQUIRE(state.pendingOpenFiles.size() == 1);
+
+    cupuacu::requestLongTaskCancel(&state);
+    state.quitRequestedAfterLongTaskCancel = true;
+
+    pumpOpenWorkUntil(
+        &state,
+        [&]()
+        {
+            return !state.backgroundOpenJob && !state.startupRestore.active &&
+                   state.pendingOpenFiles.empty();
+        });
+
+    REQUIRE(state.preserveStartupSessionStateOnShutdown);
+    REQUIRE_FALSE(state.startupRestore.active);
+    REQUIRE(state.pendingOpenFiles.empty());
+    REQUIRE(state.getActiveDocumentSession().currentFile.empty());
+    REQUIRE(state.tabs.size() == 1);
 }
 
 TEST_CASE("Startup document restore integration skips unreadable existing paths",

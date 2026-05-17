@@ -369,6 +369,106 @@ TEST_CASE("Shutdown flush does not rewrite current restored autosave snapshots",
     REQUIRE(flushedWriteTimeNs == originalWriteTimeNs);
 }
 
+TEST_CASE("Background autosave job fails if the snapshot path changes",
+          "[autosave]")
+{
+    cupuacu::test::StateWithTestPaths state{
+        cupuacu::test::makeUniqueTestRoot("document-autosave")};
+    initializeMonoDocument(state, {0.0f, 0.5f, 1.0f});
+
+    auto &session = state.getActiveDocumentSession();
+    const auto originalPath =
+        state.paths->autosavePath() / "original.cupuacu-autosave";
+    session.autosaveSnapshotPath = originalPath;
+
+    cupuacu::actions::io::BackgroundAutosaveJob job(
+        state.getActiveTab()->id, originalPath,
+        session.document.getWaveformDataVersion(),
+        session.document.getMarkerDataVersion(), session.currentFile);
+
+    session.autosaveSnapshotPath =
+        state.paths->autosavePath() / "moved.cupuacu-autosave";
+    job.pump(&state);
+
+    const auto snapshot = job.snapshot();
+    REQUIRE(snapshot.completed);
+    REQUIRE_FALSE(snapshot.success);
+    REQUIRE(snapshot.error == "Autosave snapshot path changed");
+    REQUIRE_FALSE(std::filesystem::exists(originalPath));
+}
+
+TEST_CASE("Background autosave job fails if the source file changes",
+          "[autosave]")
+{
+    cupuacu::test::StateWithTestPaths state{
+        cupuacu::test::makeUniqueTestRoot("document-autosave")};
+    initializeMonoDocument(state, {0.0f, 0.5f, 1.0f});
+
+    auto &session = state.getActiveDocumentSession();
+    session.setCurrentFile("/tmp/original.wav");
+    const auto autosavePath =
+        state.paths->autosavePath() / "source-change.cupuacu-autosave";
+    session.autosaveSnapshotPath = autosavePath;
+
+    cupuacu::actions::io::BackgroundAutosaveJob job(
+        state.getActiveTab()->id, autosavePath,
+        session.document.getWaveformDataVersion(),
+        session.document.getMarkerDataVersion(), session.currentFile);
+
+    session.currentFile = "/tmp/renamed.wav";
+    job.pump(&state);
+
+    const auto snapshot = job.snapshot();
+    REQUIRE(snapshot.completed);
+    REQUIRE_FALSE(snapshot.success);
+    REQUIRE(snapshot.error == "Autosave source file changed");
+    REQUIRE_FALSE(std::filesystem::exists(autosavePath));
+}
+
+TEST_CASE("Stale autosave jobs are retried with the latest document version",
+          "[autosave]")
+{
+    cupuacu::test::StateWithTestPaths state{
+        cupuacu::test::makeUniqueTestRoot("document-autosave")};
+    initializeMonoDocument(state, {0.0f, 0.0f, 0.0f, 0.0f});
+
+    auto &session = state.getActiveDocumentSession();
+    session.autosaveSnapshotPath =
+        state.paths->autosavePath() / "retry-stale.cupuacu-autosave";
+    const auto queuedWaveformVersion = session.document.getWaveformDataVersion();
+    const auto queuedMarkerVersion = session.document.getMarkerDataVersion();
+
+    cupuacu::actions::io::queueAutosaveForTab(&state, 0);
+    REQUIRE(state.backgroundAutosaveJob != nullptr);
+    REQUIRE(state.backgroundAutosaveJob->snapshot().waveformDataVersion ==
+            queuedWaveformVersion);
+
+    session.document.setSample(0, 1, 0.75f, false);
+    const auto updatedWaveformVersion = session.document.getWaveformDataVersion();
+    REQUIRE(updatedWaveformVersion != queuedWaveformVersion);
+
+    cupuacu::actions::io::processPendingAutosaveWork(&state);
+
+    REQUIRE(state.backgroundAutosaveJob != nullptr);
+    const auto retrySnapshot = state.backgroundAutosaveJob->snapshot();
+    REQUIRE(retrySnapshot.waveformDataVersion == updatedWaveformVersion);
+    REQUIRE(retrySnapshot.markerDataVersion == queuedMarkerVersion);
+
+    drainPendingAutosave(state);
+
+    REQUIRE_FALSE(state.backgroundAutosaveJob);
+    REQUIRE(std::filesystem::exists(session.autosaveSnapshotPath));
+    REQUIRE(session.autosavedWaveformDataVersion == updatedWaveformVersion);
+    REQUIRE(session.autosavedMarkerDataVersion ==
+            session.document.getMarkerDataVersion());
+
+    const auto persisted = cupuacu::persistence::SessionStatePersistence::load(
+        state.paths->sessionStatePath());
+    REQUIRE(persisted.openDocuments.size() == 1);
+    REQUIRE(persisted.openDocuments[0].autosaveSnapshotPath ==
+            session.autosaveSnapshotPath.string());
+}
+
 TEST_CASE("Undoing file-backed edits back to the open-file baseline clears autosave",
           "[autosave]")
 {
