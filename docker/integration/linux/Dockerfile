@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ninja-build \
     pkg-config \
     git \
+    libjson-xs-perl \
     perl \
     python3 \
     xvfb \
