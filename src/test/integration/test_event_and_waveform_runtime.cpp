@@ -276,6 +276,35 @@ namespace
         window->renderFrame();
     }
 
+    void prepareBuiltMainWindow(cupuacu::gui::Window *window,
+                                const int width, const int height)
+    {
+        REQUIRE(window != nullptr);
+
+        if (window->getSdlWindow() != nullptr)
+        {
+            ensureWindowReadyForInteraction(window);
+            return;
+        }
+
+        auto *root = window->getRootComponent();
+        auto *contentLayer = window->getContentLayer();
+        auto *overlayLayer = window->getOverlayLayer();
+        auto *mainView =
+            cupuacu::test::integration::findByNameRecursive<cupuacu::gui::MainView>(
+                contentLayer, "MainView");
+
+        REQUIRE(root != nullptr);
+        REQUIRE(contentLayer != nullptr);
+        REQUIRE(overlayLayer != nullptr);
+        REQUIRE(mainView != nullptr);
+
+        root->setBounds(0, 0, width, height);
+        contentLayer->setBounds(0, 0, width, height);
+        overlayLayer->setBounds(0, 0, width, height);
+        mainView->setBounds(0, 0, width, height);
+    }
+
     cupuacu::gui::Window *openMarkerEditorOrFail(cupuacu::State &state,
                                                  cupuacu::gui::Window *mainWindow,
                                                  cupuacu::gui::Component *handle)
@@ -423,6 +452,8 @@ TEST_CASE("Keyboard integration zooms to selection and scrolls horizontally",
 {
     cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 4096);
+    auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
+    prepareBuiltMainWindow(mainWindow, 800, 400);
 
     auto &viewState = state.getActiveViewState();
     viewState.samplesPerPixel = 8.0;
@@ -457,6 +488,8 @@ TEST_CASE("Keyboard integration applies zoom and pixel scale shortcuts",
 {
     cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 4096);
+    auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
+    prepareBuiltMainWindow(mainWindow, 800, 400);
 
     auto &viewState = state.getActiveViewState();
     viewState.samplesPerPixel = 4.0;
@@ -494,6 +527,8 @@ TEST_CASE("Keyboard integration opens new file dialog and closes the active tab"
 {
     cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 256, 44100, 2, 800, 400);
+    auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
+    prepareBuiltMainWindow(mainWindow, 800, 400);
     state.getActiveDocumentSession().currentFile = "/tmp/current.wav";
     state.getActiveDocumentSession().selection.setValue1(10.0);
     state.getActiveDocumentSession().selection.setValue2(20.0);
@@ -588,6 +623,7 @@ TEST_CASE("Event handling integration still forwards non-interactive window even
     createBuiltSessionUi(&state, 512);
 
     auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
+    prepareBuiltMainWindow(mainWindow, 800, 400);
     state.windows.push_back(mainWindow);
 
     auto modalWindow = std::make_unique<cupuacu::gui::Window>(
@@ -613,18 +649,24 @@ TEST_CASE("Event handling integration returns success for quit and keeps app ope
     {
         cupuacu::test::StateWithTestPaths state{};
         createBuiltSessionUi(&state, 256);
+        auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
+        prepareBuiltMainWindow(mainWindow, 800, 400);
+        state.windows.push_back(mainWindow);
 
         SDL_Event event{};
         event.type = SDL_EVENT_QUIT;
 
         REQUIRE(cupuacu::gui::handleAppEvent(&state, &event) == SDL_APP_SUCCESS);
-        REQUIRE(state.mainDocumentSessionWindow->getWindow()->isOpen());
+        REQUIRE(mainWindow->isOpen());
     }
 
     SECTION("quit event requests cancellation for cancellable long tasks")
     {
         cupuacu::test::StateWithTestPaths state{};
         createBuiltSessionUi(&state, 256);
+        auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
+        prepareBuiltMainWindow(mainWindow, 800, 400);
+        state.windows.push_back(mainWindow);
         cupuacu::LongTaskScope longTask(&state, "Opening file", "large.wav",
                                         std::nullopt, false, true);
 
@@ -635,7 +677,7 @@ TEST_CASE("Event handling integration returns success for quit and keeps app ope
                 SDL_APP_CONTINUE);
         REQUIRE(state.longTask.cancelRequested);
         REQUIRE(state.quitRequestedAfterLongTaskCancel);
-        REQUIRE(state.mainDocumentSessionWindow->getWindow()->isOpen());
+        REQUIRE(mainWindow->isOpen());
     }
 
     SECTION("main document close request exits the app")
@@ -648,6 +690,7 @@ TEST_CASE("Event handling integration returns success for quit and keeps app ope
         state.getActiveDocumentSession().cursor = 12;
 
         auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
+        prepareBuiltMainWindow(mainWindow, 800, 400);
         state.windows.push_back(mainWindow);
 
         SDL_Event event{};
