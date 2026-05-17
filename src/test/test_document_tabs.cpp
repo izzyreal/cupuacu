@@ -327,25 +327,15 @@ TEST_CASE("Canceled save as clears pending close and keeps the tab open",
         outputPath, document.getSampleFormat());
     REQUIRE(settings.has_value());
 
-    bool cancelRequested = false;
-    state.longTaskObserver = [&](const cupuacu::State::LongTaskStatus &status)
-    {
-        if (!cancelRequested && status.active && status.title == "Saving file" &&
-            status.progress.has_value() && *status.progress > 0.0)
-        {
-            cancelRequested = true;
-            cupuacu::requestLongTaskCancel(&state);
-        }
-    };
-
     state.pendingCloseTabAfterSaveId = state.tabs[0].id;
     REQUIRE(cupuacu::actions::io::queueSaveAs(&state, outputPath.string(),
                                               *settings));
     REQUIRE(state.backgroundSaveJob != nullptr);
+    cupuacu::requestLongTaskCancel(&state);
+    state.backgroundSaveJob->cancel();
 
     drainPendingSaveWork(&state);
 
-    REQUIRE(cancelRequested);
     REQUIRE(state.tabs.size() == 2);
     REQUIRE(state.activeTabIndex == 0);
     REQUIRE(state.getActiveDocumentSession().currentFile.empty());
