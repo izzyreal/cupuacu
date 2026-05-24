@@ -8,6 +8,7 @@
 #include "State.hpp"
 #include "actions/io/BackgroundOpen.hpp"
 #include "actions/DocumentLifecycle.hpp"
+#include "actions/DocumentTabs.hpp"
 #include "actions/ZoomPlanning.hpp"
 #include "file/SndfilePath.hpp"
 #include "gui/DropdownMenu.hpp"
@@ -520,6 +521,45 @@ TEST_CASE("Keyboard integration applies zoom and pixel scale shortcuts",
     REQUIRE(state.pixelScale == 1);
     REQUIRE(viewState.samplesPerPixel ==
             Catch::Approx(samplesPerPixelBeforeScale));
+}
+
+TEST_CASE("Window resize rescales inactive tab samples-per-pixel before tab switch",
+          "[integration]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    createBuiltSessionUi(&state, 4096, 44100, 2, 800, 400);
+    auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
+    prepareBuiltMainWindow(mainWindow, 800, 400);
+
+    state.tabs.emplace_back();
+    state.tabs[1].session.document.initialize(cupuacu::SampleFormat::FLOAT32,
+                                              44100, 2, 2048);
+    state.tabs[1].session.syncSelectionAndCursorToDocumentLength();
+    state.tabs[0].viewState.samplesPerPixel = 4.0;
+    state.tabs[0].viewState.sampleOffset = 64;
+    state.tabs[1].viewState.samplesPerPixel = 8.0;
+    state.tabs[1].viewState.sampleOffset = 120;
+
+    REQUIRE_FALSE(state.waveforms.empty());
+    const int originalWaveformWidth = state.waveforms.front()->getWidth();
+    REQUIRE(originalWaveformWidth > 0);
+
+    prepareBuiltMainWindow(mainWindow, 400, 240);
+
+    const int resizedWaveformWidth = state.waveforms.front()->getWidth();
+    REQUIRE(resizedWaveformWidth > 0);
+    REQUIRE(resizedWaveformWidth != originalWaveformWidth);
+
+    const double expectedInactiveSamplesPerPixel =
+        static_cast<double>(originalWaveformWidth) * 8.0 /
+        static_cast<double>(resizedWaveformWidth);
+
+    REQUIRE(state.tabs[1].viewState.samplesPerPixel ==
+            Catch::Approx(expectedInactiveSamplesPerPixel));
+
+    REQUIRE(cupuacu::actions::switchToTab(&state, 1));
+    REQUIRE(state.getActiveViewState().samplesPerPixel ==
+            Catch::Approx(expectedInactiveSamplesPerPixel));
 }
 
 TEST_CASE("Keyboard integration selects the visible waveform range on Cmd/Ctrl+A",

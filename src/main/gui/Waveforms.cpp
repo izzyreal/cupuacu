@@ -5,8 +5,42 @@
 #include "WaveformsUnderlay.hpp"
 
 #include "../State.hpp"
+#include "../actions/ZoomPlanning.hpp"
 
 using namespace cupuacu::gui;
+
+namespace
+{
+    void rescaleAllTabViewStatesForWaveformWidthChange(cupuacu::State *state,
+                                                       const int previousWidth,
+                                                       const int newWidth)
+    {
+        if (!state || previousWidth <= 0 || newWidth <= 0 ||
+            previousWidth == newWidth)
+        {
+            return;
+        }
+
+        for (auto &tab : state->tabs)
+        {
+            auto &viewState = tab.viewState;
+            if (viewState.samplesPerPixel <= 0.0)
+            {
+                continue;
+            }
+
+            const double visibleSampleCount =
+                static_cast<double>(previousWidth) * viewState.samplesPerPixel;
+            viewState.samplesPerPixel =
+                visibleSampleCount / static_cast<double>(newWidth);
+            viewState.sampleOffset = std::clamp<int64_t>(
+                viewState.sampleOffset, 0,
+                cupuacu::actions::planMaxSampleOffset(
+                    tab.session.document.getFrameCount(), newWidth,
+                    viewState.samplesPerPixel));
+        }
+    }
+} // namespace
 
 Waveforms::Waveforms(State *state) : Component(state, "Waveforms")
 {
@@ -47,7 +81,6 @@ void Waveforms::rebuildWaveforms()
 
 void Waveforms::resizeWaveforms() const
 {
-    auto &viewState = state->getActiveViewState();
     const int numChannels = static_cast<int>(state->waveforms.size());
     if (numChannels > 0)
     {
@@ -60,13 +93,8 @@ void Waveforms::resizeWaveforms() const
         }
     }
 
-    if (previousWidth != 0)
-    {
-        const auto oldSamplesPerPixelFactor =
-            previousWidth * viewState.samplesPerPixel;
-        const auto newSamplesPerPixel = oldSamplesPerPixelFactor / getWidth();
-        viewState.samplesPerPixel = newSamplesPerPixel;
-    }
+    rescaleAllTabViewStatesForWaveformWidthChange(state, previousWidth,
+                                                  getWidth());
 }
 
 void Waveforms::resized()
