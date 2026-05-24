@@ -167,6 +167,7 @@ namespace cupuacu::gui
         SDL_WindowID windowId = 0;
         bool wasMaximized = false;
         bool transparentWindow = false;
+        bool fullRedrawRequired = false;
 
         std::unique_ptr<Component> rootComponent;
         std::vector<SDL_Rect> dirtyRects;

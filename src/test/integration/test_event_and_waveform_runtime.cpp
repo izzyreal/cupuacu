@@ -851,6 +851,46 @@ TEST_CASE("Async startup document restore reopens tabs and restores active view"
             std::vector<std::string>{secondPath.string(), firstPath.string()});
 }
 
+TEST_CASE("Async startup restore refreshes main window layout after binding",
+          "[integration]")
+{
+    ScopedDirCleanup cleanup(
+        makeUniqueTempDir("cupuacu-startup-restore-resize"));
+    const auto wavPath = cleanup.path() / "restored.wav";
+    std::vector<float> frames(2048u * 2u);
+    for (std::size_t frame = 0; frame < frames.size() / 2u; ++frame)
+    {
+        frames[frame * 2u] = (frame % 2u == 0u) ? 0.25f : -0.25f;
+        frames[frame * 2u + 1u] = (frame % 2u == 0u) ? -0.25f : 0.25f;
+    }
+    writeTestWav(wavPath, 44100, 2, frames);
+
+    cupuacu::test::StateWithTestPaths state{};
+    createBuiltEmptySessionUi(&state, 800, 400);
+
+    cupuacu::persistence::PersistedSessionState persistedState{};
+    persistedState.openDocuments = {
+        {.filePath = wavPath.string(), .samplesPerPixel = 2.0, .sampleOffset = 3}};
+    persistedState.openFiles = {wavPath.string()};
+    persistedState.activeOpenFileIndex = 0;
+
+    cupuacu::actions::restoreStartupDocument(
+        &state, {wavPath.string()}, persistedState, true);
+    auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
+    REQUIRE(mainWindow != nullptr);
+    int resizeCount = 0;
+    mainWindow->setOnResize(
+        [&]()
+        {
+            ++resizeCount;
+            cupuacu::gui::resizeComponents(&state, mainWindow);
+        });
+
+    drainPendingOpenWork(&state);
+
+    REQUIRE(resizeCount > 0);
+}
+
 TEST_CASE("Canceling a user-open waveform build restores the previous tab state",
           "[integration]")
 {

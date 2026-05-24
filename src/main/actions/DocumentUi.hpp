@@ -161,6 +161,10 @@ namespace cupuacu::actions
         gui::Waveform::updateAllSamplePoints(state);
         gui::Waveform::setAllWaveformsDirty(state);
         gui::requestMainViewRefresh(state);
+        if (state->mainDocumentSessionWindow)
+        {
+            state->mainDocumentSessionWindow->getWindow()->refreshForScaleOrResize();
+        }
     }
 
     inline void refreshBoundDocumentUi(cupuacu::State *state)
@@ -175,6 +179,10 @@ namespace cupuacu::actions
         gui::Waveform::updateAllSamplePoints(state);
         gui::Waveform::setAllWaveformsDirty(state);
         gui::requestMainViewRefresh(state);
+        if (state->mainDocumentSessionWindow)
+        {
+            state->mainDocumentSessionWindow->getWindow()->refreshForScaleOrResize();
+        }
     }
 
     inline void closeCurrentDocument(cupuacu::State *state,

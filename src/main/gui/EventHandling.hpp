@@ -226,6 +226,9 @@ namespace cupuacu::gui
         switch (event->type)
         {
             case SDL_EVENT_WINDOW_RESIZED:
+            case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+            case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
+            case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
             case SDL_EVENT_WINDOW_MAXIMIZED:
             case SDL_EVENT_WINDOW_EXPOSED:
             case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
@@ -366,6 +369,10 @@ namespace cupuacu::gui
                 return SDL_APP_SUCCESS;
             case SDL_EVENT_WINDOW_MAXIMIZED:
             case SDL_EVENT_WINDOW_RESIZED:
+            case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+            case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
+            case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
+            case SDL_EVENT_WINDOW_EXPOSED:
                 if (eventWindow)
                 {
                     eventWindow->handleEvent(*event);

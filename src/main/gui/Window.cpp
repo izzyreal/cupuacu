@@ -437,6 +437,7 @@ bool Window::setCanvasSize(const int width, const int height)
 
     SDL_SetTextureScaleMode(canvas, SDL_SCALEMODE_NEAREST);
     SDL_SetTextureBlendMode(canvas, SDL_BLENDMODE_BLEND);
+    fullRedrawRequired = true;
     return true;
 }
 
@@ -553,6 +554,8 @@ void Window::resizeCanvasIfNeeded()
         SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
                           SDL_TEXTUREACCESS_TARGET, required.x, required.y);
     SDL_SetTextureScaleMode(canvas, SDL_SCALEMODE_NEAREST);
+    SDL_SetTextureBlendMode(canvas, SDL_BLENDMODE_BLEND);
+    fullRedrawRequired = true;
 }
 
 void Window::handleResize()
@@ -1034,22 +1037,37 @@ void Window::renderFrame()
     dirtyRects.push_back(fullBounds);
 
     SDL_SetRenderTarget(renderer, canvas);
+    SDL_SetRenderViewport(renderer, nullptr);
+    SDL_SetRenderClipRect(renderer, nullptr);
     if (transparentWindow)
     {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+        SDL_RenderClear(renderer);
+    }
+    else
+    {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
     }
     drawDirtyPasses(rootComponent.get(), renderer, dirtyRects);
     rootComponent->clearDirtyRecursive();
     SDL_SetRenderTarget(renderer, nullptr);
+    SDL_SetRenderViewport(renderer, nullptr);
+    SDL_SetRenderClipRect(renderer, nullptr);
     if (transparentWindow)
     {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
         SDL_RenderClear(renderer);
     }
+    else
+    {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+    }
     SDL_RenderTexture(renderer, canvas, nullptr, nullptr);
     SDL_RenderPresent(renderer);
     dirtyRects.clear();
+    fullRedrawRequired = false;
 }
 
 void Window::renderFrameIfDirty()
@@ -1061,6 +1079,12 @@ void Window::renderFrameIfDirty()
 
     applyWindowScale(state, window, canvas);
 
+    if (fullRedrawRequired)
+    {
+        renderFrame();
+        return;
+    }
+
     // Overlay must repaint whenever anything below changes so popups stay on
     // top even when underlying content (e.g. waveforms) is animating.
     if (overlayLayer)
@@ -1069,6 +1093,8 @@ void Window::renderFrameIfDirty()
     }
 
     SDL_SetRenderTarget(renderer, canvas);
+    SDL_SetRenderViewport(renderer, nullptr);
+    SDL_SetRenderClipRect(renderer, nullptr);
     if (transparentWindow)
     {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
@@ -1077,9 +1103,16 @@ void Window::renderFrameIfDirty()
     drawDirtyPasses(rootComponent.get(), renderer, dirtyRects);
     rootComponent->clearDirtyRecursive();
     SDL_SetRenderTarget(renderer, nullptr);
+    SDL_SetRenderViewport(renderer, nullptr);
+    SDL_SetRenderClipRect(renderer, nullptr);
     if (transparentWindow)
     {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+        SDL_RenderClear(renderer);
+    }
+    else
+    {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
     }
     SDL_RenderTexture(renderer, canvas, nullptr, nullptr);
@@ -1108,6 +1141,8 @@ void Window::renderOverlayFrame()
     setLongTaskOverlaysDirtyOnly(rootComponent.get());
 
     SDL_SetRenderTarget(renderer, nullptr);
+    SDL_SetRenderViewport(renderer, nullptr);
+    SDL_SetRenderClipRect(renderer, nullptr);
     if (transparentWindow)
     {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
