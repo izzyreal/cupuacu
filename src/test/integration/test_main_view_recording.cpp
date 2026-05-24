@@ -133,7 +133,8 @@ TEST_CASE(
     cupuacu::platform::macos::setMicrophoneAccessOverrideForTesting(true);
 #endif
     cupuacu::test::StateWithTestPaths state{};
-    auto ui = cupuacu::test::integration::createSessionUi(&state, 0, true, 2);
+    auto ui = cupuacu::test::integration::createSessionUi(
+        &state, 0, true, 2, 44100, 96, 240, 180);
     auto &session = state.getActiveDocumentSession();
     auto &doc = session.document;
     auto *window = state.mainDocumentSessionWindow->getWindow();
@@ -156,4 +157,69 @@ TEST_CASE(
     REQUIRE(doc.getSample(1, 2) == Approx(-12.f));
     REQUIRE(state.waveforms.size() == 2);
     REQUIRE_FALSE(window->getDirtyRects().empty());
+}
+
+TEST_CASE(
+    "MainView integration auto-fits recording into an initially empty document and clamps zoom growth",
+    "[integration]")
+{
+#if defined(__APPLE__)
+    struct MicrophonePermissionReset
+    {
+        ~MicrophonePermissionReset()
+        {
+            cupuacu::platform::macos::resetMicrophoneAccessOverrideForTesting();
+        }
+    } microphonePermissionReset;
+    cupuacu::platform::macos::setMicrophoneAccessOverrideForTesting(true);
+#endif
+    cupuacu::test::StateWithTestPaths state{};
+    auto ui = cupuacu::test::integration::createSessionUi(&state, 0, true, 2);
+    auto &session = state.getActiveDocumentSession();
+
+    REQUIRE_FALSE(state.waveforms.empty());
+    const int waveformWidth = state.waveforms.front()->getWidth();
+    REQUIRE(waveformWidth > 0);
+
+    cupuacu::actions::record(&state);
+    state.audioDevices->drainQueue();
+    REQUIRE(state.audioDevices->isRecording());
+
+    const std::vector<float> firstChunk = {10.f, -10.f, 11.f, -11.f, 12.f, -12.f};
+    state.audioDevices->processCallbackCycle(firstChunk.data(), nullptr, 3);
+    ui.mainView->timerCallback();
+
+    REQUIRE(session.document.getFrameCount() == 3);
+    REQUIRE(state.getActiveViewState().samplesPerPixel ==
+            Approx(3.0 / static_cast<double>(waveformWidth)));
+    REQUIRE(state.getActiveViewState().sampleOffset == 0);
+
+    std::vector<float> fillChunk(static_cast<std::size_t>(waveformWidth) * 2U, 0.25f);
+    state.audioDevices->processCallbackCycle(fillChunk.data(), nullptr,
+                                             static_cast<uint32_t>(waveformWidth / 2));
+    ui.mainView->timerCallback();
+
+    REQUIRE(session.document.getFrameCount() ==
+            3 + static_cast<int64_t>(waveformWidth / 2));
+    REQUIRE(state.getActiveViewState().samplesPerPixel ==
+            Approx(static_cast<double>(session.document.getFrameCount()) /
+                   static_cast<double>(waveformWidth)));
+    REQUIRE(state.getActiveViewState().sampleOffset == 0);
+
+    const uint32_t framesPerCycle =
+        static_cast<uint32_t>(waveformWidth * 64);
+    std::vector<float> longChunk(static_cast<std::size_t>(framesPerCycle) * 2U,
+                                 0.5f);
+    for (int iteration = 0; iteration < 160; ++iteration)
+    {
+        state.audioDevices->processCallbackCycle(longChunk.data(), nullptr,
+                                                 framesPerCycle);
+        ui.mainView->timerCallback();
+        if (state.getActiveViewState().samplesPerPixel >= 500.0)
+        {
+            break;
+        }
+    }
+
+    REQUIRE(state.getActiveViewState().samplesPerPixel == Approx(500.0));
 }

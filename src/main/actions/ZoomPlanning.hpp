@@ -30,6 +30,13 @@ namespace cupuacu::actions
         int64_t sampleOffset = INITIAL_SAMPLE_OFFSET;
     };
 
+    struct RecordingFitZoomPlan
+    {
+        bool changed = false;
+        double samplesPerPixel = INITIAL_SAMPLES_PER_PIXEL;
+        int64_t sampleOffset = INITIAL_SAMPLE_OFFSET;
+    };
+
     inline double planMinSamplesPerPixel(const int waveformWidth)
     {
         if (waveformWidth <= 0)
@@ -165,6 +172,45 @@ namespace cupuacu::actions
         plan.samplesPerPixel =
             static_cast<double>(selectionLength) / waveformWidth;
         plan.sampleOffset = selectionStart;
+        return plan;
+    }
+
+    inline RecordingFitZoomPlan planRecordingZoomForStartedEmptyDocument(
+        const double currentSamplesPerPixel, const int64_t currentSampleOffset,
+        const int64_t recordedFrameCount, const int waveformWidth,
+        const double maxSamplesPerPixel)
+    {
+        RecordingFitZoomPlan plan{
+            .changed = false,
+            .samplesPerPixel = currentSamplesPerPixel,
+            .sampleOffset = currentSampleOffset,
+        };
+        if (recordedFrameCount <= 0 || waveformWidth <= 0 ||
+            maxSamplesPerPixel <= 0.0)
+        {
+            return plan;
+        }
+
+        const double uncappedSamplesPerPixel =
+            static_cast<double>(recordedFrameCount) /
+            static_cast<double>(waveformWidth);
+        const double targetSamplesPerPixel = std::clamp(
+            uncappedSamplesPerPixel, planMinSamplesPerPixel(waveformWidth),
+            maxSamplesPerPixel);
+        const int64_t targetSampleOffset =
+            uncappedSamplesPerPixel <= maxSamplesPerPixel ? 0
+                                                          : currentSampleOffset;
+
+        constexpr double epsilon = 1.0e-9;
+        if (std::abs(targetSamplesPerPixel - currentSamplesPerPixel) <= epsilon &&
+            targetSampleOffset == currentSampleOffset)
+        {
+            return plan;
+        }
+
+        plan.changed = true;
+        plan.samplesPerPixel = targetSamplesPerPixel;
+        plan.sampleOffset = targetSampleOffset;
         return plan;
     }
 } // namespace cupuacu::actions

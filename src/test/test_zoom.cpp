@@ -88,6 +88,38 @@ TEST_CASE("Zoom selection plan rejects inactive and empty selections", "[gui]")
         cupuacu::actions::planZoomSelection(true, 200, 100, 0).changed);
 }
 
+TEST_CASE("Recording zoom plan fits recorded audio into the waveform width",
+          "[gui]")
+{
+    const auto plan = cupuacu::actions::planRecordingZoomForStartedEmptyDocument(
+        1.0, 12, 300, 200, 500.0);
+
+    REQUIRE(plan.changed);
+    REQUIRE(plan.samplesPerPixel == Catch::Approx(1.5));
+    REQUIRE(plan.sampleOffset == 0);
+}
+
+TEST_CASE("Recording zoom plan clamps to the configured maximum", "[gui]")
+{
+    const auto plan = cupuacu::actions::planRecordingZoomForStartedEmptyDocument(
+        128.0, 27, 200000, 200, 500.0);
+
+    REQUIRE(plan.changed);
+    REQUIRE(plan.samplesPerPixel == Catch::Approx(500.0));
+    REQUIRE(plan.sampleOffset == 27);
+}
+
+TEST_CASE("Recording zoom plan reports unchanged when already at target",
+          "[gui]")
+{
+    const auto plan = cupuacu::actions::planRecordingZoomForStartedEmptyDocument(
+        1.5, 0, 300, 200, 500.0);
+
+    REQUIRE_FALSE(plan.changed);
+    REQUIRE(plan.samplesPerPixel == Catch::Approx(1.5));
+    REQUIRE(plan.sampleOffset == 0);
+}
+
 TEST_CASE("Duration change view policy resets zoom when restored view is wider than document",
           "[gui]")
 {

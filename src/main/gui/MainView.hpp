@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../Constants.hpp"
 #include "audio/AudioDevices.hpp"
 #include "Component.hpp"
 
@@ -69,6 +70,7 @@ namespace cupuacu::gui
             bool &channelLayoutChanged, bool &waveformCacheChanged);
         void refreshWaveformsAfterRecordedAudio(bool channelLayoutChanged,
                                                 bool waveformCacheChanged);
+        bool updateZoomForRecordingIntoStartedEmptyDocument();
         bool followTransportHead();
         int64_t getPlaybackPositionForWaveforms() const;
         void updateWaveformPlaybackPositions() const;
@@ -106,6 +108,7 @@ namespace cupuacu::gui
         SelectedChannels lastPlaybackUpdateChannels = SelectedChannels::BOTH;
         bool wasRecordingLastTick = false;
         RecordingUndoCapture recordingUndoCapture;
+        static constexpr double kRecordingFitZoomMaxSamplesPerPixel = 500.0;
 
         const uint8_t baseBorderWidth = 16;
         uint8_t computeBorderWidth() const;

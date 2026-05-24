@@ -21,6 +21,7 @@
 #include "Helpers.hpp"
 #include "Colors.hpp"
 #include "../actions/DocumentSessionPersistence.hpp"
+#include "../actions/ZoomPlanning.hpp"
 
 #include <SDL3/SDL.h>
 #include <algorithm>
@@ -326,6 +327,33 @@ void MainView::refreshWaveformsAfterRecordedAudio(
     }
 
     requestMainViewRefresh(state);
+}
+
+bool MainView::updateZoomForRecordingIntoStartedEmptyDocument()
+{
+    if (!recordingUndoCapture.active || recordingUndoCapture.oldFrameCount != 0 ||
+        recordingUndoCapture.startFrame != 0 || !waveforms)
+    {
+        return false;
+    }
+
+    auto &session = state->getActiveDocumentSession();
+    auto &viewState = state->getActiveViewState();
+    const int waveformWidth = waveforms->getWidth();
+    const auto plan = cupuacu::actions::planRecordingZoomForStartedEmptyDocument(
+        viewState.samplesPerPixel, viewState.sampleOffset,
+        session.document.getFrameCount(), waveformWidth,
+        kRecordingFitZoomMaxSamplesPerPixel);
+    if (!plan.changed)
+    {
+        return false;
+    }
+
+    viewState.samplesPerPixel = plan.samplesPerPixel;
+    updateSampleOffset(state, plan.sampleOffset);
+    refreshWaveformsAfterViewChange(state, true, true);
+    requestMainViewRefresh(state);
+    return true;
 }
 
 bool MainView::consumePendingRecordedAudio()
@@ -861,6 +889,7 @@ void MainView::timerCallback()
     auto &session = state->getActiveDocumentSession();
     auto &viewState = state->getActiveViewState();
     const bool consumedRecordedAudio = consumePendingRecordedAudio();
+    const bool adjustedRecordingZoom = updateZoomForRecordingIntoStartedEmptyDocument();
     const bool followedTransport = followTransportHead();
     const bool isRecordingNow =
         state->audioDevices && state->audioDevices->isRecording();
@@ -878,7 +907,8 @@ void MainView::timerCallback()
     }
     wasRecordingLastTick = isRecordingNow;
 
-    if (shouldRefreshMarkerBounds(consumedRecordedAudio, followedTransport,
+    if (shouldRefreshMarkerBounds(consumedRecordedAudio || adjustedRecordingZoom,
+                                  followedTransport,
                                   selectionActive, selectionStart,
                                   selectionEnd))
     {
