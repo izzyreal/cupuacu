@@ -211,27 +211,42 @@ namespace cupuacu::actions::audio
 
             try
             {
+                const cupuacu::Document::AudioSegment *inserted = nullptr;
+                std::optional<cupuacu::Document::AudioSegment> insertedOwned;
                 if (insertedHandle.empty())
                 {
                     insertedFrameCount = clip.getFrameCount();
                 }
-                const auto inserted = detail::captureOrLoadSegment(
-                    session, insertedHandle,
-                    [&]
-                    {
-                        return clip.captureSegment(
-                            0, insertedFrameCount,
-                            [&](const int64_t completed,
-                                const int64_t totalToCopy)
-                            {
-                                detail::publishCancelablePhaseProgress(
-                                    state, progressUi, "Capturing inserted audio",
-                                    0.0, 0.24, completed, totalToCopy);
-                            });
-                    });
+
+                if (!insertedHandle.empty())
+                {
+                    insertedOwned = session.undoStore.readSegment(insertedHandle);
+                    inserted = &*insertedOwned;
+                }
+                else if (const auto *clipboardSegment =
+                             clip.getWholeSegmentIfFrameCountMatches(
+                                 insertedFrameCount))
+                {
+                    progressUi.publishProgress("Capturing inserted audio", 0.24,
+                                               true);
+                    inserted = clipboardSegment;
+                }
+                else
+                {
+                    insertedOwned = clip.captureSegment(
+                        0, insertedFrameCount,
+                        [&](const int64_t completed, const int64_t totalToCopy)
+                        {
+                            detail::publishCancelablePhaseProgress(
+                                state, progressUi, "Capturing inserted audio",
+                                0.0, 0.24, completed, totalToCopy);
+                        });
+                    inserted = &*insertedOwned;
+                }
+
                 insertedHandle = detail::storeSegmentIfNeeded(
-                    session, insertedHandle, inserted, "paste-inserted");
-                insertedFrameCount = inserted.frameCount;
+                    session, insertedHandle, *inserted, "paste-inserted");
+                insertedFrameCount = inserted->frameCount;
                 overwrittenFrameCount = 0;
 
                 std::optional<cupuacu::Document::AudioSegment> overwritten;
@@ -295,7 +310,7 @@ namespace cupuacu::actions::audio
                 }();
 
                 auto replacement = buildRedoDocument(
-                    doc, before, inserted, after, std::move(markers), progressUi,
+                    doc, before, *inserted, after, std::move(markers), progressUi,
                     docFrames - overwrittenFrameCount + insertedFrameCount);
                 cupuacu::throwIfLongTaskCanceled(state);
 

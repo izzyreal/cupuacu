@@ -496,29 +496,29 @@ namespace cupuacu::persistence
     }
 
     bool saveClipboardSnapshot(const std::filesystem::path &path,
-                               const cupuacu::Document &clipboard)
+                               const cupuacu::ClipboardAudio &clipboard)
     {
-        if (path.empty() || clipboard.getChannelCount() <= 0)
+        if (path.empty() || !clipboard.hasAudio())
         {
             return false;
         }
 
         cupuacu::DocumentSession session;
-        session.document = clipboard;
+        session.document = clipboard.toDocument();
         session.clearCurrentFile();
         return saveDocumentAutosaveSnapshot(path, session);
     }
 
     bool loadClipboardSnapshot(const std::filesystem::path &path,
-                               cupuacu::Document &clipboard)
+                               cupuacu::ClipboardAudio &clipboard)
     {
         cupuacu::DocumentSession session;
         if (!loadDocumentAutosaveSnapshot(path, session))
         {
             return false;
         }
-        clipboard = std::move(session.document);
-        return clipboard.getChannelCount() > 0;
+        clipboard.assignDocument(session.document);
+        return clipboard.hasAudio();
     }
 
     void removeDocumentAutosaveSnapshot(const std::filesystem::path &path)

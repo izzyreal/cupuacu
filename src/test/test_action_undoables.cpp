@@ -43,7 +43,8 @@ namespace
         }
     }
 
-    std::vector<float> readMonoSamples(const cupuacu::Document &document)
+    template <typename AudioLike>
+    std::vector<float> readMonoSamples(const AudioLike &document)
     {
         std::vector<float> result(
             static_cast<size_t>(document.getFrameCount()));
@@ -70,7 +71,8 @@ namespace
         }
     }
 
-    std::vector<float> readChannelSamples(const cupuacu::Document &document,
+    template <typename AudioLike>
+    std::vector<float> readChannelSamples(const AudioLike &document,
                                           const int64_t channel)
     {
         std::vector<float> result(
@@ -192,7 +194,7 @@ TEST_CASE("Cut undo publishes modal long-task progress", "[actions][long-task]")
         [](const cupuacu::State::LongTaskStatus &status)
         {
             return status.active && status.title == "Undoing cut" &&
-                   status.detail == "Capturing retained audio" &&
+                   status.detail == "Restoring audio" &&
                    status.progress.has_value() &&
                    *status.progress == Catch::Approx(0.0);
         }));
@@ -201,7 +203,7 @@ TEST_CASE("Cut undo publishes modal long-task progress", "[actions][long-task]")
         [](const cupuacu::State::LongTaskStatus &status)
         {
             return status.active && status.title == "Undoing cut" &&
-                   status.detail == "Preparing restored document" &&
+                   status.detail == "Restoring audio" &&
                    status.progress.has_value() &&
                    *status.progress >= 0.6;
         }));
@@ -238,7 +240,7 @@ TEST_CASE("Canceling cut before commit leaves document, clipboard, and undo stat
     {
         if (!cancelRequested && status.active &&
             status.title == "Cutting audio" &&
-            status.detail == "Writing clipboard")
+            status.detail == "Capturing selection")
         {
             cancelRequested = true;
             cupuacu::requestLongTaskCancel(&state);

@@ -39,7 +39,8 @@ namespace
         }
     }
 
-    std::vector<float> readMonoSamples(const cupuacu::Document &document)
+    template <typename AudioLike>
+    std::vector<float> readMonoSamples(const AudioLike &document)
     {
         std::vector<float> result(
             static_cast<std::size_t>(document.getFrameCount()));

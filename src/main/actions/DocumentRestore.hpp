@@ -353,7 +353,7 @@ namespace cupuacu::actions
             persistedRecentFiles, persistedSessionState);
             state->recentFiles = plan.recentFiles;
         state->snapEnabled = persistedSessionState.snapEnabled;
-        state->clipboard = cupuacu::Document{};
+        state->clipboard.clear();
         if (!persistedSessionState.clipboardSnapshotPath.empty())
         {
             if (!cupuacu::persistence::loadClipboardSnapshot(

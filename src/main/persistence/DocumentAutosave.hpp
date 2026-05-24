@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../ClipboardAudio.hpp"
 #include "../DocumentSession.hpp"
 
 #include <filesystem>
@@ -27,10 +28,10 @@ namespace cupuacu::persistence
         const DocumentAutosaveLoadCancelCheck &isCanceled);
 
     bool saveClipboardSnapshot(const std::filesystem::path &path,
-                               const cupuacu::Document &clipboard);
+                               const cupuacu::ClipboardAudio &clipboard);
 
     bool loadClipboardSnapshot(const std::filesystem::path &path,
-                               cupuacu::Document &clipboard);
+                               cupuacu::ClipboardAudio &clipboard);
 
     void removeDocumentAutosaveSnapshot(const std::filesystem::path &path);
 

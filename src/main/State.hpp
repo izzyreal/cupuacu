@@ -2,6 +2,7 @@
 
 #include <SDL3/SDL.h>
 
+#include "ClipboardAudio.hpp"
 #include "gui/Selection.hpp"
 
 #include "SelectedChannels.hpp"
@@ -162,7 +163,7 @@ namespace cupuacu
         uint64_t playbackRangeEnd = 0;
         std::vector<DocumentTab> tabs{DocumentTab{}};
         int activeTabIndex = 0;
-        Document clipboard;
+        ClipboardAudio clipboard;
         effects::EffectSettings effectSettings;
         std::vector<std::string> recentFiles;
 
