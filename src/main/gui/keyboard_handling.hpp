@@ -2,6 +2,7 @@
 #include "../State.hpp"
 #include "audio/AudioDevices.hpp"
 #include "Waveform.hpp"
+#include "WaveformsUnderlayPlanning.hpp"
 #include "WaveformRefresh.hpp"
 #include "OptionsWindow.hpp"
 #include "Window.hpp"
@@ -24,6 +25,32 @@ namespace cupuacu::gui
     static void updateWaveforms(State *state)
     {
         refreshWaveforms(state, true, true);
+    }
+
+    static bool selectVisibleWaveformRange(State *state)
+    {
+        if (!state)
+        {
+            return false;
+        }
+
+        auto &session = state->getActiveDocumentSession();
+        auto &viewState = state->getActiveViewState();
+        double startSample = 0.0;
+        double endSample = 0.0;
+        if (!planWaveformsUnderlayVisibleRangeSelection(
+                session.document.getFrameCount(), viewState.sampleOffset,
+                viewState.samplesPerPixel, Waveform::getWaveformWidth(state),
+                startSample, endSample))
+        {
+            return false;
+        }
+
+        session.selection.setValue1(startSample);
+        session.selection.setValue2(endSample);
+        viewState.selectedChannels = BOTH;
+        Waveform::setAllWaveformsDirty(state);
+        return true;
     }
 
     static void handleKeyDown(SDL_Event *event, State *state)
@@ -120,6 +147,13 @@ namespace cupuacu::gui
             }
 
             if (actions::tryZoomSelection(state))
+            {
+                updateWaveforms(state);
+            }
+        }
+        else if (event->key.scancode == SDL_SCANCODE_A)
+        {
+            if (primaryModifierHeld && selectVisibleWaveformRange(state))
             {
                 updateWaveforms(state);
             }

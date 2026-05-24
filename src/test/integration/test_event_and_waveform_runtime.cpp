@@ -522,6 +522,38 @@ TEST_CASE("Keyboard integration applies zoom and pixel scale shortcuts",
             Catch::Approx(samplesPerPixelBeforeScale));
 }
 
+TEST_CASE("Keyboard integration selects the visible waveform range on Cmd/Ctrl+A",
+          "[integration]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    createBuiltSessionUi(&state, 4096, 44100, 2, 800, 400);
+    auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
+    prepareBuiltMainWindow(mainWindow, 800, 400);
+
+    auto &session = state.getActiveDocumentSession();
+    auto &viewState = state.getActiveViewState();
+    viewState.samplesPerPixel = 4.0;
+    viewState.sampleOffset = 160;
+    viewState.selectedChannels = cupuacu::SelectedChannels::LEFT;
+    session.selection.reset();
+
+    SDL_Event event{};
+    event.type = SDL_EVENT_KEY_DOWN;
+    event.key.scancode = SDL_SCANCODE_A;
+#if __APPLE__
+    event.key.mod = SDL_KMOD_GUI;
+#else
+    event.key.mod = SDL_KMOD_CTRL;
+#endif
+
+    cupuacu::gui::handleKeyDown(&event, &state);
+
+    REQUIRE(session.selection.isActive());
+    REQUIRE(session.selection.getStartInt() == 160);
+    REQUIRE(session.selection.getEndExclusiveInt() == 3360);
+    REQUIRE(viewState.selectedChannels == cupuacu::SelectedChannels::BOTH);
+}
+
 TEST_CASE("Keyboard integration opens new file dialog and closes the active tab",
           "[integration]")
 {

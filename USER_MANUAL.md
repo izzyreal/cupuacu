@@ -194,6 +194,7 @@ App-wide shortcuts:
 - `Cmd/Ctrl + W`: close the current file
 - `Cmd/Ctrl + S`: overwrite the current file
 - `Cmd/Ctrl + Shift + S`: save as
+- `Cmd/Ctrl + A`: select the visible waveform range across all channels
 - `Cmd/Ctrl + Z`: undo
 - `Cmd/Ctrl + Shift + Z`: redo
 - `Cmd/Ctrl + X`: cut the current selection
