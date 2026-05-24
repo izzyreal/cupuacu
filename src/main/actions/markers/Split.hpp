@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../MutationAvailability.hpp"
 #include "../DocumentLifecycle.hpp"
 
 #include <algorithm>
@@ -17,7 +18,7 @@ namespace cupuacu::actions::markers
 
     inline bool splitByMarkers(State *state)
     {
-        if (!state)
+        if (!state || !cupuacu::actions::isDocumentMutationAvailable(state))
         {
             return false;
         }

@@ -3,6 +3,7 @@
 #include "EffectTargeting.hpp"
 
 #include "../LongTask.hpp"
+#include "actions/MutationAvailability.hpp"
 #include "actions/Undoable.hpp"
 #include "actions/audio/SegmentStore.hpp"
 #include "actions/audio/TransactionalAudioEdit.hpp"
@@ -309,6 +310,7 @@ namespace cupuacu::effects
     inline void performMakeSilent(cupuacu::State *state)
     {
         if (!state ||
+            !cupuacu::actions::isDocumentMutationAvailable(state) ||
             !state->getActiveDocumentSession().selection.isActive())
         {
             return;

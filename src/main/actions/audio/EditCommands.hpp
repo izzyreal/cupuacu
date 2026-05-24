@@ -5,6 +5,7 @@
 #include "Paste.hpp"
 #include "Trim.hpp"
 
+#include "../MutationAvailability.hpp"
 #include "State.hpp"
 
 #include <cstdint>
@@ -27,6 +28,33 @@ namespace cupuacu::actions::audio
     inline bool hasActiveSelection(const cupuacu::State *state)
     {
         return state && state->getActiveDocumentSession().selection.isActive();
+    }
+
+    inline cupuacu::actions::ActionAvailability
+    describeSelectionEditAvailability(const cupuacu::State *state)
+    {
+        if (!hasActiveSelection(state))
+        {
+            return cupuacu::actions::unavailableAction("No selection is active");
+        }
+
+        return cupuacu::actions::combineAvailability(
+            cupuacu::actions::availableAction(),
+            cupuacu::actions::describeDocumentMutationAvailability(state));
+    }
+
+    inline cupuacu::actions::ActionAvailability
+    describePasteAvailability(const cupuacu::State *state)
+    {
+        if (!state || state->clipboard.getFrameCount() <= 0)
+        {
+            return cupuacu::actions::unavailableAction(
+                "Clipboard does not contain audio");
+        }
+
+        return cupuacu::actions::combineAvailability(
+            cupuacu::actions::availableAction(),
+            cupuacu::actions::describeDocumentMutationAvailability(state));
     }
 
     inline SelectionTarget selectionTarget(const cupuacu::State *state)
@@ -65,7 +93,7 @@ namespace cupuacu::actions::audio
 
     inline void performCut(cupuacu::State *state)
     {
-        if (!hasActiveSelection(state))
+        if (!describeSelectionEditAvailability(state).available)
         {
             return;
         }
@@ -91,7 +119,7 @@ namespace cupuacu::actions::audio
 
     inline void performTrim(cupuacu::State *state)
     {
-        if (!hasActiveSelection(state))
+        if (!describeSelectionEditAvailability(state).available)
         {
             return;
         }
@@ -104,7 +132,7 @@ namespace cupuacu::actions::audio
 
     inline void performPaste(cupuacu::State *state)
     {
-        if (!state)
+        if (!describePasteAvailability(state).available)
         {
             return;
         }
@@ -119,6 +147,10 @@ namespace cupuacu::actions::audio
                                      const int64_t frameCount)
     {
         if (!state || frameCount <= 0)
+        {
+            return;
+        }
+        if (!cupuacu::actions::isDocumentMutationAvailable(state))
         {
             return;
         }

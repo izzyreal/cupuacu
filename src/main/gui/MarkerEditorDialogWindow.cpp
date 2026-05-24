@@ -1,5 +1,6 @@
 #include "MarkerEditorDialogWindow.hpp"
 
+#include "../actions/MutationAvailability.hpp"
 #include "../actions/markers/EditCommands.hpp"
 
 #include "Colors.hpp"
@@ -420,6 +421,10 @@ namespace cupuacu::gui
             return;
         }
         if (!selectedMarkerId.has_value())
+        {
+            return;
+        }
+        if (!cupuacu::actions::isDocumentMutationAvailable(state))
         {
             return;
         }

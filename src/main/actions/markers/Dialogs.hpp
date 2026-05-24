@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../State.hpp"
+#include "../MutationAvailability.hpp"
 #include "EditCommands.hpp"
 #include "../../gui/MarkerEditorDialogWindow.hpp"
 
@@ -42,7 +43,7 @@ namespace cupuacu::actions::markers
         State *state,
         const std::optional<uint64_t> preferredMarkerId = std::nullopt)
     {
-        if (!state)
+        if (!state || !cupuacu::actions::isDocumentMutationAvailable(state))
         {
             return;
         }

@@ -25,6 +25,7 @@
 #include "actions/ShowOpenFileDialog.hpp"
 #include "actions/io/BackgroundOpen.hpp"
 #include "actions/io/BackgroundSave.hpp"
+#include "actions/MutationAvailability.hpp"
 #include "actions/Save.hpp"
 #include "actions/audio/Copy.hpp"
 #include "actions/audio/Trim.hpp"
@@ -303,10 +304,18 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
                 state->generateSilenceDialogWindow->raise();
             }
         });
-    generateMenu->setIsAvailable(
+    generateMenu->setAvailability(
         [&]
         {
-            return actions::hasActiveDocument(state);
+            if (!actions::hasActiveDocument(state))
+            {
+                return MenuAvailability{.available = false,
+                                        .unavailableReason =
+                                            "No document is open"};
+            }
+
+            return menuAvailabilityFromActionAvailability(
+                actions::describeDocumentMutationAvailability(state));
         });
 
     std::function<std::string()> undoMenuNameGetter = [&]
@@ -319,10 +328,18 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
                                          {
                                              state->undo();
                                          });
-    undoMenu->setIsAvailable(
+    undoMenu->setAvailability(
         [&]
         {
-            return state->canUndo();
+            if (!state->canUndo())
+            {
+                return MenuAvailability{.available = false,
+                                        .unavailableReason =
+                                            "There is nothing to undo"};
+            }
+
+            return menuAvailabilityFromActionAvailability(
+                actions::describeDocumentMutationAvailability(state));
         });
 
     std::function<std::string()> redoMenuNameGetter = [&]
@@ -335,10 +352,18 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
                                          {
                                              state->redo();
                                          });
-    redoMenu->setIsAvailable(
+    redoMenu->setAvailability(
         [&]
         {
-            return state->canRedo();
+            if (!state->canRedo())
+            {
+                return MenuAvailability{.available = false,
+                                        .unavailableReason =
+                                            "There is nothing to redo"};
+            }
+
+            return menuAvailabilityFromActionAvailability(
+                actions::describeDocumentMutationAvailability(state));
         });
 
     logoData = get_resource_data("cupuacu-logo1.bmp");
@@ -351,10 +376,10 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
                                          {
                                              actions::audio::performTrim(state);
                                          });
-    trimMenu->setIsAvailable(
+    trimMenu->setAvailability(
         [&]
         {
-            return isSelectionEditAvailable(state);
+            return describeSelectionEditAvailability(state);
         });
 
     auto cutMenu = editMenu->addSubMenu(state, cutText,
@@ -362,10 +387,10 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
                                         {
                                             actions::audio::performCut(state);
                                         });
-    cutMenu->setIsAvailable(
+    cutMenu->setAvailability(
         [&]
         {
-            return isSelectionEditAvailable(state);
+            return describeSelectionEditAvailability(state);
         });
 
     auto copyMenu = editMenu->addSubMenu(state, copyText,
@@ -385,10 +410,10 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
                              {
                                  actions::audio::performPaste(state);
                              });
-    pasteMenu->setIsAvailable(
+    pasteMenu->setAvailability(
         [&]
         {
-            return isPasteAvailable(state);
+            return describePasteAvailability(state);
         });
 
     auto *insertMarkerMenu = editMenu->addSubMenu(
@@ -397,10 +422,18 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
         {
             actions::markers::insertMarkerAtCursor(state);
         });
-    insertMarkerMenu->setIsAvailable(
+    insertMarkerMenu->setAvailability(
         [&]
         {
-            return actions::hasActiveDocument(state);
+            if (!actions::hasActiveDocument(state))
+            {
+                return MenuAvailability{.available = false,
+                                        .unavailableReason =
+                                            "No document is open"};
+            }
+
+            return menuAvailabilityFromActionAvailability(
+                actions::describeDocumentMutationAvailability(state));
         });
 
     auto *editMarkersMenu = editMenu->addSubMenu(
@@ -409,10 +442,18 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
         {
             actions::markers::showMarkerEditorDialog(state);
         });
-    editMarkersMenu->setIsAvailable(
+    editMarkersMenu->setAvailability(
         [&]
         {
-            return actions::hasActiveDocument(state);
+            if (!actions::hasActiveDocument(state))
+            {
+                return MenuAvailability{.available = false,
+                                        .unavailableReason =
+                                            "No document is open"};
+            }
+
+            return menuAvailabilityFromActionAvailability(
+                actions::describeDocumentMutationAvailability(state));
         });
 
     auto *splitByMarkersMenu = editMenu->addSubMenu(
@@ -421,29 +462,57 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
         {
             actions::markers::splitByMarkers(state);
         });
-    splitByMarkersMenu->setIsAvailable(
+    splitByMarkersMenu->setAvailability(
         [&]
         {
             const auto &document = state->getActiveDocumentSession().document;
-            return actions::hasActiveDocument(state) &&
-                   document.getMarkers().size() >= 2;
+            if (!actions::hasActiveDocument(state))
+            {
+                return MenuAvailability{.available = false,
+                                        .unavailableReason =
+                                            "No document is open"};
+            }
+            if (document.getMarkers().size() < 2)
+            {
+                return MenuAvailability{
+                    .available = false,
+                    .unavailableReason =
+                        "At least two markers are required"};
+            }
+
+            return menuAvailabilityFromActionAvailability(
+                actions::describeDocumentMutationAvailability(state));
         });
 
-    effectsMenu->addSubMenu(state, "Reverse",
-                            [&]
-                            {
-                                effects::performReverse(state);
-                            });
+    auto *reverseMenu = effectsMenu->addSubMenu(
+        state, "Reverse",
+        [&]
+        {
+            effects::performReverse(state);
+        });
+    reverseMenu->setAvailability(
+        [&]
+        {
+            if (!actions::hasActiveDocument(state))
+            {
+                return MenuAvailability{.available = false,
+                                        .unavailableReason =
+                                            "No document is open"};
+            }
+
+            return menuAvailabilityFromActionAvailability(
+                actions::describeDocumentMutationAvailability(state));
+        });
     auto *makeSilentMenu = effectsMenu->addSubMenu(
         state, "Make silent",
         [&]
         {
             effects::performMakeSilent(state);
         });
-    makeSilentMenu->setIsAvailable(
+    makeSilentMenu->setAvailability(
         [&]
         {
-            return actions::audio::hasActiveSelection(state);
+            return describeSelectionEditAvailability(state);
         });
     effectsMenu->addSubMenu(state, "Amplify/Fade",
                             [&]
@@ -502,10 +571,18 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
                 state->removeSilenceDialog->raise();
             }
         });
-    effectsMenu->setIsAvailable(
+    effectsMenu->setAvailability(
         [&]
         {
-            return actions::hasActiveDocument(state);
+            if (!actions::hasActiveDocument(state))
+            {
+                return MenuAvailability{.available = false,
+                                        .unavailableReason =
+                                            "No document is open"};
+            }
+
+            return menuAvailabilityFromActionAvailability(
+                actions::describeDocumentMutationAvailability(state));
         });
 
     optionsMenu->addSubMenu(state, allOptionsText,

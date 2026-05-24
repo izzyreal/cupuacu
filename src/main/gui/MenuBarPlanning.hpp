@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../actions/audio/EditCommands.hpp"
 #include "../actions/DocumentLifecycle.hpp"
 #include "../file/MarkerPersistence.hpp"
 #include "../file/SaveWritePlan.hpp"
@@ -313,13 +314,34 @@ namespace cupuacu::gui
                     plan.preservationUnavailableReason.value_or("")};
     }
 
+    inline MenuAvailability
+    menuAvailabilityFromActionAvailability(
+        const cupuacu::actions::ActionAvailability &availability)
+    {
+        return {.available = availability.available,
+                .unavailableReason = availability.unavailableReason};
+    }
+
+    inline MenuAvailability
+    describeSelectionEditAvailability(const cupuacu::State *state)
+    {
+        return menuAvailabilityFromActionAvailability(
+            cupuacu::actions::audio::describeSelectionEditAvailability(state));
+    }
+
     inline bool isSelectionEditAvailable(const cupuacu::State *state)
     {
-        return state->getActiveDocumentSession().selection.isActive();
+        return describeSelectionEditAvailability(state).available;
+    }
+
+    inline MenuAvailability describePasteAvailability(const cupuacu::State *state)
+    {
+        return menuAvailabilityFromActionAvailability(
+            cupuacu::actions::audio::describePasteAvailability(state));
     }
 
     inline bool isPasteAvailable(const cupuacu::State *state)
     {
-        return state->clipboard.getFrameCount() > 0;
+        return describePasteAvailability(state).available;
     }
 } // namespace cupuacu::gui

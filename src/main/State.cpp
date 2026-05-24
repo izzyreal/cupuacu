@@ -11,6 +11,7 @@
 #include "gui/MarkerEditorDialogWindow.hpp"
 #include "gui/NewFileDialogWindow.hpp"
 #include "gui/OptionsWindow.hpp"
+#include "actions/MutationAvailability.hpp"
 #include "actions/effects/BackgroundEffect.hpp"
 #include "actions/io/BackgroundOpen.hpp"
 #include "actions/io/BackgroundSave.hpp"
@@ -175,6 +176,11 @@ void cupuacu::State::addAndDoUndoable(
 
 void cupuacu::State::undo()
 {
+    if (!cupuacu::actions::isDocumentMutationAvailable(this))
+    {
+        return;
+    }
+
     auto &undoables = getActiveUndoables();
     auto &redoables = getActiveRedoables();
     if (undoables.empty())
@@ -201,6 +207,11 @@ void cupuacu::State::undo()
 
 void cupuacu::State::redo()
 {
+    if (!cupuacu::actions::isDocumentMutationAvailable(this))
+    {
+        return;
+    }
+
     auto &undoables = getActiveUndoables();
     auto &redoables = getActiveRedoables();
     if (redoables.empty())

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../Undoable.hpp"
+#include "../MutationAvailability.hpp"
 #include "../../Document.hpp"
 #include "../../State.hpp"
 #include "../../file/OverwritePreservationMutation.hpp"
@@ -258,7 +259,7 @@ namespace cupuacu::actions::markers
 
     inline uint64_t insertMarkerAtCursor(State *state)
     {
-        if (!state)
+        if (!state || !cupuacu::actions::isDocumentMutationAvailable(state))
         {
             return 0;
         }
@@ -292,7 +293,7 @@ namespace cupuacu::actions::markers
         State *state, const uint64_t markerId,
         const std::optional<uint64_t> nextSelectedMarkerId = std::nullopt)
     {
-        if (!state)
+        if (!state || !cupuacu::actions::isDocumentMutationAvailable(state))
         {
             return;
         }

@@ -1,5 +1,6 @@
 #include "BackgroundEffect.hpp"
 
+#include "../MutationAvailability.hpp"
 #include "../../LongTask.hpp"
 #include "../../effects/AmplifyFadeEffect.hpp"
 #include "../../effects/AmplifyEnvelopeEffect.hpp"
@@ -58,7 +59,8 @@ namespace cupuacu::actions::effects
         {
             return state != nullptr && !state->backgroundOpenJob &&
                    !state->backgroundSaveJob && !state->backgroundEffectJob &&
-                   !state->longTask.active;
+                   !state->longTask.active &&
+                   cupuacu::actions::isDocumentMutationAvailable(state);
         }
 
         void startBackgroundEffect(cupuacu::State *state,
