@@ -2,6 +2,8 @@
 
 #include "../../DocumentSession.hpp"
 #include "../../LongTask.hpp"
+#include "../../gui/MainViewAccess.hpp"
+#include "../../gui/WaveformRefresh.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -120,6 +122,9 @@ namespace cupuacu::actions::audio::detail
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
         }
+        cupuacu::gui::Waveform::invalidateAllRenderingCaches(state);
+        cupuacu::gui::refreshWaveforms(state, true, true);
+        cupuacu::gui::requestMainViewRefresh(state);
         progressUi.publishProgress(completedDetail, 1.0, true);
     }
 } // namespace cupuacu::actions::audio::detail

@@ -61,6 +61,24 @@ namespace cupuacu::gui
             }
         }
 
+        static void invalidateAllRenderingCaches(State *state)
+        {
+            if (!state)
+            {
+                return;
+            }
+
+            for (auto *waveform : state->waveforms)
+            {
+                if (!waveform)
+                {
+                    continue;
+                }
+                waveform->invalidateBaseTexture();
+                waveform->clearProgressiveBlockBuildGeometry();
+            }
+        }
+
         static void applyAllPendingCacheUpdates(State *state)
         {
             if (!state)

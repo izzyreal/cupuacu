@@ -1652,6 +1652,26 @@ TEST_CASE("Empty stereo document click keeps triangle markers hidden",
     REQUIRE(state.getActiveDocumentSession().cursor == 0);
 }
 
+TEST_CASE("Cut integration marks the waveform view dirty after cutting the full document",
+          "[integration]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    createBuiltSessionUi(&state, 16, 44100, 2, 800, 400);
+
+    auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
+    prepareBuiltMainWindow(mainWindow, 800, 400);
+    REQUIRE(mainWindow != nullptr);
+
+    auto &session = state.getActiveDocumentSession();
+    session.selection.setValue1(0.0);
+    session.selection.setValue2(16.0);
+
+    cupuacu::actions::audio::performCut(&state);
+
+    REQUIRE(session.document.getFrameCount() == 0);
+    REQUIRE_FALSE(mainWindow->getDirtyRects().empty());
+}
+
 TEST_CASE("Mono waveform integration keeps channel selection unified across the full height",
           "[integration]")
 {

@@ -277,6 +277,7 @@ namespace cupuacu
         }
         state->longTask = std::move(previousStatus);
         notifyLongTaskObserver(state);
-        refreshLongTaskUi(state, renderOnEnd);
+        const bool shouldRenderOnEnd = renderOnEnd || !state->longTask.active;
+        refreshLongTaskUi(state, shouldRenderOnEnd);
     }
 } // namespace cupuacu
