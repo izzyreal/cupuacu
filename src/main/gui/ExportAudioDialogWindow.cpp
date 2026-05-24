@@ -1,6 +1,7 @@
 #include "ExportAudioDialogWindow.hpp"
 
 #include "../State.hpp"
+#include "../actions/ExportAudioDialogSettings.hpp"
 #include "../actions/ShowSaveFileDialog.hpp"
 
 #include "Colors.hpp"
@@ -12,6 +13,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -123,6 +125,7 @@ namespace cupuacu::gui
         {
             if (const auto settings = selectedSettings(); settings.has_value())
             {
+                persistCurrentSelectionIfAny();
                 actions::showSaveFileDialog(state, *settings);
                 requestClose();
             }
@@ -136,6 +139,10 @@ namespace cupuacu::gui
         refreshBitrateModeItems();
         refreshBitrateItems();
         refreshQualityItems();
+        if (const auto settings = initialSettings(); settings.has_value())
+        {
+            applySettingsSelection(*settings);
+        }
         refreshAdvancedControlVisibility();
         refreshDetailsLabel();
 
@@ -165,6 +172,7 @@ namespace cupuacu::gui
 
     void ExportAudioDialogWindow::requestClose()
     {
+        persistCurrentSelectionIfAny();
         if (!window || !window->isOpen())
         {
             detachFromState();
@@ -182,6 +190,15 @@ namespace cupuacu::gui
         }
 
         detachSecondaryWindow(state, window.get());
+    }
+
+    void ExportAudioDialogWindow::persistCurrentSelectionIfAny() const
+    {
+        if (const auto settings = selectedSettings(); settings.has_value())
+        {
+            actions::rememberLastUsedExportAudioDialogSettings(state,
+                                                               *settings);
+        }
     }
 
     void ExportAudioDialogWindow::layoutComponents() const
@@ -269,6 +286,143 @@ namespace cupuacu::gui
 
         containerDropdown->setItems(items);
         containerDropdown->setSelectedIndex(items.empty() ? -1 : 0);
+    }
+
+    std::optional<file::AudioExportSettings>
+    ExportAudioDialogWindow::initialSettings() const
+    {
+        return actions::preferredExportAudioDialogSettings(state);
+    }
+
+    void ExportAudioDialogWindow::applySettingsSelection(
+        const file::AudioExportSettings &settings)
+    {
+        if (!containerDropdown || !codecDropdown || !encodingDropdown ||
+            !bitrateModeDropdown || !bitrateDropdown || !qualityDropdown)
+        {
+            return;
+        }
+
+        std::vector<std::string> containers;
+        for (const auto &format : availableFormats)
+        {
+            if (std::find(containers.begin(), containers.end(),
+                          format.containerLabel) == containers.end())
+            {
+                containers.push_back(format.containerLabel);
+            }
+        }
+
+        const auto containerIt = std::find_if(
+            containers.begin(), containers.end(),
+            [&](const std::string &label)
+            {
+                return label == settings.containerLabel;
+            });
+        if (containerIt == containers.end())
+        {
+            return;
+        }
+
+        containerDropdown->setSelectedIndex(
+            static_cast<int>(std::distance(containers.begin(), containerIt)));
+        refreshCodecItems();
+
+        const auto formats = currentContainerFormats();
+        const auto formatIt = std::find_if(
+            formats.begin(), formats.end(),
+            [&](const file::AudioExportFormatOption *format)
+            {
+                return format &&
+                       format->codec == settings.codec &&
+                       format->majorFormat == settings.majorFormat;
+            });
+        if (formatIt == formats.end())
+        {
+            refreshEncodingItems();
+            refreshBitrateModeItems();
+            refreshBitrateItems();
+            refreshQualityItems();
+            return;
+        }
+
+        codecDropdown->setSelectedIndex(
+            static_cast<int>(std::distance(formats.begin(), formatIt)));
+        refreshEncodingItems();
+
+        if (const auto *format = selectedFormatOption())
+        {
+            const auto encodingIt = std::find_if(
+                format->encodings.begin(), format->encodings.end(),
+                [&](const file::AudioExportEncoding &encoding)
+                {
+                    return encoding.subtype == settings.subtype;
+                });
+            if (encodingIt != format->encodings.end())
+            {
+                encodingDropdown->setSelectedIndex(static_cast<int>(
+                    std::distance(format->encodings.begin(), encodingIt)));
+            }
+        }
+
+        refreshBitrateModeItems();
+        if (settings.bitrateMode.has_value())
+        {
+            const auto bitrateModes =
+                file::bitrateModeOptionsForCodec(settings.codec);
+            const auto modeIt = std::find_if(
+                bitrateModes.begin(), bitrateModes.end(),
+                [&](const file::AudioExportNamedIntOption &option)
+                {
+                    return option.value == *settings.bitrateMode;
+                });
+            if (modeIt != bitrateModes.end())
+            {
+                bitrateModeDropdown->setSelectedIndex(static_cast<int>(
+                    std::distance(bitrateModes.begin(), modeIt)));
+            }
+        }
+
+        refreshBitrateItems();
+        if (settings.bitrateKbps.has_value())
+        {
+            const auto bitrateOptions = file::bitrateOptionsForSettings(
+                *selectedSettings(),
+                state->getActiveDocumentSession().document.getSampleRate());
+            const auto bitrateIt = std::find_if(
+                bitrateOptions.begin(), bitrateOptions.end(),
+                [&](const file::AudioExportNamedIntOption &option)
+                {
+                    return option.value == *settings.bitrateKbps;
+                });
+            if (bitrateIt != bitrateOptions.end())
+            {
+                bitrateDropdown->setSelectedIndex(static_cast<int>(
+                    std::distance(bitrateOptions.begin(), bitrateIt)));
+            }
+        }
+
+        refreshQualityItems();
+        if (settings.compressionLevel.has_value())
+        {
+            const auto qualityOptions =
+                file::compressionLevelOptionsForCodec(settings.codec);
+            const auto qualityIt = std::find_if(
+                qualityOptions.begin(), qualityOptions.end(),
+                [&](const file::AudioExportNamedDoubleOption &option)
+                {
+                    return std::abs(option.value - *settings.compressionLevel) <
+                           1e-9;
+                });
+            if (qualityIt != qualityOptions.end())
+            {
+                qualityDropdown->setSelectedIndex(static_cast<int>(
+                    std::distance(qualityOptions.begin(), qualityIt)));
+            }
+        }
+
+        refreshBitrateItems();
+        refreshQualityItems();
     }
 
     std::vector<const file::AudioExportFormatOption *>
@@ -552,6 +706,12 @@ namespace cupuacu::gui
         }
 
         return settings;
+    }
+
+    std::optional<file::AudioExportSettings>
+    ExportAudioDialogWindow::getSelectedSettings() const
+    {
+        return selectedSettings();
     }
 
     void ExportAudioDialogWindow::refreshDetailsLabel()

@@ -23,6 +23,7 @@ namespace cupuacu::gui
 
         bool isOpen() const;
         void raise() const;
+        std::optional<file::AudioExportSettings> getSelectedSettings() const;
         Window *getWindow() const
         {
             return window.get();
@@ -49,6 +50,7 @@ namespace cupuacu::gui
         TextButton *cancelButton = nullptr;
         TextButton *nextButton = nullptr;
 
+        void persistCurrentSelectionIfAny() const;
         void requestClose();
         void detachFromState();
         void layoutComponents() const;
@@ -60,6 +62,8 @@ namespace cupuacu::gui
         void refreshQualityItems();
         void refreshAdvancedControlVisibility();
         void refreshDetailsLabel();
+        std::optional<file::AudioExportSettings> initialSettings() const;
+        void applySettingsSelection(const file::AudioExportSettings &settings);
         std::vector<const file::AudioExportFormatOption *>
         currentContainerFormats() const;
         const file::AudioExportFormatOption *selectedFormatOption() const;

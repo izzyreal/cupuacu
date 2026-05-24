@@ -30,6 +30,7 @@ namespace cupuacu
         std::string title;
         DocumentSession session;
         gui::EditorViewState viewState{};
+        std::optional<file::AudioExportSettings> lastExportAudioDialogSettings;
         std::deque<std::shared_ptr<actions::Undoable>> undoables;
         std::deque<std::shared_ptr<actions::Undoable>> redoables;
     };

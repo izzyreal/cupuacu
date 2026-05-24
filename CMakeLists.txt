@@ -234,6 +234,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_audio_device_properties_persistence.cpp
     src/test/test_display_properties_persistence.cpp
     src/test/test_document_autosave.cpp
+    src/test/test_export_audio_dialog_settings.cpp
     src/test/test_recent_files_persistence.cpp
     src/test/test_document_tabs.cpp
     src/test/test_document_markers.cpp
