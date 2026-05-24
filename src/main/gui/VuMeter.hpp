@@ -20,6 +20,12 @@ namespace cupuacu::gui
 {
     class VuMeter : public Component
     {
+        struct PendingDisplayFrame
+        {
+            float peak = 0.0f;
+            float rms = 0.0f;
+        };
+
     public:
         explicit VuMeter(State *state)
             : Component(state, "VuMeter"), numChannels(1)
@@ -44,6 +50,8 @@ namespace cupuacu::gui
             }
 
             meterModel.setNumChannels(numChannels);
+            pendingFrames.assign(std::max(0, numChannels), {});
+            channelDisplays.assign(std::max(0, numChannels), {});
         }
 
         void setPeaksPushed()
@@ -78,26 +86,12 @@ namespace cupuacu::gui
 
             for (int ch = 0; ch < numChannels; ++ch)
             {
-                float peak = 0.0f;
-                float rms = 0.0f;
-                audio::MeterFrame val;
-
-                while (peakQueues[ch].try_dequeue(val))
-                {
-                    peak = std::max(peak, val.peak);
-                    rms = std::max(rms, val.rms);
-                }
-
-                const auto display = meterModel.advanceChannel(
-                    ch, {.peak = peak, .rms = rms},
-                    isDecaying.load(std::memory_order_relaxed));
-
                 SDL_Rect barRect = fullBounds;
                 barRect.y += ch * barSpacing + border;
                 barRect.h = barSpacing - 2 * border;
                 barRect.w = fullBounds.w - 2 * border;
                 const int filledWidth =
-                    static_cast<int>(display.level * barRect.w);
+                    static_cast<int>(channelDisplays[ch].level * barRect.w);
 
                 for (int x = 0; x < filledWidth; ++x)
                 {
@@ -142,7 +136,7 @@ namespace cupuacu::gui
                     Helpers::fillRect(renderer, pixelRect, color);
                 }
                 const int holdX = std::clamp(
-                    static_cast<int>(display.hold * barRect.w), 0,
+                    static_cast<int>(channelDisplays[ch].hold * barRect.w), 0,
                     std::max(0, barRect.w - 1));
                 const SDL_Rect peakLine = {barRect.x + holdX, barRect.y, 1,
                                            barRect.h};
@@ -171,6 +165,26 @@ namespace cupuacu::gui
             if (peaksPushed.load(std::memory_order_relaxed) ||
                 isDecaying.load(std::memory_order_relaxed))
             {
+                const auto scale =
+                    state ? state->vuMeterScale : VuMeterScale::PeakDbfs;
+                meterModel.setScale(scale);
+                for (int ch = 0; ch < numChannels; ++ch)
+                {
+                    float peak = 0.0f;
+                    float rms = 0.0f;
+                    audio::MeterFrame val;
+                    while (peakQueues[ch].try_dequeue(val))
+                    {
+                        peak = std::max(peak, val.peak);
+                        rms = std::max(rms, val.rms);
+                    }
+                    pendingFrames[ch] = {.peak = peak, .rms = rms};
+                    channelDisplays[ch] = meterModel.advanceChannel(
+                        ch, {.peak = pendingFrames[ch].peak,
+                             .rms = pendingFrames[ch].rms},
+                        isDecaying.load(std::memory_order_relaxed));
+                }
+
                 peaksPushed.store(false, std::memory_order_relaxed);
                 setDirty();
             }
@@ -181,6 +195,8 @@ namespace cupuacu::gui
         std::atomic<bool> isDecaying{false};
         int numChannels;
         std::vector<ReaderWriterQueue<audio::MeterFrame>> peakQueues;
+        std::vector<PendingDisplayFrame> pendingFrames;
+        std::vector<VuMeterChannelDisplay> channelDisplays;
         VuMeterModel meterModel;
     };
 } // namespace cupuacu::gui
