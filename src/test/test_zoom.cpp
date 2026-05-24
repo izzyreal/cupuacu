@@ -23,6 +23,16 @@ TEST_CASE("Reset zoom plan handles zero-width waveform safely", "[gui]")
     REQUIRE(plan.sampleOffset == 0);
 }
 
+TEST_CASE("Reset zoom plan keeps empty documents at the default zoom", "[gui]")
+{
+    const auto plan = cupuacu::actions::planResetZoom(0, 200);
+
+    REQUIRE(plan.samplesPerPixel ==
+            Catch::Approx(cupuacu::INITIAL_SAMPLES_PER_PIXEL));
+    REQUIRE(plan.verticalZoom == Catch::Approx(cupuacu::INITIAL_VERTICAL_ZOOM));
+    REQUIRE(plan.sampleOffset == 0);
+}
+
 TEST_CASE("Horizontal zoom-in plan keeps the view centered and respects bounds",
           "[gui]")
 {

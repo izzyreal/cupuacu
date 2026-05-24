@@ -1449,6 +1449,8 @@ TEST_CASE("New file dialog integration creates an empty document with the select
     REQUIRE(session.document.getSampleFormat() == cupuacu::SampleFormat::PCM_S8);
     REQUIRE(session.document.getChannelCount() == 1);
     REQUIRE(session.document.getFrameCount() == 0);
+    REQUIRE(state.getActiveViewState().samplesPerPixel ==
+            Catch::Approx(cupuacu::INITIAL_SAMPLES_PER_PIXEL));
 }
 
 TEST_CASE("New file dialog integration treats Enter as OK", "[integration]")

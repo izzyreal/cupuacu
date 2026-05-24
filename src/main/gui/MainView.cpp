@@ -13,6 +13,7 @@
 #include "Timeline.hpp"
 #include "MainViewLayoutPlanning.hpp"
 #include "MainViewSelectionMarkerPlanning.hpp"
+#include "MainViewAccess.hpp"
 #include "UiScale.hpp"
 #include "WaveformRefresh.hpp"
 #include "WaveformCache.hpp"
@@ -307,12 +308,14 @@ void MainView::refreshWaveformsAfterRecordedAudio(
     if (waveformCacheChanged)
     {
         session.updateWaveformCache();
+        Waveform::invalidateAllRenderingCaches(state);
     }
 
     if (channelLayoutChanged ||
         static_cast<int>(state->waveforms.size()) != doc.getChannelCount())
     {
         rebuildWaveforms();
+        requestMainViewRefresh(state);
         return;
     }
 
@@ -321,6 +324,8 @@ void MainView::refreshWaveformsAfterRecordedAudio(
         waveform->updateSamplePoints();
         waveform->setDirty();
     }
+
+    requestMainViewRefresh(state);
 }
 
 bool MainView::consumePendingRecordedAudio()

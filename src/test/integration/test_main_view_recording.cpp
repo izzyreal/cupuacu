@@ -117,3 +117,43 @@ TEST_CASE("MainView integration finalizes recording into an undoable when stoppe
     REQUIRE(doc.getSample(1, 3) == Approx(-101.f));
     REQUIRE(session.cursor == 4);
 }
+
+TEST_CASE(
+    "MainView integration marks the window dirty when recording starts into an empty document",
+    "[integration]")
+{
+#if defined(__APPLE__)
+    struct MicrophonePermissionReset
+    {
+        ~MicrophonePermissionReset()
+        {
+            cupuacu::platform::macos::resetMicrophoneAccessOverrideForTesting();
+        }
+    } microphonePermissionReset;
+    cupuacu::platform::macos::setMicrophoneAccessOverrideForTesting(true);
+#endif
+    cupuacu::test::StateWithTestPaths state{};
+    auto ui = cupuacu::test::integration::createSessionUi(&state, 0, true, 2);
+    auto &session = state.getActiveDocumentSession();
+    auto &doc = session.document;
+    auto *window = state.mainDocumentSessionWindow->getWindow();
+    REQUIRE(window != nullptr);
+
+    window->renderFrame();
+    window->getDirtyRects().clear();
+
+    cupuacu::actions::record(&state);
+    state.audioDevices->drainQueue();
+    REQUIRE(state.audioDevices->isRecording());
+
+    const std::vector<float> input = {10.f, -10.f, 11.f, -11.f, 12.f, -12.f};
+    state.audioDevices->processCallbackCycle(input.data(), nullptr, 3);
+
+    ui.mainView->timerCallback();
+
+    REQUIRE(doc.getFrameCount() == 3);
+    REQUIRE(doc.getSample(0, 0) == Approx(10.f));
+    REQUIRE(doc.getSample(1, 2) == Approx(-12.f));
+    REQUIRE(state.waveforms.size() == 2);
+    REQUIRE_FALSE(window->getDirtyRects().empty());
+}

@@ -63,6 +63,12 @@ namespace cupuacu::actions
             return plan;
         }
 
+        if (frameCount <= 0)
+        {
+            plan.samplesPerPixel = INITIAL_SAMPLES_PER_PIXEL;
+            return plan;
+        }
+
         plan.samplesPerPixel =
             static_cast<double>(frameCount) / static_cast<double>(waveformWidth);
         return plan;
