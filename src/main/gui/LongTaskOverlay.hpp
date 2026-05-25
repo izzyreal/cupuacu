@@ -22,6 +22,15 @@ namespace cupuacu::gui
 {
     class LongTaskOverlay : public Component
     {
+        struct Layout
+        {
+            SDL_Rect panel{0, 0, 0, 0};
+            SDL_FRect titleRect{0, 0, 0, 0};
+            SDL_FRect detailRect{0, 0, 0, 0};
+            SDL_Rect progressTrack{0, 0, 0, 0};
+            SDL_Rect cancelButtonRect{0, 0, 0, 0};
+        };
+
     public:
         explicit LongTaskOverlay(State *stateToUse)
             : Component(stateToUse, "LongTaskOverlay")
@@ -127,22 +136,14 @@ namespace cupuacu::gui
             Helpers::fillRect(renderer, getLocalBounds(),
                               SDL_Color{0, 0, 0, 110});
 
-            const int panelWidth =
-                std::min(getWidth() - scaleUi(state, 40.0f),
-                         scaleUi(state, 520.0f));
-            const int panelHeight =
-                state->longTask.cancellable ? scaleUi(state, 156.0f)
-                                            : scaleUi(state, 116.0f);
-            const int panelX = (getWidth() - panelWidth) / 2;
-            const int panelY = (getHeight() - panelHeight) / 2;
-            const SDL_Rect panel{panelX, panelY, panelWidth, panelHeight};
+            const auto layout = computeLayout();
 
-            Helpers::fillRect(renderer, panel, SDL_Color{24, 24, 24, 245});
+            Helpers::fillRect(renderer, layout.panel,
+                              SDL_Color{24, 24, 24, 245});
             SDL_SetRenderDrawColor(renderer, 90, 90, 90, 255);
-            const SDL_FRect panelFrame = Helpers::rectToFRect(panel);
+            const SDL_FRect panelFrame = Helpers::rectToFRect(layout.panel);
             SDL_RenderRect(renderer, &panelFrame);
 
-            const int padding = scaleUi(state, 18.0f);
             const int titleFont =
                 scaleFontPointSize(
                     state, std::max(1, static_cast<int>(state->menuFontSize)));
@@ -150,48 +151,36 @@ namespace cupuacu::gui
                 scaleFontPointSize(
                     state,
                     std::max(1, static_cast<int>(state->menuFontSize) - 8));
-            const SDL_FRect titleRect{
-                static_cast<float>(panel.x + padding),
-                static_cast<float>(panel.y + padding),
-                static_cast<float>(panel.w - padding * 2),
-                static_cast<float>(scaleUi(state, 38.0f))};
-            const SDL_FRect detailRect{
-                static_cast<float>(panel.x + padding),
-                static_cast<float>(panel.y + padding + scaleUi(state, 44.0f)),
-                static_cast<float>(panel.w - padding * 2),
-                static_cast<float>(scaleUi(state, 30.0f))};
-
             renderEllipsizedText(renderer, state->longTask.title, titleFont,
-                                  titleRect, true);
+                                 layout.titleRect, true);
             renderEllipsizedText(renderer, state->longTask.detail, detailFont,
-                                  detailRect, true);
+                                 layout.detailRect, true);
 
-            const int barX = panel.x + padding;
-            const int buttonHeight = scaleUi(state, 34.0f);
-            const int buttonGap = scaleUi(state, 12.0f);
-            const int barY = panel.y + panel.h - padding -
-                             (state->longTask.cancellable
-                                  ? buttonHeight + buttonGap + scaleUi(state, 10.0f)
-                                  : scaleUi(state, 10.0f));
-            const int barW = panel.w - padding * 2;
-            const int barH = scaleUi(state, 6.0f);
-            const SDL_Rect track{barX, barY, barW, barH};
-            Helpers::fillRect(renderer, track, SDL_Color{70, 70, 70, 255});
+            Helpers::fillRect(renderer, layout.progressTrack,
+                              SDL_Color{70, 70, 70, 255});
 
             if (!state->longTask.progress.has_value())
             {
-                const int fillW = std::max(scaleUi(state, 40.0f), barW / 4);
-                const int travelW = std::max(1, barW + fillW);
+                const int fillW = std::max(scaleUi(state, 40.0f),
+                                           layout.progressTrack.w / 4);
+                const int travelW =
+                    std::max(1, layout.progressTrack.w + fillW);
                 const auto phase =
                     static_cast<int>((SDL_GetTicks() / 8u) %
                                      static_cast<Uint64>(travelW));
-                const int fillX = barX - fillW + phase;
+                const int fillX = layout.progressTrack.x - fillW + phase;
                 const SDL_Rect fill{
-                    std::clamp(fillX, barX, barX + barW),
-                    barY,
-                    std::max(0, std::min(fillX + fillW, barX + barW) -
-                                    std::clamp(fillX, barX, barX + barW)),
-                    barH};
+                    std::clamp(fillX, layout.progressTrack.x,
+                               layout.progressTrack.x + layout.progressTrack.w),
+                    layout.progressTrack.y,
+                    std::max(
+                        0,
+                        std::min(fillX + fillW,
+                                 layout.progressTrack.x + layout.progressTrack.w) -
+                            std::clamp(fillX, layout.progressTrack.x,
+                                       layout.progressTrack.x +
+                                           layout.progressTrack.w)),
+                    layout.progressTrack.h};
                 Helpers::fillRect(renderer, fill, SDL_Color{0, 185, 0, 255});
             }
             else
@@ -199,10 +188,10 @@ namespace cupuacu::gui
                 const double progress =
                     std::clamp(*state->longTask.progress, 0.0, 1.0);
                 const SDL_Rect fill{
-                    barX, barY,
+                    layout.progressTrack.x, layout.progressTrack.y,
                     static_cast<int>(std::lround(
-                        static_cast<double>(barW) * progress)),
-                    barH};
+                        static_cast<double>(layout.progressTrack.w) * progress)),
+                    layout.progressTrack.h};
                 Helpers::fillRect(renderer, fill, SDL_Color{0, 185, 0, 255});
             }
         }
@@ -214,23 +203,66 @@ namespace cupuacu::gui
                 return;
             }
 
-            const int panelWidth =
-                std::min(getWidth() - scaleUi(state, 40.0f),
-                         scaleUi(state, 520.0f));
-            const int panelHeight =
-                state->longTask.cancellable ? scaleUi(state, 156.0f)
-                                            : scaleUi(state, 116.0f);
-            const int panelX = (getWidth() - panelWidth) / 2;
-            const int panelY = (getHeight() - panelHeight) / 2;
-            const int padding = scaleUi(state, 18.0f);
-            const int buttonWidth = scaleUi(state, 120.0f);
-            const int buttonHeight = scaleUi(state, 34.0f);
-            cancelButton->setBounds(panelX + panelWidth - padding - buttonWidth,
-                                    panelY + panelHeight - padding - buttonHeight,
-                                    buttonWidth, buttonHeight);
+            cancelButton->setBounds(computeLayout().cancelButtonRect);
         }
 
     private:
+        [[nodiscard]] Layout computeLayout() const
+        {
+            Layout layout{};
+            if (!state)
+            {
+                return layout;
+            }
+
+            const int outerMargin = scaleUi(state, 40.0f);
+            const int padding = scaleUi(state, 18.0f);
+            const int titleHeight = scaleUi(state, 38.0f);
+            const int detailHeight = scaleUi(state, 30.0f);
+            const int titleToDetailGap = scaleUi(state, 8.0f);
+            const int detailToBarGap = scaleUi(state, 18.0f);
+            const int buttonWidth = scaleUi(state, 120.0f);
+            const int buttonHeight = scaleUi(state, 34.0f);
+            const int buttonGap = scaleUi(state, 12.0f);
+            const int barHeight = scaleUi(state, 6.0f);
+
+            const int panelWidth =
+                std::min(getWidth() - outerMargin, scaleUi(state, 520.0f));
+            const int textBlockHeight =
+                titleHeight + titleToDetailGap + detailHeight;
+            const int footerHeight = state->longTask.cancellable
+                                         ? detailToBarGap + barHeight + buttonGap +
+                                               buttonHeight
+                                         : detailToBarGap + barHeight;
+            const int panelHeight = padding * 2 + textBlockHeight + footerHeight;
+            const int panelX = (getWidth() - panelWidth) / 2;
+            const int panelY = (getHeight() - panelHeight) / 2;
+
+            layout.panel = {panelX, panelY, panelWidth, panelHeight};
+            layout.titleRect = {
+                static_cast<float>(panelX + padding),
+                static_cast<float>(panelY + padding),
+                static_cast<float>(panelWidth - padding * 2),
+                static_cast<float>(titleHeight)};
+            layout.detailRect = {
+                static_cast<float>(panelX + padding),
+                static_cast<float>(panelY + padding + titleHeight + titleToDetailGap),
+                static_cast<float>(panelWidth - padding * 2),
+                static_cast<float>(detailHeight)};
+
+            const int progressY =
+                panelY + padding + textBlockHeight + detailToBarGap;
+            layout.progressTrack = {panelX + padding, progressY,
+                                    panelWidth - padding * 2, barHeight};
+
+            layout.cancelButtonRect = {
+                panelX + panelWidth - padding - buttonWidth,
+                progressY + barHeight + buttonGap,
+                buttonWidth,
+                buttonHeight};
+            return layout;
+        }
+
         static void renderEllipsizedText(SDL_Renderer *renderer,
                                          const std::string &text,
                                          const int pointSize,
