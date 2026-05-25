@@ -12,6 +12,7 @@
 #include "platform/macos/MicrophonePermission.hpp"
 #endif
 
+#include <cmath>
 #include <vector>
 
 using Catch::Approx;
@@ -210,7 +211,13 @@ TEST_CASE(
         static_cast<uint32_t>(waveformWidth * 64);
     std::vector<float> longChunk(static_cast<std::size_t>(framesPerCycle) * 2U,
                                  0.5f);
-    for (int iteration = 0; iteration < 160; ++iteration)
+    const int64_t framesNeededForClamp =
+        static_cast<int64_t>(std::ceil(500.0 * static_cast<double>(waveformWidth)));
+    const int64_t remainingFramesToClamp =
+        std::max<int64_t>(0, framesNeededForClamp - session.document.getFrameCount());
+    const int maxIterations =
+        static_cast<int>(remainingFramesToClamp / framesPerCycle) + 2;
+    for (int iteration = 0; iteration < maxIterations; ++iteration)
     {
         state.audioDevices->processCallbackCycle(longChunk.data(), nullptr,
                                                  framesPerCycle);
