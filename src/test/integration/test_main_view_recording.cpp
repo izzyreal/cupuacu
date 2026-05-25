@@ -209,19 +209,16 @@ TEST_CASE(
     REQUIRE(state.getActiveViewState().sampleOffset == 0);
 
     const uint32_t framesPerCycle =
-        static_cast<uint32_t>(waveformWidth * 64);
+        static_cast<uint32_t>(cupuacu::audio::kRecordedChunkFrames);
     std::vector<float> longChunk(static_cast<std::size_t>(framesPerCycle) * 2U,
                                  0.5f);
     const int64_t framesNeededForClamp =
         static_cast<int64_t>(std::ceil(500.0 * static_cast<double>(waveformWidth)));
     const int64_t remainingFramesToClamp =
         std::max<int64_t>(0, framesNeededForClamp - session.document.getFrameCount());
-    constexpr int64_t maxFramesConsumedPerTimerTick =
-        12 * static_cast<int64_t>(cupuacu::audio::kRecordedChunkFrames);
     const int maxIterations = static_cast<int>(
                                   remainingFramesToClamp /
-                                  std::max<int64_t>(
-                                      int64_t{1}, maxFramesConsumedPerTimerTick)) +
+                                  std::max<int64_t>(int64_t{1}, framesPerCycle)) +
                               2;
     for (int iteration = 0; iteration < maxIterations; ++iteration)
     {
