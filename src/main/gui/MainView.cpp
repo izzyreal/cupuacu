@@ -817,6 +817,13 @@ void MainView::updateTriangleMarkerBounds() const
         selEndTop->setVisible(false);
         selEndBot->setVisible(false);
 
+        if (session.document.getFrameCount() <= 0)
+        {
+            cursorTop->setVisible(false);
+            cursorBottom->setVisible(false);
+            return;
+        }
+
         const int32_t xPos = Waveform::getXPosForSampleIndex(
             session.cursor, sampleOffset, samplesPerPixel);
         if (xPos >= 0 && xPos <= waveforms->getWidth())

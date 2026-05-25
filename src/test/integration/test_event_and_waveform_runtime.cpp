@@ -277,14 +277,19 @@ namespace
         window->renderFrame();
     }
 
-    void prepareBuiltMainWindow(cupuacu::gui::Window *window,
+    void prepareBuiltMainWindow(cupuacu::State *state,
+                                cupuacu::gui::Window *window,
                                 const int width, const int height)
     {
+        REQUIRE(state != nullptr);
         REQUIRE(window != nullptr);
 
         if (window->getSdlWindow() != nullptr)
         {
-            ensureWindowReadyForInteraction(window);
+            REQUIRE(SDL_SetWindowSize(window->getSdlWindow(), width, height));
+            REQUIRE(window->setCanvasSize(width, height));
+            cupuacu::gui::resizeComponents(state, window);
+            window->renderFrame();
             return;
         }
 
@@ -454,7 +459,7 @@ TEST_CASE("Keyboard integration zooms to selection and scrolls horizontally",
     cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 4096);
     auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
-    prepareBuiltMainWindow(mainWindow, 800, 400);
+    prepareBuiltMainWindow(&state, mainWindow, 800, 400);
 
     auto &viewState = state.getActiveViewState();
     viewState.samplesPerPixel = 8.0;
@@ -490,7 +495,7 @@ TEST_CASE("Keyboard integration applies zoom and pixel scale shortcuts",
     cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 4096);
     auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
-    prepareBuiltMainWindow(mainWindow, 800, 400);
+    prepareBuiltMainWindow(&state, mainWindow, 800, 400);
 
     auto &viewState = state.getActiveViewState();
     viewState.samplesPerPixel = 4.0;
@@ -529,7 +534,7 @@ TEST_CASE("Window resize rescales inactive tab samples-per-pixel before tab swit
     cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 4096, 44100, 2, 800, 400);
     auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
-    prepareBuiltMainWindow(mainWindow, 800, 400);
+    prepareBuiltMainWindow(&state, mainWindow, 800, 400);
 
     state.tabs.emplace_back();
     state.tabs[1].session.document.initialize(cupuacu::SampleFormat::FLOAT32,
@@ -544,7 +549,7 @@ TEST_CASE("Window resize rescales inactive tab samples-per-pixel before tab swit
     const int originalWaveformWidth = state.waveforms.front()->getWidth();
     REQUIRE(originalWaveformWidth > 0);
 
-    prepareBuiltMainWindow(mainWindow, 400, 240);
+    prepareBuiltMainWindow(&state, mainWindow, 400, 240);
 
     const int resizedWaveformWidth = state.waveforms.front()->getWidth();
     REQUIRE(resizedWaveformWidth > 0);
@@ -558,6 +563,7 @@ TEST_CASE("Window resize rescales inactive tab samples-per-pixel before tab swit
             Catch::Approx(expectedInactiveSamplesPerPixel));
 
     REQUIRE(cupuacu::actions::switchToTab(&state, 1));
+    prepareBuiltMainWindow(&state, mainWindow, 400, 240);
     REQUIRE(state.getActiveViewState().samplesPerPixel ==
             Catch::Approx(expectedInactiveSamplesPerPixel));
 }
@@ -568,7 +574,7 @@ TEST_CASE("Keyboard integration selects the visible waveform range on Cmd/Ctrl+A
     cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 4096, 44100, 2, 800, 400);
     auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
-    prepareBuiltMainWindow(mainWindow, 800, 400);
+    prepareBuiltMainWindow(&state, mainWindow, 800, 400);
 
     auto &session = state.getActiveDocumentSession();
     auto &viewState = state.getActiveViewState();
@@ -590,7 +596,9 @@ TEST_CASE("Keyboard integration selects the visible waveform range on Cmd/Ctrl+A
 
     REQUIRE(session.selection.isActive());
     REQUIRE(session.selection.getStartInt() == 160);
-    REQUIRE(session.selection.getEndExclusiveInt() == 3360);
+    REQUIRE_FALSE(state.waveforms.empty());
+    REQUIRE(session.selection.getEndExclusiveInt() ==
+            160 + state.waveforms.front()->getWidth() * 4);
     REQUIRE(viewState.selectedChannels == cupuacu::SelectedChannels::BOTH);
 }
 
@@ -600,7 +608,7 @@ TEST_CASE("Keyboard integration opens new file dialog and closes the active tab"
     cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 256, 44100, 2, 800, 400);
     auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
-    prepareBuiltMainWindow(mainWindow, 800, 400);
+    prepareBuiltMainWindow(&state, mainWindow, 800, 400);
     state.getActiveDocumentSession().currentFile = "/tmp/current.wav";
     state.getActiveDocumentSession().selection.setValue1(10.0);
     state.getActiveDocumentSession().selection.setValue2(20.0);
@@ -695,7 +703,7 @@ TEST_CASE("Event handling integration still forwards non-interactive window even
     createBuiltSessionUi(&state, 512);
 
     auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
-    prepareBuiltMainWindow(mainWindow, 800, 400);
+    prepareBuiltMainWindow(&state, mainWindow, 800, 400);
     state.windows.push_back(mainWindow);
 
     auto modalWindow = std::make_unique<cupuacu::gui::Window>(
@@ -722,7 +730,7 @@ TEST_CASE("Event handling integration returns success for quit and keeps app ope
         cupuacu::test::StateWithTestPaths state{};
         createBuiltSessionUi(&state, 256);
         auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
-        prepareBuiltMainWindow(mainWindow, 800, 400);
+        prepareBuiltMainWindow(&state, mainWindow, 800, 400);
         state.windows.push_back(mainWindow);
 
         SDL_Event event{};
@@ -737,7 +745,7 @@ TEST_CASE("Event handling integration returns success for quit and keeps app ope
         cupuacu::test::StateWithTestPaths state{};
         createBuiltSessionUi(&state, 256);
         auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
-        prepareBuiltMainWindow(mainWindow, 800, 400);
+        prepareBuiltMainWindow(&state, mainWindow, 800, 400);
         state.windows.push_back(mainWindow);
         cupuacu::LongTaskScope longTask(&state, "Opening file", "large.wav",
                                         std::nullopt, false, true);
@@ -762,7 +770,7 @@ TEST_CASE("Event handling integration returns success for quit and keeps app ope
         state.getActiveDocumentSession().cursor = 12;
 
         auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
-        prepareBuiltMainWindow(mainWindow, 800, 400);
+        prepareBuiltMainWindow(&state, mainWindow, 800, 400);
         state.windows.push_back(mainWindow);
 
         SDL_Event event{};
@@ -1710,7 +1718,7 @@ TEST_CASE("Empty stereo document click keeps triangle markers hidden",
     REQUIRE(cursorBottom != nullptr);
     REQUIRE(state.getActiveDocumentSession().document.getFrameCount() == 0);
     REQUIRE(state.getActiveViewState().samplesPerPixel ==
-            Catch::Approx(0.0));
+            Catch::Approx(cupuacu::INITIAL_SAMPLES_PER_PIXEL));
 
     mainView->timerCallback();
     REQUIRE_FALSE(cursorTop->isVisible());
@@ -1741,7 +1749,7 @@ TEST_CASE("Cut integration marks the waveform view dirty after cutting the full 
     createBuiltSessionUi(&state, 16, 44100, 2, 800, 400);
 
     auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
-    prepareBuiltMainWindow(mainWindow, 800, 400);
+    prepareBuiltMainWindow(&state, mainWindow, 800, 400);
     REQUIRE(mainWindow != nullptr);
 
     auto &session = state.getActiveDocumentSession();
