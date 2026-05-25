@@ -6,6 +6,7 @@
 #include "State.hpp"
 #include "actions/Play.hpp"
 #include "actions/Record.hpp"
+#include "audio/RecordedChunk.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 
 #if defined(__APPLE__)
@@ -215,8 +216,13 @@ TEST_CASE(
         static_cast<int64_t>(std::ceil(500.0 * static_cast<double>(waveformWidth)));
     const int64_t remainingFramesToClamp =
         std::max<int64_t>(0, framesNeededForClamp - session.document.getFrameCount());
-    const int maxIterations =
-        static_cast<int>(remainingFramesToClamp / framesPerCycle) + 2;
+    constexpr int64_t maxFramesConsumedPerTimerTick =
+        12 * static_cast<int64_t>(cupuacu::audio::kRecordedChunkFrames);
+    const int maxIterations = static_cast<int>(
+                                  remainingFramesToClamp /
+                                  std::max<int64_t>(
+                                      int64_t{1}, maxFramesConsumedPerTimerTick)) +
+                              2;
     for (int iteration = 0; iteration < maxIterations; ++iteration)
     {
         state.audioDevices->processCallbackCycle(longChunk.data(), nullptr,
