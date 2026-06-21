@@ -1,3 +1,4 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include "IntegrationTestHelpers.hpp"
@@ -49,7 +50,10 @@ namespace
         int mouseLeaveCount = 0;
         int mouseDownCount = 0;
         int mouseUpCount = 0;
+        int mouseMoveCount = 0;
         int mouseWheelCount = 0;
+        float lastMouseRelX = 0.0f;
+        float lastMouseRelY = 0.0f;
         bool consumeMouseUp = true;
 
         void mouseEnter() override
@@ -72,6 +76,14 @@ namespace
         {
             ++mouseUpCount;
             return consumeMouseUp;
+        }
+
+        bool mouseMove(const cupuacu::gui::MouseEvent &event) override
+        {
+            ++mouseMoveCount;
+            lastMouseRelX = event.mouseRelX;
+            lastMouseRelY = event.mouseRelY;
+            return true;
         }
 
         bool mouseWheel(const cupuacu::gui::MouseEvent &) override
@@ -353,6 +365,30 @@ TEST_CASE("Window integration clears capture on mouse up and updates hover",
     REQUIRE(window->getCapturingComponent() == nullptr);
     REQUIRE(captured->mouseLeaveCount == 1);
     REQUIRE(captured->mouseUpCount == 1);
+}
+
+TEST_CASE("Window integration preserves relative mouse motion for captured drags",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "window-capture-move", 320, 240, SDL_WINDOW_HIDDEN);
+
+    auto root = std::make_unique<cupuacu::test::integration::RootComponent>(&state);
+    auto *captured = root->emplaceChild<TestComponent>(&state, "Captured");
+    captured->setBounds(10, 20, 40, 40);
+    root->setBounds(0, 0, 320, 240);
+    window->setRootComponent(std::move(root));
+    window->setCapturingComponent(captured);
+
+    REQUIRE(window->handleMouseEvent(cupuacu::gui::MouseEvent{
+        cupuacu::gui::MOVE, 25, 35, 25.0f, 35.0f, 3.5f, -7.0f,
+        cupuacu::gui::MouseButtonState{true, false, false}, 0}));
+    REQUIRE(captured->mouseMoveCount == 1);
+    REQUIRE(captured->lastMouseRelX == Catch::Approx(3.5f));
+    REQUIRE(captured->lastMouseRelY == Catch::Approx(-7.0f));
 }
 
 TEST_CASE("Window integration routes wheel events to hovered component",

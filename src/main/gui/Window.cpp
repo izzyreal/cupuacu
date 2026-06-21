@@ -975,10 +975,13 @@ bool Window::handleMouseEvent(const MouseEvent &mouseEvent)
             static_cast<int>(std::floor(localYf)),
             localXf,
             localYf,
+            mouseEvent.mouseRelX,
+            mouseEvent.mouseRelY,
+            mouseEvent.buttonState,
+            mouseEvent.numClicks,
             mouseEvent.wheelX,
             mouseEvent.wheelY,
-            mouseEvent.buttonState,
-            mouseEvent.numClicks};
+            mouseEvent.mod};
 
         handledByCapture =
             mouseEvent.type == MOVE ? capturingComponent->mouseMove(captureEvent)

@@ -6,6 +6,7 @@
 #include "../../file/OverwritePreservation.hpp"
 #include "../../file/PreservationBackend.hpp"
 #include "../../file/SaveWritePlan.hpp"
+#include "../../gui/SamplePoint.hpp"
 #include "../DocumentLifecycle.hpp"
 #include "../DocumentTabs.hpp"
 #include "../Save.hpp"
@@ -30,6 +31,10 @@ namespace cupuacu::actions::io
         constexpr uint32_t kAutosaveVersion = 2;
         constexpr int64_t kAutosaveFramesPerChunk = 32768;
         constexpr auto kAutosavePumpBudget = std::chrono::milliseconds(8);
+        constexpr auto kAutosaveInteractionQuietPeriod =
+            std::chrono::milliseconds(300);
+        constexpr auto kSessionPersistQuietPeriod =
+            std::chrono::milliseconds(1500);
 
         const char *operationForKind(const BackgroundSaveKind kind)
         {
@@ -81,6 +86,44 @@ namespace cupuacu::actions::io
             return state != nullptr && !state->backgroundOpenJob &&
                    !state->backgroundSaveJob && !state->backgroundEffectJob &&
                    !state->longTask.active;
+        }
+
+        bool shouldDeferAutosaveForInteraction(const cupuacu::State *state)
+        {
+            if (!state)
+            {
+                return false;
+            }
+
+            const auto now = std::chrono::steady_clock::now();
+            if (state->lastRealtimeDocumentMutationAt !=
+                    std::chrono::steady_clock::time_point{} &&
+                now - state->lastRealtimeDocumentMutationAt <
+                    kAutosaveInteractionQuietPeriod)
+            {
+                return true;
+            }
+
+            if (!state->mainDocumentSessionWindow)
+            {
+                return false;
+            }
+
+            auto *window = state->mainDocumentSessionWindow->getWindow();
+            if (!window)
+            {
+                return false;
+            }
+
+            return dynamic_cast<cupuacu::gui::SamplePoint *>(
+                       window->getCapturingComponent()) != nullptr;
+        }
+
+        bool canRunDeferredSessionPersist(const cupuacu::State *state)
+        {
+            return state != nullptr && !state->backgroundOpenJob &&
+                   !state->backgroundSaveJob && !state->backgroundAutosaveJob &&
+                   !state->backgroundEffectJob && !state->longTask.active;
         }
 
         void writeU32(std::ostream &output, const uint32_t value)
@@ -807,7 +850,10 @@ namespace cupuacu::actions::io
             return;
         }
 
-        if (state->backgroundAutosaveJob && canRunAutosavePump(state))
+        const bool deferForInteraction = shouldDeferAutosaveForInteraction(state);
+
+        if (!deferForInteraction && state->backgroundAutosaveJob &&
+            canRunAutosavePump(state))
         {
             state->backgroundAutosaveJob->pump(state);
             const auto snapshot = state->backgroundAutosaveJob->snapshot();
@@ -826,7 +872,8 @@ namespace cupuacu::actions::io
                                 snapshot.waveformDataVersion;
                             session.autosavedMarkerDataVersion =
                                 snapshot.markerDataVersion;
-                            persistSessionState(state);
+                            state->pendingAutosaveSessionPersistRequestedAt =
+                                std::chrono::steady_clock::now();
                         }
                     }
                 }
@@ -835,26 +882,37 @@ namespace cupuacu::actions::io
             }
         }
 
-        if (state->backgroundAutosaveJob || !canRunAutosavePump(state))
+        if (!deferForInteraction && !state->backgroundAutosaveJob &&
+            canRunAutosavePump(state))
         {
-            return;
+            for (auto &tab : state->tabs)
+            {
+                if (!tabNeedsAutosave(tab))
+                {
+                    continue;
+                }
+
+                state->backgroundAutosaveJob = {
+                    new BackgroundAutosaveJob(
+                        tab.id, tab.session.autosaveSnapshotPath,
+                        tab.session.document.getWaveformDataVersion(),
+                        tab.session.document.getMarkerDataVersion(),
+                        tab.session.currentFile),
+                    cupuacu::destroyBackgroundAutosaveJob};
+                break;
+            }
         }
 
-        for (auto &tab : state->tabs)
+        if (state->pendingAutosaveSessionPersistRequestedAt !=
+                std::chrono::steady_clock::time_point{} &&
+            canRunDeferredSessionPersist(state) &&
+            !deferForInteraction &&
+            std::chrono::steady_clock::now() -
+                    state->pendingAutosaveSessionPersistRequestedAt >=
+                kSessionPersistQuietPeriod)
         {
-            if (!tabNeedsAutosave(tab))
-            {
-                continue;
-            }
-
-            state->backgroundAutosaveJob = {
-                new BackgroundAutosaveJob(
-                    tab.id, tab.session.autosaveSnapshotPath,
-                    tab.session.document.getWaveformDataVersion(),
-                    tab.session.document.getMarkerDataVersion(),
-                    tab.session.currentFile),
-                cupuacu::destroyBackgroundAutosaveJob};
-            break;
+            persistSessionState(state);
+            state->pendingAutosaveSessionPersistRequestedAt = {};
         }
     }
 } // namespace cupuacu::actions::io

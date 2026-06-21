@@ -21,6 +21,7 @@
 #include <memory>
 #include <optional>
 #include <deque>
+#include <chrono>
 
 namespace cupuacu
 {
@@ -230,6 +231,9 @@ namespace cupuacu
         std::function<void(const LongTaskStatus &)> longTaskObserver;
         bool mainWindowInitialFrameRendered = false;
         bool quitRequestedAfterLongTaskCancel = false;
+        std::chrono::steady_clock::time_point lastRealtimeDocumentMutationAt{};
+        std::chrono::steady_clock::time_point
+            pendingAutosaveSessionPersistRequestedAt{};
         std::vector<std::string> startupPersistedRecentFiles;
         persistence::PersistedSessionState startupPersistedSessionState;
         bool preserveStartupSessionStateOnShutdown = false;

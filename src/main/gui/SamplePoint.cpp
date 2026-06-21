@@ -65,6 +65,7 @@ bool SamplePoint::mouseUp(const MouseEvent &e)
     waveformCache.rebuildDirty(session.document.getAudioBuffer()
                                    ->getImmutableChannelData(channelIndex)
                                    .data());
+    state->lastRealtimeDocumentMutationAt = std::chrono::steady_clock::now();
 
     undoable.reset();
 
@@ -94,8 +95,10 @@ bool SamplePoint::mouseMove(const MouseEvent &e)
     setYPos(dragYPos);
     state->getActiveDocumentSession().document.setSample(
         channelIndex, sampleIndex, dragPlan.sampleValue);
+    state->lastRealtimeDocumentMutationAt = std::chrono::steady_clock::now();
     updateSampleValueUnderMouseCursor(state, dragPlan.sampleValue, channelIndex,
                                       sampleIndex);
+    requestMainViewRefresh(state);
 
     return true;
 }

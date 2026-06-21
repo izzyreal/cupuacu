@@ -2011,6 +2011,10 @@ TEST_CASE("Sample point integration drags a sample and records an undoable",
         static_cast<float>(samplePoint->getYPos()), 0.0f, -15.0f,
         cupuacu::gui::MouseButtonState{true, false, false}, 0}));
 
+    REQUIRE(samplePoint->getSampleValue() != Catch::Approx(oldValue));
+    REQUIRE(state.getActiveDocumentSession().document.getSample(0, sampleIndex) !=
+            Catch::Approx(oldValue));
+
     REQUIRE(samplePoint->mouseUp(cupuacu::gui::MouseEvent{
         cupuacu::gui::UP, samplePoint->getXPos(), samplePoint->getYPos(),
         static_cast<float>(samplePoint->getXPos()),
