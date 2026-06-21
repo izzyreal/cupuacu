@@ -6,6 +6,8 @@
 #include "../../effects/RemoveSilenceEffect.hpp"
 
 #include <cstdint>
+#include <chrono>
+#include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -85,6 +87,8 @@ namespace cupuacu::actions::effects
 
         void start();
         [[nodiscard]] Snapshot snapshot() const;
+        [[nodiscard]] bool waitForCompletion(
+            std::chrono::milliseconds timeout) const;
         [[nodiscard]] std::unique_ptr<BackgroundEffectResult> takeResult();
         [[nodiscard]] std::uint64_t getId() const;
         void cancel();
@@ -94,6 +98,7 @@ namespace cupuacu::actions::effects
         BackgroundEffectRequest request;
         const cupuacu::Document *document = nullptr;
         mutable std::mutex mutex;
+        mutable std::condition_variable completionCv;
         bool completed = false;
         bool success = false;
         std::string detail;

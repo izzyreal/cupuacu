@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "IntegrationTestHelpers.hpp"
+#include "../BackgroundEffectTestUtil.hpp"
 #include "../TestPaths.hpp"
 
 #include "effects/AmplifyEnvelopeEffect.hpp"
@@ -29,9 +30,7 @@
 #include "gui/Window.hpp"
 
 #include <algorithm>
-#include <chrono>
 #include <memory>
-#include <thread>
 
 using Catch::Approx;
 
@@ -100,22 +99,6 @@ namespace
         event.key.windowID = window->getId();
         event.key.scancode = scancode;
         window->handleEvent(event);
-    }
-
-    void drainPendingEffectWork(cupuacu::State *state)
-    {
-        for (int attempt = 0; attempt < 5000; ++attempt)
-        {
-            cupuacu::actions::effects::processPendingEffectWork(state);
-            if (!state->backgroundEffectJob)
-            {
-                cupuacu::actions::effects::processPendingEffectWork(state);
-                return;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-
-        FAIL("Timed out waiting for background effect work");
     }
 
     SDL_Event makeMouseButtonEvent(const Uint32 type,
@@ -477,7 +460,7 @@ TEST_CASE(
     auto harness = createEffectsMenuHarness(&state);
     REQUIRE(harness.reverseMenu->mouseDown(
         cupuacu::test::integration::leftMouseDown()));
-    drainPendingEffectWork(&state);
+    cupuacu::test::drainPendingEffectWork(&state);
 
     REQUIRE(state.modalWindow == nullptr);
     REQUIRE(state.getActiveUndoables().size() == 1);
@@ -696,7 +679,7 @@ TEST_CASE(
 
     cupuacu::test::integration::clickButton(fadeOutButton);
     cupuacu::test::integration::clickButton(applyButton);
-    drainPendingEffectWork(&state);
+    cupuacu::test::drainPendingEffectWork(&state);
 
     REQUIRE(state.getActiveUndoables().size() == 1);
     REQUIRE(state.modalWindow == nullptr);
@@ -772,7 +755,7 @@ TEST_CASE("AmplifyFade dialog treats Enter as Apply", "[integration]")
 
     sendKeyDown(state.amplifyFadeDialog->getWindow(), SDL_SCANCODE_RETURN);
     cupuacu::test::integration::processPendingSdlWindowEvents(&state);
-    drainPendingEffectWork(&state);
+    cupuacu::test::drainPendingEffectWork(&state);
 
     REQUIRE(state.getActiveUndoables().size() == 1);
     REQUIRE(state.modalWindow == nullptr);

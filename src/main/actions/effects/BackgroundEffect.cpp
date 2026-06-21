@@ -694,6 +694,15 @@ namespace cupuacu::actions::effects
         };
     }
 
+    bool BackgroundEffectJob::waitForCompletion(
+        const std::chrono::milliseconds timeout) const
+    {
+        std::unique_lock lock(mutex);
+        return completionCv.wait_for(lock, timeout,
+                                     [this]
+                                     { return completed; });
+    }
+
     std::unique_ptr<BackgroundEffectResult> BackgroundEffectJob::takeResult()
     {
         std::lock_guard lock(mutex);
@@ -769,6 +778,7 @@ namespace cupuacu::actions::effects
             result = std::move(computedResult);
             success = true;
             completed = true;
+            completionCv.notify_all();
         }
         catch (const cupuacu::LongTaskCanceledError &e)
         {
@@ -776,6 +786,7 @@ namespace cupuacu::actions::effects
             error = e.what();
             success = false;
             completed = true;
+            completionCv.notify_all();
         }
         catch (const std::exception &e)
         {
@@ -783,6 +794,7 @@ namespace cupuacu::actions::effects
             error = e.what();
             success = false;
             completed = true;
+            completionCv.notify_all();
         }
         catch (...)
         {
@@ -790,6 +802,7 @@ namespace cupuacu::actions::effects
             error = "An unknown error occurred.";
             success = false;
             completed = true;
+            completionCv.notify_all();
         }
     }
 

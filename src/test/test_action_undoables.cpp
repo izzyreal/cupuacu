@@ -1,6 +1,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include "BackgroundEffectTestUtil.hpp"
 #include "effects/RemoveSilenceEffect.hpp"
 #include "effects/AmplifyFadeEffect.hpp"
 #include "effects/DynamicsEffect.hpp"
@@ -23,10 +24,8 @@
 #include "gui/Window.hpp"
 
 #include <algorithm>
-#include <chrono>
 #include <filesystem>
 #include <memory>
-#include <thread>
 #include <vector>
 
 namespace
@@ -84,20 +83,6 @@ namespace
         return result;
     }
 
-    void drainPendingEffectWork(cupuacu::State *state)
-    {
-        for (int attempt = 0; attempt < 5000; ++attempt)
-        {
-            cupuacu::actions::effects::processPendingEffectWork(state);
-            if (!state->backgroundEffectJob)
-            {
-                return;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-
-        FAIL("Timed out waiting for background effect work");
-    }
 } // namespace
 
 TEST_CASE("Cut undoable updates clipboard, cursor, and undo state", "[actions]")
@@ -499,7 +484,7 @@ TEST_CASE("Reverse applies across the whole mono document and respects undo",
     initializeMonoDocument(state, {0, 1, 2, 3, 4});
 
     cupuacu::effects::performReverse(&state);
-    drainPendingEffectWork(&state);
+    cupuacu::test::drainPendingEffectWork(&state);
 
     REQUIRE(readMonoSamples(state.getActiveDocumentSession().document) ==
             std::vector<float>({4, 3, 2, 1, 0}));
@@ -523,7 +508,7 @@ TEST_CASE("Reverse respects the selected range and selected channel",
     state.getActiveViewState().selectedChannels = cupuacu::SelectedChannels::LEFT;
 
     cupuacu::effects::performReverse(&state);
-    drainPendingEffectWork(&state);
+    cupuacu::test::drainPendingEffectWork(&state);
 
     REQUIRE(readChannelSamples(session.document, 0) ==
             std::vector<float>({0, 3, 2, 1, 4}));
@@ -543,7 +528,7 @@ TEST_CASE("Reverse stores undo payloads in the session undo store", "[actions]")
     initializeMonoDocument(state, {0, 1, 2, 3, 4});
 
     cupuacu::effects::performReverse(&state);
-    drainPendingEffectWork(&state);
+    cupuacu::test::drainPendingEffectWork(&state);
 
     const auto stats = state.getActiveDocumentSession().undoStore.stats();
     REQUIRE(stats.fileCount >= 2);
@@ -936,7 +921,7 @@ TEST_CASE("Amplify/Fade applies across the whole document on all channels",
 
     cupuacu::effects::performAmplifyFade(
         &state, cupuacu::effects::AmplifyFadeSettings{200.0, 200.0, 0, false});
-    drainPendingEffectWork(&state);
+    cupuacu::test::drainPendingEffectWork(&state);
 
     REQUIRE(readChannelSamples(state.getActiveDocumentSession().document, 0) ==
             std::vector<float>({2, 4, 6}));
@@ -962,7 +947,7 @@ TEST_CASE("Amplify/Fade processes the full selected range and stops at selection
 
     cupuacu::effects::performAmplifyFade(
         &state, cupuacu::effects::AmplifyFadeSettings{100.0, 0.0, 0, false});
-    drainPendingEffectWork(&state);
+    cupuacu::test::drainPendingEffectWork(&state);
 
     REQUIRE(readMonoSamples(state.getActiveDocumentSession().document)[0] ==
             Catch::Approx(10.0f));
@@ -989,7 +974,7 @@ TEST_CASE("Dynamics compresses selected samples and respects undo", "[actions]")
 
     cupuacu::effects::performDynamics(
         &state, cupuacu::effects::DynamicsSettings{50.0, 1});
-    drainPendingEffectWork(&state);
+    cupuacu::test::drainPendingEffectWork(&state);
 
     const auto processed = readMonoSamples(state.getActiveDocumentSession().document);
     REQUIRE(processed[0] == Catch::Approx(0.2f));
@@ -1023,7 +1008,7 @@ TEST_CASE("Remove silence stores undo payloads in the session undo store",
             .thresholdSampleValue = 0.0,
             .minimumSilenceLengthMs = 1.0,
         });
-    drainPendingEffectWork(&state);
+    cupuacu::test::drainPendingEffectWork(&state);
 
     const auto stats = state.getActiveDocumentSession().undoStore.stats();
     REQUIRE(stats.fileCount >= 1);

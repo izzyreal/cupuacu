@@ -1,6 +1,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include "BackgroundEffectTestUtil.hpp"
 #include "State.hpp"
 #include "TestPaths.hpp"
 #include "actions/effects/BackgroundEffect.hpp"
@@ -9,27 +10,6 @@
 #include "effects/DynamicsEffect.hpp"
 #include "effects/RemoveSilenceEffect.hpp"
 #include "effects/ReverseEffect.hpp"
-
-#include <chrono>
-#include <thread>
-
-namespace
-{
-    void drainPendingEffectWork(cupuacu::State *state)
-    {
-        for (int attempt = 0; attempt < 5000; ++attempt)
-        {
-            cupuacu::actions::effects::processPendingEffectWork(state);
-            if (!state->backgroundEffectJob)
-            {
-                return;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-
-        FAIL("Timed out waiting for background effect work");
-    }
-}
 
 TEST_CASE("Reverse effect runs in the background and commits undoably",
           "[effects]")
@@ -51,7 +31,7 @@ TEST_CASE("Reverse effect runs in the background and commits undoably",
     REQUIRE(state.longTask.detail == "Reverse");
     REQUIRE_FALSE(state.canUndo());
 
-    drainPendingEffectWork(&state);
+    cupuacu::test::drainPendingEffectWork(&state);
 
     REQUIRE(state.backgroundEffectJob == nullptr);
     REQUIRE_FALSE(state.longTask.active);
@@ -96,7 +76,7 @@ TEST_CASE("Amplify/Fade runs in the background and commits undoably",
     REQUIRE(state.longTask.detail == "Amplify/Fade");
     REQUIRE_FALSE(state.canUndo());
 
-    drainPendingEffectWork(&state);
+    cupuacu::test::drainPendingEffectWork(&state);
 
     REQUIRE(state.backgroundEffectJob == nullptr);
     REQUIRE_FALSE(state.longTask.active);
@@ -133,7 +113,7 @@ TEST_CASE("Dynamics runs in the background and commits undoably", "[effects]")
     REQUIRE(state.longTask.detail == "Dynamics");
     REQUIRE_FALSE(state.canUndo());
 
-    drainPendingEffectWork(&state);
+    cupuacu::test::drainPendingEffectWork(&state);
 
     REQUIRE(state.backgroundEffectJob == nullptr);
     REQUIRE_FALSE(state.longTask.active);
@@ -174,7 +154,7 @@ TEST_CASE("Remove silence runs in the background and commits undoably",
     REQUIRE(state.longTask.detail == "Remove silence");
     REQUIRE_FALSE(state.canUndo());
 
-    drainPendingEffectWork(&state);
+    cupuacu::test::drainPendingEffectWork(&state);
 
     REQUIRE(state.backgroundEffectJob == nullptr);
     REQUIRE_FALSE(state.longTask.active);

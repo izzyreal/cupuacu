@@ -1,8 +1,9 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include "BackgroundEffectTestUtil.hpp"
+
 #include <chrono>
-#include <thread>
 
 #include "TestPaths.hpp"
 #include "actions/effects/BackgroundEffect.hpp"
@@ -10,24 +11,6 @@
 #include "gui/DevicePropertiesWindow.hpp"
 
 using Catch::Approx;
-
-namespace
-{
-    void drainPendingEffectWork(cupuacu::State *state)
-    {
-        for (int attempt = 0; attempt < 5000; ++attempt)
-        {
-            cupuacu::actions::effects::processPendingEffectWork(state);
-            if (!state->backgroundEffectJob)
-            {
-                return;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-
-        FAIL("Timed out waiting for background remove silence work");
-    }
-}
 
 TEST_CASE("Remove silence planner trims only edges in edge mode", "[effects]")
 {
@@ -92,7 +75,7 @@ TEST_CASE("Remove silence apply removes planned silent ranges", "[effects]")
     settings.minimumSilenceLengthMs = 10.0;
 
     cupuacu::effects::performRemoveSilence(&state, settings);
-    drainPendingEffectWork(&state);
+    cupuacu::test::drainPendingEffectWork(&state);
 
     REQUIRE(doc.getFrameCount() == 3);
     REQUIRE(doc.getSample(0, 0) == Approx(0.5f));
@@ -146,7 +129,7 @@ TEST_CASE("Remove silence apply preserves stereo audio when only micro gaps matc
     settings.minimumSilenceLengthMs = 10.0;
 
     cupuacu::effects::performRemoveSilence(&state, settings);
-    drainPendingEffectWork(&state);
+    cupuacu::test::drainPendingEffectWork(&state);
 
     REQUIRE(doc.getFrameCount() == 16);
     REQUIRE(doc.getSample(0, 0) == Approx(0.25f));
@@ -218,7 +201,7 @@ TEST_CASE("Remove silence compacts only the selected stereo channel", "[effects]
     settings.minimumSilenceLengthMs = 10.0;
 
     cupuacu::effects::performRemoveSilence(&state, settings);
-    drainPendingEffectWork(&state);
+    cupuacu::test::drainPendingEffectWork(&state);
 
     REQUIRE(doc.getFrameCount() == 8);
     REQUIRE(doc.getSample(0, 0) == Approx(1.0f));

@@ -1,6 +1,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include "BackgroundEffectTestUtil.hpp"
 #include "Document.hpp"
 #include "SelectedChannels.hpp"
 #include "TestPaths.hpp"
@@ -15,20 +16,6 @@
 
 namespace
 {
-    void drainPendingEffectWork(cupuacu::State *state)
-    {
-        for (int attempt = 0; attempt < 5000; ++attempt)
-        {
-            cupuacu::actions::effects::processPendingEffectWork(state);
-            if (!state->backgroundEffectJob)
-            {
-                return;
-            }
-        }
-
-        FAIL("Timed out waiting for background amplify envelope work");
-    }
-
     void initializeMonoDocument(cupuacu::State &state,
                                 const std::vector<float> &samples)
     {
@@ -62,7 +49,7 @@ TEST_CASE("Amplify Envelope applies linear envelope points and supports undo",
     cupuacu::effects::AmplifyEnvelopeSettings settings{};
     settings.points = {{0.0, 100.0}, {0.5, 0.0}, {1.0, 100.0}};
     cupuacu::effects::performAmplifyEnvelope(&state, settings);
-    drainPendingEffectWork(&state);
+    cupuacu::test::drainPendingEffectWork(&state);
 
     const auto processed =
         readMonoSamples(state.getActiveDocumentSession().document);
@@ -92,7 +79,7 @@ TEST_CASE("Amplify Envelope runs in the background and commits undoably",
     REQUIRE(state.longTask.title == "Applying effect");
     REQUIRE(state.longTask.detail == "Amplify Envelope");
 
-    drainPendingEffectWork(&state);
+    cupuacu::test::drainPendingEffectWork(&state);
 
     const auto processed =
         readMonoSamples(state.getActiveDocumentSession().document);
