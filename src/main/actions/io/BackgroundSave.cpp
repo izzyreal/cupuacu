@@ -126,6 +126,11 @@ namespace cupuacu::actions::io
                    !state->backgroundEffectJob && !state->longTask.active;
         }
 
+        bool shouldDelaySessionPersistAfterAutosave(const cupuacu::State *state)
+        {
+            return state != nullptr && state->mainDocumentSessionWindow != nullptr;
+        }
+
         void writeU32(std::ostream &output, const uint32_t value)
         {
             const char bytes[] = {
@@ -872,8 +877,16 @@ namespace cupuacu::actions::io
                                 snapshot.waveformDataVersion;
                             session.autosavedMarkerDataVersion =
                                 snapshot.markerDataVersion;
-                            state->pendingAutosaveSessionPersistRequestedAt =
-                                std::chrono::steady_clock::now();
+                            if (shouldDelaySessionPersistAfterAutosave(state))
+                            {
+                                state->pendingAutosaveSessionPersistRequestedAt =
+                                    std::chrono::steady_clock::now();
+                            }
+                            else
+                            {
+                                persistSessionState(state);
+                                state->pendingAutosaveSessionPersistRequestedAt = {};
+                            }
                         }
                     }
                 }
