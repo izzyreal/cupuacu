@@ -283,6 +283,9 @@ pipelines:
       - build
     jobs:
       - id: macos-codesign
+        artifact_sources:
+          - pipeline: build
+            job: macos-universal
         runs_on:
           executor: script
           shell: posix
@@ -335,6 +338,9 @@ pipelines:
       repo: https://github.com/izzyreal/cupuacu.git
     jobs:
       - id: macos-dmg
+        artifact_sources:
+          - pipeline: codesign-macos
+            job: macos-codesign
         runs_on:
           executor: script
           shell: posix
@@ -428,6 +434,15 @@ pipelines:
             kv_version: 2
     jobs:
       - id: github-release
+        artifact_sources:
+          - pipeline: build
+            job: linux-amd64
+          - pipeline: build
+            job: linux-arm64
+          - pipeline: build
+            job: windows-amd64
+          - pipeline: package-macos
+            job: macos-dmg
         runs_on:
           executor: script
           shell: posix
