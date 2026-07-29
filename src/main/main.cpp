@@ -308,6 +308,10 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
     state->backgroundAutosaveJob.reset();
     state->newFileDialogWindow.reset();
     state->optionsWindow.reset();
+    if (state->audioDevices)
+    {
+        state->audioDevices->closeDevice();
+    }
     state->mainDocumentSessionWindow.reset();
     state->windows.clear();
     const auto teardownFinishedAt = std::chrono::steady_clock::now();

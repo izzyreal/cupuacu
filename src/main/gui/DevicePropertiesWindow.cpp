@@ -1,6 +1,7 @@
 #include "DevicePropertiesWindow.hpp"
 
 #include "../PaUtil.hpp"
+#include "../actions/Monitor.hpp"
 #include "../audio/AudioDevices.hpp"
 #include "../persistence/AudioDevicePropertiesPersistence.hpp"
 #include "Colors.hpp"
@@ -109,7 +110,8 @@ DevicePropertiesPane::DevicePropertiesPane(State *stateToUse)
             int preferredInputDeviceIndex = -1;
             if (state && state->audioDevices)
             {
-                const auto selection = state->audioDevices->getDeviceSelection();
+                const auto selection =
+                    state->audioDevices->getDeviceSelection();
                 preferredOutputDeviceIndex = selection.outputDeviceIndex;
                 preferredInputDeviceIndex = selection.inputDeviceIndex;
             }
@@ -210,9 +212,9 @@ void DevicePropertiesPane::populateHostApis()
     deviceTypeDropdown->setSelectedIndex(0);
 }
 
-void DevicePropertiesPane::populateDevices(
-    const int hostApiIndex, const int preferredOutputDeviceIndex,
-    const int preferredInputDeviceIndex)
+void DevicePropertiesPane::populateDevices(const int hostApiIndex,
+                                           const int preferredOutputDeviceIndex,
+                                           const int preferredInputDeviceIndex)
 {
     outputDeviceIndices.clear();
     inputDeviceIndices.clear();
@@ -284,8 +286,8 @@ void DevicePropertiesPane::populateDevices(
     outputDeviceDropdown->setSelectedIndex(outputSelectionIndex);
 
     inputDeviceDropdown->setItems(inputItems);
-    int inputSelectionIndex = findIndex(inputDeviceIndices,
-                                        preferredInputDeviceIndex);
+    int inputSelectionIndex =
+        findIndex(inputDeviceIndices, preferredInputDeviceIndex);
     if (inputSelectionIndex < 0)
     {
         const int defaultInputDeviceIndex =
@@ -336,13 +338,24 @@ bool DevicePropertiesPane::syncSelectionToAudioDevices()
         return false;
     }
 
+    const bool monitoringWasEnabled =
+        state->audioDevices->isInputMonitoringEnabled();
     const audio::AudioDevices::DeviceSelection selection{
         .hostApiIndex = getSelectedHostApiIndex(),
         .outputDeviceIndex =
             getSelectedDeviceIndex(outputDeviceDropdown, outputDeviceIndices),
         .inputDeviceIndex =
             getSelectedDeviceIndex(inputDeviceDropdown, inputDeviceIndices)};
-    return state->audioDevices->setDeviceSelection(selection);
+    const bool changed = state->audioDevices->setDeviceSelection(selection);
+    if (monitoringWasEnabled &&
+        !state->audioDevices->isInputMonitoringEnabled())
+    {
+        actions::reportInputMonitoringError(
+            state,
+            "The selected input and output devices could not be opened "
+            "together.");
+    }
+    return changed;
 }
 
 void DevicePropertiesPane::layoutComponents() const
@@ -362,14 +375,16 @@ void DevicePropertiesPane::layoutComponents() const
     const auto [inputDeviceLabelW, inputDeviceLabelH] =
         measureText("Input Device", labelFontPointSize);
     const int labelWidth =
-        std::max({std::max(1, static_cast<int>(std::ceil(deviceTypeLabelW))),
-                  std::max(1, static_cast<int>(std::ceil(outputDeviceLabelW))),
-                  std::max(1, static_cast<int>(std::ceil(inputDeviceLabelW)))}) +
+        std::max(
+            {std::max(1, static_cast<int>(std::ceil(deviceTypeLabelW))),
+             std::max(1, static_cast<int>(std::ceil(outputDeviceLabelW))),
+             std::max(1, static_cast<int>(std::ceil(inputDeviceLabelW)))}) +
         padding;
     const int rowHeight =
-        std::max({std::max(1, static_cast<int>(std::ceil(deviceTypeLabelH))),
-                  std::max(1, static_cast<int>(std::ceil(outputDeviceLabelH))),
-                  std::max(1, static_cast<int>(std::ceil(inputDeviceLabelH)))}) +
+        std::max(
+            {std::max(1, static_cast<int>(std::ceil(deviceTypeLabelH))),
+             std::max(1, static_cast<int>(std::ceil(outputDeviceLabelH))),
+             std::max(1, static_cast<int>(std::ceil(inputDeviceLabelH)))}) +
         padding * 2;
     const int dropdownX = padding + labelWidth + padding;
     const int dropdownW = std::max(1, canvasWi - dropdownX - padding);
@@ -381,7 +396,8 @@ void DevicePropertiesPane::layoutComponents() const
 
     const int secondRowY = padding + rowHeight + padding;
     outputDeviceLabel->setBounds(padding, secondRowY, labelWidth, rowHeight);
-    outputDeviceDropdown->setBounds(dropdownX, secondRowY, dropdownW, rowHeight);
+    outputDeviceDropdown->setBounds(dropdownX, secondRowY, dropdownW,
+                                    rowHeight);
     outputDeviceDropdown->setCollapsedHeight(rowHeight);
     outputDeviceDropdown->setItemMargin(padding);
 

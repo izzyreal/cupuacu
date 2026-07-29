@@ -8,6 +8,7 @@ namespace cupuacu::audio
     {
         bool isPlaying = false;
         bool isRecording = false;
+        bool isInputMonitoringEnabled = false;
         int64_t playbackPosition = -1;
         int64_t recordingPosition = -1;
     };

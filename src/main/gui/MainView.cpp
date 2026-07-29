@@ -96,14 +96,15 @@ void MainView::beginRecordingUndoCaptureIfNeeded(const int64_t startFrame)
 
 void MainView::capturePreOverwriteSamples(const int64_t overlapEndFrame)
 {
-    if (!recordingUndoCapture.active || recordingUndoCapture.oldChannelCount <= 0)
+    if (!recordingUndoCapture.active ||
+        recordingUndoCapture.oldChannelCount <= 0)
     {
         return;
     }
 
-    const int64_t boundedOverlapEnd = std::clamp<int64_t>(
-        overlapEndFrame, recordingUndoCapture.startFrame,
-        recordingUndoCapture.oldFrameCount);
+    const int64_t boundedOverlapEnd =
+        std::clamp<int64_t>(overlapEndFrame, recordingUndoCapture.startFrame,
+                            recordingUndoCapture.oldFrameCount);
     const int64_t requiredFrames =
         boundedOverlapEnd - recordingUndoCapture.startFrame;
     if (requiredFrames <= recordingUndoCapture.capturedOverwriteFrames)
@@ -138,7 +139,8 @@ void MainView::captureRecordedChunk(
     auto &doc = state->getActiveDocumentSession().document;
 
     const int64_t chunkStart = chunk.startFrame;
-    const int64_t chunkEnd = chunk.startFrame + static_cast<int64_t>(chunk.frameCount);
+    const int64_t chunkEnd =
+        chunk.startFrame + static_cast<int64_t>(chunk.frameCount);
     recordingUndoCapture.endFrame =
         std::max(recordingUndoCapture.endFrame, chunkEnd);
     recordingUndoCapture.targetChannelCount =
@@ -221,10 +223,8 @@ void MainView::finalizeRecordingUndoCaptureIfComplete()
     data.targetChannelCount = recordingUndoCapture.targetChannelCount;
     data.oldSampleRate = recordingUndoCapture.oldSampleRate;
     data.newSampleRate = recordingUndoCapture.newSampleRate;
-    data.oldFormat =
-        static_cast<SampleFormat>(recordingUndoCapture.oldFormat);
-    data.newFormat =
-        static_cast<SampleFormat>(recordingUndoCapture.newFormat);
+    data.oldFormat = static_cast<SampleFormat>(recordingUndoCapture.oldFormat);
+    data.newFormat = static_cast<SampleFormat>(recordingUndoCapture.newFormat);
     data.hadOldSelection = recordingUndoCapture.hadOldSelection;
     data.oldSelectionStart = recordingUndoCapture.oldSelectionStart;
     data.oldSelectionEnd = recordingUndoCapture.oldSelectionEnd;
@@ -236,12 +236,14 @@ void MainView::finalizeRecordingUndoCaptureIfComplete()
         data.newSelectionEnd = session.selection.getEnd();
     }
     data.newCursor = session.cursor;
-    data.overwrittenOldSamples = std::move(recordingUndoCapture.overwrittenOldSamples);
+    data.overwrittenOldSamples =
+        std::move(recordingUndoCapture.overwrittenOldSamples);
     data.recordedSamples = std::move(recordingUndoCapture.recordedSamples);
 
-    cupuacu::actions::detail::ensureUndoStoreForTab(state, state->activeTabIndex);
-    state->addUndoable(
-        std::make_shared<cupuacu::actions::audio::RecordEdit>(state, std::move(data)));
+    cupuacu::actions::detail::ensureUndoStoreForTab(state,
+                                                    state->activeTabIndex);
+    state->addUndoable(std::make_shared<cupuacu::actions::audio::RecordEdit>(
+        state, std::move(data)));
     recordingUndoCapture = {};
 }
 
@@ -264,10 +266,9 @@ bool MainView::shouldKeepConsumingRecordedAudio(const bool isRecordingNow,
 
     const uint64_t now = SDL_GetPerformanceCounter();
     const double elapsedMs =
-        perfFreq > 0
-            ? (1000.0 * static_cast<double>(now - perfStart) /
-               static_cast<double>(perfFreq))
-            : 0.0;
+        perfFreq > 0 ? (1000.0 * static_cast<double>(now - perfStart) /
+                        static_cast<double>(perfFreq))
+                     : 0.0;
     return elapsedMs < kRecordConsumeBudgetMs;
 }
 
@@ -331,7 +332,8 @@ void MainView::refreshWaveformsAfterRecordedAudio(
 
 bool MainView::updateZoomForRecordingIntoStartedEmptyDocument()
 {
-    if (!recordingUndoCapture.active || recordingUndoCapture.oldFrameCount != 0 ||
+    if (!recordingUndoCapture.active ||
+        recordingUndoCapture.oldFrameCount != 0 ||
         recordingUndoCapture.startFrame != 0 || !waveforms)
     {
         return false;
@@ -340,10 +342,11 @@ bool MainView::updateZoomForRecordingIntoStartedEmptyDocument()
     auto &session = state->getActiveDocumentSession();
     auto &viewState = state->getActiveViewState();
     const int waveformWidth = waveforms->getWidth();
-    const auto plan = cupuacu::actions::planRecordingZoomForStartedEmptyDocument(
-        viewState.samplesPerPixel, viewState.sampleOffset,
-        session.document.getFrameCount(), waveformWidth,
-        kRecordingFitZoomMaxSamplesPerPixel);
+    const auto plan =
+        cupuacu::actions::planRecordingZoomForStartedEmptyDocument(
+            viewState.samplesPerPixel, viewState.sampleOffset,
+            session.document.getFrameCount(), waveformWidth,
+            kRecordingFitZoomMaxSamplesPerPixel);
     if (!plan.changed)
     {
         return false;
@@ -442,18 +445,18 @@ bool MainView::followTransportHead()
     {
         const int32_t deficitPixels = -xPos;
         const int64_t deltaSamples = std::max<int64_t>(
-            1, static_cast<int64_t>(
-                   std::ceil(static_cast<double>(deficitPixels) *
-                             viewState.samplesPerPixel)));
+            1,
+            static_cast<int64_t>(std::ceil(static_cast<double>(deficitPixels) *
+                                           viewState.samplesPerPixel)));
         newOffset = oldOffset - deltaSamples;
     }
     else if (xPos >= waveformWidth)
     {
         const int32_t overflowPixels = xPos - (waveformWidth - 1);
         const int64_t deltaSamples = std::max<int64_t>(
-            1, static_cast<int64_t>(
-                   std::ceil(static_cast<double>(overflowPixels) *
-                             viewState.samplesPerPixel)));
+            1,
+            static_cast<int64_t>(std::ceil(static_cast<double>(overflowPixels) *
+                                           viewState.samplesPerPixel)));
         newOffset = oldOffset + deltaSamples;
     }
 
@@ -568,8 +571,7 @@ bool MainView::shouldRefreshMarkerBounds(const bool consumedRecordedAudio,
            selectionEnd != lastSelectionEnd ||
            session.document.getMarkerDataVersion() != lastMarkerDataVersion ||
            viewState.selectedMarkerId != lastSelectedMarkerId ||
-           consumedRecordedAudio ||
-           followedTransport;
+           consumedRecordedAudio || followedTransport;
 }
 
 void MainView::rememberMarkerInputs(const bool selectionActive,
@@ -603,14 +605,19 @@ MainView::MainView(State *state) : Component(state, "MainView")
             return static_cast<double>(
                 state->getActiveViewState().sampleOffset);
         },
-        []() { return 0.0; },
-        [state]() { return static_cast<double>(getMaxSampleOffset(state)); },
+        []()
+        {
+            return 0.0;
+        },
+        [state]()
+        {
+            return static_cast<double>(getMaxSampleOffset(state));
+        },
         [this, state]()
         {
-            return std::max(
-                1.0, static_cast<double>(waveforms->getWidth()) *
-                         state->getActiveViewState()
-                             .samplesPerPixel);
+            return std::max(1.0,
+                            static_cast<double>(waveforms->getWidth()) *
+                                state->getActiveViewState().samplesPerPixel);
         },
         [state](const double value)
         {
@@ -618,10 +625,9 @@ MainView::MainView(State *state) : Component(state, "MainView")
             const int64_t oldOffset = viewState.sampleOffset;
             const int64_t requestedOffset =
                 static_cast<int64_t>(std::llround(value));
-            const int64_t snappedOffset =
-                Waveform::quantizeBlockScrollOffset(
-                    requestedOffset, getMaxSampleOffset(state),
-                    viewState.samplesPerPixel, state->pixelScale);
+            const int64_t snappedOffset = Waveform::quantizeBlockScrollOffset(
+                requestedOffset, getMaxSampleOffset(state),
+                viewState.samplesPerPixel, state->pixelScale);
             updateSampleOffset(state, snappedOffset);
             if (oldOffset == viewState.sampleOffset)
             {
@@ -631,7 +637,7 @@ MainView::MainView(State *state) : Component(state, "MainView")
             refreshWaveformsAfterViewChange(
                 state,
                 Waveform::shouldShowSamplePoints(viewState.samplesPerPixel,
-                                                state->pixelScale),
+                                                 state->pixelScale),
                 true);
         });
 
@@ -679,10 +685,9 @@ void MainView::resized()
     const auto plan =
         planMainViewLayout(width, height, state->uiScale, state->pixelScale);
 
-    horizontalScrollBar->setBounds(plan.horizontalScrollBar.x,
-                                   plan.horizontalScrollBar.y,
-                                   plan.horizontalScrollBar.w,
-                                   plan.horizontalScrollBar.h);
+    horizontalScrollBar->setBounds(
+        plan.horizontalScrollBar.x, plan.horizontalScrollBar.y,
+        plan.horizontalScrollBar.w, plan.horizontalScrollBar.h);
     waveforms->setBounds(plan.waveforms.x, plan.waveforms.y, plan.waveforms.w,
                          plan.waveforms.h);
 
@@ -707,8 +712,7 @@ void MainView::updateTriangleMarkerBounds() const
     const auto &session = state->getActiveDocumentSession();
     const auto &viewState = state->getActiveViewState();
     const auto borderWidth = computeBorderWidth();
-    const int scrollBarHeight =
-        computeScrollBarHeightForScale(state);
+    const int scrollBarHeight = computeScrollBarHeightForScale(state);
     const float triHeight = borderWidth * 0.75f;
     const float halfBase = triHeight;
 
@@ -877,7 +881,8 @@ void MainView::rebuildDocumentMarkerHandles() const
     documentMarkerTopHandles.clear();
     documentMarkerBottomHandles.clear();
 
-    const auto &markers = state->getActiveDocumentSession().document.getMarkers();
+    const auto &markers =
+        state->getActiveDocumentSession().document.getMarkers();
     documentMarkerTopHandles.reserve(markers.size());
     documentMarkerBottomHandles.reserve(markers.size());
     for (const auto &marker : markers)
@@ -896,7 +901,8 @@ void MainView::timerCallback()
     auto &session = state->getActiveDocumentSession();
     auto &viewState = state->getActiveViewState();
     const bool consumedRecordedAudio = consumePendingRecordedAudio();
-    const bool adjustedRecordingZoom = updateZoomForRecordingIntoStartedEmptyDocument();
+    const bool adjustedRecordingZoom =
+        updateZoomForRecordingIntoStartedEmptyDocument();
     const bool followedTransport = followTransportHead();
     const bool isRecordingNow =
         state->audioDevices && state->audioDevices->isRecording();
@@ -911,13 +917,13 @@ void MainView::timerCallback()
     if (!isRecordingNow && wasRecordingLastTick)
     {
         finalizeRecordingUndoCaptureIfComplete();
+        state->audioDevices->releaseInputIfUnused();
     }
     wasRecordingLastTick = isRecordingNow;
 
-    if (shouldRefreshMarkerBounds(consumedRecordedAudio || adjustedRecordingZoom,
-                                  followedTransport,
-                                  selectionActive, selectionStart,
-                                  selectionEnd))
+    if (shouldRefreshMarkerBounds(
+            consumedRecordedAudio || adjustedRecordingZoom, followedTransport,
+            selectionActive, selectionStart, selectionEnd))
     {
         rememberMarkerInputs(selectionActive, selectionStart, selectionEnd);
         updateTriangleMarkerBounds();

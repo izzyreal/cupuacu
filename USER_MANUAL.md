@@ -12,6 +12,28 @@ The main window contains:
 
 When no file is open, Cupuacu shows an empty untitled document. Actions that require an active document are disabled.
 
+## Transport And Input Monitoring
+
+The transport controls provide `Play`, `Stop`, `Record`, `Monitor`, and `Loop`.
+
+`Monitor` routes the selected audio input to the selected output so you can
+check the source and recording level without recording. It is off whenever
+Cupuacu starts and remains enabled until you turn it off or quit. Use
+headphones to avoid acoustic feedback.
+
+Monitoring behavior:
+
+- recording input remains audible while recording
+- document playback temporarily suspends input monitoring instead of mixing
+  the two signals
+- monitoring resumes automatically when playback stops
+- `Stop` ends playback or recording but does not turn `Monitor` off
+- mono input is heard through both output channels; stereo input keeps its
+  left/right routing
+
+Enabling `Monitor` may request microphone permission. Input and output devices
+can be selected under `Options -> Audio`.
+
 ## Opening Files
 
 Use `File -> Open` to open an audio file with the system file picker.

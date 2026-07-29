@@ -8,6 +8,7 @@
 #include "UiScale.hpp"
 
 #include "../actions/Play.hpp"
+#include "../actions/Monitor.hpp"
 #include "../actions/Record.hpp"
 #include "playback/PlaybackRange.hpp"
 
@@ -29,6 +30,8 @@ namespace cupuacu::gui
                 emplaceChild<TextButton>(state, "Stop", ButtonType::Momentary);
             recordButton = emplaceChild<TextButton>(state, "Record",
                                                     ButtonType::Momentary);
+            monitorButton =
+                emplaceChild<TextButton>(state, "Monitor", ButtonType::Toggle);
             loopButton =
                 emplaceChild<TextButton>(state, "Loop", ButtonType::Toggle);
 
@@ -55,18 +58,30 @@ namespace cupuacu::gui
                     actions::record(state);
                 });
 
+            monitorButton->setTooltipText(
+                "Hear the recording input through the selected output. "
+                "Headphones recommended.");
+            monitorButton->setOnToggle(
+                [this, state](const bool toggled)
+                {
+                    if (!actions::setInputMonitoring(state, toggled))
+                    {
+                        monitorButton->setToggled(false);
+                    }
+                });
+
             loopButton->setOnToggle(
                 [state](const bool toggled)
                 {
                     state->loopPlaybackEnabled = toggled;
-                    if (!state->audioDevices || !state->audioDevices->isPlaying())
+                    if (!state->audioDevices ||
+                        !state->audioDevices->isPlaying())
                     {
                         return;
                     }
 
                     auto &session = state->getActiveDocumentSession();
-                    auto &viewState =
-                        state->getActiveViewState();
+                    auto &viewState = state->getActiveViewState();
                     const auto range =
                         cupuacu::playback::computeRangeForLiveUpdate(
                             session, state->loopPlaybackEnabled,
@@ -81,6 +96,9 @@ namespace cupuacu::gui
                     state->audioDevices->enqueue(updateMsg);
                 });
             loopButton->setToggled(state->loopPlaybackEnabled);
+            monitorButton->setToggled(
+                state->audioDevices &&
+                state->audioDevices->isInputMonitoringEnabled());
         }
 
         void resized() override
@@ -96,14 +114,16 @@ namespace cupuacu::gui
 
             const int contentW = std::max(0, bounds.w - 2 * padding);
             const int contentH = std::max(0, bounds.h - 2 * padding);
-            const int buttonW = std::max(0, (contentW - 3 * gap) / 4);
+            const int buttonW = std::max(0, (contentW - 4 * gap) / 5);
 
             playButton->setBounds(padding, padding, buttonW, contentH);
             stopButton->setBounds(padding + buttonW + gap, padding, buttonW,
                                   contentH);
             recordButton->setBounds(padding + (buttonW + gap) * 2, padding,
                                     buttonW, contentH);
-            loopButton->setBounds(padding + (buttonW + gap) * 3, padding,
+            monitorButton->setBounds(padding + (buttonW + gap) * 3, padding,
+                                     buttonW, contentH);
+            loopButton->setBounds(padding + (buttonW + gap) * 4, padding,
                                   buttonW, contentH);
         }
 
@@ -118,8 +138,9 @@ namespace cupuacu::gui
             const bool isRecording = state->audioDevices->isRecording();
 
             const std::optional<SDL_Color> playColor =
-                isPlaying ? std::optional<SDL_Color>{SDL_Color{52, 132, 67, 255}}
-                          : std::nullopt;
+                isPlaying
+                    ? std::optional<SDL_Color>{SDL_Color{52, 132, 67, 255}}
+                    : std::nullopt;
             const std::optional<SDL_Color> recordColor =
                 isRecording
                     ? std::optional<SDL_Color>{SDL_Color{168, 80, 46, 255}}
@@ -127,6 +148,9 @@ namespace cupuacu::gui
 
             playButton->setForcedFillColor(playColor);
             recordButton->setForcedFillColor(recordColor);
+            monitorButton->setEnabled(!isPlaying);
+            monitorButton->setToggled(
+                state->audioDevices->isInputMonitoringEnabled());
             loopButton->setToggled(state->loopPlaybackEnabled);
         }
 
@@ -139,6 +163,7 @@ namespace cupuacu::gui
         TextButton *playButton;
         TextButton *stopButton;
         TextButton *recordButton;
+        TextButton *monitorButton;
         TextButton *loopButton;
     };
 } // namespace cupuacu::gui

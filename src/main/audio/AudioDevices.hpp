@@ -9,6 +9,7 @@
 #include "audio/AudioCallbackCore.hpp"
 #include "audio/RecordedChunk.hpp"
 
+#include <atomic>
 #include <cstdint>
 #include <limits>
 #include <mutex>
@@ -35,9 +36,9 @@ namespace cupuacu::audio
         : public concurrency::AtomicStateExchange<AudioDeviceState,
                                                   AudioDeviceView, AudioMessage>
     {
-        using Base = concurrency::AtomicStateExchange<AudioDeviceState,
-                                                      AudioDeviceView,
-                                                      AudioMessage>;
+        using Base =
+            concurrency::AtomicStateExchange<AudioDeviceState, AudioDeviceView,
+                                             AudioMessage>;
 
     public:
         static constexpr std::size_t kMaxRecordedChannels =
@@ -71,9 +72,13 @@ namespace cupuacu::audio
         void enqueue(Play msg) noexcept;
         void enqueue(Record msg) noexcept;
 
-        void openDevice(int inputDeviceIndex, int outputDeviceIndex);
+        bool openDevice(int inputDeviceIndex, int outputDeviceIndex);
         void closeDevice();
         void prepareForRecording();
+        bool setInputMonitoringEnabled(bool enabled,
+                                       gui::VuMeter *vuMeter = nullptr);
+        bool isInputMonitoringEnabled() const noexcept;
+        void releaseInputIfUnused();
 
         bool isPlaying() const;
         bool isRecording() const;
@@ -109,7 +114,7 @@ namespace cupuacu::audio
             uint64_t recordingEndPos = std::numeric_limits<uint64_t>::max();
             bool recordingBoundedToEnd = false;
             uint8_t recordingDocumentChannelCount = 0;
-            uint8_t recordingChannelCount = 0;
+            uint8_t inputChannelCount = 0;
             gui::VuMeter *vuMeter = nullptr;
         };
 
@@ -120,16 +125,18 @@ namespace cupuacu::audio
                               void *userData);
 
         static void writeSilenceToOutput(float *out, unsigned long frames);
-        static bool fillOutputBuffer(PaData &data, float *out,
-                                     unsigned long framesPerBuffer,
-                                     callback_core::StereoMeterLevels &meterLevels);
-        static void recordInputIntoQueue(PaData &data, const float *input,
-                                         unsigned long framesPerBuffer,
-                                         callback_core::StereoMeterLevels &meterLevels);
-        static void pushPeaksToVuMeter(PaData &data,
-                                       const callback_core::StereoMeterLevels &meterLevels,
-                                       bool isPlaying,
-                                       bool isRecording);
+        static bool
+        fillOutputBuffer(PaData &data, float *out,
+                         unsigned long framesPerBuffer,
+                         callback_core::StereoMeterLevels &meterLevels);
+        static void
+        recordInputIntoQueue(PaData &data, const float *input,
+                             unsigned long framesPerBuffer,
+                             callback_core::StereoMeterLevels &meterLevels);
+        static void
+        pushPeaksToVuMeter(PaData &data,
+                           const callback_core::StereoMeterLevels &meterLevels,
+                           bool isPlaying, bool isRecording, bool isMonitoring);
         static void snapshotQueuedPlayMessage(Play &msg);
         static void snapshotQueuedRecordMessage(Record &msg);
 
@@ -137,6 +144,7 @@ namespace cupuacu::audio
 
         std::mutex streamMutex;
         mutable std::mutex selectionMutex;
+        std::atomic_bool inputMonitoringRequested{false};
         int currentInputDeviceIndex = -1;
         int currentOutputDeviceIndex = -1;
         PaStream *stream = nullptr;

@@ -207,6 +207,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/actions/io/BackgroundOpen.cpp
     src/main/actions/io/BackgroundSave.cpp
     src/main/actions/Play.cpp
+    src/main/actions/Monitor.cpp
     src/main/actions/Record.cpp
 )
 

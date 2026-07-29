@@ -13,7 +13,10 @@ using namespace cupuacu::audio;
 void performStop(cupuacu::State *state)
 {
     state->audioDevices->enqueue(Stop{});
-    gui::startVuMeterDecay(state);
+    if (!state->audioDevices->isInputMonitoringEnabled())
+    {
+        gui::startVuMeterDecay(state);
+    }
 }
 
 void cupuacu::actions::play(cupuacu::State *state)
@@ -37,9 +40,8 @@ void cupuacu::actions::play(cupuacu::State *state)
         channelCount = 2;
     }
 
-    const auto range =
-        cupuacu::playback::computeRangeForPlay(session,
-                                               state->loopPlaybackEnabled);
+    const auto range = cupuacu::playback::computeRangeForPlay(
+        session, state->loopPlaybackEnabled);
     const uint64_t start = range.start;
     const uint64_t end = range.end;
 

@@ -67,8 +67,8 @@ TEST_CASE("recording overwrite scenario is safe", "[rtsan]")
 
     cupuacu::audio::AudioDevices devices(false);
     int64_t recordingPos = 2; // overwrite existing frames
-    const std::vector<float> input = {
-        100.f, -100.f, 101.f, -101.f, 102.f, -102.f, 103.f, -103.f};
+    const std::vector<float> input = {100.f, -100.f, 101.f, -101.f,
+                                      102.f, -102.f, 103.f, -103.f};
 
     cupuacu::audio::Record recordMsg{};
     recordMsg.document = &doc;
@@ -145,6 +145,24 @@ TEST_CASE("recording append scenario is safe", "[rtsan]")
     REQUIRE(doc.getSample(1, 4) == Catch::Approx(-10.f));
     REQUIRE(doc.getSample(0, 6) == Catch::Approx(12.f));
     REQUIRE(doc.getSample(1, 6) == Catch::Approx(-12.f));
+}
+
+TEST_CASE("input monitoring path is safe", "[rtsan]")
+{
+    __rtsan::Initialize();
+
+    cupuacu::audio::AudioDevices devices(false);
+    devices.applyMessageImmediate(cupuacu::audio::SetInputMonitoring{
+        .enabled = true, .inputChannelCount = 2, .vuMeter = nullptr});
+    const std::array<float, 4> input{0.25f, -0.25f, 0.5f, -0.5f};
+    std::array<float, 4> output{};
+
+    {
+        __rtsan::ScopedSanitizeRealtime realtimeScope;
+        devices.processCallbackCycle(input.data(), output.data(), 2);
+    }
+
+    REQUIRE(output == input);
 }
 
 TEST_CASE("preview playback with live parameter updates is safe", "[rtsan]")

@@ -48,6 +48,13 @@ namespace cupuacu::audio
     {
     };
 
+    struct SetInputMonitoring
+    {
+        bool enabled = false;
+        uint8_t inputChannelCount = 0;
+        gui::VuMeter *vuMeter = nullptr;
+    };
+
     struct Record
     {
         cupuacu::Document *document;
@@ -58,5 +65,6 @@ namespace cupuacu::audio
         gui::VuMeter *vuMeter;
     };
 
-    using AudioMessage = std::variant<Play, Stop, Record, UpdatePlayback>;
+    using AudioMessage =
+        std::variant<Play, Stop, SetInputMonitoring, Record, UpdatePlayback>;
 } // namespace cupuacu::audio

@@ -2,6 +2,7 @@
 
 #include "State.hpp"
 #include "TestPaths.hpp"
+#include "actions/Monitor.hpp"
 #include "actions/Play.hpp"
 #include "actions/Record.hpp"
 #include "audio/AudioDevices.hpp"
@@ -14,6 +15,8 @@
 #endif
 
 #include <memory>
+#include <string>
+#include <vector>
 
 TEST_CASE("Record action stops playback and records bounded selection",
           "[audio]")
@@ -55,8 +58,9 @@ TEST_CASE("Record action stops playback and records bounded selection",
     REQUIRE(state.audioDevices->getRecordingPosition() == 11);
 }
 
-TEST_CASE("Device selection short-circuits unchanged values and stores new ones",
-          "[audio]")
+TEST_CASE(
+    "Device selection short-circuits unchanged values and stores new ones",
+    "[audio]")
 {
     cupuacu::audio::AudioDevices devices(false);
     const auto initial = devices.getDeviceSelection();
@@ -76,8 +80,156 @@ TEST_CASE("Device selection short-circuits unchanged values and stores new ones"
     REQUIRE(stored.inputDeviceIndex == -1);
 }
 
-TEST_CASE("Loop playback update uses new end after pending switch when end is ahead",
+TEST_CASE("Input monitoring routes idle input and survives stop", "[audio]")
+{
+    cupuacu::audio::AudioDevices devices(false);
+    devices.applyMessageImmediate(cupuacu::audio::SetInputMonitoring{
+        .enabled = true, .inputChannelCount = 2, .vuMeter = nullptr});
+
+    const std::vector<float> input{0.1f, -0.1f, 0.2f, -0.2f};
+    std::vector<float> output(4, 0.0f);
+    devices.processCallbackCycle(input.data(), output.data(), 2);
+
+    REQUIRE(output == input);
+    REQUIRE(devices.getSnapshot().isInputMonitoringEnabled());
+
+    devices.applyMessageImmediate(cupuacu::audio::Stop{});
+    output.assign(4, 0.0f);
+    devices.processCallbackCycle(input.data(), output.data(), 2);
+
+    REQUIRE(output == input);
+    REQUIRE(devices.getSnapshot().isInputMonitoringEnabled());
+}
+
+TEST_CASE("Playback suspends input monitoring and it resumes afterward",
           "[audio]")
+{
+    cupuacu::audio::AudioDevices devices(false);
+    cupuacu::Document document{};
+    document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 2);
+    document.setSample(0, 0, 0.4f, false);
+    document.setSample(1, 0, -0.4f, false);
+    document.setSample(0, 1, 0.5f, false);
+    document.setSample(1, 1, -0.5f, false);
+
+    devices.applyMessageImmediate(cupuacu::audio::SetInputMonitoring{
+        .enabled = true, .inputChannelCount = 2, .vuMeter = nullptr});
+    devices.applyMessageImmediate(cupuacu::audio::Play{
+        .document = &document,
+        .startPos = 0,
+        .endPos = 2,
+        .loopEnabled = false,
+        .selectionIsActive = false,
+        .selectedChannels = cupuacu::SelectedChannels::BOTH,
+        .vuMeter = nullptr});
+
+    const std::vector<float> input{0.9f, -0.9f, 0.8f, -0.8f, 0.7f, -0.7f};
+    std::vector<float> output(6, 0.0f);
+    devices.processCallbackCycle(input.data(), output.data(), 3);
+
+    REQUIRE(output == std::vector<float>{0.4f, -0.4f, 0.5f, -0.5f, 0.0f, 0.0f});
+    REQUIRE_FALSE(devices.isPlaying());
+
+    output.assign(4, 0.0f);
+    devices.processCallbackCycle(input.data(), output.data(), 2);
+    REQUIRE(output == std::vector<float>{0.9f, -0.9f, 0.8f, -0.8f});
+}
+
+TEST_CASE("Monitored recording preserves captured samples", "[audio]")
+{
+    cupuacu::audio::AudioDevices devices(false);
+    cupuacu::Document document{};
+    document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 8);
+    devices.applyMessageImmediate(cupuacu::audio::SetInputMonitoring{
+        .enabled = true, .inputChannelCount = 2, .vuMeter = nullptr});
+    devices.applyMessageImmediate(cupuacu::audio::Record{.document = &document,
+                                                         .startPos = 0,
+                                                         .endPos = 0,
+                                                         .boundedToEnd = false,
+                                                         .vuMeter = nullptr});
+
+    const std::vector<float> input{0.25f, -0.25f, 0.5f, -0.5f};
+    std::vector<float> output(4, 0.0f);
+    devices.processCallbackCycle(input.data(), output.data(), 2);
+
+    REQUIRE(output == input);
+    cupuacu::audio::AudioDevices::RecordedChunk chunk{};
+    REQUIRE(devices.popRecordedChunk(chunk));
+    REQUIRE(chunk.frameCount == 2);
+    REQUIRE(chunk.interleavedSamples[0] == input[0]);
+    REQUIRE(chunk.interleavedSamples[1] == input[1]);
+    REQUIRE(chunk.interleavedSamples[2] == input[2]);
+    REQUIRE(chunk.interleavedSamples[3] == input[3]);
+
+    devices.applyMessageImmediate(cupuacu::audio::SetInputMonitoring{
+        .enabled = false, .inputChannelCount = 2, .vuMeter = nullptr});
+    output.assign(4, 1.0f);
+    devices.processCallbackCycle(input.data(), output.data(), 2);
+    REQUIRE(output == std::vector<float>{0.0f, 0.0f, 0.0f, 0.0f});
+
+    REQUIRE(devices.popRecordedChunk(chunk));
+    REQUIRE(chunk.interleavedSamples[0] == input[0]);
+    REQUIRE(chunk.interleavedSamples[1] == input[1]);
+}
+
+TEST_CASE("Input monitoring action reports unavailable device selection",
+          "[audio]")
+{
+#if defined(__APPLE__)
+    struct MicrophonePermissionReset
+    {
+        ~MicrophonePermissionReset()
+        {
+            cupuacu::platform::macos::resetMicrophoneAccessOverrideForTesting();
+        }
+    } microphonePermissionReset;
+    cupuacu::platform::macos::setMicrophoneAccessOverrideForTesting(true);
+#endif
+    cupuacu::test::StateWithTestPaths state{};
+    state.audioDevices = std::make_shared<cupuacu::audio::AudioDevices>(false);
+    state.audioDevices->setDeviceSelection(
+        {.hostApiIndex = -1, .outputDeviceIndex = -1, .inputDeviceIndex = -1});
+    std::string reportedTitle;
+    state.errorReporter = [&](const std::string &title, const std::string &)
+    {
+        reportedTitle = title;
+    };
+
+    REQUIRE_FALSE(cupuacu::actions::setInputMonitoring(&state, true));
+    REQUIRE(reportedTitle == "Input monitoring unavailable");
+    REQUIRE_FALSE(state.audioDevices->isInputMonitoringEnabled());
+}
+
+#if defined(__APPLE__)
+TEST_CASE("Input monitoring remains disabled when microphone access is denied",
+          "[audio]")
+{
+    struct MicrophonePermissionReset
+    {
+        ~MicrophonePermissionReset()
+        {
+            cupuacu::platform::macos::resetMicrophoneAccessOverrideForTesting();
+        }
+    } microphonePermissionReset;
+    cupuacu::platform::macos::setMicrophoneAccessOverrideForTesting(false);
+
+    cupuacu::test::StateWithTestPaths state{};
+    state.audioDevices = std::make_shared<cupuacu::audio::AudioDevices>(false);
+    std::string reportedTitle;
+    state.errorReporter = [&](const std::string &title, const std::string &)
+    {
+        reportedTitle = title;
+    };
+
+    REQUIRE_FALSE(cupuacu::actions::setInputMonitoring(&state, true));
+    REQUIRE(reportedTitle == "Microphone access required");
+    REQUIRE_FALSE(state.audioDevices->isInputMonitoringEnabled());
+}
+#endif
+
+TEST_CASE(
+    "Loop playback update uses new end after pending switch when end is ahead",
+    "[audio]")
 {
     cupuacu::audio::AudioDevices devices(false);
     cupuacu::Document document{};
@@ -110,13 +262,16 @@ TEST_CASE("Loop playback update uses new end after pending switch when end is ah
     devices.processCallbackCycle(nullptr, output.data(), 1); // hit new end
     REQUIRE(devices.getPlaybackPosition() == 27);
 
-    devices.processCallbackCycle(nullptr, output.data(), 1); // loop + emit start
+    devices.processCallbackCycle(nullptr, output.data(),
+                                 1); // loop + emit start
     REQUIRE(devices.isPlaying());
     REQUIRE(devices.getPlaybackPosition() == 13);
 }
 
-TEST_CASE("Playback update keeps previous end when new non-loop end is behind current position",
-          "[audio]")
+TEST_CASE(
+    "Playback update keeps previous end when new non-loop end is behind "
+    "current position",
+    "[audio]")
 {
     cupuacu::audio::AudioDevices devices(false);
     cupuacu::Document document{};
@@ -157,8 +312,10 @@ TEST_CASE("Playback update keeps previous end when new non-loop end is behind cu
     REQUIRE_FALSE(devices.isPlaying());
 }
 
-TEST_CASE("Playback update uses new non-loop end when it is ahead of current position",
-          "[audio]")
+TEST_CASE(
+    "Playback update uses new non-loop end when it is ahead of current "
+    "position",
+    "[audio]")
 {
     cupuacu::audio::AudioDevices devices(false);
     cupuacu::Document document{};
@@ -192,8 +349,10 @@ TEST_CASE("Playback update uses new non-loop end when it is ahead of current pos
     REQUIRE_FALSE(devices.isPlaying());
 }
 
-TEST_CASE("Loop playback update keeps old loop until boundary when new end is behind current position",
-          "[audio]")
+TEST_CASE(
+    "Loop playback update keeps old loop until boundary when new end is behind "
+    "current position",
+    "[audio]")
 {
     cupuacu::audio::AudioDevices devices(false);
     cupuacu::Document document{};
@@ -226,13 +385,16 @@ TEST_CASE("Loop playback update keeps old loop until boundary when new end is be
     devices.processCallbackCycle(nullptr, output.data(), 1); // hit old end
     REQUIRE(devices.getPlaybackPosition() == 31);
 
-    devices.processCallbackCycle(nullptr, output.data(), 1); // loop + emit new start
+    devices.processCallbackCycle(nullptr, output.data(),
+                                 1); // loop + emit new start
     REQUIRE(devices.isPlaying());
     REQUIRE(devices.getPlaybackPosition() == 13);
 }
 
-TEST_CASE("Loop playback update keeps old loop while dragging equivalent update is deferred",
-          "[audio]")
+TEST_CASE(
+    "Loop playback update keeps old loop while dragging equivalent update is "
+    "deferred",
+    "[audio]")
 {
     cupuacu::audio::AudioDevices devices(false);
     cupuacu::Document document{};
@@ -255,8 +417,8 @@ TEST_CASE("Loop playback update keeps old loop while dragging equivalent update 
     // Equivalent to the UI deferring the update until drag release:
     // no UpdatePlayback is sent while dragging, so old range remains active.
     const int64_t framesToLoopSample = 18;
-    devices.processCallbackCycle(nullptr, output.data(),
-                                 static_cast<unsigned long>(framesToLoopSample));
+    devices.processCallbackCycle(
+        nullptr, output.data(), static_cast<unsigned long>(framesToLoopSample));
     REQUIRE(devices.isPlaying());
     REQUIRE(devices.getPlaybackPosition() == 11);
 }
@@ -268,12 +430,11 @@ TEST_CASE("Bounded recording stops exactly at the requested end position",
     cupuacu::Document document{};
     document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 128);
 
-    devices.applyMessageImmediate(cupuacu::audio::Record{
-        .document = &document,
-        .startPos = 5,
-        .endPos = 9,
-        .boundedToEnd = true,
-        .vuMeter = nullptr});
+    devices.applyMessageImmediate(cupuacu::audio::Record{.document = &document,
+                                                         .startPos = 5,
+                                                         .endPos = 9,
+                                                         .boundedToEnd = true,
+                                                         .vuMeter = nullptr});
 
     std::vector<float> input(2 * 16, 0.25f);
     std::vector<float> output(2 * 16, 0.0f);

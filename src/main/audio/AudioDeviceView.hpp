@@ -12,6 +12,7 @@ namespace cupuacu::audio
 
         bool isPlaying() const;
         bool isRecording() const;
+        bool isInputMonitoringEnabled() const;
         int64_t getPlaybackPosition() const;
         int64_t getRecordingPosition() const;
 

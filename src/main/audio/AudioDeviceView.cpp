@@ -18,6 +18,11 @@ bool AudioDeviceView::isRecording() const
     return state->isRecording;
 }
 
+bool AudioDeviceView::isInputMonitoringEnabled() const
+{
+    return state->isInputMonitoringEnabled;
+}
+
 int64_t AudioDeviceView::getPlaybackPosition() const
 {
     return state->playbackPosition;
