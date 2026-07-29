@@ -51,6 +51,11 @@ namespace cupuacu::actions
     inline ActionAvailability describeDocumentMutationAvailability(
         const cupuacu::State *state)
     {
+        if (state && state->longTask.active)
+        {
+            return unavailableAction("Wait for the current operation to finish");
+        }
+
         if (isRecordingActive(state))
         {
             return unavailableAction("Stop recording first");

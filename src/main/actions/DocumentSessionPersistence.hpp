@@ -161,16 +161,15 @@ namespace cupuacu::actions
         const auto clipboardSnapshotPath = detail::makeClipboardSnapshotPath(state);
         if (state->clipboard.getChannelCount() > 0 && !clipboardSnapshotPath.empty())
         {
-            if (cupuacu::persistence::saveClipboardSnapshot(clipboardSnapshotPath,
-                                                            state->clipboard))
-            {
-                persisted.clipboardSnapshotPath =
-                    clipboardSnapshotPath.string();
-            }
+            cupuacu::persistence::scheduleClipboardSnapshot(
+                clipboardSnapshotPath, state->clipboard);
+            persisted.clipboardSnapshotPath =
+                clipboardSnapshotPath.string();
         }
         else if (!clipboardSnapshotPath.empty())
         {
-            cupuacu::persistence::removeClipboardSnapshot(clipboardSnapshotPath);
+            cupuacu::persistence::scheduleClipboardSnapshot(
+                clipboardSnapshotPath, {});
         }
 
         if (state->mainDocumentSessionWindow)
@@ -341,6 +340,7 @@ namespace cupuacu::actions
                                       : state->recentFiles;
         cupuacu::persistence::RecentFilesPersistence::save(
             state->paths->recentlyOpenedFilesPath(), recentFiles);
+        cupuacu::persistence::flushScheduledClipboardSnapshots();
         cupuacu::persistence::SessionStatePersistence::save(
             state->paths->sessionStatePath(), persisted);
     }

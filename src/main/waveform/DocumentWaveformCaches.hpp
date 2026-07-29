@@ -1,7 +1,10 @@
 #pragma once
 
+#include "../Document.hpp"
 #include "../gui/WaveformCache.hpp"
 
+#include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <deque>
 #include <memory>
@@ -9,11 +12,6 @@
 #include <optional>
 #include <thread>
 #include <vector>
-
-namespace cupuacu
-{
-    class Document;
-}
 
 namespace cupuacu::waveform
 {
@@ -88,7 +86,7 @@ namespace cupuacu::waveform
         class BuildJob
         {
         public:
-            BuildJob(const Document *documentToRead, BuildRequest requestToUse);
+            BuildJob(const Document &documentToRead, BuildRequest requestToUse);
             ~BuildJob();
 
             BuildJob(const BuildJob &) = delete;
@@ -101,15 +99,18 @@ namespace cupuacu::waveform
             takePublishedOutputs(std::size_t maxCount);
             [[nodiscard]] bool hasPublishedOutputs() const;
             [[nodiscard]] BuildProgress getProgress() const;
+            void cancel();
 
         private:
-            const Document *document = nullptr;
+            Document document;
             BuildRequest request;
             mutable std::mutex mutex;
+            std::condition_variable outputCv;
             bool completed = false;
             BuildProgress progress;
             std::deque<BuildOutput> outputs;
             std::thread worker;
+            std::atomic_bool cancelRequested{false};
 
             void run();
         };

@@ -57,6 +57,7 @@ namespace cupuacu
         int64_t clampMarkerFrameUnlocked(int64_t frame) const;
         void normalizeMarkers();
         void normalizeMarkersUnlocked();
+        void ensureUniqueBufferUnlocked();
 
     public:
         Document() = default;
@@ -116,6 +117,9 @@ namespace cupuacu
                                         int64_t frameCount,
                                         int64_t channelCount,
                                         bool shouldMarkDirty = false);
+        void writeChannelFloatBlock(int64_t channel, int64_t startFrame,
+                                    const float *samples, int64_t frameCount,
+                                    bool shouldMarkDirty = true);
 
         void resizeBuffer(int64_t channels, int64_t frames);
 

@@ -3,7 +3,9 @@
 #include "Document.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <utility>
 
@@ -69,7 +71,15 @@ namespace cupuacu
         };
 
     private:
-        std::optional<Document::AudioSegment> segment;
+        std::shared_ptr<Document::AudioSegment> segment;
+        uint64_t revision = 0;
+
+        void touch() noexcept
+        {
+            revision = nextRevision.fetch_add(1, std::memory_order_relaxed);
+        }
+
+        inline static std::atomic<uint64_t> nextRevision{1};
 
         [[nodiscard]] static Document::AudioSegment
         makeInitializedSegment(const SampleFormat format,
@@ -104,11 +114,12 @@ namespace cupuacu
         void clear()
         {
             segment.reset();
+            touch();
         }
 
         [[nodiscard]] bool hasAudio() const
         {
-            return segment.has_value() && segment->channelCount > 0 &&
+            return segment && segment->channelCount > 0 &&
                    segment->frameCount > 0;
         }
 
@@ -132,6 +143,11 @@ namespace cupuacu
             return segment ? segment->channelCount : 0;
         }
 
+        [[nodiscard]] uint64_t getRevision() const noexcept
+        {
+            return revision;
+        }
+
         [[nodiscard]] float getSample(const int64_t channel,
                                       const int64_t frame) const
         {
@@ -148,7 +164,7 @@ namespace cupuacu
 
         [[nodiscard]] ReadLease acquireReadLease() const
         {
-            return ReadLease(segment ? &*segment : nullptr);
+            return ReadLease(segment.get());
         }
 
         [[nodiscard]] const Document::AudioSegment *
@@ -159,14 +175,16 @@ namespace cupuacu
                 return nullptr;
             }
 
-            return &*segment;
+            return segment.get();
         }
 
         void initialize(const SampleFormat format, const uint32_t sampleRate,
                         const uint32_t channelCount, const int64_t frameCount)
         {
-            segment = makeInitializedSegment(format, sampleRate, channelCount,
-                                             frameCount);
+            segment = std::make_shared<Document::AudioSegment>(
+                makeInitializedSegment(format, sampleRate, channelCount,
+                                       frameCount));
+            touch();
         }
 
         void setSample(const int64_t channel, const int64_t frame,
@@ -176,22 +194,31 @@ namespace cupuacu
             {
                 return;
             }
+            if (segment.use_count() != 1)
+            {
+                segment = std::make_shared<Document::AudioSegment>(*segment);
+            }
 
             segment->samples[static_cast<std::size_t>(channel)]
                             [static_cast<std::size_t>(frame)] = value;
             segment->dirty[static_cast<std::size_t>(channel)]
                           [static_cast<std::size_t>(frame)] =
                 shouldMarkDirty ? 1u : 0u;
+            touch();
         }
 
         void assignSegment(const Document::AudioSegment &segmentToCopy)
         {
-            segment = segmentToCopy;
+            segment =
+                std::make_shared<Document::AudioSegment>(segmentToCopy);
+            touch();
         }
 
         void assignSegment(Document::AudioSegment &&segmentToMove)
         {
-            segment = std::move(segmentToMove);
+            segment = std::make_shared<Document::AudioSegment>(
+                std::move(segmentToMove));
+            touch();
         }
 
         [[nodiscard]] Document::AudioSegment captureSegment(

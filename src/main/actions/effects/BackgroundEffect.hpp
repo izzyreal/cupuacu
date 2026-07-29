@@ -4,6 +4,7 @@
 #include "../../State.hpp"
 #include "../../effects/EffectSettings.hpp"
 #include "../../effects/RemoveSilenceEffect.hpp"
+#include "../../undo/UndoStore.hpp"
 
 #include <cstdint>
 #include <chrono>
@@ -31,6 +32,7 @@ namespace cupuacu::actions::effects
     {
         BackgroundEffectKind kind = BackgroundEffectKind::Reverse;
         int targetTabIndex = -1;
+        uint64_t targetTabId = 0;
         std::string description;
         int64_t startFrame = 0;
         int64_t frameCount = 0;
@@ -50,6 +52,7 @@ namespace cupuacu::actions::effects
     {
         BackgroundEffectKind kind = BackgroundEffectKind::Reverse;
         int targetTabIndex = -1;
+        uint64_t targetTabId = 0;
         int64_t startFrame = 0;
         int64_t frameCount = 0;
         std::vector<int64_t> targetChannels;
@@ -61,6 +64,10 @@ namespace cupuacu::actions::effects
         int64_t originalCursor = 0;
         bool hadSelection = false;
         bool removeSilenceRemovesDuration = false;
+        std::optional<cupuacu::Document> preparedDocument;
+        undo::UndoStore::SampleMatrixHandle oldSamplesHandle;
+        undo::UndoStore::SampleMatrixHandle newSamplesHandle;
+        undo::UndoStore::SampleCubeHandle removedSamplesHandle;
     };
 
     class BackgroundEffectJob
@@ -79,7 +86,8 @@ namespace cupuacu::actions::effects
 
         BackgroundEffectJob(std::uint64_t idToUse,
                             BackgroundEffectRequest requestToRun,
-                            const cupuacu::Document *documentToRead);
+                            const cupuacu::Document &documentToRead,
+                            undo::UndoStore undoStoreToUse = {});
         ~BackgroundEffectJob();
 
         BackgroundEffectJob(const BackgroundEffectJob &) = delete;
@@ -96,7 +104,8 @@ namespace cupuacu::actions::effects
     private:
         std::uint64_t id = 0;
         BackgroundEffectRequest request;
-        const cupuacu::Document *document = nullptr;
+        cupuacu::Document document;
+        undo::UndoStore undoStore;
         mutable std::mutex mutex;
         mutable std::condition_variable completionCv;
         bool completed = false;

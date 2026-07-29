@@ -34,6 +34,48 @@ TEST_CASE("Document markers are assigned stable ids and clamped to bounds",
             });
 }
 
+TEST_CASE("Document copies detach their audio buffer on mutation",
+          "[document][threading]")
+{
+    cupuacu::Document original;
+    original.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 3);
+    original.setSample(0, 0, 0.25f);
+
+    cupuacu::Document revision = original;
+    REQUIRE(revision.getAudioBuffer() == original.getAudioBuffer());
+
+    revision.setSample(0, 0, -0.75f);
+
+    REQUIRE(revision.getAudioBuffer() != original.getAudioBuffer());
+    REQUIRE(original.getSample(0, 0) == 0.25f);
+    REQUIRE(revision.getSample(0, 0) == -0.75f);
+}
+
+TEST_CASE("Appending frames preserves metadata without rescanning old frames",
+          "[document][performance]")
+{
+    cupuacu::Document document;
+    document.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 1, 100000);
+    document.setSample(0, 123, 0.5f, true);
+
+    int progressCalls = 0;
+    int64_t reportedTotal = 0;
+    document.insertFrames(
+        document.getFrameCount(), 256,
+        [&](const int64_t, const int64_t total)
+        {
+            ++progressCalls;
+            reportedTotal = total;
+        });
+
+    REQUIRE(progressCalls == 1);
+    REQUIRE(reportedTotal == 1);
+    REQUIRE(document.getFrameCount() == 100256);
+    auto lease = document.acquireReadLease();
+    REQUIRE(lease.isDirty(0, 123));
+    REQUIRE_FALSE(lease.isDirty(0, 100000));
+}
+
 TEST_CASE("Document read lease blocks concurrent mutation",
           "[document][threading]")
 {

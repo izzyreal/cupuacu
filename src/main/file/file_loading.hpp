@@ -30,6 +30,9 @@ namespace cupuacu::file
     {
         Document document;
         std::optional<AudioExportSettings> exportSettings;
+        waveform::DocumentWaveformCaches waveformCaches;
+        bool persistentWaveformCacheChecked = false;
+        bool persistentWaveformCacheLoaded = false;
     };
 
     using LoadProgressCallback =
@@ -542,12 +545,31 @@ namespace cupuacu::file
         session.currentFileExportSettings = loaded.exportSettings;
         session.setPreservationReference(path, session.currentFileExportSettings);
         session.document = std::move(loaded.document);
-        session.waveformCaches.resetToChannelCount(
-            session.document.getChannelCount());
+        if (loaded.persistentWaveformCacheLoaded)
+        {
+            session.waveformCaches = std::move(loaded.waveformCaches);
+        }
+        else
+        {
+            session.waveformCaches.resetToChannelCount(
+                session.document.getChannelCount());
+        }
         session.selection.reset();
         session.cursor = 0;
         session.syncSelectionAndCursorToDocumentLength();
-        if (paths)
+        if (loaded.persistentWaveformCacheChecked)
+        {
+            if (loaded.persistentWaveformCacheLoaded)
+            {
+                session.clearPendingPersistentWaveformCacheSave();
+            }
+            else
+            {
+                session.markPendingPersistentWaveformCacheSave();
+                session.updateWaveformCache();
+            }
+        }
+        else if (paths)
         {
             if (cupuacu::waveform::loadPersistentWaveformCache(session, *paths))
             {

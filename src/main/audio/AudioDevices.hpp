@@ -90,6 +90,8 @@ namespace cupuacu::audio
         int64_t getPlaybackPosition() const;
         int64_t getRecordingPosition() const;
         bool popRecordedChunk(RecordedChunk &outChunk);
+        [[nodiscard]] bool hasPendingRecordedAudio() const noexcept;
+        [[nodiscard]] bool takeRecordingOverflow() noexcept;
         void clearRecordedChunks();
         bool prepareInputMonitorForTesting(
             uint8_t inputChannels,
@@ -165,6 +167,7 @@ namespace cupuacu::audio
         PaStream *stream = nullptr;
         DeviceSelection deviceSelection;
         moodycamel::ReaderWriterQueue<RecordedChunk> recordedChunkQueue{512};
+        std::atomic_bool recordingOverflowed{false};
         std::unique_ptr<InputMonitorPipeline> monitorPipeline;
         PaData paData;
         uint64_t monitorTripGeneration = 0;

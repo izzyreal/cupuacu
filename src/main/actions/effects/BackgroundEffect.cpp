@@ -1,6 +1,7 @@
 #include "BackgroundEffect.hpp"
 
 #include "../MutationAvailability.hpp"
+#include "../DocumentSessionPersistence.hpp"
 #include "../../LongTask.hpp"
 #include "../../effects/AmplifyFadeEffect.hpp"
 #include "../../effects/AmplifyEnvelopeEffect.hpp"
@@ -63,6 +64,141 @@ namespace cupuacu::actions::effects
                    cupuacu::actions::isDocumentMutationAvailable(state);
         }
 
+        int findTabIndexById(const cupuacu::State *state, const uint64_t tabId)
+        {
+            if (!state || tabId == 0)
+            {
+                return -1;
+            }
+            for (int index = 0; index < static_cast<int>(state->tabs.size());
+                 ++index)
+            {
+                if (state->tabs[static_cast<std::size_t>(index)].id == tabId)
+                {
+                    return index;
+                }
+            }
+            return -1;
+        }
+
+        class PreparedDocumentUndoable final
+            : public cupuacu::actions::Undoable
+        {
+        public:
+            PreparedDocumentUndoable(
+                cupuacu::State *stateToUse, const int tabIndexToUse,
+                std::shared_ptr<cupuacu::actions::Undoable> persistenceDelegate,
+                cupuacu::Document preparedDocument,
+                std::function<void(bool)> afterSwapToUse = {})
+                : Undoable(stateToUse), tabIndex(tabIndexToUse),
+                  delegate(std::move(persistenceDelegate)),
+                  redoRevision(std::move(preparedDocument)),
+                  afterSwap(std::move(afterSwapToUse))
+            {
+                redoWaveformCaches.emplace();
+                redoWaveformCaches->resetToChannelCount(
+                    redoRevision->getChannelCount());
+                updateGui = [this]
+                {
+                    if (delegate)
+                    {
+                        delegate->updateGui();
+                    }
+                };
+            }
+
+            void redo() override
+            {
+                swapRevision(redoRevision, undoRevision,
+                             redoWaveformCaches, undoWaveformCaches, true);
+            }
+
+            void undo() override
+            {
+                swapRevision(undoRevision, redoRevision,
+                             undoWaveformCaches, redoWaveformCaches, false);
+            }
+
+            std::string getRedoDescription() override
+            {
+                return delegate ? delegate->getRedoDescription()
+                                : std::string{"Effect"};
+            }
+
+            std::string getUndoDescription() override
+            {
+                return delegate ? delegate->getUndoDescription()
+                                : std::string{"Effect"};
+            }
+
+            [[nodiscard]] cupuacu::file::OverwritePreservationMutation
+            overwritePreservationMutation() const override
+            {
+                return delegate
+                           ? delegate->overwritePreservationMutation()
+                           : cupuacu::file::OverwritePreservationMutationHelper::
+                                 incompatible("Prepared effect");
+            }
+
+            [[nodiscard]] bool canPersistForRestart() const override
+            {
+                return delegate && delegate->canPersistForRestart();
+            }
+
+            [[nodiscard]] std::optional<nlohmann::json>
+            serializeForRestart() const override
+            {
+                return delegate ? delegate->serializeForRestart()
+                                : std::nullopt;
+            }
+
+        private:
+            int tabIndex = -1;
+            std::shared_ptr<cupuacu::actions::Undoable> delegate;
+            std::optional<cupuacu::Document> redoRevision;
+            std::optional<cupuacu::Document> undoRevision;
+            std::optional<cupuacu::waveform::DocumentWaveformCaches>
+                redoWaveformCaches;
+            std::optional<cupuacu::waveform::DocumentWaveformCaches>
+                undoWaveformCaches;
+            std::function<void(bool)> afterSwap;
+
+            void swapRevision(std::optional<cupuacu::Document> &source,
+                              std::optional<cupuacu::Document> &destination,
+                              std::optional<
+                                  cupuacu::waveform::DocumentWaveformCaches>
+                                  &sourceCaches,
+                              std::optional<
+                                  cupuacu::waveform::DocumentWaveformCaches>
+                                  &destinationCaches,
+                              const bool isRedo)
+            {
+                if (!state || !source.has_value() ||
+                    !sourceCaches.has_value() || tabIndex < 0 ||
+                    tabIndex >= static_cast<int>(state->tabs.size()))
+                {
+                    return;
+                }
+
+                auto &session =
+                    state->tabs[static_cast<std::size_t>(tabIndex)].session;
+                session.stopWaveformCacheBuild();
+                destination.emplace(std::move(session.document));
+                destinationCaches.emplace(
+                    std::move(session.waveformCaches));
+                session.document = std::move(*source);
+                session.waveformCaches = std::move(*sourceCaches);
+                source.reset();
+                sourceCaches.reset();
+                session.updateWaveformCache();
+                session.syncSelectionAndCursorToDocumentLength();
+                if (afterSwap)
+                {
+                    afterSwap(isRedo);
+                }
+            }
+        };
+
         void startBackgroundEffect(cupuacu::State *state,
                                    BackgroundEffectRequest request,
                                    const cupuacu::Document *document)
@@ -73,8 +209,14 @@ namespace cupuacu::actions::effects
                 return;
             }
 
+            cupuacu::actions::detail::ensureUndoStoreForTab(
+                state, request.targetTabIndex);
+            const auto undoStore =
+                state->tabs[static_cast<std::size_t>(request.targetTabIndex)]
+                    .session.undoStore;
             state->backgroundEffectJob.reset(new BackgroundEffectJob(
-                nextBackgroundEffectJobId(), std::move(request), document));
+                nextBackgroundEffectJobId(), std::move(request), *document,
+                undoStore));
             cupuacu::setLongTask(state, "Applying effect",
                                  state->backgroundEffectJob->snapshot().detail,
                                  0.0, false, true);
@@ -91,6 +233,7 @@ namespace cupuacu::actions::effects
             auto result = std::make_unique<BackgroundEffectResult>();
             result->kind = request.kind;
             result->targetTabIndex = request.targetTabIndex;
+            result->targetTabId = request.targetTabId;
             result->startFrame = request.startFrame;
             result->frameCount = request.frameCount;
             result->targetChannels = request.targetChannels;
@@ -155,6 +298,7 @@ namespace cupuacu::actions::effects
             auto result = std::make_unique<BackgroundEffectResult>();
             result->kind = request.kind;
             result->targetTabIndex = request.targetTabIndex;
+            result->targetTabId = request.targetTabId;
             result->startFrame = request.startFrame;
             result->frameCount = request.frameCount;
             result->targetChannels = request.targetChannels;
@@ -223,6 +367,7 @@ namespace cupuacu::actions::effects
             auto result = std::make_unique<BackgroundEffectResult>();
             result->kind = request.kind;
             result->targetTabIndex = request.targetTabIndex;
+            result->targetTabId = request.targetTabId;
             result->startFrame = request.startFrame;
             result->frameCount = request.frameCount;
             result->targetChannels = request.targetChannels;
@@ -284,6 +429,7 @@ namespace cupuacu::actions::effects
             auto result = std::make_unique<BackgroundEffectResult>();
             result->kind = request.kind;
             result->targetTabIndex = request.targetTabIndex;
+            result->targetTabId = request.targetTabId;
             result->startFrame = request.startFrame;
             result->frameCount = request.frameCount;
             result->targetChannels = request.targetChannels;
@@ -440,6 +586,7 @@ namespace cupuacu::actions::effects
             auto result = std::make_unique<BackgroundEffectResult>();
             result->kind = request.kind;
             result->targetTabIndex = request.targetTabIndex;
+            result->targetTabId = request.targetTabId;
             result->startFrame = request.startFrame;
             result->frameCount = request.frameCount;
             result->targetChannels = request.targetChannels;
@@ -575,52 +722,79 @@ namespace cupuacu::actions::effects
                 return;
             }
 
-            if (result->targetTabIndex < 0 ||
-                result->targetTabIndex >= static_cast<int>(state->tabs.size()))
+            const int targetTabIndex =
+                findTabIndexById(state, result->targetTabId);
+            if (targetTabIndex < 0)
             {
                 reportEffectFailure(state, snapshot.request.description,
                                     "The target tab is no longer available.");
                 return;
             }
 
+            const auto addPrepared =
+                [&](std::shared_ptr<cupuacu::actions::Undoable> delegate,
+                    std::function<void(bool)> afterSwap = {})
+            {
+                if (!result->preparedDocument.has_value())
+                {
+                    reportEffectFailure(
+                        state, snapshot.request.description,
+                        "The effect did not produce a prepared document revision.");
+                    return;
+                }
+                state->addAndDoUndoableToTab(
+                    targetTabIndex,
+                    std::make_shared<PreparedDocumentUndoable>(
+                        state, targetTabIndex, std::move(delegate),
+                        std::move(*result->preparedDocument),
+                        std::move(afterSwap)));
+            };
+
             switch (result->kind)
             {
                 case BackgroundEffectKind::Reverse:
-                    state->addAndDoUndoableToTab(
-                        result->targetTabIndex,
+                    addPrepared(
                         std::make_shared<cupuacu::effects::ReverseUndoable>(
-                            state, result->targetTabIndex, result->startFrame,
+                            state, targetTabIndex, result->startFrame,
+                            result->frameCount,
                             std::move(result->targetChannels),
-                            std::move(result->oldSamples),
-                            std::move(result->newSamples)));
+                            std::move(result->oldSamplesHandle),
+                            std::move(result->newSamplesHandle)));
                     break;
                 case BackgroundEffectKind::AmplifyFade:
-                    state->addAndDoUndoableToTab(
-                        result->targetTabIndex,
+                    addPrepared(
                         std::make_shared<cupuacu::effects::AmplifyFadeUndoable>(
-                            state, result->targetTabIndex, result->startFrame,
+                            state, targetTabIndex,
+                            snapshot.request.amplifyFadeSettings.value_or(
+                                ::cupuacu::effects::AmplifyFadeSettings{}),
+                            result->startFrame, result->frameCount,
                             std::move(result->targetChannels),
-                            std::move(result->oldSamples),
-                            std::move(result->newSamples)));
+                            std::move(result->oldSamplesHandle),
+                            std::move(result->newSamplesHandle)));
                     break;
                 case BackgroundEffectKind::Dynamics:
-                    state->addAndDoUndoableToTab(
-                        result->targetTabIndex,
+                    addPrepared(
                         std::make_shared<cupuacu::effects::DynamicsUndoable>(
-                            state, result->targetTabIndex, result->startFrame,
+                            state, targetTabIndex,
+                            snapshot.request.dynamicsSettings.value_or(
+                                ::cupuacu::effects::DynamicsSettings{}),
+                            result->startFrame, result->frameCount,
                             std::move(result->targetChannels),
-                            std::move(result->oldSamples),
-                            std::move(result->newSamples)));
+                            std::move(result->oldSamplesHandle),
+                            std::move(result->newSamplesHandle)));
                     break;
                 case BackgroundEffectKind::AmplifyEnvelope:
-                    state->addAndDoUndoableToTab(
-                        result->targetTabIndex,
+                    addPrepared(
                         std::make_shared<
                             cupuacu::effects::AmplifyEnvelopeUndoable>(
-                            state, result->targetTabIndex, result->startFrame,
+                            state, targetTabIndex,
+                            snapshot.request.amplifyEnvelopeSettings.value_or(
+                                ::cupuacu::effects::
+                                    AmplifyEnvelopeSettings{}),
+                            result->startFrame, result->frameCount,
                             std::move(result->targetChannels),
-                            std::move(result->oldSamples),
-                            std::move(result->newSamples)));
+                            std::move(result->oldSamplesHandle),
+                            std::move(result->newSamplesHandle)));
                     break;
                 case BackgroundEffectKind::RemoveSilence:
                     if (result->silenceRuns.empty())
@@ -629,28 +803,83 @@ namespace cupuacu::actions::effects
                     }
                     if (result->removeSilenceRemovesDuration)
                     {
-                        state->addAndDoUndoableToTab(
-                            result->targetTabIndex,
+                        const auto relevantStart = result->startFrame;
+                        const auto originalLength =
+                            result->originalRelevantLength;
+                        const auto originalCursor = result->originalCursor;
+                        const auto hadSelection = result->hadSelection;
+                        int64_t removedFrameCount = 0;
+                        for (const auto &run : result->silenceRuns)
+                        {
+                            removedFrameCount += run.frameCount;
+                        }
+                        addPrepared(
                             std::make_shared<cupuacu::effects::RemoveSilenceUndoable>(
-                                state, result->targetTabIndex,
+                                state, targetTabIndex,
                                 std::move(result->silenceRuns),
-                                result->startFrame,
-                                result->originalRelevantLength,
-                                std::move(result->removedSamples),
-                                result->originalCursor,
-                                result->hadSelection));
+                                relevantStart, originalLength,
+                                std::move(result->removedSamplesHandle),
+                                originalCursor, hadSelection),
+                            [state, targetTabIndex, relevantStart,
+                             originalLength, originalCursor, hadSelection,
+                             removedFrameCount](const bool isRedo)
+                            {
+                                if (!state || targetTabIndex < 0 ||
+                                    targetTabIndex >=
+                                        static_cast<int>(state->tabs.size()))
+                                {
+                                    return;
+                                }
+                                auto &session =
+                                    state->tabs[static_cast<std::size_t>(
+                                                    targetTabIndex)]
+                                        .session;
+                                if (isRedo)
+                                {
+                                    session.cursor = relevantStart;
+                                    if (hadSelection)
+                                    {
+                                        session.selection.setValue1(
+                                            relevantStart);
+                                        session.selection.setValue2(
+                                            relevantStart +
+                                            std::max<int64_t>(
+                                                0, originalLength -
+                                                       removedFrameCount));
+                                    }
+                                    else
+                                    {
+                                        session.selection.reset();
+                                    }
+                                }
+                                else
+                                {
+                                    session.cursor = originalCursor;
+                                    if (hadSelection)
+                                    {
+                                        session.selection.setValue1(
+                                            relevantStart);
+                                        session.selection.setValue2(
+                                            relevantStart + originalLength);
+                                    }
+                                    else
+                                    {
+                                        session.selection.reset();
+                                    }
+                                }
+                            });
                         break;
                     }
 
-                    state->addAndDoUndoableToTab(
-                        result->targetTabIndex,
+                    addPrepared(
                         std::make_shared<
                             cupuacu::effects::RemoveSilenceChannelCompactUndoable>(
-                            state, result->targetTabIndex,
+                            state, targetTabIndex,
                             std::move(result->targetChannels),
                             std::move(result->silenceRuns), result->startFrame,
-                            result->frameCount, std::move(result->oldSamples),
-                            std::move(result->newSamples)));
+                            result->frameCount,
+                            std::move(result->oldSamplesHandle),
+                            std::move(result->newSamplesHandle)));
                     break;
             }
         }
@@ -658,10 +887,12 @@ namespace cupuacu::actions::effects
 
     BackgroundEffectJob::BackgroundEffectJob(
         std::uint64_t idToUse, BackgroundEffectRequest requestToRun,
-        const cupuacu::Document *documentToRead)
+        const cupuacu::Document &documentToRead,
+        undo::UndoStore undoStoreToUse)
         : id(idToUse),
           request(std::move(requestToRun)),
           document(documentToRead),
+          undoStore(std::move(undoStoreToUse)),
           detail(request.description)
     {
     }
@@ -706,6 +937,7 @@ namespace cupuacu::actions::effects
     std::unique_ptr<BackgroundEffectResult> BackgroundEffectJob::takeResult()
     {
         std::lock_guard lock(mutex);
+        document = cupuacu::Document{};
         return std::move(result);
     }
 
@@ -731,12 +963,6 @@ namespace cupuacu::actions::effects
     {
         try
         {
-            if (document == nullptr)
-            {
-                throw std::runtime_error(
-                    "Background effect job has no document to read");
-            }
-
             const auto progressCallback =
                 [this](const std::string &detailToUse,
                        std::optional<double> progressToUse)
@@ -748,7 +974,7 @@ namespace cupuacu::actions::effects
                 publishProgress(detailToUse, progressToUse);
             };
 
-            const auto lease = document->acquireReadLease();
+            const auto lease = document.acquireReadLease();
             std::unique_ptr<BackgroundEffectResult> computedResult;
             switch (request.kind)
             {
@@ -772,6 +998,56 @@ namespace cupuacu::actions::effects
                     computedResult = computeRemoveSilenceResult(
                         request, lease, progressCallback);
                     break;
+            }
+
+            if (!computedResult)
+            {
+                throw std::runtime_error(
+                    "Background effect did not produce a result");
+            }
+
+            if (!computedResult->silenceRuns.empty() &&
+                computedResult->removeSilenceRemovesDuration)
+            {
+                cupuacu::Document prepared = document;
+                for (auto it = computedResult->silenceRuns.rbegin();
+                     it != computedResult->silenceRuns.rend(); ++it)
+                {
+                    prepared.removeFrames(it->startFrame, it->frameCount);
+                }
+                computedResult->preparedDocument = std::move(prepared);
+                if (undoStore.isAttached())
+                {
+                    computedResult->removedSamplesHandle =
+                        undoStore.writeSampleCube(
+                            computedResult->removedSamples,
+                            "remove-silence-removed");
+                }
+            }
+            else if (!computedResult->newSamples.empty())
+            {
+                cupuacu::Document prepared = document;
+                for (std::size_t index = 0;
+                     index < computedResult->targetChannels.size() &&
+                     index < computedResult->newSamples.size();
+                     ++index)
+                {
+                    const auto &samples = computedResult->newSamples[index];
+                    prepared.writeChannelFloatBlock(
+                        computedResult->targetChannels[index],
+                        computedResult->startFrame, samples.data(),
+                        static_cast<int64_t>(samples.size()), true);
+                }
+                computedResult->preparedDocument = std::move(prepared);
+                if (undoStore.isAttached())
+                {
+                    computedResult->oldSamplesHandle =
+                        undoStore.writeSampleMatrix(computedResult->oldSamples,
+                                                    "effect-old");
+                    computedResult->newSamplesHandle =
+                        undoStore.writeSampleMatrix(computedResult->newSamples,
+                                                    "effect-new");
+                }
             }
 
             std::lock_guard lock(mutex);
@@ -843,6 +1119,7 @@ namespace cupuacu::actions::effects
             BackgroundEffectRequest{
                 .kind = BackgroundEffectKind::Reverse,
                 .targetTabIndex = state->activeTabIndex,
+                .targetTabId = state->getActiveTab()->id,
                 .description = "Reverse",
                 .startFrame = startFrame,
                 .frameCount = frameCount,
@@ -891,6 +1168,7 @@ namespace cupuacu::actions::effects
             BackgroundEffectRequest{
                 .kind = BackgroundEffectKind::AmplifyFade,
                 .targetTabIndex = state->activeTabIndex,
+                .targetTabId = state->getActiveTab()->id,
                 .description = "Amplify/Fade",
                 .startFrame = startFrame,
                 .frameCount = frameCount,
@@ -939,6 +1217,7 @@ namespace cupuacu::actions::effects
             BackgroundEffectRequest{
                 .kind = BackgroundEffectKind::Dynamics,
                 .targetTabIndex = state->activeTabIndex,
+                .targetTabId = state->getActiveTab()->id,
                 .description = "Dynamics",
                 .startFrame = startFrame,
                 .frameCount = frameCount,
@@ -990,6 +1269,7 @@ namespace cupuacu::actions::effects
             BackgroundEffectRequest{
                 .kind = BackgroundEffectKind::AmplifyEnvelope,
                 .targetTabIndex = state->activeTabIndex,
+                .targetTabId = state->getActiveTab()->id,
                 .description = "Amplify Envelope",
                 .startFrame = startFrame,
                 .frameCount = frameCount,
@@ -1026,6 +1306,7 @@ namespace cupuacu::actions::effects
         BackgroundEffectRequest request{
             .kind = BackgroundEffectKind::RemoveSilence,
             .targetTabIndex = state->activeTabIndex,
+            .targetTabId = state->getActiveTab()->id,
             .description = "Remove silence",
             .startFrame = startFrame,
             .frameCount = frameCount,

@@ -45,10 +45,9 @@ namespace cupuacu::audio::callback_core
         cupuacu::SelectedChannels processorChannels =
             cupuacu::SelectedChannels::BOTH);
 
-    void recordInputIntoChunks(const float *input,
-                               unsigned long framesPerBuffer,
-                               uint8_t recordingChannels,
-                               int64_t &recordingPosition, void *chunkSinkUser,
-                               ChunkPushFn chunkPushFn,
-                               StereoMeterLevels &meterLevels);
+    [[nodiscard]] bool recordInputIntoChunks(
+        const float *input, unsigned long framesPerBuffer,
+        uint8_t recordingChannels, int64_t &recordingPosition,
+        void *chunkSinkUser, ChunkPushFn chunkPushFn,
+        StereoMeterLevels &meterLevels);
 } // namespace cupuacu::audio::callback_core

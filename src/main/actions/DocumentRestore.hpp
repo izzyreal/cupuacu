@@ -9,9 +9,14 @@
 #include "DocumentIo.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
+#include <cmath>
+#include <exception>
 #include <filesystem>
+#include <limits>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace cupuacu::actions
@@ -176,6 +181,126 @@ namespace cupuacu::actions
                 return documentState.filePath;
             }
             return documentState.autosaveSnapshotPath;
+        }
+
+        inline bool loadAutosaveSnapshotOnWorker(
+            cupuacu::State *state, const std::filesystem::path &path,
+            cupuacu::DocumentSession &targetSession)
+        {
+            std::atomic_bool completed{false};
+            std::atomic_bool cancelRequested{false};
+            std::atomic<double> progress{
+                std::numeric_limits<double>::quiet_NaN()};
+            bool loaded = false;
+            std::exception_ptr workerError;
+            cupuacu::DocumentSession restoredSession;
+            std::thread worker(
+                [&]
+                {
+                    try
+                    {
+                        loaded =
+                            cupuacu::persistence::loadDocumentAutosaveSnapshot(
+                                path, restoredSession,
+                                [&](const std::optional<double> value)
+                                {
+                                    progress.store(
+                                        value.value_or(
+                                            std::numeric_limits<double>::quiet_NaN()),
+                                        std::memory_order_release);
+                                },
+                                [&]
+                                {
+                                    return cancelRequested.load(
+                                        std::memory_order_acquire);
+                                });
+                    }
+                    catch (...)
+                    {
+                        workerError = std::current_exception();
+                    }
+                    completed.store(true, std::memory_order_release);
+                });
+
+            auto lastRender = std::chrono::steady_clock::now();
+            while (!completed.load(std::memory_order_acquire))
+            {
+                if (cupuacu::isLongTaskCancelRequested(state))
+                {
+                    cancelRequested.store(true, std::memory_order_release);
+                }
+                const auto now = std::chrono::steady_clock::now();
+                if (now - lastRender >= std::chrono::milliseconds(50))
+                {
+                    const double currentProgress =
+                        progress.load(std::memory_order_acquire);
+                    cupuacu::updateLongTaskOverlayOnly(
+                        state, {},
+                        std::isfinite(currentProgress)
+                            ? std::optional<double>(currentProgress)
+                            : std::nullopt,
+                        false);
+                    cupuacu::renderLongTaskOverlayNow(state);
+                    lastRender = now;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            worker.join();
+            if (workerError)
+            {
+                std::rethrow_exception(workerError);
+            }
+            if (loaded)
+            {
+                targetSession = std::move(restoredSession);
+            }
+            return loaded;
+        }
+
+        inline bool loadClipboardSnapshotOnWorker(
+            cupuacu::State *state, const std::filesystem::path &path,
+            cupuacu::ClipboardAudio &targetClipboard)
+        {
+            std::atomic_bool completed{false};
+            bool loaded = false;
+            std::exception_ptr workerError;
+            cupuacu::ClipboardAudio restoredClipboard;
+            std::thread worker(
+                [&]
+                {
+                    try
+                    {
+                        loaded = cupuacu::persistence::loadClipboardSnapshot(
+                            path, restoredClipboard);
+                    }
+                    catch (...)
+                    {
+                        workerError = std::current_exception();
+                    }
+                    completed.store(true, std::memory_order_release);
+                });
+
+            auto lastRender = std::chrono::steady_clock::now();
+            while (!completed.load(std::memory_order_acquire))
+            {
+                const auto now = std::chrono::steady_clock::now();
+                if (now - lastRender >= std::chrono::milliseconds(50))
+                {
+                    cupuacu::renderLongTaskOverlayNow(state);
+                    lastRender = now;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            worker.join();
+            if (workerError)
+            {
+                std::rethrow_exception(workerError);
+            }
+            if (loaded)
+            {
+                targetClipboard = std::move(restoredClipboard);
+            }
+            return loaded;
         }
     } // namespace detail
 
@@ -356,8 +481,10 @@ namespace cupuacu::actions
         state->clipboard.clear();
         if (!persistedSessionState.clipboardSnapshotPath.empty())
         {
-            if (!cupuacu::persistence::loadClipboardSnapshot(
-                    persistedSessionState.clipboardSnapshotPath,
+            cupuacu::LongTaskScope clipboardRestore(
+                state, "Restoring clipboard", {}, std::nullopt, true, false);
+            if (!detail::loadClipboardSnapshotOnWorker(
+                    state, persistedSessionState.clipboardSnapshotPath,
                     state->clipboard))
             {
                 state->startupRestore.clipboardRestoreFailed = true;
@@ -416,8 +543,6 @@ namespace cupuacu::actions
                     {
                         const auto restoreStartedAt =
                             std::chrono::steady_clock::now();
-                        auto lastProgressRenderAt = restoreStartedAt;
-                        double lastRenderedProgress = -1.0;
                         cupuacu::LongTaskScope longTask(
                             state, "Restoring document",
                             documentState.filePath.empty()
@@ -427,44 +552,9 @@ namespace cupuacu::actions
                         prepareForDocumentTransition(state);
                         try
                         {
-                            loaded =
-                                cupuacu::persistence::loadDocumentAutosaveSnapshot(
-                                    documentState.autosaveSnapshotPath,
-                                    state->getActiveDocumentSession(),
-                                    [state, &lastProgressRenderAt,
-                                     &lastRenderedProgress](
-                                        const std::optional<double> progress)
-                                    {
-                                        if (!progress.has_value())
-                                        {
-                                            cupuacu::updateLongTaskOverlayOnly(
-                                                state, {}, progress, false);
-                                            return;
-                                        }
-
-                                        const auto now =
-                                            std::chrono::steady_clock::now();
-                                        const double clampedProgress =
-                                            std::clamp(*progress, 0.0, 1.0);
-                                        const bool shouldRenderNow =
-                                            lastRenderedProgress < 0.0 ||
-                                            clampedProgress >= 1.0 ||
-                                            (now - lastProgressRenderAt) >=
-                                                std::chrono::milliseconds(100);
-                                        cupuacu::updateLongTaskOverlayOnly(
-                                            state, {}, clampedProgress,
-                                            shouldRenderNow);
-                                        if (shouldRenderNow)
-                                        {
-                                            lastProgressRenderAt = now;
-                                            lastRenderedProgress = clampedProgress;
-                                        }
-                                    },
-                                    [state]()
-                                    {
-                                        return cupuacu::isLongTaskCancelRequested(
-                                            state);
-                                    });
+                            loaded = detail::loadAutosaveSnapshotOnWorker(
+                                state, documentState.autosaveSnapshotPath,
+                                state->getActiveDocumentSession());
                         }
                         catch (const cupuacu::LongTaskCanceledError &)
                         {

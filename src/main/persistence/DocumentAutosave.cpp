@@ -5,12 +5,16 @@
 #include "file/FileIo.hpp"
 
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <limits>
+#include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace cupuacu::persistence
@@ -20,6 +24,127 @@ namespace cupuacu::persistence
         constexpr char kMagic[] = "CUPUACU_AUTOSAVE";
         constexpr uint32_t kVersion = 2;
         constexpr int64_t kAudioBlockFrames = 16384;
+
+        class ClipboardSnapshotWorker
+        {
+        public:
+            ClipboardSnapshotWorker()
+                : worker(
+                      [this]
+                      { run(); })
+            {
+            }
+
+            ~ClipboardSnapshotWorker()
+            {
+                flush();
+                {
+                    std::lock_guard lock(mutex);
+                    stopping = true;
+                }
+                cv.notify_all();
+                worker.join();
+            }
+
+            void schedule(std::filesystem::path path,
+                          cupuacu::ClipboardAudio clipboard)
+            {
+                {
+                    std::lock_guard lock(mutex);
+                    const auto revision = clipboard.getRevision();
+                    if ((pending.has_value() &&
+                         pending->path == path &&
+                         pending->revision == revision) ||
+                        (!pending.has_value() && busy &&
+                         activePath == path &&
+                         activeRevision == revision) ||
+                        (!pending.has_value() && !busy &&
+                         completedPath == path &&
+                         completedRevision == revision))
+                    {
+                        return;
+                    }
+                    pending = Request{std::move(path), std::move(clipboard),
+                                      revision};
+                }
+                cv.notify_all();
+            }
+
+            void flush()
+            {
+                std::unique_lock lock(mutex);
+                cv.wait(lock,
+                        [this]
+                        { return !busy && !pending.has_value(); });
+            }
+
+        private:
+            struct Request
+            {
+                std::filesystem::path path;
+                cupuacu::ClipboardAudio clipboard;
+                uint64_t revision = 0;
+            };
+
+            std::mutex mutex;
+            std::condition_variable cv;
+            std::optional<Request> pending;
+            bool busy = false;
+            bool stopping = false;
+            std::filesystem::path activePath;
+            uint64_t activeRevision = 0;
+            std::filesystem::path completedPath;
+            uint64_t completedRevision = 0;
+            std::thread worker;
+
+            void run()
+            {
+                for (;;)
+                {
+                    std::optional<Request> request;
+                    {
+                        std::unique_lock lock(mutex);
+                        cv.wait(lock,
+                                [this]
+                                { return stopping || pending.has_value(); });
+                        if (stopping && !pending.has_value())
+                        {
+                            return;
+                        }
+                        request = std::move(pending);
+                        pending.reset();
+                        busy = true;
+                        activePath = request->path;
+                        activeRevision = request->revision;
+                    }
+
+                    if (request->clipboard.hasAudio())
+                    {
+                        (void)saveClipboardSnapshot(request->path,
+                                                    request->clipboard);
+                    }
+                    else
+                    {
+                        removeClipboardSnapshot(request->path);
+                    }
+
+                    {
+                        std::lock_guard lock(mutex);
+                        busy = false;
+                        completedPath = std::move(activePath);
+                        completedRevision = activeRevision;
+                        activeRevision = 0;
+                    }
+                    cv.notify_all();
+                }
+            }
+        };
+
+        ClipboardSnapshotWorker &clipboardSnapshotWorker()
+        {
+            static ClipboardSnapshotWorker worker;
+            return worker;
+        }
 
         void writeU32(std::ostream &output, const uint32_t value)
         {
@@ -519,6 +644,21 @@ namespace cupuacu::persistence
         }
         clipboard.assignDocument(session.document);
         return clipboard.hasAudio();
+    }
+
+    void scheduleClipboardSnapshot(const std::filesystem::path &path,
+                                   cupuacu::ClipboardAudio clipboard)
+    {
+        if (path.empty())
+        {
+            return;
+        }
+        clipboardSnapshotWorker().schedule(path, std::move(clipboard));
+    }
+
+    void flushScheduledClipboardSnapshots()
+    {
+        clipboardSnapshotWorker().flush();
     }
 
     void removeDocumentAutosaveSnapshot(const std::filesystem::path &path)

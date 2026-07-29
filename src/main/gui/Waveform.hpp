@@ -285,6 +285,7 @@ namespace cupuacu::gui
             bool bypassCache = true;
             int cacheLevel = 0;
             int64_t samplesPerPeak = 0;
+            int64_t cachedPeakStart = 0;
             int64_t rawSampleStart = 0;
             std::vector<float> rawSamples;
             std::vector<Peak> cachedPeaks;

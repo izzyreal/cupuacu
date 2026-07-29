@@ -181,9 +181,12 @@ namespace cupuacu::actions
         }
 
         static void finalizeSavedDocument(cupuacu::State *state,
-                                         const std::filesystem::path &path,
-                                         const file::AudioExportSettings &settings,
-                                         const bool updateCurrentFile)
+                                          const std::filesystem::path &path,
+                                          const file::AudioExportSettings &settings,
+                                          const bool updateCurrentFile,
+                                          const bool
+                                              persistentWaveformCacheAlreadySaved =
+                                                  false)
         {
             if (!state)
             {
@@ -212,10 +215,13 @@ namespace cupuacu::actions
             {
                 session.document.markCurrentStateAsSavedSource();
             }
-            if (state->paths)
+            if (persistentWaveformCacheAlreadySaved)
             {
-                (void)cupuacu::waveform::savePersistentWaveformCache(
-                    session, *state->paths);
+                session.clearPendingPersistentWaveformCacheSave();
+            }
+            else
+            {
+                session.markPendingPersistentWaveformCacheSave();
             }
         }
     } // namespace detail

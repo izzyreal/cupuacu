@@ -535,12 +535,13 @@ namespace cupuacu::effects
                 document.insertFrames(run.startFrame, run.frameCount);
                 for (int64_t channel = 0; channel < channelCount; ++channel)
                 {
-                    for (int64_t frame = 0; frame < run.frameCount; ++frame)
-                    {
-                        document.setSample(
-                            channel, run.startFrame + frame,
-                            removedSamples[runIndex][channel][frame], false);
-                    }
+                    const auto &samples = removedSamples[runIndex][channel];
+                    document.writeChannelFloatBlock(
+                        channel, run.startFrame, samples.data(),
+                        std::min<int64_t>(
+                            run.frameCount,
+                            static_cast<int64_t>(samples.size())),
+                        false);
                 }
             }
             if (document.getFrameCount() > 0)
@@ -1021,12 +1022,12 @@ namespace cupuacu::effects
                  ++channelIndex)
             {
                 const int64_t channel = targetChannels[channelIndex];
-                for (int64_t frame = 0; frame < frameCount; ++frame)
-                {
-                    document.setSample(
-                        channel, startFrame + frame,
-                        samples[channelIndex][static_cast<std::size_t>(frame)], true);
-                }
+                document.writeChannelFloatBlock(
+                    channel, startFrame, samples[channelIndex].data(),
+                    std::min<int64_t>(
+                        frameCount,
+                        static_cast<int64_t>(samples[channelIndex].size())),
+                    true);
                 session->getWaveformCache(channel).invalidateSamples(
                     startFrame, startFrame + frameCount - 1);
             }

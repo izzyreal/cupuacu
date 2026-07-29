@@ -41,6 +41,14 @@ namespace cupuacu::waveform
     [[nodiscard]] bool savePersistentWaveformCache(
         const cupuacu::DocumentSession &session, const Paths &paths);
 
+    [[nodiscard]] bool savePersistentWaveformCache(
+        const cupuacu::DocumentSession &session,
+        const std::filesystem::path &cacheRoot);
+
     [[nodiscard]] bool loadPersistentWaveformCache(
         cupuacu::DocumentSession &session, const Paths &paths);
+
+    [[nodiscard]] bool loadPersistentWaveformCache(
+        cupuacu::DocumentSession &session,
+        const std::filesystem::path &cacheRoot);
 } // namespace cupuacu::waveform

@@ -358,6 +358,7 @@ Waveform::captureBackgroundBlockRenderRequest(
 
     std::vector<float> rawSamples;
     std::vector<Peak> cachedPeaks;
+    int64_t cachedPeakStart = 0;
     if (inputPlan.bypassCache)
     {
         rawSamples.reserve(static_cast<std::size_t>(
@@ -373,7 +374,24 @@ Waveform::captureBackgroundBlockRenderRequest(
     {
         const auto &selectedLevel =
             waveformCache.getLevelByIndex(inputPlan.cacheLevel);
-        cachedPeaks = selectedLevel;
+        const auto visibleSampleStart =
+            std::clamp<int64_t>(targetKey.sampleOffset, 0, frameCount);
+        const auto visibleSampleEnd = std::clamp<int64_t>(
+            targetKey.sampleOffset +
+                static_cast<int64_t>(std::ceil(
+                    targetKey.samplesPerPixel *
+                    static_cast<double>(targetKey.width + 1))),
+            0, frameCount);
+        cachedPeakStart = std::clamp<int64_t>(
+            visibleSampleStart / inputPlan.samplesPerPeak, 0,
+            static_cast<int64_t>(selectedLevel.size()));
+        const auto cachedPeakEnd = std::clamp<int64_t>(
+            static_cast<int64_t>(
+                std::ceil(static_cast<double>(visibleSampleEnd) /
+                          static_cast<double>(inputPlan.samplesPerPeak))),
+            cachedPeakStart, static_cast<int64_t>(selectedLevel.size()));
+        cachedPeaks.assign(selectedLevel.begin() + cachedPeakStart,
+                           selectedLevel.begin() + cachedPeakEnd);
     }
     return BackgroundBlockRenderRequest{
         .key = targetKey,
@@ -382,6 +400,7 @@ Waveform::captureBackgroundBlockRenderRequest(
         .bypassCache = inputPlan.bypassCache,
         .cacheLevel = inputPlan.cacheLevel,
         .samplesPerPeak = inputPlan.samplesPerPeak,
+        .cachedPeakStart = cachedPeakStart,
         .rawSampleStart = inputPlan.rawSampleStart,
         .rawSamples = std::move(rawSamples),
         .cachedPeaks = std::move(cachedPeaks),
@@ -457,15 +476,20 @@ void Waveform::processBackgroundBlockRenderRequest(
             return false;
         }
 
-        const int64_t firstPeakIndex = std::clamp<int64_t>(
-            a / request.samplesPerPeak, 0,
-            static_cast<int64_t>(request.cachedPeaks.size()) - 1);
-        const int64_t lastPeakIndexExclusive = std::clamp<int64_t>(
+        const int64_t firstPeakIndex =
+            a / request.samplesPerPeak - request.cachedPeakStart;
+        const int64_t lastPeakIndexExclusive =
             static_cast<int64_t>(
                 std::ceil(static_cast<double>(b) /
-                          static_cast<double>(request.samplesPerPeak))),
-            firstPeakIndex + 1,
-            static_cast<int64_t>(request.cachedPeaks.size()));
+                          static_cast<double>(request.samplesPerPeak))) -
+            request.cachedPeakStart;
+        if (firstPeakIndex < 0 ||
+            lastPeakIndexExclusive <= firstPeakIndex ||
+            lastPeakIndexExclusive >
+                static_cast<int64_t>(request.cachedPeaks.size()))
+        {
+            return false;
+        }
 
         Peak peak =
             request.cachedPeaks[static_cast<std::size_t>(firstPeakIndex)];

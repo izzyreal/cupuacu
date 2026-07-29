@@ -37,6 +37,7 @@ bool SamplePoint::mouseDown(const MouseEvent &e)
     isDragging = true;
     setActive(true);
     dragYPos = getYPos();
+    state->getActiveDocumentSession().stopWaveformCacheBuild();
 
     undoable = std::make_shared<SetSampleValue>(state, channelIndex,
                                                 sampleIndex, getSampleValue());

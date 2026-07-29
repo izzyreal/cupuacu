@@ -33,6 +33,10 @@ namespace cupuacu::persistence
     bool loadClipboardSnapshot(const std::filesystem::path &path,
                                cupuacu::ClipboardAudio &clipboard);
 
+    void scheduleClipboardSnapshot(const std::filesystem::path &path,
+                                   cupuacu::ClipboardAudio clipboard);
+    void flushScheduledClipboardSnapshots();
+
     void removeDocumentAutosaveSnapshot(const std::filesystem::path &path);
 
     void removeClipboardSnapshot(const std::filesystem::path &path);

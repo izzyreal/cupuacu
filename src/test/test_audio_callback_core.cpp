@@ -400,14 +400,31 @@ TEST_CASE("AudioCallbackCore computes RMS levels for recorded input", "[audio]")
         return typedQueue->try_enqueue(chunk);
     };
 
-    cupuacu::audio::callback_core::recordInputIntoChunks(
-        input, 2, 2, recordingPosition, &queue, enqueueChunk, meterLevels);
+    REQUIRE(cupuacu::audio::callback_core::recordInputIntoChunks(
+        input, 2, 2, recordingPosition, &queue, enqueueChunk, meterLevels));
 
     REQUIRE(recordingPosition == 2);
     REQUIRE(meterLevels.peakLeft == Catch::Approx(1.0f));
     REQUIRE(meterLevels.peakRight == Catch::Approx(0.5f));
     REQUIRE(meterLevels.rmsLeft == Catch::Approx(1.0f));
     REQUIRE(meterLevels.rmsRight == Catch::Approx(0.5f));
+}
+
+TEST_CASE("AudioCallbackCore stops advancing when recorded chunk delivery fails",
+          "[audio]")
+{
+    const float input[] = {0.25f, -0.25f, 0.5f, -0.5f};
+    int64_t recordingPosition = 17;
+    cupuacu::audio::callback_core::StereoMeterLevels meterLevels{};
+    const auto rejectChunk =
+        [](void *, const cupuacu::audio::RecordedChunk &) -> bool
+    {
+        return false;
+    };
+
+    REQUIRE_FALSE(cupuacu::audio::callback_core::recordInputIntoChunks(
+        input, 2, 2, recordingPosition, nullptr, rejectChunk, meterLevels));
+    REQUIRE(recordingPosition == 17);
 }
 
 TEST_CASE("StereoMeterAccumulator computes peak and RMS per channel", "[audio]")

@@ -585,13 +585,12 @@ namespace cupuacu::effects
                  channelIndex < targetChannels.size(); ++channelIndex)
             {
                 const int64_t channel = targetChannels[channelIndex];
-                for (int64_t frame = 0; frame < frameCount; ++frame)
-                {
-                    document.setSample(
-                        channel, startFrame + frame,
-                        samples[channelIndex][static_cast<std::size_t>(frame)],
-                        true);
-                }
+                document.writeChannelFloatBlock(
+                    channel, startFrame, samples[channelIndex].data(),
+                    std::min<int64_t>(
+                        frameCount,
+                        static_cast<int64_t>(samples[channelIndex].size())),
+                    true);
                 session->getWaveformCache(channel).invalidateSamples(
                     startFrame, startFrame + frameCount - 1);
             }

@@ -32,7 +32,7 @@ namespace cupuacu::waveform
         return *this;
     }
 
-    DocumentWaveformCaches::BuildJob::BuildJob(const Document *documentToRead,
+    DocumentWaveformCaches::BuildJob::BuildJob(const Document &documentToRead,
                                                BuildRequest requestToUse)
         : document(documentToRead),
           request(std::move(requestToUse))
@@ -41,6 +41,7 @@ namespace cupuacu::waveform
 
     DocumentWaveformCaches::BuildJob::~BuildJob()
     {
+        cancel();
         if (worker.joinable())
         {
             worker.join();
@@ -82,6 +83,7 @@ namespace cupuacu::waveform
             drained.push_back(std::move(outputs.front()));
             outputs.pop_front();
         }
+        outputCv.notify_all();
         return drained;
     }
 
@@ -98,10 +100,17 @@ namespace cupuacu::waveform
         return progress;
     }
 
+    void DocumentWaveformCaches::BuildJob::cancel()
+    {
+        cancelRequested.store(true, std::memory_order_release);
+        outputCv.notify_all();
+    }
+
     void DocumentWaveformCaches::BuildJob::run()
     {
         constexpr int64_t kBuildChunkBlocks = 4096;
-        if (document && !request.channels.empty())
+        constexpr std::size_t kMaxQueuedOutputs = 32;
+        if (!request.channels.empty())
         {
             struct ChannelBuildRuntime
             {
@@ -133,9 +142,17 @@ namespace cupuacu::waveform
             bool workRemaining = true;
             while (workRemaining)
             {
+                if (cancelRequested.load(std::memory_order_acquire))
+                {
+                    return;
+                }
                 workRemaining = false;
                 for (auto &channel : channels)
                 {
+                    if (cancelRequested.load(std::memory_order_acquire))
+                    {
+                        return;
+                    }
                     if (channel.dirtyToBlock < channel.nextBlock)
                     {
                         continue;
@@ -158,10 +175,15 @@ namespace cupuacu::waveform
                     samples.reserve(static_cast<std::size_t>(std::max<int64_t>(
                         0, sampleEndExclusive - sampleStart)));
                     {
-                        auto lease = document->acquireReadLease();
+                        auto lease = document.acquireReadLease();
                         for (int64_t sample = sampleStart;
                              sample < sampleEndExclusive; ++sample)
                         {
+                            if ((sample & 4095) == 0 &&
+                                cancelRequested.load(std::memory_order_acquire))
+                            {
+                                return;
+                            }
                             samples.push_back(
                                 lease.getSample(channel.channelIndex, sample));
                         }
@@ -218,7 +240,19 @@ namespace cupuacu::waveform
                     }
 
                     {
-                        std::lock_guard lock(mutex);
+                        std::unique_lock lock(mutex);
+                        outputCv.wait(
+                            lock,
+                            [this]
+                            {
+                                return cancelRequested.load(
+                                           std::memory_order_acquire) ||
+                                       outputs.size() < kMaxQueuedOutputs;
+                            });
+                        if (cancelRequested.load(std::memory_order_acquire))
+                        {
+                            return;
+                        }
                         progress = {.completedBlocks =
                                         progress.completedBlocks +
                                         (builtToBlock - builtFromBlock + 1),
@@ -232,7 +266,18 @@ namespace cupuacu::waveform
             }
         }
 
-        std::lock_guard lock(mutex);
+        std::unique_lock lock(mutex);
+        outputCv.wait(
+            lock,
+            [this]
+            {
+                return cancelRequested.load(std::memory_order_acquire) ||
+                       outputs.size() < kMaxQueuedOutputs;
+            });
+        if (cancelRequested.load(std::memory_order_acquire))
+        {
+            return;
+        }
         completed = true;
         outputs.push_back(BuildOutput{
             .completedBlocks = progress.completedBlocks,
@@ -243,6 +288,10 @@ namespace cupuacu::waveform
 
     void DocumentWaveformCaches::stopBuild()
     {
+        if (buildJob)
+        {
+            buildJob->cancel();
+        }
         buildJob.reset();
         appliedProgress.reset();
     }
@@ -420,7 +469,7 @@ namespace cupuacu::waveform
             .completedBlocks = 0,
             .totalBlocks = totalDirtyBlocks(frameCount, channelCount),
         };
-        buildJob = std::make_unique<BuildJob>(&document, std::move(*request));
+        buildJob = std::make_unique<BuildJob>(document, std::move(*request));
         buildJob->start();
     }
 

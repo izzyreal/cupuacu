@@ -20,6 +20,13 @@ namespace cupuacu::audio
         using ProgressCallback =
             std::function<void(int64_t completed, int64_t total)>;
 
+        virtual ~AudioBuffer() = default;
+
+        [[nodiscard]] virtual std::shared_ptr<AudioBuffer> clone() const
+        {
+            return std::make_shared<AudioBuffer>(*this);
+        }
+
         virtual void assignChannels(
             const std::vector<std::vector<float>> &samples,
             const std::vector<std::vector<SampleProvenance>> &provenance,

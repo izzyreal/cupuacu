@@ -144,6 +144,11 @@ namespace cupuacu::audio
         }
 
     public:
+        [[nodiscard]] std::shared_ptr<AudioBuffer> clone() const override
+        {
+            return std::make_shared<PreservationTrackingAudioBuffer>(*this);
+        }
+
         void assignChannels(
             const std::vector<std::vector<float>> &samples,
             const std::vector<std::vector<SampleProvenance>> &provenance,
@@ -327,6 +332,23 @@ namespace cupuacu::audio
             const auto oldFrameCount = getFrameCount();
             const auto channelCount = getChannelCount();
             const auto oldSampleCount = oldFrameCount * channelCount;
+
+            // Appending does not move any existing sample, dirty bit, or
+            // provenance range. Recording reaches this path for every small
+            // captured chunk, so rebuilding metadata for the complete document
+            // here would make a recording progressively more expensive.
+            if (frameIndex == oldFrameCount)
+            {
+                AudioBuffer::insertFrames(frameIndex, numFrames);
+                const auto newSampleCount = getFrameCount() * channelCount;
+                dirtyFlags.resize(
+                    static_cast<std::size_t>((newSampleCount + 7) / 8), 0);
+                if (progress)
+                {
+                    progress(1, 1);
+                }
+                return;
+            }
 
             std::vector<std::uint8_t> oldDirtyFlags = dirtyFlags;
             oldDirtyFlags.resize(static_cast<std::size_t>((oldSampleCount + 7) / 8),

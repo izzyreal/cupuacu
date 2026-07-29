@@ -4,6 +4,7 @@
 #include "../../file/file_loading.hpp"
 
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -29,7 +30,8 @@ namespace cupuacu::actions::io
         };
 
         BackgroundOpenJob(std::uint64_t idToUse,
-                          PendingOpenRequest requestToOpen);
+                          PendingOpenRequest requestToOpen,
+                          std::filesystem::path waveformCacheRootToUse = {});
         ~BackgroundOpenJob();
 
         BackgroundOpenJob(const BackgroundOpenJob &) = delete;
@@ -46,6 +48,7 @@ namespace cupuacu::actions::io
     private:
         std::uint64_t id = 0;
         PendingOpenRequest request;
+        std::filesystem::path waveformCacheRoot;
         mutable std::mutex mutex;
         bool completed = false;
         bool success = false;

@@ -2,18 +2,22 @@
 
 #include "../MutationAvailability.hpp"
 #include "../DocumentLifecycle.hpp"
+#include "../../LongTask.hpp"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstdint>
+#include <exception>
 #include <optional>
+#include <thread>
 #include <vector>
 
 namespace cupuacu::actions::markers
 {
     struct MarkerSplitSegment
     {
-        Document::AudioSegment audio;
-        std::vector<DocumentMarker> markers;
+        Document document;
     };
 
     inline bool splitByMarkers(State *state)
@@ -29,10 +33,11 @@ namespace cupuacu::actions::markers
             return false;
         }
 
-        const auto &document = activeTab->session.document;
-        const auto &sourceMarkers = document.getMarkers();
-        if (sourceMarkers.size() < 2 || document.getChannelCount() <= 0 ||
-            document.getSampleRate() <= 0)
+        const Document sourceDocument = activeTab->session.document;
+        const auto sourceMarkers = sourceDocument.getMarkers();
+        if (sourceMarkers.size() < 2 ||
+            sourceDocument.getChannelCount() <= 0 ||
+            sourceDocument.getSampleRate() <= 0)
         {
             return false;
         }
@@ -49,32 +54,109 @@ namespace cupuacu::actions::markers
                          });
 
         std::vector<MarkerSplitSegment> segments;
-        segments.reserve(sortedMarkers.size() - 1);
-        for (std::size_t index = 0; index + 1 < sortedMarkers.size(); ++index)
-        {
-            const int64_t start =
-                std::clamp(sortedMarkers[index].frame, int64_t{0},
-                           document.getFrameCount());
-            const int64_t end =
-                std::clamp(sortedMarkers[index + 1].frame, int64_t{0},
-                           document.getFrameCount());
-            const int64_t length = std::max<int64_t>(0, end - start);
-
-            MarkerSplitSegment segment{};
-            segment.audio = document.captureSegment(start, length);
-            for (const auto &marker : sortedMarkers)
+        std::atomic_bool completed{false};
+        std::atomic_bool cancelRequested{false};
+        std::atomic<std::size_t> completedSegments{0};
+        std::exception_ptr workerError;
+        cupuacu::LongTaskScope longTask(
+            state, "Splitting by markers", "Preparing documents", 0.0, true,
+            true);
+        std::thread worker(
+            [&]
             {
-                if (marker.frame < start || marker.frame > end)
+                try
                 {
-                    continue;
+                    segments.reserve(sortedMarkers.size() - 1);
+                    for (std::size_t index = 0;
+                         index + 1 < sortedMarkers.size(); ++index)
+                    {
+                        if (cancelRequested.load(std::memory_order_acquire))
+                        {
+                            throw cupuacu::LongTaskCanceledError{};
+                        }
+
+                        const int64_t start =
+                            std::clamp(sortedMarkers[index].frame, int64_t{0},
+                                       sourceDocument.getFrameCount());
+                        const int64_t end =
+                            std::clamp(sortedMarkers[index + 1].frame,
+                                       int64_t{0},
+                                       sourceDocument.getFrameCount());
+                        const int64_t length =
+                            std::max<int64_t>(0, end - start);
+
+                        auto audio = sourceDocument.captureSegment(
+                            start, length,
+                            [&](const int64_t, const int64_t)
+                            {
+                                if (cancelRequested.load(
+                                        std::memory_order_acquire))
+                                {
+                                    throw cupuacu::LongTaskCanceledError{};
+                                }
+                            });
+                        MarkerSplitSegment segment{};
+                        segment.document.assignSegment(audio);
+                        std::vector<DocumentMarker> segmentMarkers;
+                        for (const auto &marker : sortedMarkers)
+                        {
+                            if (marker.frame < start || marker.frame > end)
+                            {
+                                continue;
+                            }
+                            segmentMarkers.push_back(DocumentMarker{
+                                .id = marker.id,
+                                .frame = marker.frame - start,
+                                .label = marker.label,
+                            });
+                        }
+                        segment.document.replaceMarkers(
+                            std::move(segmentMarkers));
+                        segments.push_back(std::move(segment));
+                        completedSegments.store(index + 1,
+                                                std::memory_order_release);
+                    }
                 }
-                segment.markers.push_back(DocumentMarker{
-                    .id = marker.id,
-                    .frame = marker.frame - start,
-                    .label = marker.label,
-                });
+                catch (...)
+                {
+                    workerError = std::current_exception();
+                }
+                completed.store(true, std::memory_order_release);
+            });
+
+        auto lastRender = std::chrono::steady_clock::now();
+        while (!completed.load(std::memory_order_acquire))
+        {
+            if (cupuacu::isLongTaskCancelRequested(state))
+            {
+                cancelRequested.store(true, std::memory_order_release);
             }
-            segments.push_back(std::move(segment));
+            const auto now = std::chrono::steady_clock::now();
+            if (now - lastRender >= std::chrono::milliseconds(50))
+            {
+                const auto total = sortedMarkers.size() - 1;
+                cupuacu::updateLongTaskOverlayOnly(
+                    state, "Preparing documents",
+                    static_cast<double>(
+                        completedSegments.load(std::memory_order_acquire)) /
+                        static_cast<double>(std::max<std::size_t>(1, total)),
+                    false);
+                cupuacu::renderLongTaskOverlayNow(state);
+                lastRender = now;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        worker.join();
+        if (workerError)
+        {
+            try
+            {
+                std::rethrow_exception(workerError);
+            }
+            catch (const cupuacu::LongTaskCanceledError &)
+            {
+                return false;
+            }
         }
 
         const int insertIndex = state->activeTabIndex + 1;
@@ -83,8 +165,10 @@ namespace cupuacu::actions::markers
         {
             DocumentTab tab{};
             tab.session.clearCurrentFile();
-            tab.session.document.assignSegment(segment.audio);
-            tab.session.document.replaceMarkers(std::move(segment.markers));
+            tab.session.document = std::move(segment.document);
+            tab.session.waveformCaches.resetToChannelCount(
+                tab.session.document.getChannelCount());
+            tab.session.updateWaveformCache();
             tab.session.selection.reset();
             tab.session.cursor = 0;
             tab.session.syncSelectionAndCursorToDocumentLength();

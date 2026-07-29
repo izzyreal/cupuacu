@@ -7,13 +7,14 @@
 #include "../../file/PreservationBackend.hpp"
 #include "../../file/SaveWritePlan.hpp"
 #include "../../gui/SamplePoint.hpp"
+#include "../../persistence/DocumentAutosave.hpp"
+#include "../../waveform/WaveformCachePersistence.hpp"
 #include "../DocumentLifecycle.hpp"
 #include "../DocumentTabs.hpp"
 #include "../Save.hpp"
 
 #include <algorithm>
 #include <chrono>
-#include <cstring>
 #include <exception>
 #include <utility>
 
@@ -27,10 +28,6 @@ namespace cupuacu::actions::io
             return nextId++;
         }
 
-        constexpr char kAutosaveMagic[] = "CUPUACU_AUTOSAVE";
-        constexpr uint32_t kAutosaveVersion = 2;
-        constexpr int64_t kAutosaveFramesPerChunk = 32768;
-        constexpr auto kAutosavePumpBudget = std::chrono::milliseconds(8);
         constexpr auto kAutosaveInteractionQuietPeriod =
             std::chrono::milliseconds(300);
         constexpr auto kSessionPersistQuietPeriod =
@@ -59,9 +56,10 @@ namespace cupuacu::actions::io
 
         void startBackgroundSave(cupuacu::State *state,
                                  BackgroundSaveRequest request,
-                                 const cupuacu::Document *document = nullptr)
+                                 const cupuacu::Document *document)
         {
-            if (!state || request.path.empty() || state->backgroundSaveJob)
+            if (!state || !document || request.path.empty() ||
+                state->backgroundSaveJob)
             {
                 return;
             }
@@ -69,7 +67,10 @@ namespace cupuacu::actions::io
             const auto id = nextBackgroundSaveJobId();
             const auto detail = request.path.string();
             state->backgroundSaveJob.reset(
-                new BackgroundSaveJob(id, std::move(request), state, document));
+                new BackgroundSaveJob(
+                    id, std::move(request), state, *document,
+                    state->paths ? state->paths->waveformCachePath()
+                                 : std::filesystem::path{}));
             cupuacu::setLongTask(state, "Saving file", detail, 0.0, false,
                                  true);
             state->backgroundSaveJob->start();
@@ -131,66 +132,6 @@ namespace cupuacu::actions::io
             return state != nullptr && state->mainDocumentSessionWindow != nullptr;
         }
 
-        void writeU32(std::ostream &output, const uint32_t value)
-        {
-            const char bytes[] = {
-                static_cast<char>(value & 0xffu),
-                static_cast<char>((value >> 8) & 0xffu),
-                static_cast<char>((value >> 16) & 0xffu),
-                static_cast<char>((value >> 24) & 0xffu),
-            };
-            output.write(bytes, sizeof(bytes));
-        }
-
-        void writeI64(std::ostream &output, const int64_t value)
-        {
-            const auto unsignedValue = static_cast<uint64_t>(value);
-            for (int shift = 0; shift < 64; shift += 8)
-            {
-                output.put(static_cast<char>((unsignedValue >> shift) & 0xffu));
-            }
-        }
-
-        void writeU64(std::ostream &output, const uint64_t value)
-        {
-            for (int shift = 0; shift < 64; shift += 8)
-            {
-                output.put(static_cast<char>((value >> shift) & 0xffu));
-            }
-        }
-
-        void writeString(std::ostream &output, const std::string &value)
-        {
-            writeU32(output, static_cast<uint32_t>(value.size()));
-            output.write(value.data(), static_cast<std::streamsize>(value.size()));
-        }
-
-        void writeFloat(std::ostream &output, const float value)
-        {
-            uint32_t bits = 0;
-            static_assert(sizeof(bits) == sizeof(value));
-            std::memcpy(&bits, &value, sizeof(bits));
-            writeU32(output, bits);
-        }
-
-        void writeWaveformCacheState(
-            std::ostream &output, const gui::WaveformCache::BuildState &state)
-        {
-            writeI64(output, state.numSamples);
-            writeI64(output, state.dirtyFromBlock);
-            writeI64(output, state.dirtyToBlock);
-            writeU32(output, static_cast<uint32_t>(state.levels.size()));
-            for (const auto &level : state.levels)
-            {
-                writeU32(output, static_cast<uint32_t>(level.size()));
-                for (const auto &peak : level)
-                {
-                    writeFloat(output, peak.min);
-                    writeFloat(output, peak.max);
-                }
-            }
-        }
-
         int findTabIndexById(const cupuacu::State *state, const uint64_t tabId)
         {
             if (!state)
@@ -246,7 +187,8 @@ namespace cupuacu::actions::io
 
             detail::finalizeSavedDocument(
                 state, snapshot.request.path, snapshot.request.settings,
-                updatesCurrentFile(snapshot.request.kind));
+                updatesCurrentFile(snapshot.request.kind),
+                snapshot.persistentWaveformCacheSaved);
             if (updatesCurrentFile(snapshot.request.kind))
             {
                 rememberRecentFile(state, snapshot.request.path.string());
@@ -275,11 +217,14 @@ namespace cupuacu::actions::io
     BackgroundSaveJob::BackgroundSaveJob(std::uint64_t idToUse,
                                          BackgroundSaveRequest requestToSave,
                                          cupuacu::State *stateToUse,
-                                         const cupuacu::Document *documentToWrite)
+                                         const cupuacu::Document &documentToWrite,
+                                         std::filesystem::path
+                                             waveformCacheRootToUse)
         : id(idToUse),
           request(std::move(requestToSave)),
           state(stateToUse),
           document(documentToWrite),
+          waveformCacheRoot(std::move(waveformCacheRootToUse)),
           detail(request.path.string())
     {
     }
@@ -295,16 +240,32 @@ namespace cupuacu::actions::io
     BackgroundAutosaveJob::BackgroundAutosaveJob(
         const uint64_t tabIdToUse, std::filesystem::path pathToUse,
         const uint64_t waveformDataVersionToUse,
-        const uint64_t markerDataVersionToUse, std::string currentFileToUse)
+        const uint64_t markerDataVersionToUse, std::string currentFileToUse,
+        const cupuacu::Document &documentToSave)
         : tabId(tabIdToUse), path(std::move(pathToUse)),
           waveformDataVersion(waveformDataVersionToUse),
           markerDataVersion(markerDataVersionToUse),
-          currentFile(std::move(currentFileToUse))
+          currentFile(std::move(currentFileToUse)), document(documentToSave)
     {
+    }
+
+    BackgroundAutosaveJob::~BackgroundAutosaveJob()
+    {
+        if (worker.joinable())
+        {
+            worker.join();
+        }
+    }
+
+    void BackgroundAutosaveJob::start()
+    {
+        worker = std::thread([this]
+                             { run(); });
     }
 
     auto BackgroundAutosaveJob::snapshot() const -> Snapshot
     {
+        std::lock_guard lock(mutex);
         return {
             .completed = completed,
             .success = success,
@@ -313,198 +274,46 @@ namespace cupuacu::actions::io
             .waveformDataVersion = waveformDataVersion,
             .markerDataVersion = markerDataVersion,
             .currentFile = currentFile,
-            .progress = completed ? std::optional<double>(1.0)
-                                  : std::optional<double>(progressValue()),
+            .progress = completed ? std::optional<double>(1.0) : std::nullopt,
             .error = error,
         };
     }
 
-    void BackgroundAutosaveJob::initializeFromSession(
-        const cupuacu::DocumentSession &session)
+    void BackgroundAutosaveJob::run()
     {
-        const auto lease = session.document.acquireReadLease();
-        sampleFormat = static_cast<int>(lease.getSampleFormat());
-        sampleRate = lease.getSampleRate();
-        channelCount = lease.getChannelCount();
-        frameCount = lease.getFrameCount();
-        markers.clear();
-        markers.reserve(lease.getMarkers().size());
-        for (const auto &marker : lease.getMarkers())
-        {
-            markers.push_back(
-                {.id = marker.id, .frame = marker.frame, .label = marker.label});
-        }
-        waveformCaches.clear();
-        waveformCaches.reserve(static_cast<std::size_t>(channelCount));
-        for (int64_t channel = 0; channel < channelCount; ++channel)
-        {
-            waveformCaches.push_back(
-                {.buildState = session.getWaveformCache(static_cast<int>(channel))
-                                   .snapshotBuildState()});
-        }
-
-        cupuacu::file::ensureParentDirectoryExists(path);
-        temporaryPath = cupuacu::file::makeTemporarySiblingPath(path);
-        output.open(temporaryPath, std::ios::binary);
-        if (!output.is_open())
-        {
-            throw std::runtime_error("Failed to open autosave snapshot");
-        }
-
-        output.write(kAutosaveMagic, sizeof(kAutosaveMagic));
-        writeU32(output, kAutosaveVersion);
-        writeU32(output, static_cast<uint32_t>(sampleFormat));
-        writeU32(output, static_cast<uint32_t>(sampleRate));
-        writeI64(output, channelCount);
-        writeI64(output, frameCount);
-        writeString(output, currentFile);
-
-        writeI64(output, static_cast<int64_t>(markers.size()));
-        for (const auto &marker : markers)
-        {
-            writeU64(output, marker.id);
-            writeI64(output, marker.frame);
-            writeString(output, marker.label);
-        }
-
-        writeI64(output, channelCount);
-        for (const auto &cache : waveformCaches)
-        {
-            writeWaveformCacheState(output, cache.buildState);
-        }
-
-        if (!output.good())
-        {
-            throw std::runtime_error("Failed to write autosave snapshot");
-        }
-
-        initialized = true;
-    }
-
-    void BackgroundAutosaveJob::writeFrameChunk(
-        const cupuacu::Document::ReadLease &lease, const int64_t frameStart,
-        const int64_t frameCountToWrite)
-    {
-        const auto frameEnd =
-            std::min(frameCount, frameStart + frameCountToWrite);
-        for (int64_t frame = frameStart; frame < frameEnd; ++frame)
-        {
-            for (int64_t channel = 0; channel < channelCount; ++channel)
-            {
-                writeFloat(output, lease.getSample(channel, frame));
-            }
-        }
-        nextFrameToWrite = frameEnd;
-        if (!output.good())
-        {
-            throw std::runtime_error("Failed to write autosave snapshot");
-        }
-    }
-
-    void BackgroundAutosaveJob::finish()
-    {
-        output.close();
-        cupuacu::file::replaceFile(temporaryPath, path);
-        success = true;
-        completed = true;
-    }
-
-    void BackgroundAutosaveJob::fail(std::string message)
-    {
-        error = std::move(message);
-        success = false;
-        completed = true;
-        output.close();
-        if (!temporaryPath.empty())
-        {
-            std::error_code ec;
-            std::filesystem::remove(temporaryPath, ec);
-        }
-    }
-
-    double BackgroundAutosaveJob::progressValue() const
-    {
-        if (frameCount <= 0)
-        {
-            return 1.0;
-        }
-        return std::clamp(static_cast<double>(nextFrameToWrite) /
-                              static_cast<double>(frameCount),
-                          0.0, 1.0);
-    }
-
-    void BackgroundAutosaveJob::pump(cupuacu::State *state)
-    {
-        if (completed || !state)
-        {
-            return;
-        }
-
-        const int tabIndex = findTabIndexById(state, tabId);
-        if (tabIndex < 0)
-        {
-            fail("Autosave tab no longer exists");
-            return;
-        }
-
-        auto &session = state->tabs[static_cast<std::size_t>(tabIndex)].session;
-        auto &document = session.document;
-        if (session.autosaveSnapshotPath != path)
-        {
-            fail("Autosave snapshot path changed");
-            return;
-        }
-        if (session.currentFile != currentFile)
-        {
-            fail("Autosave source file changed");
-            return;
-        }
-        if (document.getWaveformDataVersion() != waveformDataVersion ||
-            document.getMarkerDataVersion() != markerDataVersion)
-        {
-            completed = true;
-            success = false;
-            error = "stale";
-            output.close();
-            if (!temporaryPath.empty())
-            {
-                std::error_code ec;
-                std::filesystem::remove(temporaryPath, ec);
-            }
-            return;
-        }
-
         try
         {
-            if (!initialized)
-            {
-                initializeFromSession(session);
-            }
+            cupuacu::DocumentSession snapshotSession;
+            snapshotSession.document = document;
+            snapshotSession.currentFile = currentFile;
+            snapshotSession.waveformCaches.resetToChannelCount(
+                document.getChannelCount());
+            snapshotSession.rebuildWaveformCacheSynchronously();
+            const bool saved =
+                cupuacu::persistence::saveDocumentAutosaveSnapshot(
+                    path, snapshotSession);
 
-            const auto pumpStartedAt = std::chrono::steady_clock::now();
-            while (nextFrameToWrite < frameCount)
+            std::lock_guard lock(mutex);
+            success = saved;
+            completed = true;
+            if (!saved)
             {
-                const auto lease = document.acquireReadLease();
-                writeFrameChunk(lease, nextFrameToWrite, kAutosaveFramesPerChunk);
-                if (std::chrono::steady_clock::now() - pumpStartedAt >=
-                    kAutosavePumpBudget)
-                {
-                    break;
-                }
-            }
-
-            if (nextFrameToWrite >= frameCount)
-            {
-                finish();
+                error = "Failed to write autosave snapshot";
             }
         }
         catch (const std::exception &e)
         {
-            fail(e.what());
+            std::lock_guard lock(mutex);
+            success = false;
+            completed = true;
+            error = e.what();
         }
         catch (...)
         {
-            fail("An unknown error occurred.");
+            std::lock_guard lock(mutex);
+            success = false;
+            completed = true;
+            error = "An unknown error occurred.";
         }
     }
 
@@ -521,6 +330,8 @@ namespace cupuacu::actions::io
             .completed = completed,
             .success = success,
             .canceled = cancelRequested.load() && completed && !success,
+            .persistentWaveformCacheSaved =
+                persistentWaveformCacheSaved,
             .request = request,
             .detail = detail,
             .progress = progress,
@@ -566,12 +377,7 @@ namespace cupuacu::actions::io
                 case BackgroundSaveKind::Overwrite:
                 case BackgroundSaveKind::SaveAs:
                 {
-                    if (document == nullptr)
-                    {
-                        throw std::runtime_error(
-                            "Background save job has no document to write");
-                    }
-                    const auto lease = document->acquireReadLease();
+                    const auto lease = document.acquireReadLease();
                     file::AudioFileWriter::writeFile(
                         lease, request.path, request.settings, progressCallback);
                     break;
@@ -579,17 +385,12 @@ namespace cupuacu::actions::io
                 case BackgroundSaveKind::OverwritePreserving:
                 case BackgroundSaveKind::SaveAsPreserving:
                 {
-                    if (document == nullptr)
-                    {
-                        throw std::runtime_error(
-                            "Background preserving save job has no document to write");
-                    }
                     if (request.referencePath.empty())
                     {
                         throw std::runtime_error(
                             "Background preserving save job has no reference file");
                     }
-                    const auto lease = document->acquireReadLease();
+                    const auto lease = document.acquireReadLease();
                     file::writePreservingFile(file::PreservationWriteInput{
                         .document = lease,
                         .referencePath = request.referencePath,
@@ -599,6 +400,23 @@ namespace cupuacu::actions::io
                     });
                     break;
                 }
+            }
+
+            if (!waveformCacheRoot.empty() &&
+                !cancelRequested.load(std::memory_order_acquire))
+            {
+                publishProgress("Caching waveform", std::nullopt);
+                cupuacu::DocumentSession cacheSession;
+                cacheSession.currentFile = request.path.string();
+                cacheSession.document = document;
+                cacheSession.waveformCaches.resetToChannelCount(
+                    cacheSession.document.getChannelCount());
+                cacheSession.rebuildWaveformCacheSynchronously();
+                const bool cacheSaved =
+                    cupuacu::waveform::savePersistentWaveformCache(
+                        cacheSession, waveformCacheRoot);
+                std::lock_guard lock(mutex);
+                persistentWaveformCacheSaved = cacheSaved;
             }
 
             std::lock_guard lock(mutex);
@@ -806,6 +624,7 @@ namespace cupuacu::actions::io
         if (snapshot.completed)
         {
             auto job = std::move(state->backgroundSaveJob);
+            job.reset();
             commitCompletedBackgroundSave(state, snapshot);
             return;
         }
@@ -843,8 +662,9 @@ namespace cupuacu::actions::io
                     tab.id, session.autosaveSnapshotPath,
                     session.document.getWaveformDataVersion(),
                     session.document.getMarkerDataVersion(),
-                    session.currentFile),
+                    session.currentFile, session.document),
                 cupuacu::destroyBackgroundAutosaveJob};
+            state->backgroundAutosaveJob->start();
         }
     }
 
@@ -857,10 +677,8 @@ namespace cupuacu::actions::io
 
         const bool deferForInteraction = shouldDeferAutosaveForInteraction(state);
 
-        if (!deferForInteraction && state->backgroundAutosaveJob &&
-            canRunAutosavePump(state))
+        if (state->backgroundAutosaveJob)
         {
-            state->backgroundAutosaveJob->pump(state);
             const auto snapshot = state->backgroundAutosaveJob->snapshot();
             if (snapshot.completed)
             {
@@ -871,7 +689,12 @@ namespace cupuacu::actions::io
                     {
                         auto &session =
                             state->tabs[static_cast<std::size_t>(tabIndex)].session;
-                        if (session.autosaveSnapshotPath == snapshot.path)
+                        if (session.autosaveSnapshotPath == snapshot.path &&
+                            session.currentFile == snapshot.currentFile &&
+                            session.document.getWaveformDataVersion() ==
+                                snapshot.waveformDataVersion &&
+                            session.document.getMarkerDataVersion() ==
+                                snapshot.markerDataVersion)
                         {
                             session.autosavedWaveformDataVersion =
                                 snapshot.waveformDataVersion;
@@ -910,8 +733,9 @@ namespace cupuacu::actions::io
                         tab.id, tab.session.autosaveSnapshotPath,
                         tab.session.document.getWaveformDataVersion(),
                         tab.session.document.getMarkerDataVersion(),
-                        tab.session.currentFile),
+                        tab.session.currentFile, tab.session.document),
                     cupuacu::destroyBackgroundAutosaveJob};
+                state->backgroundAutosaveJob->start();
                 break;
             }
         }

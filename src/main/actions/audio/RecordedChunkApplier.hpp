@@ -23,6 +23,7 @@ namespace cupuacu::actions::audio
     {
         auto &doc = session.document;
         RecordedChunkApplyResult result{};
+        session.stopWaveformCacheBuild();
         result.requiredFrameCount =
             chunk.startFrame + static_cast<int64_t>(chunk.frameCount);
 
@@ -82,19 +83,12 @@ namespace cupuacu::actions::audio
 
         result.channelLayoutChanged = oldChannelCount != doc.getChannelCount();
 
-        for (uint32_t frame = 0; frame < chunk.frameCount; ++frame)
-        {
-            const int64_t writeFrame = chunk.startFrame + frame;
-            const std::size_t base =
-                static_cast<std::size_t>(frame) *
-                cupuacu::audio::kMaxRecordedChannels;
-
-            doc.setSample(0, writeFrame, chunk.interleavedSamples[base]);
-            if (doc.getChannelCount() > 1)
-            {
-                doc.setSample(1, writeFrame, chunk.interleavedSamples[base + 1]);
-            }
-        }
+        // RecordedChunk always uses a two-float frame stride, including for a
+        // mono input. Document clamps the writable channel count, allowing the
+        // complete chunk to be committed under one document lock/version bump.
+        doc.writeInterleavedFloatBlock(
+            chunk.startFrame, chunk.interleavedSamples.data(), chunk.frameCount,
+            cupuacu::audio::kMaxRecordedChannels, true);
 
         return result;
     }

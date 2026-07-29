@@ -171,11 +171,17 @@ void AudioDevices::recordInputIntoQueue(
         return;
     }
 
-    callback_core::recordInputIntoChunks(
-        input, framesToRecord, static_cast<uint8_t>(recordingChannels),
-        state->recordingPosition,
-        static_cast<void *>(&data.device->recordedChunkQueue),
-        enqueueRecordedChunk, meterLevels);
+    if (!callback_core::recordInputIntoChunks(
+            input, framesToRecord, static_cast<uint8_t>(recordingChannels),
+            state->recordingPosition,
+            static_cast<void *>(&data.device->recordedChunkQueue),
+            enqueueRecordedChunk, meterLevels))
+    {
+        data.device->recordingOverflowed.store(true,
+                                               std::memory_order_release);
+        state->isRecording = false;
+        data.recordingBoundedToEnd = false;
+    }
 
     if (data.recordingBoundedToEnd &&
         state->recordingPosition >= static_cast<int64_t>(data.recordingEndPos))
@@ -794,12 +800,23 @@ bool AudioDevices::popRecordedChunk(RecordedChunk &outChunk)
     return recordedChunkQueue.try_dequeue(outChunk);
 }
 
+bool AudioDevices::hasPendingRecordedAudio() const noexcept
+{
+    return recordedChunkQueue.size_approx() > 0;
+}
+
+bool AudioDevices::takeRecordingOverflow() noexcept
+{
+    return recordingOverflowed.exchange(false, std::memory_order_acq_rel);
+}
+
 void AudioDevices::clearRecordedChunks()
 {
     RecordedChunk chunk{};
     while (recordedChunkQueue.try_dequeue(chunk))
     {
     }
+    recordingOverflowed.store(false, std::memory_order_release);
 }
 
 bool AudioDevices::prepareInputMonitorForTesting(

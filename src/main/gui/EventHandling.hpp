@@ -354,6 +354,20 @@ namespace cupuacu::gui
 
         auto *mainWindow = state->mainDocumentSessionWindow->getWindow();
         Window *eventWindow = findWindowForEvent(state, event);
+        if (state->longTask.active &&
+            (event->type == SDL_EVENT_KEY_DOWN ||
+             event->type == SDL_EVENT_KEY_UP ||
+             event->type == SDL_EVENT_TEXT_INPUT ||
+             event->type == SDL_EVENT_TEXT_EDITING))
+        {
+            if (event->type == SDL_EVENT_KEY_DOWN &&
+                event->key.scancode == SDL_SCANCODE_ESCAPE &&
+                cupuacu::isLongTaskCancellable(state))
+            {
+                cupuacu::requestLongTaskCancel(state);
+            }
+            return SDL_APP_CONTINUE;
+        }
         if (isInteractiveEventBlockedByModal(state, eventWindow, event))
         {
             return SDL_APP_CONTINUE;

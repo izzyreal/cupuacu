@@ -22,6 +22,7 @@ TEST_CASE("Reverse effect runs in the background and commits undoably",
     document.setSample(0, 1, 0.2f, false);
     document.setSample(0, 2, 0.3f, false);
     document.setSample(0, 3, 0.4f, false);
+    const auto originalBuffer = document.getAudioBuffer();
 
     cupuacu::effects::performReverse(&state);
 
@@ -41,14 +42,18 @@ TEST_CASE("Reverse effect runs in the background and commits undoably",
     REQUIRE(document.getSample(0, 1) == Catch::Approx(0.3f));
     REQUIRE(document.getSample(0, 2) == Catch::Approx(0.2f));
     REQUIRE(document.getSample(0, 3) == Catch::Approx(0.1f));
+    const auto effectedBuffer = document.getAudioBuffer();
+    REQUIRE(effectedBuffer != originalBuffer);
 
     state.undo();
+    REQUIRE(document.getAudioBuffer() == originalBuffer);
     REQUIRE(document.getSample(0, 0) == Catch::Approx(0.1f));
     REQUIRE(document.getSample(0, 1) == Catch::Approx(0.2f));
     REQUIRE(document.getSample(0, 2) == Catch::Approx(0.3f));
     REQUIRE(document.getSample(0, 3) == Catch::Approx(0.4f));
 
     state.redo();
+    REQUIRE(document.getAudioBuffer() == effectedBuffer);
     REQUIRE(document.getSample(0, 0) == Catch::Approx(0.4f));
     REQUIRE(document.getSample(0, 1) == Catch::Approx(0.3f));
     REQUIRE(document.getSample(0, 2) == Catch::Approx(0.2f));

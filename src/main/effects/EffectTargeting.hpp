@@ -101,15 +101,58 @@ namespace cupuacu::effects
             return 0.0f;
         }
 
-        auto &document = state->getActiveDocumentSession().document;
+        const auto lease =
+            state->getActiveDocumentSession().document.acquireReadLease();
+        const auto &session = state->getActiveDocumentSession();
+        const int64_t endFrame = startFrame + frameCount;
+        constexpr int64_t blockSize =
+            cupuacu::gui::WaveformCache::BASE_BLOCK_SIZE;
         float peak = 0.0f;
         for (const auto channel : targetChannels)
         {
-            for (int64_t frame = 0; frame < frameCount; ++frame)
+            const auto &cache = session.getWaveformCache(
+                static_cast<int>(channel));
+            const auto &level0 = cache.getLevelByIndex(0);
+            if (!cache.hasDirtyBlocks() && !level0.empty())
             {
-                peak = std::max(
-                    peak,
-                    std::fabs(document.getSample(channel, startFrame + frame)));
+                const int64_t firstFullBlock =
+                    (startFrame + blockSize - 1) / blockSize;
+                const int64_t lastFullBlockExclusive = endFrame / blockSize;
+                const int64_t firstFullFrame =
+                    std::min(endFrame, firstFullBlock * blockSize);
+                const int64_t lastFullFrame =
+                    std::min(endFrame, lastFullBlockExclusive * blockSize);
+
+                for (int64_t frame = startFrame; frame < firstFullFrame;
+                     ++frame)
+                {
+                    peak = std::max(
+                        peak, std::fabs(lease.getSample(channel, frame)));
+                }
+                for (int64_t block = firstFullBlock;
+                     block < lastFullBlockExclusive &&
+                     block < static_cast<int64_t>(level0.size());
+                     ++block)
+                {
+                    const auto &cachedPeak =
+                        level0[static_cast<std::size_t>(block)];
+                    peak = std::max(
+                        peak, std::max(std::fabs(cachedPeak.min),
+                                       std::fabs(cachedPeak.max)));
+                }
+                for (int64_t frame = std::max(firstFullFrame, lastFullFrame);
+                     frame < endFrame; ++frame)
+                {
+                    peak = std::max(
+                        peak, std::fabs(lease.getSample(channel, frame)));
+                }
+                continue;
+            }
+
+            for (int64_t frame = startFrame; frame < endFrame; ++frame)
+            {
+                peak =
+                    std::max(peak, std::fabs(lease.getSample(channel, frame)));
             }
         }
         return peak;

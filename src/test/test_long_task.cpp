@@ -1,6 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "LongTask.hpp"
+#include "actions/DocumentTabs.hpp"
+#include "actions/MutationAvailability.hpp"
 #include "TestPaths.hpp"
 #include "gui/LongTaskOverlay.hpp"
 
@@ -63,6 +65,22 @@ TEST_CASE("Long task cancellation can be requested for cancellable tasks",
 
     REQUIRE(cupuacu::isLongTaskCancelRequested(&state));
     REQUIRE(state.longTask.cancelRequested);
+}
+
+TEST_CASE("Long tasks gate document mutation and tab switching",
+          "[long-task][threading]")
+{
+    cupuacu::State state;
+    cupuacu::setLongTask(&state, "Working", {}, std::nullopt, false, true);
+
+    REQUIRE_FALSE(
+        cupuacu::actions::describeDocumentMutationAvailability(&state).available);
+    REQUIRE_FALSE(cupuacu::actions::canSwitchTabs(&state));
+
+    cupuacu::clearLongTask(&state, false);
+    REQUIRE(
+        cupuacu::actions::describeDocumentMutationAvailability(&state).available);
+    REQUIRE(cupuacu::actions::canSwitchTabs(&state));
 }
 
 TEST_CASE("Long task overlay consumes mouse input while visible", "[long-task]")

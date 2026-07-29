@@ -178,7 +178,7 @@ bool cupuacu::audio::callback_core::fillOutputBuffer(
     return playedAnyFrame;
 }
 
-void cupuacu::audio::callback_core::recordInputIntoChunks(
+bool cupuacu::audio::callback_core::recordInputIntoChunks(
     const float *input, const unsigned long framesPerBuffer,
     const uint8_t recordingChannels, int64_t &recordingPosition,
     void *chunkSinkUser, const ChunkPushFn chunkPushFn,
@@ -187,7 +187,7 @@ void cupuacu::audio::callback_core::recordInputIntoChunks(
     if (!input || recordingChannels == 0 || recordingChannels > 2 ||
         !chunkPushFn)
     {
-        return;
+        return false;
     }
 
     unsigned long frameOffset = 0;
@@ -219,7 +219,14 @@ void cupuacu::audio::callback_core::recordInputIntoChunks(
             meterAccumulator.addFrame(inL, inR);
         }
 
-        chunkPushFn(chunkSinkUser, chunk);
+        if (!chunkPushFn(chunkSinkUser, chunk))
+        {
+            if (recordedFrameCount > 0)
+            {
+                meterAccumulator.mergeInto(meterLevels);
+            }
+            return false;
+        }
         recordingPosition += static_cast<int64_t>(chunk.frameCount);
         frameOffset += chunk.frameCount;
         recordedFrameCount += chunk.frameCount;
@@ -229,4 +236,5 @@ void cupuacu::audio::callback_core::recordInputIntoChunks(
     {
         meterAccumulator.mergeInto(meterLevels);
     }
+    return true;
 }

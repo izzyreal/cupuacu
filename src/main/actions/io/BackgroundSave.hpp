@@ -6,7 +6,6 @@
 
 #include <cstdint>
 #include <filesystem>
-#include <fstream>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -41,6 +40,7 @@ namespace cupuacu::actions::io
             bool completed = false;
             bool success = false;
             bool canceled = false;
+            bool persistentWaveformCacheSaved = false;
             BackgroundSaveRequest request;
             std::string detail;
             std::optional<double> progress;
@@ -50,7 +50,8 @@ namespace cupuacu::actions::io
         BackgroundSaveJob(std::uint64_t idToUse,
                           BackgroundSaveRequest requestToSave,
                           cupuacu::State *stateToUse,
-                          const cupuacu::Document *documentToWrite);
+                          const cupuacu::Document &documentToWrite,
+                          std::filesystem::path waveformCacheRootToUse = {});
         ~BackgroundSaveJob();
 
         BackgroundSaveJob(const BackgroundSaveJob &) = delete;
@@ -65,10 +66,12 @@ namespace cupuacu::actions::io
         std::uint64_t id = 0;
         BackgroundSaveRequest request;
         cupuacu::State *state = nullptr;
-        const cupuacu::Document *document = nullptr;
+        cupuacu::Document document;
+        std::filesystem::path waveformCacheRoot;
         mutable std::mutex mutex;
         bool completed = false;
         bool success = false;
+        bool persistentWaveformCacheSaved = false;
         std::string detail;
         std::optional<double> progress;
         std::string error;
@@ -100,49 +103,31 @@ namespace cupuacu::actions::io
                               std::filesystem::path pathToUse,
                               uint64_t waveformDataVersionToUse,
                               uint64_t markerDataVersionToUse,
-                              std::string currentFileToUse);
+                              std::string currentFileToUse,
+                              const cupuacu::Document &documentToSave);
+        ~BackgroundAutosaveJob();
 
+        BackgroundAutosaveJob(const BackgroundAutosaveJob &) = delete;
+        BackgroundAutosaveJob &
+        operator=(const BackgroundAutosaveJob &) = delete;
+
+        void start();
         [[nodiscard]] Snapshot snapshot() const;
-        void pump(cupuacu::State *state);
 
     private:
-        struct MarkerSnapshot
-        {
-            uint64_t id = 0;
-            int64_t frame = 0;
-            std::string label;
-        };
-
-        struct WaveformCacheSnapshot
-        {
-            gui::WaveformCache::BuildState buildState;
-        };
-
         uint64_t tabId = 0;
         std::filesystem::path path;
         uint64_t waveformDataVersion = 0;
         uint64_t markerDataVersion = 0;
         std::string currentFile;
-        std::vector<MarkerSnapshot> markers;
-        std::vector<WaveformCacheSnapshot> waveformCaches;
-        bool initialized = false;
+        cupuacu::Document document;
+        mutable std::mutex mutex;
         bool completed = false;
         bool success = false;
         std::string error;
-        int sampleFormat = 0;
-        int sampleRate = 0;
-        int64_t channelCount = 0;
-        int64_t frameCount = 0;
-        int64_t nextFrameToWrite = 0;
-        std::filesystem::path temporaryPath;
-        std::ofstream output;
+        std::thread worker;
 
-        void initializeFromSession(const cupuacu::DocumentSession &session);
-        void writeFrameChunk(const cupuacu::Document::ReadLease &lease,
-                             int64_t frameStart, int64_t frameCountToWrite);
-        void finish();
-        void fail(std::string message);
-        [[nodiscard]] double progressValue() const;
+        void run();
     };
 
     bool queueOverwrite(cupuacu::State *state);

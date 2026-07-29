@@ -399,8 +399,9 @@ namespace cupuacu::waveform
         };
     }
 
-    bool savePersistentWaveformCache(const cupuacu::DocumentSession &session,
-                                     const Paths &paths)
+    bool savePersistentWaveformCache(
+        const cupuacu::DocumentSession &session,
+        const std::filesystem::path &cacheRoot)
     {
         const auto key = session.getPersistentWaveformCacheKey();
         if (!key.has_value() || !sessionHasCompletePersistentCache(session))
@@ -411,7 +412,7 @@ namespace cupuacu::waveform
         try
         {
             cupuacu::file::writeFileAtomically(
-                key->cachePath(paths),
+                cacheRoot / key->cacheBasename(),
                 [&](const std::filesystem::path &temporaryPath)
                 {
                     writeCacheFile(temporaryPath, session, *key);
@@ -424,8 +425,15 @@ namespace cupuacu::waveform
         }
     }
 
-    bool loadPersistentWaveformCache(cupuacu::DocumentSession &session,
+    bool savePersistentWaveformCache(const cupuacu::DocumentSession &session,
                                      const Paths &paths)
+    {
+        return savePersistentWaveformCache(session, paths.waveformCachePath());
+    }
+
+    bool loadPersistentWaveformCache(
+        cupuacu::DocumentSession &session,
+        const std::filesystem::path &cacheRoot)
     {
         const auto key = session.getPersistentWaveformCacheKey();
         if (!key.has_value())
@@ -435,7 +443,8 @@ namespace cupuacu::waveform
 
         try
         {
-            std::ifstream input(key->cachePath(paths), std::ios::binary);
+            std::ifstream input(cacheRoot / key->cacheBasename(),
+                                std::ios::binary);
             if (!input.is_open())
             {
                 return false;
@@ -484,5 +493,11 @@ namespace cupuacu::waveform
         {
             return false;
         }
+    }
+
+    bool loadPersistentWaveformCache(cupuacu::DocumentSession &session,
+                                     const Paths &paths)
+    {
+        return loadPersistentWaveformCache(session, paths.waveformCachePath());
     }
 } // namespace cupuacu::waveform

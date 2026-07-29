@@ -111,6 +111,14 @@ namespace cupuacu
         return buffer->getSample(channel, frame);
     }
 
+    void Document::ensureUniqueBufferUnlocked()
+    {
+        if (buffer.use_count() != 1)
+        {
+            buffer = buffer->clone();
+        }
+    }
+
     int64_t Document::clampMarkerFrameUnlocked(const int64_t frame) const
     {
         return std::clamp(frame, int64_t{0}, getFrameCountUnlocked());
@@ -269,6 +277,7 @@ namespace cupuacu
                              const bool shouldMarkDirty)
     {
         std::unique_lock lock(dataMutex);
+        ensureUniqueBufferUnlocked();
         buffer->setSample(channel, frame, value, shouldMarkDirty);
         ++waveformDataVersion;
     }
@@ -285,6 +294,7 @@ namespace cupuacu
         {
             return;
         }
+        ensureUniqueBufferUnlocked();
 
         const auto writableFrames = std::min<int64_t>(
             frameCount,
@@ -333,9 +343,49 @@ namespace cupuacu
         ++waveformDataVersion;
     }
 
+    void Document::writeChannelFloatBlock(const int64_t channel,
+                                          const int64_t startFrame,
+                                          const float *samples,
+                                          const int64_t frameCount,
+                                          const bool shouldMarkDirty)
+    {
+        std::unique_lock lock(dataMutex);
+        if (!samples || channel < 0 || channel >= getChannelCountUnlocked() ||
+            startFrame < 0 || frameCount <= 0)
+        {
+            return;
+        }
+
+        const auto writableFrames = std::min<int64_t>(
+            frameCount,
+            std::max<int64_t>(0, getFrameCountUnlocked() - startFrame));
+        if (writableFrames <= 0)
+        {
+            return;
+        }
+
+        ensureUniqueBufferUnlocked();
+        if (shouldMarkDirty)
+        {
+            for (int64_t frame = 0; frame < writableFrames; ++frame)
+            {
+                buffer->setSample(channel, startFrame + frame,
+                                  samples[static_cast<std::size_t>(frame)], true);
+            }
+        }
+        else
+        {
+            auto channelData = buffer->getMutableChannelData(channel);
+            std::copy_n(samples, static_cast<std::size_t>(writableFrames),
+                        channelData.data() + startFrame);
+        }
+        ++waveformDataVersion;
+    }
+
     void Document::resizeBuffer(int64_t channels, int64_t frames)
     {
         std::unique_lock lock(dataMutex);
+        ensureUniqueBufferUnlocked();
         buffer->resize(channels, frames);
         ++waveformDataVersion;
     }
@@ -345,6 +395,7 @@ namespace cupuacu
         const SampleOperationProgressCallback &progress)
     {
         std::unique_lock lock(dataMutex);
+        ensureUniqueBufferUnlocked();
         buffer->insertFrames(frameIndex, numFrames, progress);
         ++waveformDataVersion;
 
@@ -368,6 +419,7 @@ namespace cupuacu
         const SampleOperationProgressCallback &progress)
     {
         std::unique_lock lock(dataMutex);
+        ensureUniqueBufferUnlocked();
         buffer->removeFrames(frameIndex, numFrames, progress);
         ++waveformDataVersion;
 
@@ -420,6 +472,7 @@ namespace cupuacu
         const cupuacu::audio::SampleProvenance &provenanceToUse)
     {
         std::unique_lock lock(dataMutex);
+        ensureUniqueBufferUnlocked();
         buffer->setProvenance(channel, frame, provenanceToUse);
     }
 
@@ -491,6 +544,7 @@ namespace cupuacu
         const SampleOperationProgressCallback &progress)
     {
         std::unique_lock lock(dataMutex);
+        ensureUniqueBufferUnlocked();
         const auto writableFrames = std::min<int64_t>(
             segment.frameCount,
             std::max<int64_t>(0, getFrameCountUnlocked() - startFrame));
@@ -625,6 +679,7 @@ namespace cupuacu
     void Document::markCurrentStateAsSavedSource()
     {
         std::unique_lock lock(dataMutex);
+        ensureUniqueBufferUnlocked();
         preservationSourceId = nextPreservationSourceId();
         buffer->establishSequentialProvenance(preservationSourceId);
     }

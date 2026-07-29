@@ -20,7 +20,7 @@ namespace cupuacu::actions
 
     inline bool canSwitchTabs(const cupuacu::State *state)
     {
-        return state &&
+        return state && !state->longTask.active &&
                (!state->audioDevices ||
                 (!state->audioDevices->isPlaying() &&
                  !state->audioDevices->isRecording()));

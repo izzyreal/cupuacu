@@ -253,13 +253,14 @@ bool MainView::shouldKeepConsumingRecordedAudio(const bool isRecordingNow,
                                                 const uint64_t perfFreq) const
 {
     constexpr double kRecordConsumeBudgetMs = 3.0;
-    const uint64_t maxChunksThisTick = isRecordingNow ? 12 : UINT64_MAX;
+    (void)isRecordingNow;
+    constexpr uint64_t maxChunksThisTick = 12;
     if (chunksThisTick >= maxChunksThisTick)
     {
         return false;
     }
 
-    if (!isRecordingNow || chunksThisTick == 0)
+    if (chunksThisTick == 0)
     {
         return true;
     }
@@ -914,12 +915,38 @@ void MainView::timerCallback()
 
     syncLivePlaybackRange(selectionActive, viewState.selectedChannels);
 
-    if (!isRecordingNow && wasRecordingLastTick)
+    const bool hasPendingRecordedAudio =
+        state->audioDevices &&
+        state->audioDevices->hasPendingRecordedAudio();
+    if (!isRecordingNow && wasRecordingLastTick && !hasPendingRecordedAudio)
     {
         finalizeRecordingUndoCaptureIfComplete();
         state->audioDevices->releaseInputIfUnused();
+        wasRecordingLastTick = false;
     }
-    wasRecordingLastTick = isRecordingNow;
+    else if (isRecordingNow)
+    {
+        wasRecordingLastTick = true;
+    }
+
+    if (state->audioDevices && state->audioDevices->takeRecordingOverflow())
+    {
+        constexpr const char *title = "Recording stopped";
+        constexpr const char *message =
+            "The application could not consume recorded audio quickly enough. "
+            "Recording was stopped before any missing audio could be added.";
+        if (state->errorReporter)
+        {
+            state->errorReporter(title, message);
+        }
+        else if (state->mainDocumentSessionWindow &&
+                 state->mainDocumentSessionWindow->getWindow())
+        {
+            SDL_ShowSimpleMessageBox(
+                SDL_MESSAGEBOX_ERROR, title, message,
+                state->mainDocumentSessionWindow->getWindow()->getSdlWindow());
+        }
+    }
 
     if (shouldRefreshMarkerBounds(
             consumedRecordedAudio || adjustedRecordingZoom, followedTransport,

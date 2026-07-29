@@ -5,9 +5,9 @@
 
 #include <atomic>
 #include <functional>
-#include <cstdio>
 #include <cstdint>
 #include <array>
+#include <limits>
 #include <new>
 
 namespace cupuacu::concurrency
@@ -86,8 +86,29 @@ namespace cupuacu::concurrency
 
         View getSnapshot() const noexcept
         {
-            State *s = currentSnapshot.load(std::memory_order_acquire);
-            return View{s};
+            for (;;)
+            {
+                State *s = currentSnapshot.load(std::memory_order_acquire);
+                const auto index =
+                    static_cast<std::size_t>(s - pool.data());
+                auto &readers = snapshotReaders[index];
+                std::uint32_t count = readers.load(std::memory_order_acquire);
+                if ((count & kWriterClaim) != 0)
+                {
+                    continue;
+                }
+                if (!readers.compare_exchange_weak(
+                        count, count + 1, std::memory_order_acq_rel,
+                        std::memory_order_acquire))
+                {
+                    continue;
+                }
+                if (currentSnapshot.load(std::memory_order_acquire) == s)
+                {
+                    return View{s, &readers};
+                }
+                readers.fetch_sub(1, std::memory_order_release);
+            }
         }
 
         void applyMessageImmediate(Message &&msg) noexcept
@@ -119,37 +140,47 @@ namespace cupuacu::concurrency
         State activeState;
         std::array<State, PoolSize> pool;
         std::atomic<State *> currentSnapshot{nullptr};
-        size_t writeIndex = 1;
+        mutable std::array<std::atomic<std::uint32_t>, PoolSize>
+            snapshotReaders{};
+        size_t writeIndex = 0;
 
         std::vector<utils::SimpleAction> actions;
 
         void publishState() noexcept
         {
-            const size_t nextIndex = (writeIndex + 1) % PoolSize;
-            State *dst = &pool[nextIndex];
-
-            State *oldSnap = currentSnapshot.load(std::memory_order_acquire);
-
-            if (oldSnap == dst)
+            State *const current =
+                currentSnapshot.load(std::memory_order_acquire);
+            for (size_t offset = 1; offset <= PoolSize; ++offset)
             {
-                const uint64_t n =
-                    publishCount.fetch_add(1, std::memory_order_relaxed) + 1;
+                const size_t nextIndex = (writeIndex + offset) % PoolSize;
+                State *const dst = &pool[nextIndex];
+                if (dst == current)
+                {
+                    continue;
+                }
 
-                std::fprintf(stdout,
-                             "[AtomicStateExchange] WARNING: Overwriting "
-                             "buffer still held by readers at publish #%llu\n",
-                             (unsigned long long)n);
-                std::fflush(stdout);
+                std::uint32_t expected = 0;
+                if (!snapshotReaders[nextIndex].compare_exchange_strong(
+                        expected, kWriterClaim, std::memory_order_acq_rel,
+                        std::memory_order_acquire))
+                {
+                    continue;
+                }
+
+                *dst = activeState;
+                snapshotReaders[nextIndex].store(0, std::memory_order_release);
+                currentSnapshot.store(dst, std::memory_order_release);
+                writeIndex = nextIndex;
+                return;
             }
-
-            *dst = activeState;
-            currentSnapshot.store(dst, std::memory_order_release);
-
-            writeIndex = nextIndex;
+            droppedSnapshotPublications.fetch_add(1,
+                                                  std::memory_order_relaxed);
         }
 
     private:
-        std::atomic<uint64_t> publishCount{0};
+        static constexpr std::uint32_t kWriterClaim =
+            std::uint32_t{1} << 31;
+        std::atomic<uint64_t> droppedSnapshotPublications{0};
 
         MessageQueue queue;
         CallbackQueue callbackQueue;

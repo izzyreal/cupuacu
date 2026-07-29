@@ -5,6 +5,7 @@
 #include "../../gui/Waveform.hpp"
 #include "../../undo/UndoManifestPersistence.hpp"
 #include "../../gui/Window.hpp"
+#include "../../waveform/WaveformCachePersistence.hpp"
 #include "../DocumentLifecycle.hpp"
 
 #include <algorithm>
@@ -32,7 +33,10 @@ namespace cupuacu::actions::io
 
             const auto id = nextBackgroundOpenJobId();
             state->backgroundOpenJob.reset(
-                new BackgroundOpenJob(id, std::move(request)));
+                new BackgroundOpenJob(
+                    id, std::move(request),
+                    state->paths ? state->paths->waveformCachePath()
+                                 : std::filesystem::path{}));
             const auto detail = state->backgroundOpenJob->getPath();
             cupuacu::setLongTask(state, "Opening file", detail, 0.0,
                                  false, true);
@@ -303,9 +307,12 @@ namespace cupuacu::actions::io
     }
 
     BackgroundOpenJob::BackgroundOpenJob(std::uint64_t idToUse,
-                                         PendingOpenRequest requestToOpen)
+                                         PendingOpenRequest requestToOpen,
+                                         std::filesystem::path
+                                             waveformCacheRootToUse)
         : id(idToUse),
           request(std::move(requestToOpen)),
+          waveformCacheRoot(std::move(waveformCacheRootToUse)),
           detail(request.path)
     {
     }
@@ -389,6 +396,24 @@ namespace cupuacu::actions::io
                                     {
                                         return cancelRequested.load();
                                     }));
+            if (!waveformCacheRoot.empty() &&
+                !cancelRequested.load(std::memory_order_acquire))
+            {
+                cupuacu::DocumentSession cacheSession;
+                cacheSession.currentFile = request.path;
+                cacheSession.document = loaded->document;
+                cacheSession.waveformCaches.resetToChannelCount(
+                    cacheSession.document.getChannelCount());
+                loaded->persistentWaveformCacheLoaded =
+                    cupuacu::waveform::loadPersistentWaveformCache(
+                        cacheSession, waveformCacheRoot);
+                loaded->persistentWaveformCacheChecked = true;
+                if (loaded->persistentWaveformCacheLoaded)
+                {
+                    loaded->waveformCaches =
+                        std::move(cacheSession.waveformCaches);
+                }
+            }
             std::lock_guard lock(mutex);
             loadedFile = std::move(loaded);
             success = true;

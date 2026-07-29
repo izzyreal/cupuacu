@@ -2,6 +2,7 @@
 
 #include "MonitorProtection.hpp"
 
+#include <atomic>
 #include <cstdint>
 
 namespace cupuacu::audio
@@ -10,7 +11,13 @@ namespace cupuacu::audio
     class AudioDeviceView
     {
     public:
-        explicit AudioDeviceView(const AudioDeviceState *) noexcept;
+        AudioDeviceView(const AudioDeviceState *,
+                        std::atomic<std::uint32_t> *readersToRelease) noexcept;
+        ~AudioDeviceView();
+        AudioDeviceView(const AudioDeviceView &other) noexcept;
+        AudioDeviceView &operator=(const AudioDeviceView &other) noexcept;
+        AudioDeviceView(AudioDeviceView &&other) noexcept;
+        AudioDeviceView &operator=(AudioDeviceView &&other) noexcept;
 
         bool isPlaying() const;
         bool isRecording() const;
@@ -20,6 +27,9 @@ namespace cupuacu::audio
         int64_t getRecordingPosition() const;
 
     private:
-        const AudioDeviceState *state;
+        void release() noexcept;
+
+        const AudioDeviceState *state = nullptr;
+        std::atomic<std::uint32_t> *readers = nullptr;
     };
 } // namespace cupuacu::audio

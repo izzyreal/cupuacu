@@ -131,6 +131,7 @@ namespace
             {
                 return;
             }
+            std::this_thread::yield();
         }
         FAIL("Autosave job did not complete");
     }
@@ -370,7 +371,7 @@ TEST_CASE("Shutdown flush does not rewrite current restored autosave snapshots",
     REQUIRE(flushedWriteTimeNs == originalWriteTimeNs);
 }
 
-TEST_CASE("Background autosave job fails if the snapshot path changes",
+TEST_CASE("Background autosave job owns its original snapshot path",
           "[autosave]")
 {
     cupuacu::test::StateWithTestPaths state{
@@ -385,20 +386,25 @@ TEST_CASE("Background autosave job fails if the snapshot path changes",
     cupuacu::actions::io::BackgroundAutosaveJob job(
         state.getActiveTab()->id, originalPath,
         session.document.getWaveformDataVersion(),
-        session.document.getMarkerDataVersion(), session.currentFile);
+        session.document.getMarkerDataVersion(), session.currentFile,
+        session.document);
+    job.start();
 
     session.autosaveSnapshotPath =
         state.paths->autosavePath() / "moved.cupuacu-autosave";
-    job.pump(&state);
+    for (int attempt = 0; attempt < 100000 && !job.snapshot().completed;
+         ++attempt)
+    {
+        std::this_thread::yield();
+    }
 
     const auto snapshot = job.snapshot();
     REQUIRE(snapshot.completed);
-    REQUIRE_FALSE(snapshot.success);
-    REQUIRE(snapshot.error == "Autosave snapshot path changed");
-    REQUIRE_FALSE(std::filesystem::exists(originalPath));
+    REQUIRE(snapshot.success);
+    REQUIRE(std::filesystem::exists(originalPath));
 }
 
-TEST_CASE("Background autosave job fails if the source file changes",
+TEST_CASE("Background autosave job owns its original source identity",
           "[autosave]")
 {
     cupuacu::test::StateWithTestPaths state{
@@ -414,16 +420,22 @@ TEST_CASE("Background autosave job fails if the source file changes",
     cupuacu::actions::io::BackgroundAutosaveJob job(
         state.getActiveTab()->id, autosavePath,
         session.document.getWaveformDataVersion(),
-        session.document.getMarkerDataVersion(), session.currentFile);
+        session.document.getMarkerDataVersion(), session.currentFile,
+        session.document);
+    job.start();
 
     session.currentFile = "/tmp/renamed.wav";
-    job.pump(&state);
+    for (int attempt = 0; attempt < 100000 && !job.snapshot().completed;
+         ++attempt)
+    {
+        std::this_thread::yield();
+    }
 
     const auto snapshot = job.snapshot();
     REQUIRE(snapshot.completed);
-    REQUIRE_FALSE(snapshot.success);
-    REQUIRE(snapshot.error == "Autosave source file changed");
-    REQUIRE_FALSE(std::filesystem::exists(autosavePath));
+    REQUIRE(snapshot.success);
+    REQUIRE(snapshot.currentFile == "/tmp/original.wav");
+    REQUIRE(std::filesystem::exists(autosavePath));
 }
 
 TEST_CASE("Stale autosave jobs are retried with the latest document version",
@@ -448,7 +460,17 @@ TEST_CASE("Stale autosave jobs are retried with the latest document version",
     const auto updatedWaveformVersion = session.document.getWaveformDataVersion();
     REQUIRE(updatedWaveformVersion != queuedWaveformVersion);
 
-    cupuacu::actions::io::processPendingAutosaveWork(&state);
+    for (int attempt = 0; attempt < 100000; ++attempt)
+    {
+        cupuacu::actions::io::processPendingAutosaveWork(&state);
+        if (state.backgroundAutosaveJob &&
+            state.backgroundAutosaveJob->snapshot().waveformDataVersion ==
+                updatedWaveformVersion)
+        {
+            break;
+        }
+        std::this_thread::yield();
+    }
 
     REQUIRE(state.backgroundAutosaveJob != nullptr);
     const auto retrySnapshot = state.backgroundAutosaveJob->snapshot();
@@ -755,6 +777,7 @@ TEST_CASE("Startup restore preserves clipboard and copy undo history",
         session.autosaveSnapshotPath = autosavePath;
 
         cupuacu::actions::persistSessionState(&state);
+        cupuacu::persistence::flushScheduledClipboardSnapshots();
         const auto persisted = cupuacu::persistence::SessionStatePersistence::load(
             state.paths->sessionStatePath());
         REQUIRE_FALSE(persisted.clipboardSnapshotPath.empty());
