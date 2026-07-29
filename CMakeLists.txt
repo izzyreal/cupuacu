@@ -422,6 +422,10 @@ if(APPLE)
     add_executable(Cupuacu MACOSX_BUNDLE
         src/main/main.cpp
     )
+elseif(WIN32)
+    add_executable(Cupuacu WIN32
+        src/main/main.cpp
+    )
 else()
     add_executable(Cupuacu
         src/main/main.cpp
