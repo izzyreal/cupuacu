@@ -7,6 +7,10 @@ function(_bundle_resources _target_name)
 
     file(GLOB_RECURSE RESOURCES "${_resources_root}/*")
     list(FILTER RESOURCES EXCLUDE REGEX "\\.DS_Store$")
+    # Application icons are packaged separately by each platform and are not
+    # opened through ResourceUtil. Avoid embedding a second cross-platform
+    # copy of them in every executable.
+    list(FILTER RESOURCES EXCLUDE REGEX "/app-icons/")
 
     cmrc_add_resource_library(
             resources 

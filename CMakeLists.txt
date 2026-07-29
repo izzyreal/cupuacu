@@ -42,6 +42,8 @@ option(CUPUACU_ENABLE_COVERAGE
     "Enable compiler and linker coverage instrumentation for supported targets" OFF)
 option(CUPUACU_BUILD_INTEGRATION_TESTS
     "Build SDL/Xvfb-backed integration tests in a dedicated target" OFF)
+option(CUPUACU_RELEASE_SIZE_OPTIMIZATIONS
+    "Enable low-risk release dead-code elimination and symbol stripping" ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
@@ -49,6 +51,19 @@ set(CMAKE_CXX_STANDARD 20)
 include(FetchContent)
 
 find_package(Git)
+
+# Give the ELF linker function/data granularity so --gc-sections can discard
+# unused code pulled in from Cupuacu's static dependencies. Mach-O and MSVC
+# already emit equivalent dead-strip granularity.
+if(CUPUACU_RELEASE_SIZE_OPTIMIZATIONS
+   AND UNIX
+   AND NOT APPLE
+   AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options(
+        "$<$<OR:$<CONFIG:Release>,$<CONFIG:MinSizeRel>>:-ffunction-sections>"
+        "$<$<OR:$<CONFIG:Release>,$<CONFIG:MinSizeRel>>:-fdata-sections>"
+    )
+endif()
 
 macro(AddDependency name source_name default_source_dir repo tag)
     fetchcontent_declare_cached_git(
@@ -61,10 +76,25 @@ macro(AddDependency name source_name default_source_dir repo tag)
     )
 
     FetchContent_MakeAvailable(${name})
+
+    # Fetched projects are implementation details of Cupuacu. Their linked
+    # targets remain available through normal target dependencies, while
+    # unrelated default targets and third-party SDK install rules stay out of
+    # Cupuacu's IDE projects, default build, and install/package output.
+    FetchContent_GetProperties(${name}
+        SOURCE_DIR _cupuacu_dependency_source_dir)
+    if(_cupuacu_dependency_source_dir)
+        set_property(DIRECTORY "${_cupuacu_dependency_source_dir}"
+            PROPERTY EXCLUDE_FROM_ALL TRUE)
+    endif()
+    unset(_cupuacu_dependency_source_dir)
 endmacro()
 
-set(SDL_TEST OFF CACHE BOOL "" FORCE)
+set(SDL_TESTS OFF CACHE BOOL "" FORCE)
 set(SDL_INSTALL_TESTS OFF CACHE BOOL "" FORCE)
+set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
+set(SDL_UNINSTALL OFF CACHE BOOL "" FORCE)
 set(SDL_AUDIO OFF CACHE BOOL "" FORCE)
 set(SDL_GPU OFF CACHE BOOL "" FORCE)
 set(SDL_CAMERA OFF CACHE BOOL "" FORCE)
@@ -76,13 +106,58 @@ set(SDL_SENSOR OFF CACHE BOOL "" FORCE)
 set(SDL_VIDEO ON CACHE BOOL "" FORCE)
 set(SDL_RENDER ON CACHE BOOL "" FORCE)
 set(SDL_DIALOG ON CACHE BOOL "" FORCE)
+# Cupuacu uses SDL's 2D renderer without requesting a driver. Keep one native
+# accelerated backend per desktop platform (Metal, D3D11, or OpenGL) plus
+# SDL's software fallback, instead of compiling every optional GPU backend.
+if(APPLE OR WIN32)
+    set(SDL_OPENGL OFF CACHE BOOL "" FORCE)
+else()
+    set(SDL_OPENGL ON CACHE BOOL "" FORCE)
+endif()
+if(APPLE)
+    set(SDL_RENDER_METAL ON CACHE BOOL "" FORCE)
+elseif(WIN32)
+    set(SDL_RENDER_D3D11 ON CACHE BOOL "" FORCE)
+endif()
+set(SDL_OPENGLES OFF CACHE BOOL "" FORCE)
+set(SDL_VULKAN OFF CACHE BOOL "" FORCE)
+set(SDL_RENDER_VULKAN OFF CACHE BOOL "" FORCE)
+set(SDL_RENDER_GPU OFF CACHE BOOL "" FORCE)
+set(SDL_RENDER_D3D OFF CACHE BOOL "" FORCE)
+set(SDL_RENDER_D3D12 OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
 set(BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+# libsndfile codec support exposed by Cupuacu's open/export UI.
+set(ENABLE_EXTERNAL_LIBS ON CACHE BOOL "" FORCE)
+set(ENABLE_MPEG ON CACHE BOOL "" FORCE)
+# libsndfile development, packaging, documentation, and test-only machinery.
+set(ENABLE_EXPERIMENTAL OFF CACHE BOOL "" FORCE)
+set(BUILD_REGTEST OFF CACHE BOOL "" FORCE)
+set(ENABLE_CPACK OFF CACHE BOOL "" FORCE)
+set(ENABLE_BOW_DOCS OFF CACHE BOOL "" FORCE)
+set(ENABLE_PACKAGE_CONFIG OFF CACHE BOOL "" FORCE)
+set(INSTALL_PKGCONFIG_MODULE OFF CACHE BOOL "" FORCE)
+set(INSTALL_MANPAGES OFF CACHE BOOL "" FORCE)
 set(PA_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(SDLTTF_VENDORED ON CACHE BOOL "" FORCE)
+set(SDLTTF_INSTALL OFF CACHE BOOL "" FORCE)
+set(SDLTTF_SAMPLES OFF CACHE BOOL "" FORCE)
+# SDL_ttf only consumes HarfBuzz's core shaping library and FreeType bridge.
+# Disable its separate subset/rendering libraries, including options added
+# after the HarfBuzz version currently vendored by SDL_ttf.
+set(HB_BUILD_SUBSET OFF CACHE BOOL "" FORCE)
+set(HB_BUILD_RASTER OFF CACHE BOOL "" FORCE)
+set(HB_BUILD_VECTOR OFF CACHE BOOL "" FORCE)
+set(HB_BUILD_GPU OFF CACHE BOOL "" FORCE)
+set(HB_BUILD_GPU_DEMO OFF CACHE STRING "" FORCE)
+# HarfBuzz is needed for correct shaping of Unicode filenames, marker names,
+# and other user-provided text. PlutoSVG only adds SVG/color-emoji font
+# support, which Cupuacu's embedded Inter font does not use.
+set(SDLTTF_HARFBUZZ ON CACHE BOOL "" FORCE)
+set(SDLTTF_PLUTOSVG OFF CACHE BOOL "" FORCE)
 
 AddDependency(SDL3 "SDL3" "${CMAKE_SOURCE_DIR}/deps/SDL3" "https://github.com/libsdl-org/SDL.git" "release-3.2.14")
 AddDependency(SDL_ttf "SDL_ttf" "${CMAKE_SOURCE_DIR}/deps/SDL_ttf" "https://github.com/libsdl-org/SDL_ttf.git" "release-3.2.2")
@@ -480,6 +555,31 @@ if(APPLE)
 endif()
 if(CUPUACU_ENABLE_RTSAN_LIBS)
     rtsan_libs_enable(TARGET Cupuacu)
+endif()
+
+if(CUPUACU_RELEASE_SIZE_OPTIMIZATIONS)
+    set(_cupuacu_release_config
+        "$<OR:$<CONFIG:Release>,$<CONFIG:MinSizeRel>>")
+    if(MSVC)
+        # Make the optimized-link defaults explicit and stable across Visual
+        # Studio generator/toolchain versions.
+        target_link_options(Cupuacu PRIVATE
+            "$<${_cupuacu_release_config}:/OPT:REF>"
+            "$<${_cupuacu_release_config}:/OPT:ICF>"
+        )
+    elseif(APPLE)
+        # ld64 can dead-strip at symbol granularity. Discarding local symbols
+        # at link time avoids invalidating the final code signature.
+        target_link_options(Cupuacu PRIVATE
+            "$<${_cupuacu_release_config}:-Wl,-dead_strip>"
+            "$<${_cupuacu_release_config}:-Wl,-x>"
+        )
+    elseif(UNIX AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_link_options(Cupuacu PRIVATE
+            "$<${_cupuacu_release_config}:-Wl,--gc-sections>"
+            "$<${_cupuacu_release_config}:-Wl,--strip-all>"
+        )
+    endif()
 endif()
 
 add_executable(cupuacu-tests
