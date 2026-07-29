@@ -13,6 +13,12 @@ function(fetchcontent_run_git out_result out_output out_error)
 endfunction()
 
 function(fetchcontent_resolve_git_hash repository ref out_hash_var)
+  string(LENGTH "${ref}" _ref_length)
+  if(_ref_length EQUAL 40 AND "${ref}" MATCHES "^[0-9a-fA-F]+$")
+    string(TOLOWER "${ref}" _git_hash)
+    set(${out_hash_var} "${_git_hash}" PARENT_SCOPE)
+    return()
+  endif()
   if(NOT GIT_FOUND)
     message(FATAL_ERROR "Git is required to resolve FetchContent hash for ${repository} (${ref})")
   endif()
@@ -66,10 +72,28 @@ function(fetchcontent_try_prepare_git_source dep_name source_dir repository git_
   endif()
 
   set(_needs_init OFF)
+  set(_source_matches_exact_hash OFF)
   if(EXISTS "${source_dir}/.git")
-    fetchcontent_run_git(_fetch_result _fetch_output _fetch_error -C "${source_dir}" fetch --depth 1 origin "${git_tag}")
-    if(NOT _fetch_result EQUAL 0)
-      set(_needs_init ON)
+    string(LENGTH "${git_tag}" _git_tag_length)
+    if(_git_tag_length EQUAL 40 AND
+       "${git_tag}" MATCHES "^[0-9a-fA-F]+$")
+      fetchcontent_run_git(
+        _head_result _head_output _head_error
+        -C "${source_dir}" rev-parse HEAD
+      )
+      string(TOLOWER "${_head_output}" _head_output)
+      string(TOLOWER "${git_tag}" _requested_hash)
+      if(_head_result EQUAL 0 AND
+         "${_head_output}" STREQUAL "${_requested_hash}")
+        set(_source_matches_exact_hash ON)
+      endif()
+    endif()
+
+    if(NOT _source_matches_exact_hash)
+      fetchcontent_run_git(_fetch_result _fetch_output _fetch_error -C "${source_dir}" fetch --depth 1 origin "${git_tag}")
+      if(NOT _fetch_result EQUAL 0)
+        set(_needs_init ON)
+      endif()
     endif()
   else()
     set(_needs_init ON)
@@ -96,7 +120,12 @@ function(fetchcontent_try_prepare_git_source dep_name source_dir repository git_
     endif()
   endif()
 
-  fetchcontent_run_git(_reset_result _reset_output _reset_error -C "${source_dir}" reset --hard FETCH_HEAD)
+  if(_source_matches_exact_hash)
+    set(_reset_target "${git_tag}")
+  else()
+    set(_reset_target FETCH_HEAD)
+  endif()
+  fetchcontent_run_git(_reset_result _reset_output _reset_error -C "${source_dir}" reset --hard "${_reset_target}")
   if(NOT _reset_result EQUAL 0)
     message(FATAL_ERROR "FetchContent ${dep_name}: git reset failed in ${source_dir}: ${_reset_error}")
   endif()

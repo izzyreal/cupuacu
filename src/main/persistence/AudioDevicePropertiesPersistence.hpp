@@ -12,6 +12,13 @@ namespace cupuacu::persistence
     class AudioDevicePropertiesPersistence
     {
     public:
+        struct Properties
+        {
+            cupuacu::audio::AudioDevices::DeviceSelection deviceSelection;
+            cupuacu::audio::FeedbackSuppressionMode feedbackSuppressionMode =
+                cupuacu::audio::FeedbackSuppressionMode::Standard;
+        };
+
         struct Resolver
         {
             std::function<std::string(int)> resolveHostApiName;
@@ -21,11 +28,13 @@ namespace cupuacu::persistence
                 resolveDeviceIndex;
         };
 
+        static bool save(const std::filesystem::path &path,
+                         const Properties &properties);
         static bool
         save(const std::filesystem::path &path,
              const cupuacu::audio::AudioDevices::DeviceSelection &selection);
 
-        static std::optional<cupuacu::audio::AudioDevices::DeviceSelection>
+        static std::optional<Properties>
         load(const std::filesystem::path &path);
 
         static void setResolverForTesting(Resolver resolver);

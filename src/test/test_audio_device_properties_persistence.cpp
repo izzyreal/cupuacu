@@ -116,7 +116,10 @@ TEST_CASE("Audio device properties persistence round-trip", "[persistence]")
     selection.inputDeviceIndex = 11;
 
     REQUIRE(cupuacu::persistence::AudioDevicePropertiesPersistence::save(
-        propertiesPath, selection));
+        propertiesPath,
+        {.deviceSelection = selection,
+         .feedbackSuppressionMode =
+             cupuacu::audio::FeedbackSuppressionMode::Smooth}));
 
     nlohmann::json persistedJson;
     {
@@ -124,7 +127,9 @@ TEST_CASE("Audio device properties persistence round-trip", "[persistence]")
         REQUIRE(in.good());
         in >> persistedJson;
     }
-    REQUIRE(persistedJson.at("version").get<int>() == 1);
+    REQUIRE(persistedJson.at("version").get<int>() == 2);
+    REQUIRE(persistedJson.at("feedbackSuppressionMode").get<std::string>() ==
+            "smooth");
     REQUIRE(persistedJson.contains("hostApiName"));
     REQUIRE(persistedJson.contains("outputDeviceName"));
     REQUIRE(persistedJson.contains("inputDeviceName"));
@@ -139,9 +144,11 @@ TEST_CASE("Audio device properties persistence round-trip", "[persistence]")
         cupuacu::persistence::AudioDevicePropertiesPersistence::load(
             propertiesPath);
     REQUIRE(loaded.has_value());
-    REQUIRE(loaded->hostApiIndex == 7);
-    REQUIRE(loaded->outputDeviceIndex == 9);
-    REQUIRE(loaded->inputDeviceIndex == 11);
+    REQUIRE(loaded->deviceSelection.hostApiIndex == 7);
+    REQUIRE(loaded->deviceSelection.outputDeviceIndex == 9);
+    REQUIRE(loaded->deviceSelection.inputDeviceIndex == 11);
+    REQUIRE(loaded->feedbackSuppressionMode ==
+            cupuacu::audio::FeedbackSuppressionMode::Smooth);
 }
 
 TEST_CASE("Audio device properties persistence rejects empty and missing paths",
@@ -246,9 +253,11 @@ TEST_CASE("Audio device properties persistence maps unresolved names to -1 index
         cupuacu::persistence::AudioDevicePropertiesPersistence::load(
             propertiesPath);
     REQUIRE(loaded.has_value());
-    REQUIRE(loaded->hostApiIndex == -1);
-    REQUIRE(loaded->outputDeviceIndex == -1);
-    REQUIRE(loaded->inputDeviceIndex == -1);
+    REQUIRE(loaded->deviceSelection.hostApiIndex == -1);
+    REQUIRE(loaded->deviceSelection.outputDeviceIndex == -1);
+    REQUIRE(loaded->deviceSelection.inputDeviceIndex == -1);
+    REQUIRE(loaded->feedbackSuppressionMode ==
+            cupuacu::audio::FeedbackSuppressionMode::Standard);
 }
 
 TEST_CASE("Audio device properties persistence save fails when parent path cannot be created",
@@ -343,9 +352,9 @@ TEST_CASE("Audio device properties persistence tolerates resolver functions bein
         cupuacu::persistence::AudioDevicePropertiesPersistence::load(
             propertiesPath);
     REQUIRE(loaded.has_value());
-    REQUIRE(loaded->hostApiIndex == -1);
-    REQUIRE(loaded->outputDeviceIndex == -1);
-    REQUIRE(loaded->inputDeviceIndex == -1);
+    REQUIRE(loaded->deviceSelection.hostApiIndex == -1);
+    REQUIRE(loaded->deviceSelection.outputDeviceIndex == -1);
+    REQUIRE(loaded->deviceSelection.inputDeviceIndex == -1);
 }
 
 TEST_CASE("Audio device properties persistence default resolver round-trips empty device names",
@@ -372,7 +381,7 @@ TEST_CASE("Audio device properties persistence default resolver round-trips empt
         REQUIRE(in.good());
         in >> persistedJson;
     }
-    REQUIRE(persistedJson.at("version").get<int>() == 1);
+    REQUIRE(persistedJson.at("version").get<int>() == 2);
     REQUIRE(persistedJson.at("hostApiName").get<std::string>().empty());
     REQUIRE(persistedJson.at("outputDeviceName").get<std::string>().empty());
     REQUIRE(persistedJson.at("inputDeviceName").get<std::string>().empty());
@@ -381,7 +390,7 @@ TEST_CASE("Audio device properties persistence default resolver round-trips empt
         cupuacu::persistence::AudioDevicePropertiesPersistence::load(
             propertiesPath);
     REQUIRE(loaded.has_value());
-    REQUIRE(loaded->hostApiIndex == -1);
-    REQUIRE(loaded->outputDeviceIndex == -1);
-    REQUIRE(loaded->inputDeviceIndex == -1);
+    REQUIRE(loaded->deviceSelection.hostApiIndex == -1);
+    REQUIRE(loaded->deviceSelection.outputDeviceIndex == -1);
+    REQUIRE(loaded->deviceSelection.inputDeviceIndex == -1);
 }

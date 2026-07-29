@@ -12,6 +12,47 @@ The main window contains:
 
 When no file is open, Cupuacu shows an empty untitled document. Actions that require an active document are disabled.
 
+## Transport And Input Monitoring
+
+The transport controls provide `Play`, `Stop`, `Record`, `Monitor`, and `Loop`.
+
+`Monitor` routes the selected audio input to the selected output so you can
+check the source and recording level without recording. It is off whenever
+Cupuacu starts and remains enabled until you turn it off or quit.
+
+`Options -> Audio -> Feedback Suppression` selects the live monitor behavior:
+
+- `Standard` is the original, direct feedback-suppression response
+- `Smooth` eases protection transitions and damps persistent low-level
+  suppression tails
+- `Off` monitors without echo cancellation or automatic feedback protection
+
+Standard and Smooth learn the acoustic path between the selected output and
+input, suppress correlated speaker return, and may deliberately alter the
+monitored signal when a feedback loop develops. Switching mode while Monitor
+is active briefly re-primes the monitor path; it does not restart the audio
+device. Headphones are still recommended, especially with suppression off.
+
+Monitoring behavior:
+
+- recording input remains audible while recording
+- document playback temporarily suspends input monitoring instead of mixing
+  the two signals
+- monitoring resumes automatically when playback stops
+- `Stop` ends playback or recording but does not turn `Monitor` off
+- mono input is heard through both output channels; stereo input keeps its
+  left/right routing
+- recorded samples and the recording level meter use the unprocessed input;
+  suppression changes only what is heard through Monitor
+- in Standard or Smooth, if feedback continues to grow, Cupuacu fades
+  monitoring to silence and turns `Monitor` off; Off does not perform this
+  safety trip
+
+Enabling `Monitor` may request microphone permission. Input and output devices
+can be selected under `Options -> Audio`. Standard and Smooth monitoring remain
+unavailable if feedback suppression cannot initialize for the selected device
+format; Off remains available because it bypasses suppression.
+
 ## Opening Files
 
 Use `File -> Open` to open an audio file with the system file picker.

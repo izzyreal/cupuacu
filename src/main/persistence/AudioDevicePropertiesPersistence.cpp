@@ -14,7 +14,7 @@ namespace cupuacu::persistence
 {
     namespace
     {
-        constexpr int kFormatVersion = 1;
+        constexpr int kFormatVersion = 2;
         std::optional<AudioDevicePropertiesPersistence::Resolver>
             gResolverOverride;
 
@@ -41,7 +41,8 @@ namespace cupuacu::persistence
         bool selectionRequiresPortAudio(
             const cupuacu::audio::AudioDevices::DeviceSelection &selection)
         {
-            return selection.hostApiIndex >= 0 || selection.outputDeviceIndex >= 0 ||
+            return selection.hostApiIndex >= 0 ||
+                   selection.outputDeviceIndex >= 0 ||
                    selection.inputDeviceIndex >= 0;
         }
 
@@ -198,12 +199,50 @@ namespace cupuacu::persistence
             return kDefault;
         }
 
-        nlohmann::json serializeSelection(
-            const cupuacu::audio::AudioDevices::DeviceSelection &selection,
+        std::string
+        serializeMode(const cupuacu::audio::FeedbackSuppressionMode mode)
+        {
+            switch (mode)
+            {
+                case cupuacu::audio::FeedbackSuppressionMode::Off:
+                    return "off";
+                case cupuacu::audio::FeedbackSuppressionMode::Smooth:
+                    return "smooth";
+                case cupuacu::audio::FeedbackSuppressionMode::Standard:
+                default:
+                    return "standard";
+            }
+        }
+
+        cupuacu::audio::FeedbackSuppressionMode
+        deserializeMode(const nlohmann::json &json)
+        {
+            if (!json.contains("feedbackSuppressionMode"))
+            {
+                return cupuacu::audio::FeedbackSuppressionMode::Standard;
+            }
+            const auto value =
+                json.at("feedbackSuppressionMode").get<std::string>();
+            if (value == "off")
+            {
+                return cupuacu::audio::FeedbackSuppressionMode::Off;
+            }
+            if (value == "smooth")
+            {
+                return cupuacu::audio::FeedbackSuppressionMode::Smooth;
+            }
+            return cupuacu::audio::FeedbackSuppressionMode::Standard;
+        }
+
+        nlohmann::json serializeProperties(
+            const AudioDevicePropertiesPersistence::Properties &properties,
             const AudioDevicePropertiesPersistence::Resolver &resolver)
         {
+            const auto &selection = properties.deviceSelection;
             return nlohmann::json{
                 {"version", kFormatVersion},
+                {"feedbackSuppressionMode",
+                 serializeMode(properties.feedbackSuppressionMode)},
                 {"hostApiName",
                  resolver.resolveHostApiName
                      ? resolver.resolveHostApiName(selection.hostApiIndex)
@@ -218,8 +257,8 @@ namespace cupuacu::persistence
                      : std::string{}}};
         }
 
-        std::optional<cupuacu::audio::AudioDevices::DeviceSelection>
-        deserializeSelection(
+        std::optional<AudioDevicePropertiesPersistence::Properties>
+        deserializeProperties(
             const nlohmann::json &json,
             const AudioDevicePropertiesPersistence::Resolver &resolver)
         {
@@ -236,7 +275,7 @@ namespace cupuacu::persistence
             }
 
             const int version = json.at("version").get<int>();
-            if (version != kFormatVersion)
+            if (version != 1 && version != kFormatVersion)
             {
                 return std::nullopt;
             }
@@ -264,13 +303,15 @@ namespace cupuacu::persistence
                                                   selection.hostApiIndex)
                     : -1;
 
-            return selection;
+            return AudioDevicePropertiesPersistence::Properties{
+                .deviceSelection = selection,
+                .feedbackSuppressionMode = deserializeMode(json)};
         }
     } // namespace
 
-    bool AudioDevicePropertiesPersistence::save(
-        const std::filesystem::path &path,
-        const cupuacu::audio::AudioDevices::DeviceSelection &selection)
+    bool
+    AudioDevicePropertiesPersistence::save(const std::filesystem::path &path,
+                                           const Properties &properties)
     {
         if (path.empty())
         {
@@ -279,7 +320,8 @@ namespace cupuacu::persistence
 
         const auto &resolver = currentResolver();
         bool initializedHere = false;
-        if (!hasResolverOverride() && selectionRequiresPortAudio(selection) &&
+        if (!hasResolverOverride() &&
+            selectionRequiresPortAudio(properties.deviceSelection) &&
             !ensurePortAudioInitialized(initializedHere))
         {
             return false;
@@ -300,13 +342,20 @@ namespace cupuacu::persistence
             return false;
         }
 
-        out << serializeSelection(selection, resolver).dump(2);
+        out << serializeProperties(properties, resolver).dump(2);
         const bool ok = out.good();
         terminatePortAudioIfNeeded(initializedHere);
         return ok;
     }
 
-    std::optional<cupuacu::audio::AudioDevices::DeviceSelection>
+    bool AudioDevicePropertiesPersistence::save(
+        const std::filesystem::path &path,
+        const cupuacu::audio::AudioDevices::DeviceSelection &selection)
+    {
+        return save(path, {.deviceSelection = selection});
+    }
+
+    std::optional<AudioDevicePropertiesPersistence::Properties>
     AudioDevicePropertiesPersistence::load(const std::filesystem::path &path)
     {
         if (path.empty())
@@ -330,14 +379,15 @@ namespace cupuacu::persistence
         {
             in >> json;
             bool initializedHere = false;
-            if (!hasResolverOverride() && persistedNamesRequirePortAudio(json) &&
+            if (!hasResolverOverride() &&
+                persistedNamesRequirePortAudio(json) &&
                 !ensurePortAudioInitialized(initializedHere))
             {
                 return std::nullopt;
             }
-            auto selection = deserializeSelection(json, resolver);
+            auto properties = deserializeProperties(json, resolver);
             terminatePortAudioIfNeeded(initializedHere);
-            return selection;
+            return properties;
         }
         catch (...)
         {

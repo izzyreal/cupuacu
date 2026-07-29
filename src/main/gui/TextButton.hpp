@@ -16,12 +16,14 @@ namespace cupuacu::gui
         void setLabelCenterHorizontally(bool shouldCenter);
         void setLabelMargin(int margin);
         void setLabelOverflowMode(TextOverflowMode overflowMode);
+        void setTooltipText(const std::string &tooltipText);
         void setTooltipTextForTruncatedLabel(const std::string &tooltipText);
         std::string getTooltipText() const override;
         void resized() override;
 
     private:
         Label *label;
+        std::string tooltipText;
         std::string truncatedLabelTooltipText;
     };
 } // namespace cupuacu::gui

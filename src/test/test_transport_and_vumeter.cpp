@@ -52,22 +52,26 @@ namespace
     cupuacu::gui::MouseEvent leftMouseDownAt(const int x = 1, const int y = 1)
     {
         return cupuacu::gui::MouseEvent{
-            cupuacu::gui::DOWN, x, y, static_cast<float>(x),
-            static_cast<float>(y), 0.0f, 0.0f,
-            cupuacu::gui::MouseButtonState{true, false, false}, 1};
+            cupuacu::gui::DOWN,
+            x,
+            y,
+            static_cast<float>(x),
+            static_cast<float>(y),
+            0.0f,
+            0.0f,
+            cupuacu::gui::MouseButtonState{true, false, false},
+            1};
     }
 
     class RootComponent : public cupuacu::gui::Component
     {
     public:
-        explicit RootComponent(cupuacu::State *state)
-            : Component(state, "Root")
+        explicit RootComponent(cupuacu::State *state) : Component(state, "Root")
         {
         }
     };
 
-    template <typename T>
-    T *findFirstRecursive(cupuacu::gui::Component *root)
+    template <typename T> T *findFirstRecursive(cupuacu::gui::Component *root)
     {
         if (!root)
         {
@@ -112,8 +116,9 @@ namespace
 
 } // namespace
 
-TEST_CASE("Transport buttons container drives record stop play-stop and loop state",
-          "[gui][audio]")
+TEST_CASE(
+    "Transport buttons container drives record stop play-stop and loop state",
+    "[gui][audio]")
 {
 #if defined(__APPLE__)
     struct MicrophonePermissionReset
@@ -137,12 +142,17 @@ TEST_CASE("Transport buttons container drives record stop play-stop and loop sta
     auto *playButton = findTextButton(&container, "TextButton:Play");
     auto *stopButton = findTextButton(&container, "TextButton:Stop");
     auto *recordButton = findTextButton(&container, "TextButton:Record");
+    auto *monitorButton = findTextButton(&container, "TextButton:Monitor");
     auto *loopButton = findTextButton(&container, "TextButton:Loop");
 
     REQUIRE(playButton != nullptr);
     REQUIRE(stopButton != nullptr);
     REQUIRE(recordButton != nullptr);
+    REQUIRE(monitorButton != nullptr);
     REQUIRE(loopButton != nullptr);
+    REQUIRE_FALSE(monitorButton->isToggled());
+    REQUIRE(monitorButton->getTooltipText().find("Headphones") !=
+            std::string::npos);
 
     REQUIRE(recordButton->mouseDown(leftMouseDownAt()));
     state.audioDevices->drainQueue();
@@ -163,10 +173,14 @@ TEST_CASE("Transport buttons container drives record stop play-stop and loop sta
     state.audioDevices->enqueue(std::move(playMessage));
     state.audioDevices->drainQueue();
     REQUIRE(state.audioDevices->isPlaying());
+    container.timerCallback();
+    REQUIRE_FALSE(monitorButton->getEnabled());
 
     REQUIRE(playButton->mouseDown(leftMouseDownAt()));
     state.audioDevices->drainQueue();
     REQUIRE_FALSE(state.audioDevices->isPlaying());
+    container.timerCallback();
+    REQUIRE(monitorButton->getEnabled());
 
     REQUIRE(loopButton->mouseDown(leftMouseDownAt()));
     REQUIRE(state.loopPlaybackEnabled);
@@ -178,8 +192,9 @@ TEST_CASE("Transport buttons container drives record stop play-stop and loop sta
     REQUIRE_FALSE(loopButton->isToggled());
 }
 
-TEST_CASE("Vu meter timer reacts to pushed peaks and decay without SDL rendering",
-          "[gui][audio]")
+TEST_CASE(
+    "Vu meter timer reacts to pushed peaks and decay without SDL rendering",
+    "[gui][audio]")
 {
     cupuacu::test::StateWithTestPaths state{};
     cupuacu::gui::VuMeter meter(&state);
@@ -197,8 +212,7 @@ TEST_CASE("Vu meter timer reacts to pushed peaks and decay without SDL rendering
     REQUIRE(meter.isDirty());
 }
 
-TEST_CASE("Vu meter timer leaves an empty decay pass clean",
-          "[gui][audio]")
+TEST_CASE("Vu meter timer leaves an empty decay pass clean", "[gui][audio]")
 {
     cupuacu::test::StateWithTestPaths state{};
     cupuacu::gui::VuMeter meter(&state);
@@ -213,8 +227,8 @@ TEST_CASE("Vu meter timer leaves an empty decay pass clean",
 TEST_CASE("Vu meter scale config exposes the expected ruler labels",
           "[gui][audio]")
 {
-    const auto k14 = cupuacu::gui::getVuMeterScaleConfig(
-        cupuacu::gui::VuMeterScale::K14);
+    const auto k14 =
+        cupuacu::gui::getVuMeterScaleConfig(cupuacu::gui::VuMeterScale::K14);
     REQUIRE(std::find(k14.labels.begin(), k14.labels.end(), "-20") !=
             k14.labels.end());
     REQUIRE(std::find(k14.labels.begin(), k14.labels.end(), "0") !=
@@ -263,12 +277,12 @@ TEST_CASE("Vu meter model uses RMS for K scales and peak for Peak dBFS",
     model.setNumChannels(1);
 
     model.setScale(cupuacu::gui::VuMeterScale::PeakDbfs);
-    const auto peakDisplay = model.advanceChannel(
-        0, {.peak = 1.0f, .rms = 0.25f}, false);
+    const auto peakDisplay =
+        model.advanceChannel(0, {.peak = 1.0f, .rms = 0.25f}, false);
 
     model.setScale(cupuacu::gui::VuMeterScale::K20);
-    const auto kDisplay = model.advanceChannel(
-        0, {.peak = 1.0f, .rms = 0.25f}, false);
+    const auto kDisplay =
+        model.advanceChannel(0, {.peak = 1.0f, .rms = 0.25f}, false);
 
     REQUIRE(peakDisplay.level > kDisplay.level);
     REQUIRE(peakDisplay.hold ==
@@ -286,7 +300,8 @@ TEST_CASE("Vu meter model resets cached state when scale changes",
     model.setNumChannels(1);
     model.setScale(cupuacu::gui::VuMeterScale::PeakDbfs);
 
-    const auto first = model.advanceChannel(0, {.peak = 1.0f, .rms = 1.0f}, false);
+    const auto first =
+        model.advanceChannel(0, {.peak = 1.0f, .rms = 1.0f}, false);
     REQUIRE(first.level > 0.0f);
 
     model.setScale(cupuacu::gui::VuMeterScale::K14);
@@ -297,18 +312,19 @@ TEST_CASE("Vu meter model resets cached state when scale changes",
     REQUIRE(afterScaleChange.hold == Catch::Approx(0.0f));
 }
 
-TEST_CASE("Vu meter model hold decays after the hold period",
-          "[gui][audio]")
+TEST_CASE("Vu meter model hold decays after the hold period", "[gui][audio]")
 {
     cupuacu::gui::VuMeterModel model{};
     model.setNumChannels(1);
     model.setScale(cupuacu::gui::VuMeterScale::PeakDbfs);
 
-    const auto initial = model.advanceChannel(0, {.peak = 1.0f, .rms = 1.0f}, false);
+    const auto initial =
+        model.advanceChannel(0, {.peak = 1.0f, .rms = 1.0f}, false);
     float lastHold = initial.hold;
     for (int i = 0; i < 31; ++i)
     {
-        lastHold = model.advanceChannel(0, {.peak = 0.0f, .rms = 0.0f}, false).hold;
+        lastHold =
+            model.advanceChannel(0, {.peak = 0.0f, .rms = 0.0f}, false).hold;
     }
 
     REQUIRE(lastHold < initial.hold);

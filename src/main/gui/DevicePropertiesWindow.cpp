@@ -1,6 +1,7 @@
 #include "DevicePropertiesWindow.hpp"
 
 #include "../PaUtil.hpp"
+#include "../actions/Monitor.hpp"
 #include "../audio/AudioDevices.hpp"
 #include "../persistence/AudioDevicePropertiesPersistence.hpp"
 #include "Colors.hpp"
@@ -50,18 +51,26 @@ DevicePropertiesPane::DevicePropertiesPane(State *stateToUse)
 
     inputDeviceLabel = emplaceChild<Label>(state, "Input Device");
     inputDeviceDropdown = emplaceChild<DropdownMenu>(state);
+    feedbackSuppressionLabel =
+        emplaceChild<Label>(state, "Feedback Suppression");
+    feedbackSuppressionDropdown = emplaceChild<DropdownMenu>(state);
 
     const int labelFontSize = static_cast<int>(state->menuFontSize);
     deviceTypeLabel->setFontSize(labelFontSize);
     outputDeviceLabel->setFontSize(labelFontSize);
     inputDeviceLabel->setFontSize(labelFontSize);
+    feedbackSuppressionLabel->setFontSize(labelFontSize);
     deviceTypeDropdown->setFontSize(labelFontSize);
     outputDeviceDropdown->setFontSize(labelFontSize);
     inputDeviceDropdown->setFontSize(labelFontSize);
+    feedbackSuppressionDropdown->setFontSize(labelFontSize);
 
     deviceTypeDropdown->setExpanded(false);
     outputDeviceDropdown->setExpanded(false);
     inputDeviceDropdown->setExpanded(false);
+    feedbackSuppressionDropdown->setExpanded(false);
+    feedbackSuppressionDropdown->setItems({"Off", "Standard", "Smooth"});
+    feedbackSuppressionDropdown->setSelectedIndex(1);
 
     populateHostApis();
 
@@ -74,6 +83,11 @@ DevicePropertiesPane::DevicePropertiesPane(State *stateToUse)
         preferredHostApiIndex = selection.hostApiIndex;
         preferredOutputDeviceIndex = selection.outputDeviceIndex;
         preferredInputDeviceIndex = selection.inputDeviceIndex;
+        const auto mode = state->audioDevices->getFeedbackSuppressionMode();
+        feedbackSuppressionDropdown->setSelectedIndex(
+            mode == audio::FeedbackSuppressionMode::Off
+                ? 0
+                : (mode == audio::FeedbackSuppressionMode::Smooth ? 2 : 1));
     }
 
     int hostApiDropdownIndex = findIndex(hostApiIndices, preferredHostApiIndex);
@@ -92,9 +106,7 @@ DevicePropertiesPane::DevicePropertiesPane(State *stateToUse)
                     preferredInputDeviceIndex);
     if (syncSelectionToAudioDevices())
     {
-        persistence::AudioDevicePropertiesPersistence::save(
-            state->paths->audioDevicePropertiesPath(),
-            state->audioDevices->getDeviceSelection());
+        saveAudioProperties();
     }
 
     deviceTypeDropdown->setOnSelectionChanged(
@@ -109,7 +121,8 @@ DevicePropertiesPane::DevicePropertiesPane(State *stateToUse)
             int preferredInputDeviceIndex = -1;
             if (state && state->audioDevices)
             {
-                const auto selection = state->audioDevices->getDeviceSelection();
+                const auto selection =
+                    state->audioDevices->getDeviceSelection();
                 preferredOutputDeviceIndex = selection.outputDeviceIndex;
                 preferredInputDeviceIndex = selection.inputDeviceIndex;
             }
@@ -117,9 +130,7 @@ DevicePropertiesPane::DevicePropertiesPane(State *stateToUse)
                             preferredInputDeviceIndex);
             if (syncSelectionToAudioDevices())
             {
-                persistence::AudioDevicePropertiesPersistence::save(
-                    state->paths->audioDevicePropertiesPath(),
-                    state->audioDevices->getDeviceSelection());
+                saveAudioProperties();
             }
             layoutComponents();
             if (window)
@@ -132,9 +143,7 @@ DevicePropertiesPane::DevicePropertiesPane(State *stateToUse)
         {
             if (syncSelectionToAudioDevices())
             {
-                persistence::AudioDevicePropertiesPersistence::save(
-                    state->paths->audioDevicePropertiesPath(),
-                    state->audioDevices->getDeviceSelection());
+                saveAudioProperties();
             }
         });
     inputDeviceDropdown->setOnSelectionChanged(
@@ -142,9 +151,24 @@ DevicePropertiesPane::DevicePropertiesPane(State *stateToUse)
         {
             if (syncSelectionToAudioDevices())
             {
-                persistence::AudioDevicePropertiesPersistence::save(
-                    state->paths->audioDevicePropertiesPath(),
-                    state->audioDevices->getDeviceSelection());
+                saveAudioProperties();
+            }
+        });
+    feedbackSuppressionDropdown->setOnSelectionChanged(
+        [this](const int index)
+        {
+            if (!state || !state->audioDevices)
+            {
+                return;
+            }
+            const auto mode =
+                index == 0
+                    ? audio::FeedbackSuppressionMode::Off
+                    : (index == 2 ? audio::FeedbackSuppressionMode::Smooth
+                                  : audio::FeedbackSuppressionMode::Standard);
+            if (state->audioDevices->setFeedbackSuppressionMode(mode))
+            {
+                saveAudioProperties();
             }
         });
 }
@@ -210,9 +234,9 @@ void DevicePropertiesPane::populateHostApis()
     deviceTypeDropdown->setSelectedIndex(0);
 }
 
-void DevicePropertiesPane::populateDevices(
-    const int hostApiIndex, const int preferredOutputDeviceIndex,
-    const int preferredInputDeviceIndex)
+void DevicePropertiesPane::populateDevices(const int hostApiIndex,
+                                           const int preferredOutputDeviceIndex,
+                                           const int preferredInputDeviceIndex)
 {
     outputDeviceIndices.clear();
     inputDeviceIndices.clear();
@@ -284,8 +308,8 @@ void DevicePropertiesPane::populateDevices(
     outputDeviceDropdown->setSelectedIndex(outputSelectionIndex);
 
     inputDeviceDropdown->setItems(inputItems);
-    int inputSelectionIndex = findIndex(inputDeviceIndices,
-                                        preferredInputDeviceIndex);
+    int inputSelectionIndex =
+        findIndex(inputDeviceIndices, preferredInputDeviceIndex);
     if (inputSelectionIndex < 0)
     {
         const int defaultInputDeviceIndex =
@@ -336,13 +360,37 @@ bool DevicePropertiesPane::syncSelectionToAudioDevices()
         return false;
     }
 
+    const bool monitoringWasEnabled =
+        state->audioDevices->isInputMonitoringEnabled();
     const audio::AudioDevices::DeviceSelection selection{
         .hostApiIndex = getSelectedHostApiIndex(),
         .outputDeviceIndex =
             getSelectedDeviceIndex(outputDeviceDropdown, outputDeviceIndices),
         .inputDeviceIndex =
             getSelectedDeviceIndex(inputDeviceDropdown, inputDeviceIndices)};
-    return state->audioDevices->setDeviceSelection(selection);
+    const bool changed = state->audioDevices->setDeviceSelection(selection);
+    if (monitoringWasEnabled &&
+        !state->audioDevices->isInputMonitoringEnabled())
+    {
+        actions::reportInputMonitoringError(
+            state,
+            "The selected input and output devices could not be opened "
+            "together.");
+    }
+    return changed;
+}
+
+void DevicePropertiesPane::saveAudioProperties() const
+{
+    if (!state || !state->audioDevices || !state->paths)
+    {
+        return;
+    }
+    persistence::AudioDevicePropertiesPersistence::save(
+        state->paths->audioDevicePropertiesPath(),
+        {.deviceSelection = state->audioDevices->getDeviceSelection(),
+         .feedbackSuppressionMode =
+             state->audioDevices->getFeedbackSuppressionMode()});
 }
 
 void DevicePropertiesPane::layoutComponents() const
@@ -361,15 +409,21 @@ void DevicePropertiesPane::layoutComponents() const
         measureText("Output Device", labelFontPointSize);
     const auto [inputDeviceLabelW, inputDeviceLabelH] =
         measureText("Input Device", labelFontPointSize);
+    const auto [feedbackSuppressionLabelW, feedbackSuppressionLabelH] =
+        measureText("Feedback Suppression", labelFontPointSize);
     const int labelWidth =
         std::max({std::max(1, static_cast<int>(std::ceil(deviceTypeLabelW))),
                   std::max(1, static_cast<int>(std::ceil(outputDeviceLabelW))),
-                  std::max(1, static_cast<int>(std::ceil(inputDeviceLabelW)))}) +
+                  std::max(1, static_cast<int>(std::ceil(inputDeviceLabelW))),
+                  std::max(1, static_cast<int>(
+                                  std::ceil(feedbackSuppressionLabelW)))}) +
         padding;
     const int rowHeight =
         std::max({std::max(1, static_cast<int>(std::ceil(deviceTypeLabelH))),
                   std::max(1, static_cast<int>(std::ceil(outputDeviceLabelH))),
-                  std::max(1, static_cast<int>(std::ceil(inputDeviceLabelH)))}) +
+                  std::max(1, static_cast<int>(std::ceil(inputDeviceLabelH))),
+                  std::max(1, static_cast<int>(
+                                  std::ceil(feedbackSuppressionLabelH)))}) +
         padding * 2;
     const int dropdownX = padding + labelWidth + padding;
     const int dropdownW = std::max(1, canvasWi - dropdownX - padding);
@@ -381,7 +435,8 @@ void DevicePropertiesPane::layoutComponents() const
 
     const int secondRowY = padding + rowHeight + padding;
     outputDeviceLabel->setBounds(padding, secondRowY, labelWidth, rowHeight);
-    outputDeviceDropdown->setBounds(dropdownX, secondRowY, dropdownW, rowHeight);
+    outputDeviceDropdown->setBounds(dropdownX, secondRowY, dropdownW,
+                                    rowHeight);
     outputDeviceDropdown->setCollapsedHeight(rowHeight);
     outputDeviceDropdown->setItemMargin(padding);
 
@@ -390,4 +445,12 @@ void DevicePropertiesPane::layoutComponents() const
     inputDeviceDropdown->setBounds(dropdownX, thirdRowY, dropdownW, rowHeight);
     inputDeviceDropdown->setCollapsedHeight(rowHeight);
     inputDeviceDropdown->setItemMargin(padding);
+
+    const int fourthRowY = thirdRowY + rowHeight + padding;
+    feedbackSuppressionLabel->setBounds(padding, fourthRowY, labelWidth,
+                                        rowHeight);
+    feedbackSuppressionDropdown->setBounds(dropdownX, fourthRowY, dropdownW,
+                                           rowHeight);
+    feedbackSuppressionDropdown->setCollapsedHeight(rowHeight);
+    feedbackSuppressionDropdown->setItemMargin(padding);
 }

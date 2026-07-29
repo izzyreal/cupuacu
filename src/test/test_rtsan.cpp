@@ -9,6 +9,7 @@
 
 #include <rtsan_standalone/rtsan_standalone.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <vector>
@@ -67,8 +68,8 @@ TEST_CASE("recording overwrite scenario is safe", "[rtsan]")
 
     cupuacu::audio::AudioDevices devices(false);
     int64_t recordingPos = 2; // overwrite existing frames
-    const std::vector<float> input = {
-        100.f, -100.f, 101.f, -101.f, 102.f, -102.f, 103.f, -103.f};
+    const std::vector<float> input = {100.f, -100.f, 101.f, -101.f,
+                                      102.f, -102.f, 103.f, -103.f};
 
     cupuacu::audio::Record recordMsg{};
     recordMsg.document = &doc;
@@ -145,6 +146,37 @@ TEST_CASE("recording append scenario is safe", "[rtsan]")
     REQUIRE(doc.getSample(1, 4) == Catch::Approx(-10.f));
     REQUIRE(doc.getSample(0, 6) == Catch::Approx(12.f));
     REQUIRE(doc.getSample(1, 6) == Catch::Approx(-12.f));
+}
+
+TEST_CASE("input monitoring path is safe", "[rtsan]")
+{
+    __rtsan::Initialize();
+
+    cupuacu::audio::AudioDevices devices(false);
+    REQUIRE(devices.prepareInputMonitorForTesting(2));
+    devices.applyMessageImmediate(cupuacu::audio::SetInputMonitoring{
+        .enabled = true, .inputChannelCount = 2, .vuMeter = nullptr});
+    std::array<float, 256 * 2> input{};
+    std::array<float, 256 * 2> output{};
+    for (std::size_t frame = 0; frame < 256; ++frame)
+    {
+        input[frame * 2] = 0.25f;
+        input[frame * 2 + 1] = -0.25f;
+    }
+
+    {
+        __rtsan::ScopedSanitizeRealtime realtimeScope;
+        for (int callback = 0; callback < 100; ++callback)
+        {
+            devices.processCallbackCycle(input.data(), output.data(), 256);
+        }
+    }
+
+    REQUIRE(std::any_of(output.begin(), output.end(),
+                        [](const float sample)
+                        {
+                            return sample != 0.0f;
+                        }));
 }
 
 TEST_CASE("preview playback with live parameter updates is safe", "[rtsan]")

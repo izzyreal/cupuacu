@@ -30,6 +30,8 @@ namespace cupuacu::gui
         DropdownMenu *outputDeviceDropdown = nullptr;
         Label *inputDeviceLabel = nullptr;
         DropdownMenu *inputDeviceDropdown = nullptr;
+        Label *feedbackSuppressionLabel = nullptr;
+        DropdownMenu *feedbackSuppressionDropdown = nullptr;
 
         std::vector<int> hostApiIndices;
         std::vector<int> outputDeviceIndices;
@@ -43,6 +45,7 @@ namespace cupuacu::gui
         int getSelectedDeviceIndex(const DropdownMenu *dropdown,
                                    const std::vector<int> &indices) const;
         bool syncSelectionToAudioDevices();
+        void saveAudioProperties() const;
         void layoutComponents() const;
     };
 } // namespace cupuacu::gui

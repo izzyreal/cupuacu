@@ -23,25 +23,30 @@ namespace cupuacu::audio::callback_core
 
     void writeSilenceToOutput(float *out, unsigned long frames);
 
-    bool fillOutputBuffer(
-                          const std::shared_ptr<cupuacu::audio::AudioBuffer> &buffer,
-                          uint8_t channelCount,
-                          bool selectionIsActive,
-                          cupuacu::SelectedChannels selectedChannels,
-                          int64_t &playbackPosition, uint64_t &playbackStartPos,
-                          uint64_t &playbackEndPos, bool playbackLoopEnabled,
-                          bool &playbackHasPendingSwitch,
-                          uint64_t &playbackPendingStartPos,
-                          uint64_t &playbackPendingEndPos, bool &isPlaying,
-                          float *out, unsigned long framesPerBuffer,
-                          StereoMeterLevels &meterLevels,
-                          const cupuacu::audio::AudioProcessor *processor = nullptr,
-                          uint64_t effectStartPos = 0,
-                          uint64_t effectEndPos = 0,
-                          cupuacu::SelectedChannels processorChannels =
-                              cupuacu::SelectedChannels::BOTH);
+    bool monitorInputToOutput(const float *input, uint8_t inputChannels,
+                              float *out, unsigned long framesPerBuffer,
+                              StereoMeterLevels &meterLevels);
 
-    void recordInputIntoChunks(const float *input, unsigned long framesPerBuffer,
+    bool measureInput(const float *input, uint8_t inputChannels,
+                      unsigned long framesPerBuffer,
+                      StereoMeterLevels &meterLevels);
+
+    bool fillOutputBuffer(
+        const std::shared_ptr<cupuacu::audio::AudioBuffer> &buffer,
+        uint8_t channelCount, bool selectionIsActive,
+        cupuacu::SelectedChannels selectedChannels, int64_t &playbackPosition,
+        uint64_t &playbackStartPos, uint64_t &playbackEndPos,
+        bool playbackLoopEnabled, bool &playbackHasPendingSwitch,
+        uint64_t &playbackPendingStartPos, uint64_t &playbackPendingEndPos,
+        bool &isPlaying, float *out, unsigned long framesPerBuffer,
+        StereoMeterLevels &meterLevels,
+        const cupuacu::audio::AudioProcessor *processor = nullptr,
+        uint64_t effectStartPos = 0, uint64_t effectEndPos = 0,
+        cupuacu::SelectedChannels processorChannels =
+            cupuacu::SelectedChannels::BOTH);
+
+    void recordInputIntoChunks(const float *input,
+                               unsigned long framesPerBuffer,
                                uint8_t recordingChannels,
                                int64_t &recordingPosition, void *chunkSinkUser,
                                ChunkPushFn chunkPushFn,

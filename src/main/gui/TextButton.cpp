@@ -37,6 +37,11 @@ void TextButton::setLabelOverflowMode(const TextOverflowMode overflowMode)
     label->setOverflowMode(overflowMode);
 }
 
+void TextButton::setTooltipText(const std::string &tooltipTextToUse)
+{
+    tooltipText = tooltipTextToUse;
+}
+
 void TextButton::setTooltipTextForTruncatedLabel(const std::string &tooltipText)
 {
     truncatedLabelTooltipText = tooltipText;
@@ -44,6 +49,10 @@ void TextButton::setTooltipTextForTruncatedLabel(const std::string &tooltipText)
 
 std::string TextButton::getTooltipText() const
 {
+    if (!tooltipText.empty())
+    {
+        return tooltipText;
+    }
     if (!truncatedLabelTooltipText.empty() && label->isTextTruncated())
     {
         return truncatedLabelTooltipText;

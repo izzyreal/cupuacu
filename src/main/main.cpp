@@ -115,12 +115,15 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
         state->pixelScale = persistedDisplayProperties->pixelScale;
         state->vuMeterScale = persistedDisplayProperties->vuMeterScale;
     }
-    if (const auto persistedSelection =
+    if (const auto persistedAudioProperties =
             cupuacu::persistence::AudioDevicePropertiesPersistence::load(
                 state->paths->audioDevicePropertiesPath());
-        persistedSelection.has_value())
+        persistedAudioProperties.has_value())
     {
-        state->audioDevices->setDeviceSelection(*persistedSelection);
+        state->audioDevices->setFeedbackSuppressionMode(
+            persistedAudioProperties->feedbackSuppressionMode);
+        state->audioDevices->setDeviceSelection(
+            persistedAudioProperties->deviceSelection);
     }
     const auto persistedRecentFiles =
         cupuacu::persistence::RecentFilesPersistence::load(
@@ -308,6 +311,10 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
     state->backgroundAutosaveJob.reset();
     state->newFileDialogWindow.reset();
     state->optionsWindow.reset();
+    if (state->audioDevices)
+    {
+        state->audioDevices->closeDevice();
+    }
     state->mainDocumentSessionWindow.reset();
     state->windows.clear();
     const auto teardownFinishedAt = std::chrono::steady_clock::now();

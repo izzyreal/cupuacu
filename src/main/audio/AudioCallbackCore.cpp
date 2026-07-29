@@ -18,11 +18,57 @@ void cupuacu::audio::callback_core::writeSilenceToOutput(
     }
 }
 
+bool cupuacu::audio::callback_core::monitorInputToOutput(
+    const float *input, const uint8_t inputChannels, float *out,
+    const unsigned long framesPerBuffer, StereoMeterLevels &meterLevels)
+{
+    if (!input || !out || (inputChannels != 1 && inputChannels != 2))
+    {
+        return false;
+    }
+
+    cupuacu::audio::StereoMeterAccumulator meterAccumulator;
+    for (unsigned long frame = 0; frame < framesPerBuffer; ++frame)
+    {
+        const std::size_t inputBase =
+            static_cast<std::size_t>(frame) * inputChannels;
+        const float left = input[inputBase];
+        const float right = inputChannels == 2 ? input[inputBase + 1] : left;
+        const std::size_t outputBase = static_cast<std::size_t>(frame) * 2;
+        out[outputBase] = left;
+        out[outputBase + 1] = right;
+        meterAccumulator.addFrame(left, right);
+    }
+    meterAccumulator.mergeInto(meterLevels);
+    return framesPerBuffer > 0;
+}
+
+bool cupuacu::audio::callback_core::measureInput(
+    const float *input, const uint8_t inputChannels,
+    const unsigned long framesPerBuffer, StereoMeterLevels &meterLevels)
+{
+    if (!input || (inputChannels != 1 && inputChannels != 2))
+    {
+        return false;
+    }
+
+    cupuacu::audio::StereoMeterAccumulator meterAccumulator;
+    for (unsigned long frame = 0; frame < framesPerBuffer; ++frame)
+    {
+        const std::size_t inputBase =
+            static_cast<std::size_t>(frame) * inputChannels;
+        const float left = input[inputBase];
+        const float right = inputChannels == 2 ? input[inputBase + 1] : left;
+        meterAccumulator.addFrame(left, right);
+    }
+    meterAccumulator.mergeInto(meterLevels);
+    return framesPerBuffer > 0;
+}
+
 bool cupuacu::audio::callback_core::fillOutputBuffer(
     const std::shared_ptr<cupuacu::audio::AudioBuffer> &buffer,
     const uint8_t channelCount, const bool selectionIsActive,
-    const cupuacu::SelectedChannels selectedChannels,
-    int64_t &playbackPosition,
+    const cupuacu::SelectedChannels selectedChannels, int64_t &playbackPosition,
     uint64_t &playbackStartPos, uint64_t &playbackEndPos,
     const bool playbackLoopEnabled, bool &playbackHasPendingSwitch,
     uint64_t &playbackPendingStartPos, uint64_t &playbackPendingEndPos,
@@ -44,14 +90,17 @@ bool cupuacu::audio::callback_core::fillOutputBuffer(
     }
 
     const auto chBufL = buffer->getImmutableChannelData(0);
-    const auto chBufR = buffer->getImmutableChannelData(channelCount == 2 ? 1 : 0);
+    const auto chBufR =
+        buffer->getImmutableChannelData(channelCount == 2 ? 1 : 0);
 
     const bool shouldPlayChannelL =
-        !selectionIsActive || selectedChannels == cupuacu::SelectedChannels::BOTH ||
+        !selectionIsActive ||
+        selectedChannels == cupuacu::SelectedChannels::BOTH ||
         selectedChannels == cupuacu::SelectedChannels::LEFT;
 
     const bool shouldPlayChannelR =
-        !selectionIsActive || selectedChannels == cupuacu::SelectedChannels::BOTH ||
+        !selectionIsActive ||
+        selectedChannels == cupuacu::SelectedChannels::BOTH ||
         selectedChannels == cupuacu::SelectedChannels::RIGHT;
 
     float *const outputStart = out;
@@ -135,7 +184,8 @@ void cupuacu::audio::callback_core::recordInputIntoChunks(
     void *chunkSinkUser, const ChunkPushFn chunkPushFn,
     StereoMeterLevels &meterLevels)
 {
-    if (!input || recordingChannels == 0 || recordingChannels > 2 || !chunkPushFn)
+    if (!input || recordingChannels == 0 || recordingChannels > 2 ||
+        !chunkPushFn)
     {
         return;
     }
@@ -148,8 +198,9 @@ void cupuacu::audio::callback_core::recordInputIntoChunks(
         cupuacu::audio::RecordedChunk chunk{};
         chunk.startFrame = recordingPosition;
         chunk.channelCount = recordingChannels;
-        chunk.frameCount = static_cast<uint32_t>(std::min<unsigned long>(
-            cupuacu::audio::kRecordedChunkFrames, framesPerBuffer - frameOffset));
+        chunk.frameCount = static_cast<uint32_t>(
+            std::min<unsigned long>(cupuacu::audio::kRecordedChunkFrames,
+                                    framesPerBuffer - frameOffset));
 
         for (uint32_t frame = 0; frame < chunk.frameCount; ++frame)
         {
@@ -157,11 +208,11 @@ void cupuacu::audio::callback_core::recordInputIntoChunks(
                 static_cast<std::size_t>(frameOffset + frame) *
                 static_cast<std::size_t>(recordingChannels);
             const float inL = input[sourceBase];
-            const float inR = recordingChannels > 1 ? input[sourceBase + 1] : inL;
+            const float inR =
+                recordingChannels > 1 ? input[sourceBase + 1] : inL;
 
-            const std::size_t targetBase =
-                static_cast<std::size_t>(frame) *
-                cupuacu::audio::kMaxRecordedChannels;
+            const std::size_t targetBase = static_cast<std::size_t>(frame) *
+                                           cupuacu::audio::kMaxRecordedChannels;
             chunk.interleavedSamples[targetBase] = inL;
             chunk.interleavedSamples[targetBase + 1] = inR;
 

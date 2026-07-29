@@ -54,6 +54,36 @@ Current model:
 
 This keeps UI state off the audio thread while still allowing live parameter tweaking.
 
+### Input monitor processing
+
+Input monitoring does not use `AudioProcessor`. It is a continuously stateful
+realtime path owned by `InputMonitorPipeline`:
+
+- recording and input metering branch from raw capture before monitor DSP
+- 44.1 kHz callback fragments are adapted to WebRTC AEC3's 48 kHz, 10 ms
+  processing frames
+- `MonitorCancellationBackend` isolates AEC3 so the backend can be replaced
+  without changing PortAudio or transport code
+- `FeedbackSuppressionMode` is a persisted audio setting and is delivered to
+  the callback as an `AudioMessage`; changing it never reopens the stream
+- Standard and Smooth own separately prepared AEC3 instances. This keeps mode
+  changes allocation-free on the callback and lets their adaptive state remain
+  independent
+- Off bypasses AEC3, decorrelation, feedback detection, and emergency
+  tripping; it is an explicit user choice rather than an error fallback
+- the final speaker signal is fed back as the render reference
+- Smooth decorrelation uses an aligned dry/wet ramp and release hysteresis;
+  Standard retains the original direct response for comparison and for
+  hardware on which it behaves better
+- AEC3-specific comfort-noise tail damping is kept in `WebRtcAec3Backend` and
+  is armed only by the pipeline's feedback-risk detector; it is slow and
+  latched for quiet echo-dominated tails, but releases immediately for
+  ordinary input
+- the emergency feedback guard is a Cupuacu-owned stage
+
+The pinned WebRTC Audio Processing dependency and update procedure are
+documented in `cmake/WebRtcAudioProcessing.md`.
+
 ### Modal effect dialogs
 
 Effect dialogs are intentionally modal:
@@ -78,6 +108,16 @@ When adding realtime code:
 - avoid allocation in the callback where possible
 - avoid locks in the callback
 - prefer immutable snapshots or atomically replaced shared state
+
+Monitor DSP must additionally preserve the following:
+
+- prepare and destroy backends, resamplers, FFT buffers, and device-format
+  state off the callback thread
+- pass device timing through the PortAudio-independent
+  `AudioCallbackTiming` value
+- never fall back silently from Standard or Smooth to unprotected output;
+  unprotected monitoring is allowed only when the user explicitly selects Off
+- keep raw recording samples independent of all monitor processing
 
 ## Test Structure
 
@@ -249,6 +289,13 @@ If sanitizer targets exist in your build:
 cmake --build build-coverage-macos --target cupuacu-tests-rtsan -j2
 ./build-coverage-macos/cupuacu-tests-rtsan
 ```
+
+Feedback suppression changes also require a hardware pass on macOS, Windows,
+and Linux where available. Cover mono and stereo input, same-device and split
+input/output selections, monitoring while recording, playback
+suspend/resume, a device change, deliberate low-level feedback, and the
+emergency trip. Confirm that the callback does not underrun and that recorded
+samples remain raw.
 
 and, where supported:
 
