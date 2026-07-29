@@ -27,6 +27,10 @@ namespace cupuacu::audio::callback_core
                               float *out, unsigned long framesPerBuffer,
                               StereoMeterLevels &meterLevels);
 
+    bool measureInput(const float *input, uint8_t inputChannels,
+                      unsigned long framesPerBuffer,
+                      StereoMeterLevels &meterLevels);
+
     bool fillOutputBuffer(
         const std::shared_ptr<cupuacu::audio::AudioBuffer> &buffer,
         uint8_t channelCount, bool selectionIsActive,

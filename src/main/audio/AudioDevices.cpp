@@ -215,17 +215,27 @@ int AudioDevices::paCallback(const void *inputBuffer, void *outputBuffer,
     __rtsan::ScopedSanitizeRealtime realtimeScope;
 #endif
 
-    (void)timeInfo;
-    (void)statusFlags;
-
     auto *data = static_cast<PaData *>(userData);
+    AudioCallbackTiming timing{};
+    if (timeInfo)
+    {
+        timing.inputAdcTime = timeInfo->inputBufferAdcTime;
+        timing.currentTime = timeInfo->currentTime;
+        timing.outputDacTime = timeInfo->outputBufferDacTime;
+        timing.valid = true;
+    }
+    timing.discontinuity =
+        (statusFlags & (paInputOverflow | paInputUnderflow | paOutputOverflow |
+                        paOutputUnderflow)) != 0;
     return data->device->processCallbackCycle(
-        static_cast<const float *>(inputBuffer), outputBuffer, framesPerBuffer);
+        static_cast<const float *>(inputBuffer), outputBuffer, framesPerBuffer,
+        timing);
 }
 
 int AudioDevices::processCallbackCycle(
     const float *inputBuffer, void *outputBuffer,
-    const unsigned long framesPerBuffer) noexcept
+    const unsigned long framesPerBuffer,
+    const AudioCallbackTiming &timing) noexcept
 {
     drainQueue();
 
@@ -237,11 +247,57 @@ int AudioDevices::processCallbackCycle(
     recordInputIntoQueue(paData, inputBuffer, framesPerBuffer, meterLevels);
 
     const bool playbackOwnsOutput = playedAnyFrame || activeState.isPlaying;
-    const bool monitoredAnyFrame =
-        activeState.isInputMonitoringEnabled && !playbackOwnsOutput &&
-        callback_core::monitorInputToOutput(
-            inputBuffer, paData.inputChannelCount,
-            static_cast<float *>(outputBuffer), framesPerBuffer, meterLevels);
+    bool monitoredAnyFrame = false;
+    if (activeState.isInputMonitoringEnabled && playbackOwnsOutput)
+    {
+        if (monitorPipeline && !paData.monitorWasSuspendedForPlayback)
+        {
+            monitorPipeline->suspendSession();
+        }
+        paData.monitorWasSuspendedForPlayback = true;
+        activeState.monitorProtection.state = MonitorProtectionState::Inactive;
+    }
+    else if (activeState.isInputMonitoringEnabled && monitorPipeline)
+    {
+        if (paData.monitorWasSuspendedForPlayback)
+        {
+            monitorPipeline->startSession();
+            paData.monitorWasSuspendedForPlayback = false;
+        }
+        if (!activeState.isRecording)
+        {
+            callback_core::measureInput(inputBuffer, paData.inputChannelCount,
+                                        framesPerBuffer, meterLevels);
+        }
+
+        const auto monitorResult = monitorPipeline->process(
+            inputBuffer, static_cast<float *>(outputBuffer), framesPerBuffer,
+            timing);
+        activeState.monitorProtection = monitorResult.telemetry;
+        activeState.monitorProtection.tripGeneration = monitorTripGeneration;
+        monitoredAnyFrame = true;
+
+        if (monitorResult.telemetry.state == MonitorProtectionState::Tripped ||
+            monitorResult.telemetry.state ==
+                MonitorProtectionState::Unavailable)
+        {
+            activeState.monitorProtection.tripGeneration =
+                ++monitorTripGeneration;
+            activeState.isInputMonitoringEnabled = false;
+            inputMonitoringRequested.store(false, std::memory_order_release);
+            inputMonitoringError.store(
+                monitorResult.telemetry.state ==
+                        MonitorProtectionState::Unavailable
+                    ? InputMonitoringError::SuppressionUnavailable
+                    : InputMonitoringError::None,
+                std::memory_order_release);
+            monitoredAnyFrame = false;
+        }
+    }
+    else
+    {
+        paData.monitorWasSuspendedForPlayback = false;
+    }
 
     pushPeaksToVuMeter(paData, meterLevels, playedAnyFrame,
                        activeState.isRecording, monitoredAnyFrame);
@@ -318,12 +374,37 @@ bool AudioDevices::openDevice(const int inputDeviceIndex,
         return false;
     }
 
+    monitorPipeline.reset();
+    if (inputParametersPtr)
+    {
+        const PaStreamInfo *streamInfo = Pa_GetStreamInfo(stream);
+        MonitorStreamFormat monitorFormat{
+            .sampleRate = streamInfo ? static_cast<int>(
+                                           std::lround(streamInfo->sampleRate))
+                                     : SAMPLE_RATE,
+            .callbackFrames = BUFFER_SIZE,
+            .inputChannels = paData.inputChannelCount,
+            .outputChannels = 2,
+            .inputLatencySeconds = streamInfo
+                                       ? streamInfo->inputLatency
+                                       : inputParameters.suggestedLatency,
+            .outputLatencySeconds = streamInfo
+                                        ? streamInfo->outputLatency
+                                        : outputParameters.suggestedLatency};
+        auto candidate = std::make_unique<InputMonitorPipeline>();
+        if (candidate->prepare(monitorFormat))
+        {
+            monitorPipeline = std::move(candidate);
+        }
+    }
+
     err = Pa_StartStream(stream);
     if (err != paNoError)
     {
         PaUtil::handlePaError(err);
         Pa_CloseStream(stream);
         stream = nullptr;
+        monitorPipeline.reset();
         return false;
     }
     return true;
@@ -362,11 +443,23 @@ bool AudioDevices::setInputMonitoringEnabled(const bool enabled,
                 !openDevice(selection.inputDeviceIndex,
                             selection.outputDeviceIndex))
             {
+                inputMonitoringError.store(
+                    InputMonitoringError::DeviceUnavailable,
+                    std::memory_order_release);
                 return false;
             }
         }
+        if (!monitorPipeline || !monitorPipeline->isPrepared())
+        {
+            inputMonitoringError.store(
+                InputMonitoringError::SuppressionUnavailable,
+                std::memory_order_release);
+            return false;
+        }
     }
 
+    inputMonitoringError.store(InputMonitoringError::None,
+                               std::memory_order_release);
     inputMonitoringRequested.store(enabled, std::memory_order_release);
     Base::enqueue(
         SetInputMonitoring{.enabled = enabled,
@@ -384,6 +477,16 @@ bool AudioDevices::setInputMonitoringEnabled(const bool enabled,
 bool AudioDevices::isInputMonitoringEnabled() const noexcept
 {
     return inputMonitoringRequested.load(std::memory_order_acquire);
+}
+
+InputMonitoringError AudioDevices::getInputMonitoringError() const noexcept
+{
+    return inputMonitoringError.load(std::memory_order_acquire);
+}
+
+MonitorProtectionTelemetry AudioDevices::getMonitorProtectionTelemetry() const
+{
+    return getSnapshot().getMonitorProtectionTelemetry();
 }
 
 void AudioDevices::releaseInputIfUnused()
@@ -415,6 +518,7 @@ void AudioDevices::closeDeviceLocked()
         PaUtil::handlePaError(err);
     }
     stream = nullptr;
+    monitorPipeline.reset();
 }
 
 void AudioDevices::snapshotQueuedPlayMessage(Play &msg)
@@ -496,6 +600,32 @@ void AudioDevices::applyMessage(const AudioMessage &msg) noexcept
                     paData.inputChannelCount = m.inputChannelCount;
                 }
                 paData.vuMeter = m.vuMeter;
+                paData.monitorWasSuspendedForPlayback = false;
+                if (monitorPipeline)
+                {
+                    monitorPipeline->startSession();
+                    activeState.monitorProtection =
+                        monitorPipeline->getTelemetry();
+                    activeState.monitorProtection.tripGeneration =
+                        monitorTripGeneration;
+                }
+            }
+            else
+            {
+                paData.monitorWasSuspendedForPlayback = false;
+                if (monitorPipeline)
+                {
+                    monitorPipeline->suspendSession();
+                    activeState.monitorProtection =
+                        monitorPipeline->getTelemetry();
+                    activeState.monitorProtection.tripGeneration =
+                        monitorTripGeneration;
+                }
+                else
+                {
+                    activeState.monitorProtection.state =
+                        MonitorProtectionState::Inactive;
+                }
             }
         },
         [&](const Record &m)
@@ -621,6 +751,24 @@ void AudioDevices::clearRecordedChunks()
     }
 }
 
+bool AudioDevices::prepareInputMonitorForTesting(
+    const uint8_t inputChannels,
+    std::unique_ptr<MonitorCancellationBackend> backend)
+{
+    auto candidate = std::make_unique<InputMonitorPipeline>();
+    const MonitorStreamFormat format{.sampleRate = SAMPLE_RATE,
+                                     .callbackFrames = BUFFER_SIZE,
+                                     .inputChannels = inputChannels,
+                                     .outputChannels = 2};
+    if (!candidate->prepare(format, std::move(backend)))
+    {
+        return false;
+    }
+    paData.inputChannelCount = inputChannels;
+    monitorPipeline = std::move(candidate);
+    return true;
+}
+
 AudioDevices::DeviceSelection AudioDevices::getDeviceSelection() const
 {
     std::lock_guard<std::mutex> lock(selectionMutex);
@@ -641,8 +789,13 @@ bool AudioDevices::setDeviceSelection(const DeviceSelection &selection)
     const bool needsInput = isInputMonitoringEnabled() || isRecording();
     const bool opened = openDevice(needsInput ? selection.inputDeviceIndex : -1,
                                    selection.outputDeviceIndex);
-    if (isInputMonitoringEnabled() && !opened)
+    if (isInputMonitoringEnabled() &&
+        (!opened || !monitorPipeline || !monitorPipeline->isPrepared()))
     {
+        inputMonitoringError.store(
+            opened ? InputMonitoringError::SuppressionUnavailable
+                   : InputMonitoringError::DeviceUnavailable,
+            std::memory_order_release);
         inputMonitoringRequested.store(false, std::memory_order_release);
         Base::enqueue(SetInputMonitoring{.enabled = false});
     }

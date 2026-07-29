@@ -7,6 +7,7 @@
 #include "actions/Record.hpp"
 #include "audio/AudioDevices.hpp"
 #include "audio/AudioMessage.hpp"
+#include "audio/MonitorCancellationBackend.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/Window.hpp"
 
@@ -14,9 +15,36 @@
 #include "platform/macos/MicrophonePermission.hpp"
 #endif
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
+
+namespace
+{
+    class TestMonitorCancellationBackend final
+        : public cupuacu::audio::MonitorCancellationBackend
+    {
+    public:
+        bool prepare(const uint8_t channels) override
+        {
+            prepared = channels == 1 || channels == 2;
+            return prepared;
+        }
+
+        bool process(cupuacu::audio::MonitorProcessingFrame &,
+                     const cupuacu::audio::MonitorProcessingFrame &, int, bool,
+                     cupuacu::audio::MonitorCancellationMetrics
+                         &metrics) noexcept override
+        {
+            metrics.active = true;
+            return prepared;
+        }
+
+    private:
+        bool prepared = false;
+    };
+} // namespace
 
 TEST_CASE("Record action stops playback and records bounded selection",
           "[audio]")
@@ -83,21 +111,34 @@ TEST_CASE(
 TEST_CASE("Input monitoring routes idle input and survives stop", "[audio]")
 {
     cupuacu::audio::AudioDevices devices(false);
+    REQUIRE(devices.prepareInputMonitorForTesting(
+        2, std::make_unique<TestMonitorCancellationBackend>()));
     devices.applyMessageImmediate(cupuacu::audio::SetInputMonitoring{
         .enabled = true, .inputChannelCount = 2, .vuMeter = nullptr});
 
-    const std::vector<float> input{0.1f, -0.1f, 0.2f, -0.2f};
-    std::vector<float> output(4, 0.0f);
-    devices.processCallbackCycle(input.data(), output.data(), 2);
+    std::vector<float> input(256 * 2, 0.2f);
+    std::vector<float> output(256 * 2, 0.0f);
+    for (int callback = 0; callback < 5; ++callback)
+    {
+        devices.processCallbackCycle(input.data(), output.data(), 256);
+    }
 
-    REQUIRE(output == input);
+    REQUIRE(std::any_of(output.begin(), output.end(),
+                        [](const float sample)
+                        {
+                            return sample != 0.0f;
+                        }));
     REQUIRE(devices.getSnapshot().isInputMonitoringEnabled());
 
     devices.applyMessageImmediate(cupuacu::audio::Stop{});
-    output.assign(4, 0.0f);
-    devices.processCallbackCycle(input.data(), output.data(), 2);
+    output.assign(output.size(), 0.0f);
+    devices.processCallbackCycle(input.data(), output.data(), 256);
 
-    REQUIRE(output == input);
+    REQUIRE(std::any_of(output.begin(), output.end(),
+                        [](const float sample)
+                        {
+                            return sample != 0.0f;
+                        }));
     REQUIRE(devices.getSnapshot().isInputMonitoringEnabled());
 }
 
@@ -105,6 +146,8 @@ TEST_CASE("Playback suspends input monitoring and it resumes afterward",
           "[audio]")
 {
     cupuacu::audio::AudioDevices devices(false);
+    REQUIRE(devices.prepareInputMonitorForTesting(
+        2, std::make_unique<TestMonitorCancellationBackend>()));
     cupuacu::Document document{};
     document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 2);
     document.setSample(0, 0, 0.4f, false);
@@ -132,12 +175,17 @@ TEST_CASE("Playback suspends input monitoring and it resumes afterward",
 
     output.assign(4, 0.0f);
     devices.processCallbackCycle(input.data(), output.data(), 2);
-    REQUIRE(output == std::vector<float>{0.9f, -0.9f, 0.8f, -0.8f});
+    REQUIRE(output == std::vector<float>{0.0f, 0.0f, 0.0f, 0.0f});
+    REQUIRE(devices.getSnapshot().isInputMonitoringEnabled());
+    REQUIRE(devices.getMonitorProtectionTelemetry().state ==
+            cupuacu::audio::MonitorProtectionState::WarmingUp);
 }
 
 TEST_CASE("Monitored recording preserves captured samples", "[audio]")
 {
     cupuacu::audio::AudioDevices devices(false);
+    REQUIRE(devices.prepareInputMonitorForTesting(
+        2, std::make_unique<TestMonitorCancellationBackend>()));
     cupuacu::Document document{};
     document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 8);
     devices.applyMessageImmediate(cupuacu::audio::SetInputMonitoring{
@@ -152,7 +200,7 @@ TEST_CASE("Monitored recording preserves captured samples", "[audio]")
     std::vector<float> output(4, 0.0f);
     devices.processCallbackCycle(input.data(), output.data(), 2);
 
-    REQUIRE(output == input);
+    REQUIRE(output == std::vector<float>{0.0f, 0.0f, 0.0f, 0.0f});
     cupuacu::audio::AudioDevices::RecordedChunk chunk{};
     REQUIRE(devices.popRecordedChunk(chunk));
     REQUIRE(chunk.frameCount == 2);

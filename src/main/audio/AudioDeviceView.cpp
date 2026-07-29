@@ -23,6 +23,12 @@ bool AudioDeviceView::isInputMonitoringEnabled() const
     return state->isInputMonitoringEnabled;
 }
 
+MonitorProtectionTelemetry
+AudioDeviceView::getMonitorProtectionTelemetry() const
+{
+    return state->monitorProtection;
+}
+
 int64_t AudioDeviceView::getPlaybackPosition() const
 {
     return state->playbackPosition;

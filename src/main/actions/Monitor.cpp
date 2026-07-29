@@ -70,9 +70,14 @@ namespace cupuacu::actions
         if (!state->audioDevices->setInputMonitoringEnabled(
                 enabled, gui::getVuMeterIfPresent(state)))
         {
+            const auto error = state->audioDevices->getInputMonitoringError();
             reportInputMonitoringError(
                 state,
-                "Select working input and output devices in Options > Audio.");
+                error == audio::InputMonitoringError::SuppressionUnavailable
+                    ? "Feedback suppression could not be initialized for the "
+                      "selected devices."
+                    : "Select working input and output devices in Options > "
+                      "Audio.");
             return false;
         }
 
@@ -82,5 +87,33 @@ namespace cupuacu::actions
             gui::startVuMeterDecay(state);
         }
         return true;
+    }
+
+    void handleInputMonitoringProtectionTrip(State *state)
+    {
+        if (!state || !state->audioDevices)
+        {
+            return;
+        }
+
+        const auto telemetry =
+            state->audioDevices->getMonitorProtectionTelemetry();
+        state->audioDevices->setInputMonitoringEnabled(false);
+        if (!state->audioDevices->isPlaying() &&
+            !state->audioDevices->isRecording())
+        {
+            gui::startVuMeterDecay(state);
+        }
+
+        reportWarning(
+            state,
+            telemetry.state == audio::MonitorProtectionState::Unavailable
+                ? "Input monitoring unavailable"
+                : "Feedback protection stopped monitoring",
+            telemetry.state == audio::MonitorProtectionState::Unavailable
+                ? "Feedback suppression stopped unexpectedly. Select other "
+                  "audio devices or restart Cupuacu before monitoring."
+                : "Reduce the speaker level or use headphones, then re-enable "
+                  "Monitor.");
     }
 } // namespace cupuacu::actions

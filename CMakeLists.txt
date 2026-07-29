@@ -92,6 +92,22 @@ AddDependency(readerwriterqueue "readerwriterqueue" "${CMAKE_SOURCE_DIR}/deps/re
 AddDependency(portaudio "portaudio" "${CMAKE_SOURCE_DIR}/deps/portaudio" "https://github.com/PortAudio/portaudio.git" "master")
 AddDependency(PlatformFolders "PlatformFolders" "${CMAKE_SOURCE_DIR}/deps/PlatformFolders" "https://github.com/sago007/PlatformFolders.git" "master")
 AddDependency(spdlog "spdlog" "${CMAKE_SOURCE_DIR}/deps/spdlog" "https://github.com/gabime/spdlog.git" "v1.15.3")
+set(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "" FORCE)
+set(ABSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+AddDependency(absl "absl" "${CMAKE_SOURCE_DIR}/deps/abseil-cpp" "https://github.com/abseil/abseil-cpp.git" "20240722.0")
+fetchcontent_declare_cached_git_source_only(
+    webrtc_apm
+    "webrtc-audio-processing"
+    "${CMAKE_SOURCE_DIR}/deps/webrtc-audio-processing"
+    "https://gitlab.freedesktop.org/pulseaudio/webrtc-audio-processing.git"
+    "846fe90a289f58b7c9303a635142aa2c7caa93e5"
+)
+FetchContent_GetProperties(webrtc_apm)
+if(NOT webrtc_apm_POPULATED)
+    FetchContent_Populate(webrtc_apm)
+endif()
+include(cmake/WebRtcAudioProcessing.cmake)
+cupuacu_add_webrtc_audio_processing("${webrtc_apm_SOURCE_DIR}")
 fetchcontent_declare_cached_git_source_only(
     alac
     "alac"
@@ -170,6 +186,8 @@ set(CUPUACU_SHARED_SOURCES
     src/main/audio/AudioDevices.cpp
     src/main/audio/AudioCallbackCore.cpp
     src/main/audio/AudioDeviceView.cpp
+    src/main/audio/InputMonitorPipeline.cpp
+    src/main/audio/WebRtcAec3Backend.cpp
     src/main/gui/Gui.cpp
     src/main/gui/DocumentSessionWindow.cpp
     src/main/gui/MainView.cpp
@@ -242,6 +260,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_marker_persistence.cpp
     src/test/test_sample_quantization.cpp
     src/test/test_audio_callback_core.cpp
+    src/test/test_input_monitor_pipeline.cpp
     src/test/test_long_task.cpp
     src/test/test_background_effects.cpp
     src/test/test_action_undoables.cpp
@@ -319,6 +338,7 @@ target_link_libraries(cupuacu_deps INTERFACE
     platform_folders
     spdlog::spdlog
     nlohmann_json::nlohmann_json
+    cupuacu::webrtc_apm
 )
 if(APPLE)
     find_library(CUPUACU_AVFOUNDATION_FRAMEWORK AVFoundation REQUIRED)

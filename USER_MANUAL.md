@@ -18,8 +18,13 @@ The transport controls provide `Play`, `Stop`, `Record`, `Monitor`, and `Loop`.
 
 `Monitor` routes the selected audio input to the selected output so you can
 check the source and recording level without recording. It is off whenever
-Cupuacu starts and remains enabled until you turn it off or quit. Use
-headphones to avoid acoustic feedback.
+Cupuacu starts and remains enabled until you turn it off or quit.
+
+Monitoring always uses adaptive feedback protection. Cupuacu learns the
+acoustic path between the selected output and input, suppresses correlated
+speaker return, and may deliberately alter the monitored signal when it
+detects a developing feedback loop. This protection is not a substitute for
+safe speaker levels; headphones are still recommended.
 
 Monitoring behavior:
 
@@ -30,9 +35,15 @@ Monitoring behavior:
 - `Stop` ends playback or recording but does not turn `Monitor` off
 - mono input is heard through both output channels; stereo input keeps its
   left/right routing
+- recorded samples and the recording level meter use the unprocessed input;
+  suppression changes only what is heard through Monitor
+- if feedback continues to grow, Cupuacu fades monitoring to silence and turns
+  `Monitor` off; reduce the speaker level or use headphones before enabling it
+  again
 
 Enabling `Monitor` may request microphone permission. Input and output devices
-can be selected under `Options -> Audio`.
+can be selected under `Options -> Audio`. Monitoring remains unavailable if
+feedback suppression cannot initialize for the selected device format.
 
 ## Opening Files
 

@@ -59,8 +59,8 @@ namespace cupuacu::gui
                 });
 
             monitorButton->setTooltipText(
-                "Hear the recording input through the selected output. "
-                "Headphones recommended.");
+                "Hear the recording input through the selected output with "
+                "adaptive feedback protection. Headphones recommended.");
             monitorButton->setOnToggle(
                 [this, state](const bool toggled)
                 {
@@ -99,6 +99,12 @@ namespace cupuacu::gui
             monitorButton->setToggled(
                 state->audioDevices &&
                 state->audioDevices->isInputMonitoringEnabled());
+            if (state->audioDevices)
+            {
+                lastMonitorTripGeneration =
+                    state->audioDevices->getMonitorProtectionTelemetry()
+                        .tripGeneration;
+            }
         }
 
         void resized() override
@@ -136,6 +142,13 @@ namespace cupuacu::gui
 
             const bool isPlaying = state->audioDevices->isPlaying();
             const bool isRecording = state->audioDevices->isRecording();
+            const auto monitorTelemetry =
+                state->audioDevices->getMonitorProtectionTelemetry();
+            if (monitorTelemetry.tripGeneration != lastMonitorTripGeneration)
+            {
+                lastMonitorTripGeneration = monitorTelemetry.tripGeneration;
+                actions::handleInputMonitoringProtectionTrip(state);
+            }
 
             const std::optional<SDL_Color> playColor =
                 isPlaying
@@ -165,5 +178,6 @@ namespace cupuacu::gui
         TextButton *recordButton;
         TextButton *monitorButton;
         TextButton *loopButton;
+        uint64_t lastMonitorTripGeneration = 0;
     };
 } // namespace cupuacu::gui

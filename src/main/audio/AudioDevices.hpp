@@ -7,6 +7,7 @@
 #include "audio/AudioMessage.hpp"
 #include "audio/AudioProcessor.hpp"
 #include "audio/AudioCallbackCore.hpp"
+#include "audio/InputMonitorPipeline.hpp"
 #include "audio/RecordedChunk.hpp"
 
 #include <atomic>
@@ -78,6 +79,8 @@ namespace cupuacu::audio
         bool setInputMonitoringEnabled(bool enabled,
                                        gui::VuMeter *vuMeter = nullptr);
         bool isInputMonitoringEnabled() const noexcept;
+        InputMonitoringError getInputMonitoringError() const noexcept;
+        MonitorProtectionTelemetry getMonitorProtectionTelemetry() const;
         void releaseInputIfUnused();
 
         bool isPlaying() const;
@@ -86,8 +89,13 @@ namespace cupuacu::audio
         int64_t getRecordingPosition() const;
         bool popRecordedChunk(RecordedChunk &outChunk);
         void clearRecordedChunks();
-        int processCallbackCycle(const float *inputBuffer, void *outputBuffer,
-                                 unsigned long framesPerBuffer) noexcept;
+        bool prepareInputMonitorForTesting(
+            uint8_t inputChannels,
+            std::unique_ptr<MonitorCancellationBackend> backend = nullptr);
+        int
+        processCallbackCycle(const float *inputBuffer, void *outputBuffer,
+                             unsigned long framesPerBuffer,
+                             const AudioCallbackTiming &timing = {}) noexcept;
 
         DeviceSelection getDeviceSelection() const;
         bool setDeviceSelection(const DeviceSelection &selection);
@@ -116,6 +124,7 @@ namespace cupuacu::audio
             uint8_t recordingDocumentChannelCount = 0;
             uint8_t inputChannelCount = 0;
             gui::VuMeter *vuMeter = nullptr;
+            bool monitorWasSuspendedForPlayback = false;
         };
 
         static int paCallback(const void *inputBuffer, void *outputBuffer,
@@ -145,11 +154,15 @@ namespace cupuacu::audio
         std::mutex streamMutex;
         mutable std::mutex selectionMutex;
         std::atomic_bool inputMonitoringRequested{false};
+        std::atomic<InputMonitoringError> inputMonitoringError{
+            InputMonitoringError::None};
         int currentInputDeviceIndex = -1;
         int currentOutputDeviceIndex = -1;
         PaStream *stream = nullptr;
         DeviceSelection deviceSelection;
         moodycamel::ReaderWriterQueue<RecordedChunk> recordedChunkQueue{512};
+        std::unique_ptr<InputMonitorPipeline> monitorPipeline;
         PaData paData;
+        uint64_t monitorTripGeneration = 0;
     };
 } // namespace cupuacu::audio

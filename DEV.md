@@ -54,6 +54,22 @@ Current model:
 
 This keeps UI state off the audio thread while still allowing live parameter tweaking.
 
+### Input monitor processing
+
+Input monitoring does not use `AudioProcessor`. It is a continuously stateful
+realtime path owned by `InputMonitorPipeline`:
+
+- recording and input metering branch from raw capture before monitor DSP
+- 44.1 kHz callback fragments are adapted to WebRTC AEC3's 48 kHz, 10 ms
+  processing frames
+- `MonitorCancellationBackend` isolates AEC3 so the backend can be replaced
+  without changing PortAudio or transport code
+- the final speaker signal is fed back as the render reference
+- decorrelation and the emergency feedback guard are Cupuacu-owned stages
+
+The pinned WebRTC Audio Processing dependency and update procedure are
+documented in `cmake/WebRtcAudioProcessing.md`.
+
 ### Modal effect dialogs
 
 Effect dialogs are intentionally modal:
@@ -78,6 +94,15 @@ When adding realtime code:
 - avoid allocation in the callback where possible
 - avoid locks in the callback
 - prefer immutable snapshots or atomically replaced shared state
+
+Monitor DSP must additionally preserve the following:
+
+- prepare and destroy backends, resamplers, FFT buffers, and device-format
+  state off the callback thread
+- pass device timing through the PortAudio-independent
+  `AudioCallbackTiming` value
+- never route unprotected input to the output when suppression is unavailable
+- keep raw recording samples independent of all monitor processing
 
 ## Test Structure
 
@@ -249,6 +274,13 @@ If sanitizer targets exist in your build:
 cmake --build build-coverage-macos --target cupuacu-tests-rtsan -j2
 ./build-coverage-macos/cupuacu-tests-rtsan
 ```
+
+Feedback suppression changes also require a hardware pass on macOS, Windows,
+and Linux where available. Cover mono and stereo input, same-device and split
+input/output selections, monitoring while recording, playback
+suspend/resume, a device change, deliberate low-level feedback, and the
+emergency trip. Confirm that the callback does not underrun and that recorded
+samples remain raw.
 
 and, where supported:
 

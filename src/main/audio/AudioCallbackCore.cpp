@@ -43,6 +43,28 @@ bool cupuacu::audio::callback_core::monitorInputToOutput(
     return framesPerBuffer > 0;
 }
 
+bool cupuacu::audio::callback_core::measureInput(
+    const float *input, const uint8_t inputChannels,
+    const unsigned long framesPerBuffer, StereoMeterLevels &meterLevels)
+{
+    if (!input || (inputChannels != 1 && inputChannels != 2))
+    {
+        return false;
+    }
+
+    cupuacu::audio::StereoMeterAccumulator meterAccumulator;
+    for (unsigned long frame = 0; frame < framesPerBuffer; ++frame)
+    {
+        const std::size_t inputBase =
+            static_cast<std::size_t>(frame) * inputChannels;
+        const float left = input[inputBase];
+        const float right = inputChannels == 2 ? input[inputBase + 1] : left;
+        meterAccumulator.addFrame(left, right);
+    }
+    meterAccumulator.mergeInto(meterLevels);
+    return framesPerBuffer > 0;
+}
+
 bool cupuacu::audio::callback_core::fillOutputBuffer(
     const std::shared_ptr<cupuacu::audio::AudioBuffer> &buffer,
     const uint8_t channelCount, const bool selectionIsActive,

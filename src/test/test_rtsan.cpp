@@ -9,6 +9,7 @@
 
 #include <rtsan_standalone/rtsan_standalone.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <vector>
@@ -152,17 +153,30 @@ TEST_CASE("input monitoring path is safe", "[rtsan]")
     __rtsan::Initialize();
 
     cupuacu::audio::AudioDevices devices(false);
+    REQUIRE(devices.prepareInputMonitorForTesting(2));
     devices.applyMessageImmediate(cupuacu::audio::SetInputMonitoring{
         .enabled = true, .inputChannelCount = 2, .vuMeter = nullptr});
-    const std::array<float, 4> input{0.25f, -0.25f, 0.5f, -0.5f};
-    std::array<float, 4> output{};
+    std::array<float, 256 * 2> input{};
+    std::array<float, 256 * 2> output{};
+    for (std::size_t frame = 0; frame < 256; ++frame)
+    {
+        input[frame * 2] = 0.25f;
+        input[frame * 2 + 1] = -0.25f;
+    }
 
     {
         __rtsan::ScopedSanitizeRealtime realtimeScope;
-        devices.processCallbackCycle(input.data(), output.data(), 2);
+        for (int callback = 0; callback < 100; ++callback)
+        {
+            devices.processCallbackCycle(input.data(), output.data(), 256);
+        }
     }
 
-    REQUIRE(output == input);
+    REQUIRE(std::any_of(output.begin(), output.end(),
+                        [](const float sample)
+                        {
+                            return sample != 0.0f;
+                        }));
 }
 
 TEST_CASE("preview playback with live parameter updates is safe", "[rtsan]")
