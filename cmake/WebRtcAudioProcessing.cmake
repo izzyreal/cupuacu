@@ -24,6 +24,65 @@ function(cupuacu_add_webrtc_audio_processing source_root)
     add_library(cupuacu_webrtc_apm STATIC ${webrtc_apm_sources})
     add_library(cupuacu::webrtc_apm ALIAS cupuacu_webrtc_apm)
 
+    set(webrtc_apm_has_x86_slice FALSE)
+    if(CMAKE_SYSTEM_PROCESSOR
+       MATCHES "^(x86_64|AMD64|amd64|x64|X64|x86|X86|i[3-6]86)$")
+        set(webrtc_apm_has_x86_slice TRUE)
+    elseif(APPLE
+           AND CMAKE_OSX_ARCHITECTURES MATCHES "(^|;)x86_64(;|$)")
+        set(webrtc_apm_has_x86_slice TRUE)
+    endif()
+
+    if(webrtc_apm_has_x86_slice)
+        # A universal Apple build compiles every source for every requested
+        # architecture. Generate tiny wrappers so the intrinsic-heavy x86
+        # implementations are empty translation units in the arm64 slice.
+        set(webrtc_apm_x86_wrapper_dir
+            "${CMAKE_CURRENT_BINARY_DIR}/cupuacu_webrtc_x86")
+        file(MAKE_DIRECTORY "${webrtc_apm_x86_wrapper_dir}")
+        set(webrtc_apm_x86_wrappers)
+        foreach(relative_source
+                IN LISTS CUPUACU_WEBRTC_AUDIO_PROCESSING_X86_SOURCES)
+            set(absolute_source "${webrtc_root}/${relative_source}")
+            if(NOT EXISTS "${absolute_source}")
+                message(FATAL_ERROR
+                    "Required WebRTC x86 source is missing: ${relative_source}")
+            endif()
+
+            string(MAKE_C_IDENTIFIER "${relative_source}" wrapper_name)
+            set(wrapper_source
+                "${webrtc_apm_x86_wrapper_dir}/${wrapper_name}.cc")
+            file(GENERATE OUTPUT "${wrapper_source}" CONTENT
+                "#if defined(__i386__) || defined(__x86_64__) || defined(_M_IX86) || defined(_M_X64)\n#include \"${absolute_source}\"\n#endif\n")
+            list(APPEND webrtc_apm_x86_wrappers "${wrapper_source}")
+
+            if(relative_source MATCHES "_avx2\\.cc$")
+                if(MSVC)
+                    set_source_files_properties("${wrapper_source}"
+                        PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
+                else()
+                    set_source_files_properties("${wrapper_source}"
+                        PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma")
+                endif()
+            elseif(relative_source MATCHES "_sse(2)?\\.cc$")
+                if(MSVC)
+                    # SSE2 is already the x64 baseline; /arch:SSE2 is only a
+                    # valid MSVC option for 32-bit x86 targets.
+                    if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+                        set_source_files_properties("${wrapper_source}"
+                            PROPERTIES COMPILE_OPTIONS "/arch:SSE2")
+                    endif()
+                else()
+                    set_source_files_properties("${wrapper_source}"
+                        PROPERTIES COMPILE_OPTIONS "-msse2")
+                endif()
+            endif()
+        endforeach()
+
+        target_sources(cupuacu_webrtc_apm PRIVATE
+            ${webrtc_apm_x86_wrappers})
+    endif()
+
     target_include_directories(cupuacu_webrtc_apm SYSTEM PUBLIC
         "${webrtc_root}"
     )

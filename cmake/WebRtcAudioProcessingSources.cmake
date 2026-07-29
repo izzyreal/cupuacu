@@ -2,8 +2,8 @@
 # EchoCanceller3 and PushSincResampler. Keep paths relative to webrtc/.
 #
 # This list deliberately follows the portable implementation. Architecture-
-# specific AVX, SSE, NEON, and MIPS files are optional optimizations rather
-# than link dependencies and are not compiled.
+# specific sources are listed separately below because the portable x86 code
+# contains runtime-dispatch references to its SSE/AVX implementations.
 set(CUPUACU_WEBRTC_AUDIO_PROCESSING_SOURCES
     api/audio/echo_canceller3_config.cc
 
@@ -92,4 +92,17 @@ set(CUPUACU_WEBRTC_AUDIO_PROCESSING_SOURCES
 
     system_wrappers/source/field_trial.cc
     system_wrappers/source/metrics.cc
+)
+
+# Minimal link closure for an x86 or x86_64 slice. These implementations are
+# runtime-dispatch targets referenced by the portable sources above.
+set(CUPUACU_WEBRTC_AUDIO_PROCESSING_X86_SOURCES
+    common_audio/resampler/sinc_resampler_avx2.cc
+    common_audio/resampler/sinc_resampler_sse.cc
+    common_audio/third_party/ooura/fft_size_128/ooura_fft_sse2.cc
+    modules/audio_processing/aec3/adaptive_fir_filter_avx2.cc
+    modules/audio_processing/aec3/adaptive_fir_filter_erl_avx2.cc
+    modules/audio_processing/aec3/fft_data_avx2.cc
+    modules/audio_processing/aec3/matched_filter_avx2.cc
+    system_wrappers/source/cpu_features.cc
 )

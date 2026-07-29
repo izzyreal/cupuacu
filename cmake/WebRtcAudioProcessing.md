@@ -9,9 +9,11 @@ directly to commit `846fe90a289f58b7c9303a635142aa2c7caa93e5`, and
 `WebRtcAudioProcessingSources.cmake` is an explicit source closure for AEC3
 and `PushSincResampler`. It intentionally excludes the rest of the upstream
 Audio Processing Module, including AGC, AECM, noise suppression, VAD, codecs,
-video/API utilities, tests, and architecture-specific optional optimizations.
-Do not replace the manifest with a recursive glob: compiling the entire
-snapshot makes unrelated upstream modules accidental dependencies.
+video/API utilities, and tests. The manifest includes only the SSE/AVX files
+referenced by the portable code's x86 runtime dispatch; generated wrappers
+keep those files out of non-x86 slices in universal builds. Do not replace the
+manifest with a recursive glob: compiling the entire snapshot makes unrelated
+upstream modules accidental dependencies.
 
 Do not copy or patch the upstream source inside Cupuacu. To update it:
 
