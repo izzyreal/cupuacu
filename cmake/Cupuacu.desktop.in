@@ -2,7 +2,8 @@
 Type=Application
 Name=Cupuacu
 Comment=A minimalist audio editor
-Exec=Cupuacu
+Exec=Cupuacu %F
 Icon=cupuacu
 Terminal=false
 Categories=AudioVideo;Audio;AudioEditing;
+MimeType=audio/x-wav;audio/wav;audio/x-aiff;audio/aiff;audio/x-caf;audio/mp4;audio/x-m4a;audio/flac;audio/x-flac;audio/ogg;audio/mpeg;

@@ -254,6 +254,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_display_properties_persistence.cpp
     src/test/test_document_autosave.cpp
     src/test/test_export_audio_dialog_settings.cpp
+    src/test/test_external_file_open.cpp
     src/test/test_recent_files_persistence.cpp
     src/test/test_document_tabs.cpp
     src/test/test_document_markers.cpp
@@ -456,6 +457,8 @@ endif()
 if(UNIX AND NOT APPLE)
     configure_file(cmake/Cupuacu.desktop.in
         "${CMAKE_BINARY_DIR}/Cupuacu.desktop" @ONLY)
+    install(TARGETS Cupuacu
+        RUNTIME DESTINATION bin)
     install(FILES "${CMAKE_BINARY_DIR}/Cupuacu.desktop"
         DESTINATION share/applications)
     install(FILES "${CUPUACU_LINUX_ICON}"

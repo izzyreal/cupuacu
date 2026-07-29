@@ -18,6 +18,7 @@
 #include "actions/effects/BackgroundEffect.hpp"
 #include "actions/DocumentRestore.hpp"
 #include "actions/DocumentSessionPersistence.hpp"
+#include "actions/ExternalFileOpen.hpp"
 #include "actions/io/BackgroundOpen.hpp"
 #include "actions/io/BackgroundSave.hpp"
 #include "undo/UndoManifestPersistence.hpp"
@@ -100,6 +101,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 #if CUPUACU_RTSAN_LIBS_ENABLED
     __rtsan::Initialize();
 #endif
+
+    const auto externalFileArguments =
+        cupuacu::actions::collectExternalFileArguments(argc, argv);
 
     cupuacu::State *state = new cupuacu::State();
     auto &session = state->getActiveDocumentSession();
@@ -199,6 +203,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
     cupuacu::actions::restoreStartupDocument(
         state, persistedRecentFiles, persistedSessionState, true);
+    cupuacu::actions::queueExternalFileArguments(state, externalFileArguments);
 
     if (state->getActiveDocumentSession().currentFile.empty())
     {

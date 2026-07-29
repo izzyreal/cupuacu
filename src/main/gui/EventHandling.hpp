@@ -13,6 +13,7 @@
 #include "DocumentMarkerHandle.hpp"
 #include "keyboard_handling.hpp"
 #include "../actions/DocumentTabs.hpp"
+#include "../actions/ExternalFileOpen.hpp"
 #include "../ResourceUtil.hpp"
 
 namespace cupuacu::gui
@@ -346,6 +347,11 @@ namespace cupuacu::gui
 
     inline SDL_AppResult handleAppEvent(State *state, SDL_Event *event)
     {
+        if (cupuacu::actions::queueExternalFileEvent(state, event))
+        {
+            return SDL_APP_CONTINUE;
+        }
+
         auto *mainWindow = state->mainDocumentSessionWindow->getWindow();
         Window *eventWindow = findWindowForEvent(state, event);
         if (isInteractiveEventBlockedByModal(state, eventWindow, event))

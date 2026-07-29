@@ -51,6 +51,86 @@
             Value="1"
             KeyPath="yes" />
       </Component>
+
+      <Component Id="cmpFileAssociations" Directory="INSTALLFOLDER" Guid="*">
+        <RegistryKey Root="HKLM" Key="Software\Classes\Cupuacu.AudioFile.1">
+          <RegistryValue Type="string" Value="Cupuacu audio file" KeyPath="yes" />
+          <RegistryKey Key="DefaultIcon">
+            <RegistryValue
+                Type="string"
+                Value="&quot;[INSTALLFOLDER]Cupuacu.exe&quot;,0" />
+          </RegistryKey>
+          <RegistryKey Key="shell\open\command">
+            <RegistryValue
+                Type="string"
+                Value="&quot;[INSTALLFOLDER]Cupuacu.exe&quot; &quot;%1&quot;" />
+          </RegistryKey>
+        </RegistryKey>
+
+        <RegistryKey Root="HKLM" Key="Software\Classes\Applications\Cupuacu.exe">
+          <RegistryValue
+              Name="FriendlyAppName"
+              Type="string"
+              Value="Cupuacu" />
+          <RegistryKey Key="DefaultIcon">
+            <RegistryValue
+                Type="string"
+                Value="&quot;[INSTALLFOLDER]Cupuacu.exe&quot;,0" />
+          </RegistryKey>
+          <RegistryKey Key="shell\open\command">
+            <RegistryValue
+                Type="string"
+                Value="&quot;[INSTALLFOLDER]Cupuacu.exe&quot; &quot;%1&quot;" />
+          </RegistryKey>
+          <RegistryKey Key="SupportedTypes">
+            <RegistryValue Name=".wav" Type="string" Value="" />
+            <RegistryValue Name=".aiff" Type="string" Value="" />
+            <RegistryValue Name=".aif" Type="string" Value="" />
+            <RegistryValue Name=".aifc" Type="string" Value="" />
+            <RegistryValue Name=".caf" Type="string" Value="" />
+            <RegistryValue Name=".m4a" Type="string" Value="" />
+            <RegistryValue Name=".mp4" Type="string" Value="" />
+            <RegistryValue Name=".flac" Type="string" Value="" />
+            <RegistryValue Name=".ogg" Type="string" Value="" />
+            <RegistryValue Name=".oga" Type="string" Value="" />
+            <RegistryValue Name=".mp3" Type="string" Value="" />
+          </RegistryKey>
+        </RegistryKey>
+
+        <RegistryKey Root="HKLM" Key="Software\Classes\.wav\OpenWithProgids">
+          <RegistryValue Name="Cupuacu.AudioFile.1" Type="string" Value="" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="Software\Classes\.aiff\OpenWithProgids">
+          <RegistryValue Name="Cupuacu.AudioFile.1" Type="string" Value="" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="Software\Classes\.aif\OpenWithProgids">
+          <RegistryValue Name="Cupuacu.AudioFile.1" Type="string" Value="" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="Software\Classes\.aifc\OpenWithProgids">
+          <RegistryValue Name="Cupuacu.AudioFile.1" Type="string" Value="" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="Software\Classes\.caf\OpenWithProgids">
+          <RegistryValue Name="Cupuacu.AudioFile.1" Type="string" Value="" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="Software\Classes\.m4a\OpenWithProgids">
+          <RegistryValue Name="Cupuacu.AudioFile.1" Type="string" Value="" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="Software\Classes\.mp4\OpenWithProgids">
+          <RegistryValue Name="Cupuacu.AudioFile.1" Type="string" Value="" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="Software\Classes\.flac\OpenWithProgids">
+          <RegistryValue Name="Cupuacu.AudioFile.1" Type="string" Value="" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="Software\Classes\.ogg\OpenWithProgids">
+          <RegistryValue Name="Cupuacu.AudioFile.1" Type="string" Value="" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="Software\Classes\.oga\OpenWithProgids">
+          <RegistryValue Name="Cupuacu.AudioFile.1" Type="string" Value="" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="Software\Classes\.mp3\OpenWithProgids">
+          <RegistryValue Name="Cupuacu.AudioFile.1" Type="string" Value="" />
+        </RegistryKey>
+      </Component>
     </ComponentGroup>
   </Fragment>
 </Wix>

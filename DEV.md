@@ -270,6 +270,20 @@ Two patterns are worth remembering:
 - hidden SDL windows can fail more aggressively
   Tests should initialize SDL/TTF and assert that the hidden window actually opened before using it
 
+## File Association Metadata
+
+The formats exposed by the system `Open With` integration must remain aligned
+with `probeAvailableOpenFormats()` in `src/main/file/AudioExport.cpp`. When an
+open format or extension changes, update all three packaging declarations:
+
+- `cmake/CupuacuInfo.plist.in` for macOS UTIs
+- `cmake/Cupuacu.desktop.in` for Linux MIME types
+- `packaging/windows-installer.wxs` for Windows extensions
+
+The application receives Linux and Windows file launches through command-line
+arguments. SDL translates macOS Finder open-document requests, as well as
+desktop drag-and-drop, to `SDL_EVENT_DROP_FILE`.
+
 ## Build / Test Commands
 
 Typical local commands:
