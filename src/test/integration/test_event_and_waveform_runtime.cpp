@@ -528,6 +528,42 @@ TEST_CASE("Keyboard integration applies zoom and pixel scale shortcuts",
             Catch::Approx(samplesPerPixelBeforeScale));
 }
 
+TEST_CASE("Keyboard integration deletes audio without replacing the clipboard",
+          "[integration]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    createBuiltSessionUi(&state, 8, 44100, 1, 800, 400);
+    auto *mainWindow = state.mainDocumentSessionWindow->getWindow();
+    prepareBuiltMainWindow(&state, mainWindow, 800, 400);
+
+    state.clipboard.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 1);
+    state.clipboard.setSample(0, 0, 0.75f, false);
+
+    auto &session = state.getActiveDocumentSession();
+    session.selection.setValue1(2.0);
+    session.selection.setValue2(5.0);
+
+    SDL_Event event{};
+    event.type = SDL_EVENT_KEY_DOWN;
+    event.key.scancode = SDL_SCANCODE_DELETE;
+    cupuacu::gui::handleKeyDown(&event, &state);
+
+    REQUIRE(session.document.getFrameCount() == 5);
+    REQUIRE(state.clipboard.getFrameCount() == 1);
+    REQUIRE(state.clipboard.getSample(0, 0) == Catch::Approx(0.75f));
+    REQUIRE(state.getUndoDescription() == "Delete");
+
+    state.undo();
+    session.selection.setValue1(1.0);
+    session.selection.setValue2(3.0);
+    event.key.scancode = SDL_SCANCODE_BACKSPACE;
+    cupuacu::gui::handleKeyDown(&event, &state);
+
+    REQUIRE(session.document.getFrameCount() == 6);
+    REQUIRE(state.clipboard.getSample(0, 0) == Catch::Approx(0.75f));
+    REQUIRE(state.getUndoDescription() == "Delete");
+}
+
 TEST_CASE("Window resize rescales inactive tab samples-per-pixel before tab switch",
           "[integration]")
 {

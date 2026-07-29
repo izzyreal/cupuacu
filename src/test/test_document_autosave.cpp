@@ -640,6 +640,41 @@ TEST_CASE("Startup restore preserves persistent cut undo history", "[autosave]")
             std::vector<float>({0.0f, 1.0f, 2.0f, 3.0f}));
 }
 
+TEST_CASE("Startup restore preserves persistent delete undo history", "[autosave]")
+{
+    const auto root = cupuacu::test::makeUniqueTestRoot("document-autosave");
+    {
+        cupuacu::test::StateWithTestPaths state{root};
+        initializeMonoDocument(state, {0.0f, 1.0f, 2.0f, 3.0f});
+        state.clipboard.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 1);
+        state.clipboard.setSample(0, 0, 9.0f, false);
+
+        auto &session = state.getActiveDocumentSession();
+        session.selection.setValue1(1.0);
+        session.selection.setValue2(3.0);
+        cupuacu::actions::audio::performDelete(&state);
+
+        drainPendingAutosave(state);
+        cupuacu::actions::persistSessionState(&state);
+    }
+
+    cupuacu::test::StateWithTestPaths restored{root};
+    const auto persisted = cupuacu::persistence::SessionStatePersistence::load(
+        restored.paths->sessionStatePath());
+    cupuacu::actions::restoreStartupDocument(&restored, {}, persisted);
+
+    REQUIRE(readMonoSamples(restored.getActiveDocumentSession().document) ==
+            std::vector<float>({0.0f, 3.0f}));
+    REQUIRE(readMonoSamples(restored.clipboard) == std::vector<float>({9.0f}));
+    REQUIRE(restored.canUndo());
+    REQUIRE(restored.getUndoDescription() == "Delete");
+
+    restored.undo();
+    REQUIRE(readMonoSamples(restored.getActiveDocumentSession().document) ==
+            std::vector<float>({0.0f, 1.0f, 2.0f, 3.0f}));
+    REQUIRE(readMonoSamples(restored.clipboard) == std::vector<float>({9.0f}));
+}
+
 TEST_CASE("Startup restore preserves persistent sample edit undo history",
           "[autosave]")
 {

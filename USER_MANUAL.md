@@ -206,6 +206,7 @@ The `Edit` menu contains:
 - `Redo`
 - `Trim`
 - `Cut`
+- `Delete`
 - `Copy`
 - `Paste`
 - `Insert marker`
@@ -223,6 +224,7 @@ Current shortcut labels in the menu include:
 - `Overwrite`
 - `Trim`
 - `Cut`
+- `Delete`
 - `Copy`
 - `Paste`
 
@@ -239,6 +241,8 @@ App-wide shortcuts:
 - `Cmd/Ctrl + Z`: undo
 - `Cmd/Ctrl + Shift + Z`: redo
 - `Cmd/Ctrl + X`: cut the current selection
+- `Delete` or `Backspace`: delete the current selection without changing the
+  audio clipboard
 - `Cmd/Ctrl + C`: copy the current selection
 - `Cmd/Ctrl + V`: paste the clipboard
 - `Cmd/Ctrl + T`: trim to the current selection

@@ -30,6 +30,7 @@
 #include "actions/audio/Copy.hpp"
 #include "actions/audio/Trim.hpp"
 #include "actions/audio/Cut.hpp"
+#include "actions/audio/Delete.hpp"
 #include "actions/audio/Paste.hpp"
 #include "actions/audio/EditCommands.hpp"
 #include "actions/markers/EditCommands.hpp"
@@ -90,6 +91,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
     const std::string exitText{"Exit"};
     const std::string trimText{"Trim (Cmd + T)"};
     const std::string cutText{"Cut (Cmd + X)"};
+    const std::string deleteText{"Delete (Delete/Backspace)"};
     const std::string copyText{"Copy (Cmd + C)"};
     const std::string pasteText{"Paste (Cmd + V)"};
     const std::string allOptionsText{"All options (Cmd + ,)"};
@@ -101,6 +103,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
     const std::string exitText{"Exit"};
     const std::string trimText{"Trim (Ctrl + T)"};
     const std::string cutText{"Cut (Ctrl + X)"};
+    const std::string deleteText{"Delete (Delete/Backspace)"};
     const std::string copyText{"Copy (Ctrl + C)"};
     const std::string pasteText{"Paste (Ctrl + V)"};
     const std::string allOptionsText{"All options (Ctrl + ,)"};
@@ -388,6 +391,18 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
                                             actions::audio::performCut(state);
                                         });
     cutMenu->setAvailability(
+        [&]
+        {
+            return describeSelectionEditAvailability(state);
+        });
+
+    auto deleteMenu = editMenu->addSubMenu(
+        state, deleteText,
+        [&]
+        {
+            actions::audio::performDelete(state);
+        });
+    deleteMenu->setAvailability(
         [&]
         {
             return describeSelectionEditAvailability(state);

@@ -153,6 +153,45 @@ TEST_CASE("Cut stores undo payload in the session undo store", "[actions]")
             std::vector<float>({0, 1, 2, 3, 4, 5}));
 }
 
+TEST_CASE("Delete removes the selection without replacing the clipboard",
+          "[actions]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    initializeMonoDocument(state, {0, 1, 2, 3, 4, 5});
+    state.clipboard.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 2);
+    state.clipboard.setSample(0, 0, 9.0f, false);
+    state.clipboard.setSample(0, 1, 8.0f, false);
+
+    auto &session = state.getActiveDocumentSession();
+    session.selection.setValue1(2.0);
+    session.selection.setValue2(5.0);
+    session.cursor = 5;
+
+    cupuacu::actions::audio::performDelete(&state);
+
+    REQUIRE(readMonoSamples(session.document) ==
+            std::vector<float>({0, 1, 5}));
+    REQUIRE(readMonoSamples(state.clipboard) == std::vector<float>({9, 8}));
+    REQUIRE_FALSE(session.selection.isActive());
+    REQUIRE(session.cursor == 2);
+    REQUIRE(state.getUndoDescription() == "Delete");
+
+    state.undo();
+    REQUIRE(readMonoSamples(session.document) ==
+            std::vector<float>({0, 1, 2, 3, 4, 5}));
+    REQUIRE(readMonoSamples(state.clipboard) == std::vector<float>({9, 8}));
+    REQUIRE(session.selection.isActive());
+    REQUIRE(session.selection.getStartInt() == 2);
+    REQUIRE(session.selection.getLengthInt() == 3);
+    REQUIRE(session.cursor == 5);
+    REQUIRE(state.getRedoDescription() == "Delete");
+
+    state.redo();
+    REQUIRE(readMonoSamples(session.document) ==
+            std::vector<float>({0, 1, 5}));
+    REQUIRE(readMonoSamples(state.clipboard) == std::vector<float>({9, 8}));
+}
+
 TEST_CASE("Cut undo publishes modal long-task progress", "[actions][long-task]")
 {
     cupuacu::test::StateWithTestPaths state{};
@@ -787,7 +826,7 @@ TEST_CASE("Trim full document keeps content and restores selection on undo",
     REQUIRE(session.cursor == 0);
 }
 
-TEST_CASE("Cut and trim without active selection are no-ops", "[actions]")
+TEST_CASE("Cut delete and trim without active selection are no-ops", "[actions]")
 {
     cupuacu::test::StateWithTestPaths state{};
     initializeMonoDocument(state, {0, 1, 2, 3});
@@ -797,6 +836,7 @@ TEST_CASE("Cut and trim without active selection are no-ops", "[actions]")
     session.cursor = 2;
 
     cupuacu::actions::audio::performCut(&state);
+    cupuacu::actions::audio::performDelete(&state);
     cupuacu::actions::audio::performTrim(&state);
 
     REQUIRE(readMonoSamples(session.document) == std::vector<float>({0, 1, 2, 3}));

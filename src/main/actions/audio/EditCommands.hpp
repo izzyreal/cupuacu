@@ -2,6 +2,7 @@
 
 #include "Copy.hpp"
 #include "Cut.hpp"
+#include "Delete.hpp"
 #include "Paste.hpp"
 #include "Trim.hpp"
 
@@ -113,6 +114,19 @@ namespace cupuacu::actions::audio
         const auto target = selectionTarget(state);
         const auto undoable =
             std::make_shared<cupuacu::actions::audio::Copy>(
+                state, target.start, target.length);
+        state->addAndDoUndoable(undoable);
+    }
+
+    inline void performDelete(cupuacu::State *state)
+    {
+        if (!describeSelectionEditAvailability(state).available)
+        {
+            return;
+        }
+        const auto target = selectionTarget(state);
+        const auto undoable =
+            std::make_shared<cupuacu::actions::audio::Delete>(
                 state, target.start, target.length);
         state->addAndDoUndoable(undoable);
     }

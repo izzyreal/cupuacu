@@ -3,6 +3,7 @@
 #include "../Logger.hpp"
 #include "../actions/audio/Copy.hpp"
 #include "../actions/audio/Cut.hpp"
+#include "../actions/audio/Delete.hpp"
 #include "../actions/audio/Paste.hpp"
 #include "../actions/audio/RecordEdit.hpp"
 #include "../actions/audio/SetSampleValue.hpp"
@@ -127,6 +128,25 @@ namespace cupuacu::undo
                          return std::shared_ptr<actions::Undoable>{};
                      }
                      return std::make_shared<actions::audio::Cut>(
+                         state, json.value("startFrame", int64_t{0}),
+                         json.value("frameCount", int64_t{0}),
+                         undo::UndoStore::SegmentHandle{
+                             handleFromString(removedHandlePath).path},
+                         json.value("oldSelectionStart", 0.0),
+                         json.value("oldSelectionEnd", 0.0),
+                         json.value("oldCursorPos", int64_t{0}));
+                 }},
+                {"delete",
+                 [](State *state, int, const nlohmann::json &json)
+                     -> std::shared_ptr<actions::Undoable>
+                 {
+                     const auto removedHandlePath =
+                         json.value("removedHandle", std::string{});
+                     if (!payloadPathsExist({removedHandlePath}))
+                     {
+                         return std::shared_ptr<actions::Undoable>{};
+                     }
+                     return std::make_shared<actions::audio::Delete>(
                          state, json.value("startFrame", int64_t{0}),
                          json.value("frameCount", int64_t{0}),
                          undo::UndoStore::SegmentHandle{

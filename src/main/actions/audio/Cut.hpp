@@ -10,10 +10,17 @@
 
 namespace cupuacu::actions::audio
 {
-    class Cut : public DurationMutationUndoable
+    enum class SelectionRemovalMode
+    {
+        Cut,
+        Delete
+    };
+
+    class SelectionRemoval : public DurationMutationUndoable
     {
         int64_t startFrame;
         int64_t numFrames;
+        SelectionRemovalMode mode;
 
         undo::UndoStore::SegmentHandle removedHandle;
 
@@ -22,10 +29,26 @@ namespace cupuacu::actions::audio
         int64_t oldCursorPos = 0;
         bool lastCommitted = true;
 
-    public:
-        Cut(State *state, int64_t start, int64_t count)
+        [[nodiscard]] bool copiesToClipboard() const
+        {
+            return mode == SelectionRemovalMode::Cut;
+        }
+
+        [[nodiscard]] std::string operationName() const
+        {
+            return copiesToClipboard() ? "Cut" : "Delete";
+        }
+
+        [[nodiscard]] std::string operationNameLowercase() const
+        {
+            return copiesToClipboard() ? "cut" : "delete";
+        }
+
+    protected:
+        SelectionRemoval(State *state, int64_t start, int64_t count,
+                         const SelectionRemovalMode modeToUse)
             : DurationMutationUndoable(state), startFrame(start),
-              numFrames(count)
+              numFrames(count), mode(modeToUse)
         {
             auto &session = state->getActiveDocumentSession();
             if (session.selection.isActive())
@@ -37,17 +60,21 @@ namespace cupuacu::actions::audio
             oldCursorPos = session.cursor;
         }
 
-        Cut(State *state, int64_t start, int64_t count,
+        SelectionRemoval(
+            State *state, int64_t start, int64_t count,
             undo::UndoStore::SegmentHandle removedHandleToUse,
             const double oldSel1ToUse, const double oldSel2ToUse,
-            const int64_t oldCursorPosToUse)
+            const int64_t oldCursorPosToUse,
+            const SelectionRemovalMode modeToUse)
             : DurationMutationUndoable(state), startFrame(start),
-              numFrames(count), removedHandle(std::move(removedHandleToUse)),
+              numFrames(count), mode(modeToUse),
+              removedHandle(std::move(removedHandleToUse)),
               oldSel1(oldSel1ToUse), oldSel2(oldSel2ToUse),
               oldCursorPos(oldCursorPosToUse)
         {
         }
 
+    public:
         void redo() override
         {
             lastCommitted = false;
@@ -63,12 +90,18 @@ namespace cupuacu::actions::audio
             const int64_t actualCount =
                 std::min<int64_t>(numFrames, total - startFrame);
             numFrames = actualCount;
+            const auto name = operationName();
+            const auto lowercaseName = operationNameLowercase();
             cupuacu::LongTaskScope longTask(
-                state, "Cutting audio", "Capturing selection", 0.0, false,
-                true);
+                state, copiesToClipboard() ? "Cutting audio" : "Deleting audio",
+                "Capturing selection", 0.0, false, true);
             cupuacu::renderLongTaskOverlayNow(state);
             detail::OperationProgressUi progressUi(state, "Capturing selection");
-            auto previousClipboard = state->clipboard;
+            std::optional<ClipboardAudio> previousClipboard;
+            if (copiesToClipboard())
+            {
+                previousClipboard = state->clipboard;
+            }
 
             try
             {
@@ -88,13 +121,22 @@ namespace cupuacu::actions::audio
                 if (removedHandle.empty())
                 {
                     removedHandle = detail::storeSegmentIfNeeded(
-                        session, removedHandle, removed, "cut");
+                        session, removedHandle, removed, lowercaseName.c_str());
                 }
                 progressUi.publishProgress("Capturing selection", 0.44, true);
-                state->clipboard.assignSegment(std::move(removed));
+                if (copiesToClipboard())
+                {
+                    state->clipboard.assignSegment(std::move(removed));
+                }
+                else
+                {
+                    removed = {};
+                }
 
-                cupuacu::setLongTask(state, "Cutting audio", "Removing audio",
-                                     0.44, false, false);
+                cupuacu::setLongTask(
+                    state, copiesToClipboard() ? "Cutting audio"
+                                               : "Deleting audio",
+                    "Removing audio", 0.44, false, false);
                 progressUi.publishProgress("Removing audio", 0.44, true);
                 session.stopWaveformCacheBuild();
                 doc.removeFrames(
@@ -109,14 +151,17 @@ namespace cupuacu::actions::audio
                 updateCursorPos(state, startFrame);
                 session.selection.reset();
                 detail::rebuildWaveformCacheAfterTransactionalCommit(
-                    state, session, progressUi, "Cut complete");
+                    state, session, progressUi, name + " complete");
                 session.syncSelectionAndCursorToDocumentLength();
                 lastCommitted = true;
             }
             catch (const cupuacu::LongTaskCanceledError &)
             {
-                state->clipboard = std::move(previousClipboard);
-                progressUi.publishProgress("Cut canceled", 0.0, true);
+                if (previousClipboard.has_value())
+                {
+                    state->clipboard = std::move(*previousClipboard);
+                }
+                progressUi.publishProgress(name + " canceled", 0.0, true);
                 return;
             }
         }
@@ -126,9 +171,9 @@ namespace cupuacu::actions::audio
             lastCommitted = false;
             auto &session = state->getActiveDocumentSession();
             auto &doc = session.document;
+            const auto undoTitle = "Undoing " + operationNameLowercase();
             cupuacu::LongTaskScope longTask(
-                state, "Undoing cut", "Capturing retained audio", 0.0, false,
-                true);
+                state, undoTitle, "Capturing retained audio", 0.0, false, true);
             cupuacu::renderLongTaskOverlayNow(state);
             detail::OperationProgressUi progressUi(state,
                                                    "Capturing retained audio");
@@ -138,7 +183,7 @@ namespace cupuacu::actions::audio
                 const auto removed = session.undoStore.readSegment(removedHandle);
                 cupuacu::throwIfLongTaskCanceled(state);
 
-                cupuacu::setLongTask(state, "Undoing cut", "Restoring audio", 0.0,
+                cupuacu::setLongTask(state, undoTitle, "Restoring audio", 0.0,
                                      false, false);
                 progressUi.publishProgress("Restoring audio", 0.0, true);
                 session.stopWaveformCacheBuild();
@@ -178,11 +223,11 @@ namespace cupuacu::actions::audio
 
         std::string getUndoDescription() override
         {
-            return "Cut";
+            return operationName();
         }
         std::string getRedoDescription() override
         {
-            return "Cut";
+            return operationName();
         }
 
         [[nodiscard]] bool canPersistForRestart() const override
@@ -198,7 +243,7 @@ namespace cupuacu::actions::audio
                 return std::nullopt;
             }
             return nlohmann::json{
-                {"kind", "cut"},
+                {"kind", operationNameLowercase()},
                 {"startFrame", startFrame},
                 {"frameCount", numFrames},
                 {"removedHandle", removedHandle.path.string()},
@@ -247,6 +292,26 @@ namespace cupuacu::actions::audio
         [[nodiscard]] bool lastOperationCommitted() const override
         {
             return lastCommitted;
+        }
+    };
+
+    class Cut final : public SelectionRemoval
+    {
+    public:
+        Cut(State *state, int64_t start, int64_t count)
+            : SelectionRemoval(state, start, count, SelectionRemovalMode::Cut)
+        {
+        }
+
+        Cut(State *state, int64_t start, int64_t count,
+            undo::UndoStore::SegmentHandle removedHandleToUse,
+            const double oldSel1ToUse, const double oldSel2ToUse,
+            const int64_t oldCursorPosToUse)
+            : SelectionRemoval(state, start, count,
+                               std::move(removedHandleToUse), oldSel1ToUse,
+                               oldSel2ToUse, oldCursorPosToUse,
+                               SelectionRemovalMode::Cut)
+        {
         }
     };
 

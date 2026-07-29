@@ -15,6 +15,7 @@
 #include "../actions/io/BackgroundSave.hpp"
 #include "../actions/audio/Copy.hpp"
 #include "../actions/audio/Cut.hpp"
+#include "../actions/audio/Delete.hpp"
 #include "../actions/audio/Paste.hpp"
 #include "../actions/audio/Trim.hpp"
 #include "../actions/audio/EditCommands.hpp"
@@ -303,6 +304,15 @@ namespace cupuacu::gui
                 state->getActiveDocumentSession().selection.isActive())
             {
                 actions::audio::performCut(state);
+            }
+        }
+        else if (event->key.scancode == SDL_SCANCODE_DELETE ||
+                 event->key.scancode == SDL_SCANCODE_BACKSPACE)
+        {
+            if (!primaryModifierHeld &&
+                state->getActiveDocumentSession().selection.isActive())
+            {
+                actions::audio::performDelete(state);
             }
         }
         else if (event->key.scancode == SDL_SCANCODE_C)

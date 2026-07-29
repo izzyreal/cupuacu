@@ -544,7 +544,7 @@ TEST_CASE(
 }
 
 TEST_CASE(
-    "MenuBar edit actions invoke trim copy cut and paste through submenu "
+    "MenuBar edit actions invoke trim copy cut delete and paste through submenu "
     "actions",
     "[gui]")
 {
@@ -553,7 +553,7 @@ TEST_CASE(
     auto *menuBar = makeMenuBar(&state, root);
     auto *editMenu = menuChildren(menuBar)[1];
     auto editEntries = menuChildren(editMenu);
-    REQUIRE(editEntries.size() == 9);
+    REQUIRE(editEntries.size() == 10);
 
     auto &session = state.getActiveDocumentSession();
     auto &doc = session.document;
@@ -582,11 +582,24 @@ TEST_CASE(
     REQUIRE(session.selection.getStartInt() == 1);
     REQUIRE(session.selection.getLengthInt() == 3);
 
-    auto *copyEntry = editEntries[4];
+    auto *copyEntry = editEntries[5];
     copyEntry->mouseDown(leftMouseDown());
     REQUIRE(state.clipboard.getFrameCount() == 3);
     REQUIRE(state.clipboard.getSample(0, 0) == Catch::Approx(0.2f));
     REQUIRE(state.clipboard.getSample(0, 2) == Catch::Approx(0.4f));
+
+    auto *deleteEntry = editEntries[4];
+    REQUIRE(deleteEntry->getMenuName() == "Delete (Delete/Backspace)");
+    deleteEntry->mouseDown(leftMouseDown());
+    REQUIRE(doc.getFrameCount() == 2);
+    REQUIRE(state.clipboard.getFrameCount() == 3);
+    REQUIRE(state.clipboard.getSample(0, 0) == Catch::Approx(0.2f));
+    REQUIRE(state.clipboard.getSample(0, 2) == Catch::Approx(0.4f));
+
+    state.undo();
+    REQUIRE(doc.getFrameCount() == 5);
+    REQUIRE(session.selection.getStartInt() == 1);
+    REQUIRE(session.selection.getLengthInt() == 3);
 
     auto *cutEntry = editEntries[3];
     cutEntry->mouseDown(leftMouseDown());
@@ -598,7 +611,7 @@ TEST_CASE(
 
     session.selection.reset();
     session.cursor = 1;
-    auto *pasteEntry = editEntries[5];
+    auto *pasteEntry = editEntries[6];
     pasteEntry->mouseDown(leftMouseDown());
     REQUIRE(doc.getFrameCount() == 5);
     REQUIRE(session.selection.isActive());
@@ -609,13 +622,13 @@ TEST_CASE(
 
     session.selection.reset();
     session.cursor = 2;
-    auto *insertMarkerEntry = editEntries[6];
+    auto *insertMarkerEntry = editEntries[7];
     insertMarkerEntry->mouseDown(leftMouseDown());
     REQUIRE(doc.getMarkers().size() == 1);
     REQUIRE(doc.getMarkers()[0].frame == 2);
     REQUIRE(state.getActiveViewState().selectedMarkerId == doc.getMarkers()[0].id);
 
-    auto *editMarkersEntry = editEntries[7];
+    auto *editMarkersEntry = editEntries[8];
     editMarkersEntry->mouseDown(leftMouseDown());
     REQUIRE(state.markerEditorDialogWindow != nullptr);
     REQUIRE(state.markerEditorDialogWindow->getMarkerId() ==
@@ -631,7 +644,7 @@ TEST_CASE("MenuBar edit actions are unavailable while playback is active",
     auto *menuBar = makeMenuBar(&state, root);
     auto *editMenu = menuChildren(menuBar)[1];
     auto editEntries = menuChildren(editMenu);
-    REQUIRE(editEntries.size() == 9);
+    REQUIRE(editEntries.size() == 10);
 
     auto &session = state.getActiveDocumentSession();
     auto &doc = session.document;
@@ -747,7 +760,7 @@ TEST_CASE("MenuBar split by markers creates one new document per marker gap",
     auto *menuBar = makeMenuBar(&state, root);
     auto *editMenu = menuChildren(menuBar)[1];
     auto editEntries = menuChildren(editMenu);
-    REQUIRE(editEntries.size() == 9);
+    REQUIRE(editEntries.size() == 10);
 
     auto &session = state.getActiveDocumentSession();
     auto &doc = session.document;
@@ -760,7 +773,7 @@ TEST_CASE("MenuBar split by markers creates one new document per marker gap",
     doc.addMarker(5, "B");
     doc.addMarker(9, "C");
 
-    auto *splitByMarkersEntry = editEntries[8];
+    auto *splitByMarkersEntry = editEntries[9];
     splitByMarkersEntry->mouseDown(leftMouseDown());
 
     REQUIRE(state.tabs.size() == 3);
