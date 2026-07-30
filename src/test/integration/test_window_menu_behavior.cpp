@@ -554,8 +554,8 @@ TEST_CASE("Options menu integration opens audio options in a shared options wind
     collectChildrenRecursive(audioPane,
                              labels);
 
-    REQUIRE(dropdowns.size() == 3);
-    REQUIRE(labels.size() >= 3);
+    REQUIRE(dropdowns.size() == 4);
+    REQUIRE(labels.size() >= 4);
     for (auto *dropdown : dropdowns)
     {
         REQUIRE(dropdown->getSelectedIndex() >= 0);
@@ -1010,7 +1010,7 @@ TEST_CASE("Device properties integration refreshes layout when pixel scale chang
     REQUIRE(audioButton != nullptr);
     std::vector<cupuacu::gui::DropdownMenu *> dropdowns;
     collectChildrenRecursive(audioPane, dropdowns);
-    REQUIRE(dropdowns.size() == 3);
+    REQUIRE(dropdowns.size() == 4);
 
     const int originalHeight = dropdowns[0]->getHeight();
     const int originalY = dropdowns[1]->getYPos();
