@@ -48,6 +48,7 @@ namespace cupuacu
 
     namespace gui
     {
+        class AboutWindow;
         class OptionsWindow;
         class NewFileDialogWindow;
         class GenerateSilenceDialogWindow;
@@ -69,6 +70,7 @@ namespace cupuacu
     void destroyAmplifyFadeDialog(effects::AmplifyFadeDialog *);
     void destroyDynamicsDialog(effects::DynamicsDialog *);
     void destroyRemoveSilenceDialog(effects::RemoveSilenceDialog *);
+    void destroyAboutWindow(gui::AboutWindow *);
     void destroyOptionsWindow(gui::OptionsWindow *);
     void destroyNewFileDialogWindow(gui::NewFileDialogWindow *);
     void destroyGenerateSilenceDialogWindow(gui::GenerateSilenceDialogWindow *);
@@ -171,6 +173,8 @@ namespace cupuacu
         std::vector<gui::Waveform *> waveforms;
         std::vector<gui::Window *> windows;
         std::unique_ptr<gui::DocumentSessionWindow> mainDocumentSessionWindow;
+        std::unique_ptr<gui::AboutWindow, void (*)(gui::AboutWindow *)>
+            aboutWindow{nullptr, destroyAboutWindow};
         std::unique_ptr<gui::OptionsWindow, void (*)(gui::OptionsWindow *)>
             optionsWindow{nullptr, destroyOptionsWindow};
         std::unique_ptr<gui::NewFileDialogWindow,

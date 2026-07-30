@@ -6,6 +6,7 @@
 #include "effects/RemoveSilenceEffect.hpp"
 
 #include "gui/Waveform.hpp"
+#include "gui/AboutWindow.hpp"
 #include "gui/ExportAudioDialogWindow.hpp"
 #include "gui/GenerateSilenceDialogWindow.hpp"
 #include "gui/MarkerEditorDialogWindow.hpp"
@@ -58,6 +59,11 @@ void cupuacu::destroyDynamicsDialog(effects::DynamicsDialog *dialog)
 void cupuacu::destroyRemoveSilenceDialog(effects::RemoveSilenceDialog *dialog)
 {
     delete dialog;
+}
+
+void cupuacu::destroyAboutWindow(gui::AboutWindow *window)
+{
+    delete window;
 }
 
 void cupuacu::destroyOptionsWindow(gui::OptionsWindow *window)

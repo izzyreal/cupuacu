@@ -2,6 +2,7 @@
 
 #include "State.hpp"
 #include "TestPaths.hpp"
+#include "TestSdlTtfGuard.hpp"
 #include "gui/Button.hpp"
 #include "gui/Component.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
@@ -11,6 +12,7 @@
 #include "gui/Menu.hpp"
 #include "gui/MenuBar.hpp"
 #include "gui/ScrollBar.hpp"
+#include "gui/SelectableTextView.hpp"
 #include "gui/Slider.hpp"
 #include "gui/StatusBar.hpp"
 #include "gui/StatusBarEditLogic.hpp"
@@ -612,6 +614,57 @@ TEST_CASE("TextInput can avoid submitting when focus is lost", "[gui]")
 
     REQUIRE(finishedCount == 0);
     REQUIRE(canceledCount == 1);
+}
+
+TEST_CASE("SelectableTextView supports keyboard selection and scrolling",
+          "[gui]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::test::StateWithTestPaths state{};
+    cupuacu::gui::SelectableTextView view(&state);
+    view.setVisible(true);
+    view.setBounds(0, 0, 180, 72);
+    view.setText(
+        "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda\n"
+        "second line\nhttps://example.com/license.txt\nthird line\n"
+        "fourth line\nfifth line");
+    view.focusGained();
+
+    const std::size_t linkStart = view.getText().find("https://");
+    REQUIRE(view.linkAtTextIndex(linkStart) ==
+            "https://example.com/license.txt");
+    REQUIRE(view.linkAtTextIndex(linkStart - 1).empty());
+
+    view.selectAll();
+    REQUIRE(view.hasSelection());
+    REQUIRE(view.selectedText() == view.getText());
+
+    SDL_KeyboardEvent left{};
+    left.scancode = SDL_SCANCODE_LEFT;
+    REQUIRE(view.keyDown(left));
+    REQUIRE_FALSE(view.hasSelection());
+
+    SDL_KeyboardEvent shiftRight{};
+    shiftRight.scancode = SDL_SCANCODE_RIGHT;
+    shiftRight.mod = SDL_KMOD_SHIFT;
+    REQUIRE(view.keyDown(shiftRight));
+    REQUIRE(view.selectedText() == "a");
+
+    REQUIRE(view.getMaximumScrollOffset() > 0.0);
+    REQUIRE(view.mouseWheel(cupuacu::gui::MouseEvent{
+        cupuacu::gui::WHEEL,
+        20,
+        20,
+        20.0f,
+        20.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{false, false, false},
+        0,
+        0.0f,
+        -1.0f}));
+    REQUIRE(view.getScrollOffset() > 0.0);
 }
 
 TEST_CASE("StatusBar edit logic updates the cursor from position input", "[gui]")

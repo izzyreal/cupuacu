@@ -53,6 +53,37 @@ include(FetchContent)
 
 find_package(Git)
 
+set(CUPUACU_GIT_REVISION "unknown")
+set(CUPUACU_GIT_REVISION_SHORT "unknown")
+set(CUPUACU_GIT_DIRTY_BOOL false)
+if(Git_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" rev-parse HEAD
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        OUTPUT_VARIABLE CUPUACU_GIT_REVISION
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET)
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" rev-parse --short=12 HEAD
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        OUTPUT_VARIABLE CUPUACU_GIT_REVISION_SHORT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET)
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" status --porcelain --untracked-files=no
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        OUTPUT_VARIABLE _cupuacu_git_status
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET)
+    if(NOT _cupuacu_git_status STREQUAL "")
+        set(CUPUACU_GIT_DIRTY_BOOL true)
+    endif()
+endif()
+
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
+configure_file(cmake/BuildInfo.hpp.in
+    "${CMAKE_BINARY_DIR}/generated/BuildInfoGenerated.hpp" @ONLY)
+
 # Give the ELF linker function/data granularity so --gc-sections can discard
 # unused code pulled in from Cupuacu's static dependencies. Mach-O and MSVC
 # already emit equivalent dead-strip granularity.
@@ -237,6 +268,8 @@ fetchcontent_declare_cached_url(
 )
 FetchContent_MakeAvailable(json)
 
+include(cmake/ThirdPartyResources.cmake)
+
 set(CUPUACU_SHARED_SOURCES
     src/main/Document.cpp
     src/main/undo/UndoManifestPersistence.cpp
@@ -246,6 +279,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/State.cpp
     src/main/Paths.cpp
     src/main/LongTask.cpp
+    src/main/BuildInfo.cpp
     src/main/Logger.cpp
     src/main/file/AudioExport.cpp
     src/main/file/AudioFileWriter.cpp
@@ -277,6 +311,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/gui/DevicePropertiesWindow.cpp
     src/main/gui/DisplaySettingsWindow.cpp
     src/main/gui/OptionsWindow.cpp
+    src/main/gui/AboutWindow.cpp
     src/main/gui/NewFileDialogWindow.cpp
     src/main/gui/GenerateSilenceDialogWindow.cpp
     src/main/gui/ExportAudioDialogWindow.cpp
@@ -288,6 +323,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/gui/ScrollBar.cpp
     src/main/gui/Slider.cpp
     src/main/gui/TextInput.cpp
+    src/main/gui/SelectableTextView.cpp
     src/main/gui/WaveformsUnderlay.cpp
     src/main/gui/Waveforms.cpp
     src/main/gui/Waveform.cpp
@@ -346,6 +382,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_menu_bar_labels.cpp
     src/test/test_window_mouse_routing.cpp
     src/test/test_gui_primitives.cpp
+    src/test/test_build_info.cpp
     src/test/test_render_helpers.cpp
     src/test/test_main_view_layout_planning.cpp
     src/test/test_main_view_selection_marker_planning.cpp
@@ -444,6 +481,7 @@ function(cupuacu_add_core_target target enable_rtsan enable_tsan)
     target_link_libraries("${target}" PUBLIC cupuacu_deps)
     target_include_directories("${target}" PUBLIC
         src/main/
+        ${CMAKE_BINARY_DIR}/generated
         ${readerwriterqueue_SOURCE_DIR}
         ${CMRC_INCLUDE_DIR}
     )
@@ -472,6 +510,8 @@ function(cupuacu_add_core_target target enable_rtsan enable_tsan)
             CUPUACU_TSAN_ENABLED=0
         )
     endif()
+    target_compile_definitions("${target}" PUBLIC
+        CUPUACU_BUILD_CONFIGURATION="$<CONFIG>")
     cupuacu_enable_coverage_for_target("${target}")
 endfunction()
 
@@ -594,7 +634,7 @@ target_compile_definitions(cupuacu-tests PRIVATE
 cupuacu_enable_coverage_for_target(cupuacu-tests)
 
 _bundle_resources(Cupuacu)
-target_link_libraries(cupuacu-tests PUBLIC cupuacu::rc)
+_bundle_resources(cupuacu-tests)
 _bundle_test_resources(cupuacu-tests)
 
 if(CUPUACU_BUILD_INTEGRATION_TESTS)
@@ -608,7 +648,7 @@ if(CUPUACU_BUILD_INTEGRATION_TESTS)
         CUPUACU_TSAN_ENABLED=0
     )
     cupuacu_enable_coverage_for_target(cupuacu-tests-integration)
-    target_link_libraries(cupuacu-tests-integration PUBLIC cupuacu::rc)
+    _bundle_resources(cupuacu-tests-integration)
     _bundle_test_resources(cupuacu-tests-integration)
 endif()
 
@@ -618,7 +658,7 @@ if(CUPUACU_RTSAN_SUPPORTED)
         src/test/test_audio_callback_core.cpp
     )
     target_link_libraries(cupuacu-tests-rtsan PRIVATE cupuacu_core_rtsan Catch2::Catch2WithMain)
-    target_link_libraries(cupuacu-tests-rtsan PUBLIC cupuacu::rc)
+    _bundle_resources(cupuacu-tests-rtsan)
     _bundle_test_resources(cupuacu-tests-rtsan)
     rtsan_libs_enable(TARGET cupuacu-tests-rtsan)
     target_compile_definitions(cupuacu-tests-rtsan PRIVATE
@@ -640,7 +680,7 @@ if(CUPUACU_RTSAN_SUPPORTED)
             src/test/test_tsan_verification.cpp
         )
         target_link_libraries(cupuacu-tests-tsan PRIVATE cupuacu_core_tsan Catch2::Catch2WithMain)
-        target_link_libraries(cupuacu-tests-tsan PUBLIC cupuacu::rc)
+        _bundle_resources(cupuacu-tests-tsan)
         _bundle_test_resources(cupuacu-tests-tsan)
         target_compile_definitions(cupuacu-tests-tsan PRIVATE CUPUACU_RTSAN_LIBS_ENABLED=0)
         target_compile_definitions(cupuacu-tests-tsan PRIVATE

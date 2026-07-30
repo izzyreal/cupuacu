@@ -16,6 +16,7 @@
 #include "gui/MenuBarPlanning.hpp"
 #include "gui/Window.hpp"
 #include "gui/OptionsWindow.hpp"
+#include "gui/AboutWindow.hpp"
 #include "gui/GenerateSilenceDialogWindow.hpp"
 #include "gui/NewFileDialogWindow.hpp"
 #include "gui/Colors.hpp"
@@ -82,6 +83,7 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
     generateMenu = emplaceChild<Menu>(state, "Generate");
     effectsMenu = emplaceChild<Menu>(state, "Effects");
     optionsMenu = emplaceChild<Menu>(state, "Options");
+    helpMenu = emplaceChild<Menu>(state, "Help");
 
 #ifdef __APPLE__
     const std::string newText{"New file (Cmd + N)"};
@@ -626,6 +628,12 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
                                  "Stop playback or recording and disable "
                                  "monitoring first"};
         });
+
+    helpMenu->addSubMenu(state, "About Cupuacu",
+                         [&]
+                         {
+                             showAboutWindow(state);
+                         });
 }
 
 void MenuBar::onDraw(SDL_Renderer *renderer)
@@ -670,6 +678,7 @@ void MenuBar::hideSubMenus()
     generateMenu->hideSubMenus();
     effectsMenu->hideSubMenus();
     optionsMenu->hideSubMenus();
+    helpMenu->hideSubMenus();
     if (const auto window = getWindow())
     {
         if (const auto root = window->getRootComponent())
@@ -691,6 +700,7 @@ void MenuBar::resized()
     const int effectsW = int(56 * scale);
     const int optionsW =
         int(60 * scale); // wide enough for All options, Audio, and Display
+    const int helpW = int(44 * scale);
     const int h = getHeight();
 
     int logoSpace = 0;
@@ -709,9 +719,12 @@ void MenuBar::resized()
     optionsMenu->setBounds(logoSpace + fileW + editW + viewW + generateW +
                                effectsW,
                            0, optionsW, h);
+    helpMenu->setBounds(logoSpace + fileW + editW + viewW + generateW +
+                            effectsW + optionsW,
+                        0, helpW, h);
 
     SDL_Rect backgroundBounds = getLocalBounds();
-    backgroundBounds.x = optionsMenu->getBounds().x + optionsW;
+    backgroundBounds.x = helpMenu->getBounds().x + helpW;
     backgroundBounds.w = getWidth() - backgroundBounds.x;
 
     background->setBounds(backgroundBounds);
@@ -747,6 +760,10 @@ Menu *MenuBar::getOpenMenu() const
     if (optionsMenu->isOpen())
     {
         return optionsMenu;
+    }
+    if (helpMenu->isOpen())
+    {
+        return helpMenu;
     }
     return nullptr;
 }

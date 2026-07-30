@@ -10,6 +10,7 @@
 #include "actions/Undoable.hpp"
 #include "file/AudioExport.hpp"
 #include "file/SndfilePath.hpp"
+#include "gui/AboutWindow.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/DisplaySettingsWindow.hpp"
 #include "gui/DropdownMenu.hpp"
@@ -18,6 +19,7 @@
 #include "gui/Label.hpp"
 #include "gui/Menu.hpp"
 #include "gui/MenuBar.hpp"
+#include "gui/SelectableTextView.hpp"
 #include "gui/UiScale.hpp"
 #include "gui/Window.hpp"
 #include "persistence/AudioDevicePropertiesPersistence.hpp"
@@ -30,7 +32,10 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <functional>
+#include <limits>
 #include <memory>
+#include <numeric>
 #include <random>
 #include <string>
 #include <thread>
@@ -38,6 +43,44 @@
 
 namespace
 {
+    std::vector<std::uint8_t>
+    readCanvasPixels(cupuacu::gui::Window *window,
+                     const SDL_Rect *area = nullptr)
+    {
+        REQUIRE(window != nullptr);
+        SDL_Renderer *renderer = window->getRenderer();
+        REQUIRE(renderer != nullptr);
+        REQUIRE(window->getCanvas() != nullptr);
+
+        SDL_SetRenderTarget(renderer, window->getCanvas());
+        SDL_Surface *surface = SDL_RenderReadPixels(renderer, area);
+        REQUIRE(surface != nullptr);
+        const auto *begin = static_cast<const std::uint8_t *>(surface->pixels);
+        std::vector<std::uint8_t> pixels(
+            begin, begin + static_cast<std::size_t>(surface->pitch) *
+                               static_cast<std::size_t>(surface->h));
+        SDL_DestroySurface(surface);
+        SDL_SetRenderTarget(renderer, nullptr);
+        return pixels;
+    }
+
+    std::size_t countChangedBytes(const std::vector<std::uint8_t> &before,
+                                  const std::vector<std::uint8_t> &after)
+    {
+        if (before.size() != after.size())
+        {
+            return std::numeric_limits<std::size_t>::max();
+        }
+        return std::inner_product(
+            before.begin(), before.end(), after.begin(), std::size_t{0},
+            std::plus<>{},
+            [](const std::uint8_t beforeByte, const std::uint8_t afterByte)
+            {
+                return beforeByte == afterByte ? std::size_t{0}
+                                               : std::size_t{1};
+            });
+    }
+
     class TestComponent : public cupuacu::gui::Component
     {
     public:
@@ -435,7 +478,7 @@ TEST_CASE("Menu integration opens submenus and switches siblings on hover",
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 6);
+    REQUIRE(topLevelMenus.size() == 7);
     auto *fileMenu = topLevelMenus[0];
     auto *viewMenu = topLevelMenus[2];
 
@@ -480,7 +523,7 @@ TEST_CASE("Menu integration undo and redo actions reflect undo stack state",
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 6);
+    REQUIRE(topLevelMenus.size() == 7);
     auto *editMenu = topLevelMenus[1];
     auto editSubMenus = cupuacu::test::integration::menuChildren(editMenu);
     REQUIRE(editSubMenus.size() == 10);
@@ -523,7 +566,7 @@ TEST_CASE("Options menu integration opens audio options in a shared options wind
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 6);
+    REQUIRE(topLevelMenus.size() == 7);
     auto *optionsMenu = topLevelMenus[5];
 
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
@@ -572,6 +615,112 @@ TEST_CASE("Options menu integration opens audio options in a shared options wind
     REQUIRE(state.windows.size() == initialWindowCount);
 }
 
+TEST_CASE("Help menu integration opens one selectable About window",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "about-menu", 560, 260, SDL_WINDOW_HIDDEN);
+
+    auto root =
+        std::make_unique<cupuacu::test::integration::RootComponent>(&state);
+    auto *menuBar = root->emplaceChild<cupuacu::gui::MenuBar>(&state);
+    root->setBounds(0, 0, 560, 260);
+    menuBar->setBounds(0, 0, 560, 40);
+    window->setRootComponent(std::move(root));
+    window->setMenuBar(menuBar);
+
+    auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
+    REQUIRE(topLevelMenus.size() == 7);
+    auto *helpMenu = topLevelMenus[6];
+    auto helpEntries =
+        cupuacu::test::integration::menuChildren(helpMenu);
+    REQUIRE(helpEntries.size() == 1);
+    REQUIRE(helpEntries[0]->getMenuName() == "About Cupuacu");
+
+    const auto initialWindowCount = state.windows.size();
+    REQUIRE(state.aboutWindow == nullptr);
+    REQUIRE(helpMenu->mouseDown(
+        cupuacu::test::integration::leftMouseDown()));
+    REQUIRE(helpEntries[0]->mouseDown(
+        cupuacu::test::integration::leftMouseDown()));
+    REQUIRE(state.aboutWindow != nullptr);
+    REQUIRE(state.aboutWindow->isOpen());
+    REQUIRE(state.windows.size() == initialWindowCount + 1);
+
+    auto *aboutRoot = state.aboutWindow->getWindow()->getRootComponent();
+    auto *textView = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::SelectableTextView>(aboutRoot, "SelectableTextView");
+    auto *watermark = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::Component>(aboutRoot, "AboutLogoWatermark");
+    auto *creditsButton = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::TextButton>(aboutRoot,
+                                  "TextButton:Credits & Licenses");
+    REQUIRE(textView != nullptr);
+    REQUIRE(watermark != nullptr);
+    REQUIRE(creditsButton != nullptr);
+    REQUIRE(textView->getText().find("BUILD DETAILS") != std::string::npos);
+    REQUIRE(textView->acceptsKeyboardFocus());
+
+    auto *aboutWindow = state.aboutWindow->getWindow();
+    REQUIRE(aboutWindow->getDirtyRects().empty());
+    aboutWindow->setFocusedComponent(nullptr);
+    REQUIRE(aboutWindow->getDirtyRects().empty());
+    aboutWindow->setFocusedComponent(textView);
+    REQUIRE(aboutWindow->getDirtyRects().empty());
+
+    const auto pixelsBeforeTextClick = readCanvasPixels(aboutWindow);
+    REQUIRE(textView->mouseDown(cupuacu::gui::MouseEvent{
+        cupuacu::gui::DOWN,
+        20,
+        20,
+        20.0f,
+        20.0f,
+        0.0f,
+        0.0f,
+        cupuacu::gui::MouseButtonState{true, false, false},
+        1}));
+    aboutWindow->renderFrameIfDirty();
+    const auto pixelsAfterTextClick = readCanvasPixels(aboutWindow);
+    REQUIRE(countChangedBytes(pixelsBeforeTextClick,
+                              pixelsAfterTextClick) == 0);
+    REQUIRE(textView->mouseUp(cupuacu::gui::MouseEvent{}));
+
+    const SDL_Rect textViewBounds = textView->getAbsoluteBounds();
+    const auto pixelsBeforeButtonDown =
+        readCanvasPixels(aboutWindow, &textViewBounds);
+    REQUIRE(creditsButton->mouseDown(
+        cupuacu::test::integration::leftMouseDown()));
+    aboutWindow->renderFrameIfDirty();
+    const auto pixelsAfterButtonDown =
+        readCanvasPixels(aboutWindow, &textViewBounds);
+    REQUIRE(countChangedBytes(pixelsBeforeButtonDown,
+                              pixelsAfterButtonDown) == 0);
+    REQUIRE(creditsButton->mouseUp(
+        cupuacu::test::integration::leftMouseUp()));
+    REQUIRE(state.aboutWindow->getSelectedSection() ==
+            cupuacu::gui::AboutSection::CreditsAndLicenses);
+    REQUIRE(textView->getText().find("PortAudio") != std::string::npos);
+    REQUIRE(textView->getText().find(
+                "https://github.com/PortAudio/portaudio/blob/master/"
+                "LICENSE.txt") != std::string::npos);
+    REQUIRE(textView->getText().find("Permission is hereby granted") ==
+            std::string::npos);
+
+    auto *firstAboutWindow = state.aboutWindow.get();
+    REQUIRE(helpMenu->mouseDown(
+        cupuacu::test::integration::leftMouseDown()));
+    REQUIRE(helpEntries[0]->mouseDown(
+        cupuacu::test::integration::leftMouseDown()));
+    REQUIRE(state.aboutWindow.get() == firstAboutWindow);
+    REQUIRE(state.windows.size() == initialWindowCount + 1);
+
+    state.aboutWindow.reset();
+    REQUIRE(state.windows.size() == initialWindowCount);
+}
+
 TEST_CASE("Options menu integration opens display options in a shared options window once",
           "[integration]")
 {
@@ -594,7 +743,7 @@ TEST_CASE("Options menu integration opens display options in a shared options wi
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 6);
+    REQUIRE(topLevelMenus.size() == 7);
     auto *optionsMenu = topLevelMenus[5];
 
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
@@ -833,7 +982,7 @@ TEST_CASE("Device properties integration persists normalized selection when reop
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 6);
+    REQUIRE(topLevelMenus.size() == 7);
     auto *optionsMenu = topLevelMenus[5];
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
     REQUIRE(optionEntries.size() == 3);
@@ -888,7 +1037,7 @@ TEST_CASE("Options menu integration replaces a closed options window instance",
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 6);
+    REQUIRE(topLevelMenus.size() == 7);
     auto *optionsMenu = topLevelMenus[5];
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
     REQUIRE(optionEntries.size() == 3);
@@ -936,7 +1085,7 @@ TEST_CASE("Options window integration reopens on the last selected section from 
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 6);
+    REQUIRE(topLevelMenus.size() == 7);
     auto *optionsMenu = topLevelMenus[5];
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
     REQUIRE(optionEntries.size() == 3);
@@ -988,7 +1137,7 @@ TEST_CASE("Device properties integration refreshes layout when pixel scale chang
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 6);
+    REQUIRE(topLevelMenus.size() == 7);
     auto *optionsMenu = topLevelMenus[5];
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
     REQUIRE(optionEntries.size() == 3);
@@ -1224,7 +1373,7 @@ TEST_CASE("File menu integration opens a recent file into the active session",
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 6);
+    REQUIRE(topLevelMenus.size() == 7);
     auto *fileMenu = topLevelMenus[0];
     auto fileEntries = cupuacu::test::integration::menuChildren(fileMenu);
     REQUIRE(fileEntries.size() == 9);
@@ -1441,7 +1590,7 @@ TEST_CASE("File menu integration exit entry pushes a quit event", "[integration]
     SDL_FlushEvents(SDL_EVENT_QUIT, SDL_EVENT_QUIT);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 6);
+    REQUIRE(topLevelMenus.size() == 7);
     auto *fileMenu = topLevelMenus[0];
     auto fileEntries = cupuacu::test::integration::menuChildren(fileMenu);
     REQUIRE(fileEntries.size() == 9);

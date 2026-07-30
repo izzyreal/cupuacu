@@ -1,0 +1,14 @@
+#pragma once
+
+#include <string_view>
+
+namespace cupuacu::build
+{
+    inline constexpr std::string_view version{"@CUPUACU_PROJECT_VERSION@"};
+    inline constexpr std::string_view sourceRevision{"@CUPUACU_GIT_REVISION@"};
+    inline constexpr std::string_view sourceRevisionShort{
+        "@CUPUACU_GIT_REVISION_SHORT@"};
+    inline constexpr bool sourceDirty = @CUPUACU_GIT_DIRTY_BOOL@;
+    inline constexpr std::string_view configuredCompiler{
+        "@CMAKE_CXX_COMPILER_ID@ @CMAKE_CXX_COMPILER_VERSION@"};
+} // namespace cupuacu::build
