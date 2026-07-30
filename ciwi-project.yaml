@@ -50,8 +50,6 @@ pipelines:
               command: ALSA_CONFIG_PATH=docker/integration/linux/alsa.conf SDL_VIDEODRIVER=offscreen SDL_RENDER_DRIVER=software CUPUACU_SUPPRESS_PORTAUDIO_ERRORS=1 ./build/linux-amd64/cupuacu-tests --reporter JUnit --out build/linux-amd64/result-junit.xml
               format: junit-xml
               report: build/linux-amd64/result-junit.xml
-          - name: Show ccache stats
-            run: if command -v ccache >/dev/null 2>&1; then ccache --show-stats; else echo "ccache not found"; fi
           - name: Build Linux amd64 package
             run: |
               VERSION="$(cat VERSION)"
@@ -145,8 +143,6 @@ pipelines:
               command: docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e DISPLAY=:99 -e SDL_VIDEODRIVER=x11 -e SDL_RENDER_DRIVER=software -e CUPUACU_SUPPRESS_PORTAUDIO_ERRORS=1 -e CCACHE_DIR=/ccache -e CCACHE_BASEDIR=/work -e CCACHE_NOHASHDIR=true -e CCACHE_COMPILERCHECK=content -v "$PWD:/work" -v "$CIWI_FETCHCONTENT_SOURCES_DIR:/ciwi-fetchcontent" -v "$CCACHE_DIR:/ccache" -w /work cupuacu-integration-linux-ci bash -lc 'Xvfb "$DISPLAY" -screen 0 1920x1080x24 >/tmp/cupuacu-xvfb.log 2>&1 & XVFB_PID=$!; trap "kill $XVFB_PID >/dev/null 2>&1 || true" EXIT; cmake -G Ninja -S . -B build/linux-amd64-integration -DCUPUACU_BUILD_INTEGRATION_TESTS=ON -DCUPUACU_BUILD_CCACHE_ENABLED=ON -DFETCHCONTENT_CACHE_ROOT=/ciwi-fetchcontent && cmake --build build/linux-amd64-integration --target cupuacu-tests-integration --parallel 4 && ./build/linux-amd64-integration/cupuacu-tests-integration --reporter JUnit --out dist/integration-junit.xml'
               format: junit-xml
               report: dist/integration-junit.xml
-          - name: Show ccache stats
-            run: if command -v ccache >/dev/null 2>&1; then ccache --show-stats; else echo "ccache not found"; fi
 
       - id: linux-amd64-coverage
         runs_on:
@@ -220,8 +216,6 @@ pipelines:
             run: CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true CCACHE_COMPILERCHECK=content cmake -S . -B build/macos-universal -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCUPUACU_BUILD_CCACHE_ENABLED=ON -DFETCHCONTENT_CACHE_ROOT="$CIWI_FETCHCONTENT_SOURCES_DIR"
           - name: Build Cupuacu and tests
             run: CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true CCACHE_COMPILERCHECK=content cmake --build build/macos-universal --config Release --target Cupuacu cupuacu-tests --parallel 4
-          - name: Show ccache stats
-            run: ccache --dir "$CCACHE_DIR" --show-stats
           - name: Run Cupuacu tests
             test:
               name: cupuacu-tests
@@ -268,8 +262,6 @@ pipelines:
             run: set "CCACHE_BASEDIR=%CD%" && set "CCACHE_NOHASHDIR=true" && set "CCACHE_COMPILERCHECK=content" && (cmake -S . -B build\windows-amd64 -G "Visual Studio 18 2026" -A x64 -DCUPUACU_BUILD_CCACHE_ENABLED=ON -DFETCHCONTENT_CACHE_ROOT="%CIWI_FETCHCONTENT_SOURCES_DIR%" || ((if exist build\windows-amd64 rmdir /s /q build\windows-amd64) & cmake -S . -B build\windows-amd64 -G "Visual Studio 17 2022" -A x64 -DCUPUACU_BUILD_CCACHE_ENABLED=ON -DFETCHCONTENT_CACHE_ROOT="%CIWI_FETCHCONTENT_SOURCES_DIR%") || ((if exist build\windows-amd64 rmdir /s /q build\windows-amd64) & cmake -S . -B build\windows-amd64 -G "Visual Studio 16 2019" -A x64 -DCUPUACU_BUILD_CCACHE_ENABLED=ON -DFETCHCONTENT_CACHE_ROOT="%CIWI_FETCHCONTENT_SOURCES_DIR%"))
           - name: Build Cupuacu and tests
             run: set "CCACHE_BASEDIR=%CD%" && set "CCACHE_NOHASHDIR=true" && set "CCACHE_COMPILERCHECK=content" && cmake --build build\windows-amd64 --config Release --target Cupuacu cupuacu-tests
-          - name: Show ccache stats
-            run: '"C:\ProgramData\chocolatey\bin\ccache.exe" --dir "%CCACHE_DIR%" --show-stats'
           - name: Run Cupuacu tests
             test:
               name: cupuacu-tests
