@@ -180,12 +180,12 @@ bool cupuacu::audio::callback_core::fillOutputBuffer(
 
 bool cupuacu::audio::callback_core::recordInputIntoChunks(
     const float *input, const unsigned long framesPerBuffer,
-    const uint8_t recordingChannels, int64_t &recordingPosition,
-    void *chunkSinkUser, const ChunkPushFn chunkPushFn,
-    StereoMeterLevels &meterLevels)
+    const uint8_t inputChannels, const uint8_t recordingChannels,
+    int64_t &recordingPosition, void *chunkSinkUser,
+    const ChunkPushFn chunkPushFn, StereoMeterLevels &meterLevels)
 {
-    if (!input || recordingChannels == 0 || recordingChannels > 2 ||
-        !chunkPushFn)
+    if (!input || inputChannels == 0 || inputChannels > 2 ||
+        recordingChannels == 0 || recordingChannels > 2 || !chunkPushFn)
     {
         return false;
     }
@@ -206,10 +206,14 @@ bool cupuacu::audio::callback_core::recordInputIntoChunks(
         {
             const std::size_t sourceBase =
                 static_cast<std::size_t>(frameOffset + frame) *
-                static_cast<std::size_t>(recordingChannels);
-            const float inL = input[sourceBase];
-            const float inR =
-                recordingChannels > 1 ? input[sourceBase + 1] : inL;
+                static_cast<std::size_t>(inputChannels);
+            float inL = input[sourceBase];
+            float inR = inputChannels > 1 ? input[sourceBase + 1] : inL;
+            if (recordingChannels == 1 && inputChannels == 2)
+            {
+                inL = 0.5f * (inL + inR);
+                inR = inL;
+            }
 
             const std::size_t targetBase = static_cast<std::size_t>(frame) *
                                            cupuacu::audio::kMaxRecordedChannels;

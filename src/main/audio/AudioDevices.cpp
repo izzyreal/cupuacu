@@ -9,7 +9,9 @@
 #include <portaudio.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <sstream>
 
 #if CUPUACU_RTSAN_LIBS_ENABLED
 #include <rtsan_standalone/rtsan_standalone.h>
@@ -21,8 +23,10 @@ using namespace cupuacu::utils;
 
 namespace
 {
-    constexpr int SAMPLE_RATE = 44100;
     constexpr unsigned long BUFFER_SIZE = 256;
+    constexpr std::array<double, 11> kDisplayedSampleRates{
+        8000.0,  11025.0, 16000.0, 22050.0,  32000.0, 44100.0,
+        48000.0, 88200.0, 96000.0, 176400.0, 192000.0};
 
     bool enqueueRecordedChunk(void *userdata,
                               const cupuacu::audio::RecordedChunk &chunk)
@@ -32,11 +36,170 @@ namespace
             userdata);
         return queue->try_enqueue(chunk);
     }
+
+    const char *purposeName(const AudioStreamPurpose purpose)
+    {
+        switch (purpose)
+        {
+            case AudioStreamPurpose::Playback:
+                return "playback";
+            case AudioStreamPurpose::Recording:
+                return "recording";
+            case AudioStreamPurpose::Monitoring:
+                return "input monitoring";
+            case AudioStreamPurpose::Probe:
+                return "audio configuration";
+        }
+        return "audio";
+    }
+
+    const char *stageName(const AudioStreamFailureStage stage)
+    {
+        switch (stage)
+        {
+            case AudioStreamFailureStage::Validation:
+                return "validation";
+            case AudioStreamFailureStage::FormatProbe:
+                return "format check";
+            case AudioStreamFailureStage::Open:
+                return "stream open";
+            case AudioStreamFailureStage::Start:
+                return "stream start";
+            case AudioStreamFailureStage::MonitorPreparation:
+                return "monitor preparation";
+        }
+        return "setup";
+    }
+
+    AudioStreamSetupResult failureResult(const AudioStreamRequest &request,
+                                         const AudioStreamFailureStage stage,
+                                         const PaError error,
+                                         std::string message = {})
+    {
+        AudioStreamFailure failure{.stage = stage,
+                                   .portAudioError = error,
+                                   .message = std::move(message),
+                                   .request = request};
+        if (failure.message.empty() && error != paNoError)
+        {
+            if (const char *text = Pa_GetErrorText(error))
+            {
+                failure.message = text;
+            }
+        }
+        if (error == paUnanticipatedHostError)
+        {
+            if (const PaHostErrorInfo *host = Pa_GetLastHostErrorInfo();
+                host && host->errorText)
+            {
+                failure.hostMessage = host->errorText;
+            }
+        }
+        return {.failure = std::move(failure)};
+    }
+
+    AudioStreamSetupResult makeParameters(const AudioStreamRequest &request,
+                                          PaStreamParameters &input,
+                                          const PaStreamParameters *&inputPtr,
+                                          PaStreamParameters &output,
+                                          const PaStreamParameters *&outputPtr)
+    {
+        inputPtr = nullptr;
+        outputPtr = nullptr;
+        if (request.sampleRate <= 0.0)
+        {
+            return failureResult(request, AudioStreamFailureStage::Validation,
+                                 paInvalidSampleRate,
+                                 "The document has no valid sample rate.");
+        }
+        if (request.purpose == AudioStreamPurpose::Playback &&
+            !request.hasOutput())
+        {
+            return failureResult(request, AudioStreamFailureStage::Validation,
+                                 paInvalidDevice,
+                                 "No output device is selected.");
+        }
+        if (request.purpose == AudioStreamPurpose::Recording &&
+            !request.hasInput())
+        {
+            return failureResult(request, AudioStreamFailureStage::Validation,
+                                 paInvalidDevice,
+                                 "No input device is selected.");
+        }
+        if (request.purpose == AudioStreamPurpose::Monitoring &&
+            !request.isDuplex())
+        {
+            return failureResult(request, AudioStreamFailureStage::Validation,
+                                 paBadIODeviceCombination,
+                                 "Input monitoring requires both an input and "
+                                 "an output device.");
+        }
+        if (!request.hasInput() && !request.hasOutput())
+        {
+            return failureResult(request, AudioStreamFailureStage::Validation,
+                                 paBadIODeviceCombination,
+                                 "No input or output device is selected.");
+        }
+        if (request.hasInput())
+        {
+            const PaDeviceInfo *info =
+                Pa_GetDeviceInfo(request.inputDeviceIndex);
+            if (!info)
+            {
+                return failureResult(
+                    request, AudioStreamFailureStage::Validation,
+                    paInvalidDevice,
+                    "The selected input device is unavailable.");
+            }
+            if (request.inputChannels > info->maxInputChannels)
+            {
+                return failureResult(request,
+                                     AudioStreamFailureStage::Validation,
+                                     paInvalidChannelCount,
+                                     "The input device does not provide the "
+                                     "required channel count.");
+            }
+            input.device = request.inputDeviceIndex;
+            input.channelCount = request.inputChannels;
+            input.sampleFormat = paFloat32;
+            input.suggestedLatency = info->defaultLowInputLatency;
+            input.hostApiSpecificStreamInfo = nullptr;
+            inputPtr = &input;
+        }
+        if (request.hasOutput())
+        {
+            const PaDeviceInfo *info =
+                Pa_GetDeviceInfo(request.outputDeviceIndex);
+            if (!info)
+            {
+                return failureResult(
+                    request, AudioStreamFailureStage::Validation,
+                    paInvalidDevice,
+                    "The selected output device is unavailable.");
+            }
+            if (request.outputChannels > info->maxOutputChannels)
+            {
+                return failureResult(request,
+                                     AudioStreamFailureStage::Validation,
+                                     paInvalidChannelCount,
+                                     "The output device does not provide the "
+                                     "required channel count.");
+            }
+            output.device = request.outputDeviceIndex;
+            output.channelCount = request.outputChannels;
+            output.sampleFormat = paFloat32;
+            output.suggestedLatency = info->defaultLowOutputLatency;
+            output.hostApiSpecificStreamInfo = nullptr;
+            outputPtr = &output;
+        }
+        return {};
+    }
 } // namespace
 
-AudioDevices::AudioDevices(const bool openDefaultDevice)
+AudioDevices::AudioDevices(const bool usePortAudioStreamsToUse)
     : concurrency::AtomicStateExchange<AudioDeviceState, AudioDeviceView,
-                                       AudioMessage>([](AudioDeviceState &) {})
+                                       AudioMessage>([](AudioDeviceState &) {}),
+      usePortAudioStreams(usePortAudioStreamsToUse)
 {
     PaError err = Pa_Initialize();
 
@@ -75,11 +238,6 @@ AudioDevices::AudioDevices(const bool openDefaultDevice)
     {
         std::lock_guard<std::mutex> lock(selectionMutex);
         deviceSelection = initialSelection;
-    }
-
-    if (openDefaultDevice && initialSelection.outputDeviceIndex >= 0)
-    {
-        openDevice(-1, initialSelection.outputDeviceIndex);
     }
 }
 
@@ -138,11 +296,11 @@ void AudioDevices::recordInputIntoQueue(
         return;
     }
 
-    int recordingChannels = data.inputChannelCount;
+    int recordingChannels = data.recordingDocumentChannelCount;
     if (recordingChannels <= 0)
     {
         recordingChannels = static_cast<int>(
-            std::max<uint8_t>(data.recordingDocumentChannelCount, uint8_t{1}));
+            std::max<uint8_t>(data.inputChannelCount, uint8_t{1}));
     }
     if (recordingChannels <= 0)
     {
@@ -171,14 +329,16 @@ void AudioDevices::recordInputIntoQueue(
         return;
     }
 
+    const uint8_t inputChannels = data.inputChannelCount > 0
+                                      ? data.inputChannelCount
+                                      : static_cast<uint8_t>(recordingChannels);
     if (!callback_core::recordInputIntoChunks(
-            input, framesToRecord, static_cast<uint8_t>(recordingChannels),
-            state->recordingPosition,
+            input, framesToRecord, inputChannels,
+            static_cast<uint8_t>(recordingChannels), state->recordingPosition,
             static_cast<void *>(&data.device->recordedChunkQueue),
             enqueueRecordedChunk, meterLevels))
     {
-        data.device->recordingOverflowed.store(true,
-                                               std::memory_order_release);
+        data.device->recordingOverflowed.store(true, std::memory_order_release);
         state->isRecording = false;
         data.recordingBoundedToEnd = false;
     }
@@ -246,10 +406,24 @@ int AudioDevices::processCallbackCycle(
     drainQueue();
 
     callback_core::StereoMeterLevels meterLevels{};
+    auto *deviceOutput = static_cast<float *>(outputBuffer);
+    float *stereoOutput = deviceOutput;
+    const bool collapseToMono = deviceOutput && paData.outputChannelCount == 1;
+    if (collapseToMono)
+    {
+        if (framesPerBuffer > BUFFER_SIZE)
+        {
+            std::fill_n(deviceOutput, framesPerBuffer, 0.0f);
+            publishState();
+            return 0;
+        }
+        stereoOutput = paData.stereoOutputScratch.data();
+    }
 
     const bool playedAnyFrame =
-        fillOutputBuffer(paData, static_cast<float *>(outputBuffer),
-                         framesPerBuffer, meterLevels);
+        stereoOutput ? fillOutputBuffer(paData, stereoOutput, framesPerBuffer,
+                                        meterLevels)
+                     : false;
     recordInputIntoQueue(paData, inputBuffer, framesPerBuffer, meterLevels);
 
     const bool playbackOwnsOutput = playedAnyFrame || activeState.isPlaying;
@@ -277,8 +451,7 @@ int AudioDevices::processCallbackCycle(
         }
 
         const auto monitorResult = monitorPipeline->process(
-            inputBuffer, static_cast<float *>(outputBuffer), framesPerBuffer,
-            timing);
+            inputBuffer, stereoOutput, framesPerBuffer, timing);
         activeState.monitorProtection = monitorResult.telemetry;
         activeState.monitorProtection.tripGeneration = monitorTripGeneration;
         monitoredAnyFrame = true;
@@ -308,95 +481,193 @@ int AudioDevices::processCallbackCycle(
     pushPeaksToVuMeter(paData, meterLevels, playedAnyFrame,
                        activeState.isRecording, monitoredAnyFrame);
 
+    if (collapseToMono)
+    {
+        for (unsigned long frame = 0; frame < framesPerBuffer; ++frame)
+        {
+            deviceOutput[frame] =
+                0.5f * (stereoOutput[frame * 2] + stereoOutput[frame * 2 + 1]);
+        }
+    }
+
     publishState();
     return 0;
 }
 
-bool AudioDevices::openDevice(const int inputDeviceIndex,
-                              const int outputDeviceIndex)
+AudioStreamSetupResult
+AudioDevices::probeStream(const AudioStreamRequest &request) const
+{
+    PaStreamParameters input{};
+    PaStreamParameters output{};
+    const PaStreamParameters *inputPtr = nullptr;
+    const PaStreamParameters *outputPtr = nullptr;
+    if (auto result =
+            makeParameters(request, input, inputPtr, output, outputPtr);
+        !result)
+    {
+        return result;
+    }
+
+    const PaError error =
+        Pa_IsFormatSupported(inputPtr, outputPtr, request.sampleRate);
+    if (error != paFormatIsSupported)
+    {
+        return failureResult(request, AudioStreamFailureStage::FormatProbe,
+                             error);
+    }
+    return {};
+}
+
+AudioStreamSetupResult AudioDevices::chooseSupportedChannelCount(
+    const int deviceIndex, const bool isInput, const double sampleRate,
+    const uint8_t preferredChannels, const AudioStreamPurpose purpose,
+    uint8_t &selectedChannels) const
+{
+    selectedChannels = 0;
+    const PaDeviceInfo *info = Pa_GetDeviceInfo(deviceIndex);
+    const int maximumChannels =
+        info ? (isInput ? info->maxInputChannels : info->maxOutputChannels) : 0;
+    const uint8_t preferred = std::clamp<uint8_t>(preferredChannels, 1, 2);
+    const std::array<uint8_t, 2> candidates{
+        preferred, static_cast<uint8_t>(preferred == 1 ? 2 : 1)};
+    std::optional<AudioStreamSetupResult> lastFailure;
+
+    for (const uint8_t channels : candidates)
+    {
+        if (channels > maximumChannels)
+        {
+            continue;
+        }
+        AudioStreamRequest request{.purpose =
+                                       purpose == AudioStreamPurpose::Monitoring
+                                           ? AudioStreamPurpose::Probe
+                                           : purpose,
+                                   .sampleRate = sampleRate};
+        if (isInput)
+        {
+            request.inputDeviceIndex = deviceIndex;
+            request.inputChannels = channels;
+        }
+        else
+        {
+            request.outputDeviceIndex = deviceIndex;
+            request.outputChannels = channels;
+        }
+        auto result = probeStream(request);
+        if (result)
+        {
+            selectedChannels = channels;
+            return {};
+        }
+        if (result.failure)
+        {
+            result.failure->request.purpose = purpose;
+        }
+        lastFailure = std::move(result);
+    }
+
+    if (lastFailure)
+    {
+        return std::move(*lastFailure);
+    }
+
+    AudioStreamRequest request{.purpose = purpose, .sampleRate = sampleRate};
+    if (isInput)
+    {
+        request.inputDeviceIndex = deviceIndex;
+        request.inputChannels = preferred;
+    }
+    else
+    {
+        request.outputDeviceIndex = deviceIndex;
+        request.outputChannels = preferred;
+    }
+    return failureResult(
+        request, AudioStreamFailureStage::Validation, paInvalidChannelCount,
+        isInput ? "The input device does not provide an audio channel."
+                : "The output device does not provide an audio channel.");
+}
+
+AudioStreamSetupResult
+AudioDevices::openStream(const AudioStreamRequest &request)
 {
     std::lock_guard<std::mutex> lock(streamMutex);
+    return openStreamLocked(request, true);
+}
 
-    const bool outputChanged = outputDeviceIndex != currentOutputDeviceIndex;
-    const bool inputChanged = inputDeviceIndex != currentInputDeviceIndex;
-    currentInputDeviceIndex = inputDeviceIndex;
-    currentOutputDeviceIndex = outputDeviceIndex;
-
-    if (!outputChanged && !inputChanged && stream)
+AudioStreamSetupResult
+AudioDevices::openStreamLocked(const AudioStreamRequest &request,
+                               const bool startStream)
+{
+    const bool unchanged =
+        stream && request.inputDeviceIndex == currentInputDeviceIndex &&
+        request.outputDeviceIndex == currentOutputDeviceIndex &&
+        request.sampleRate == currentSampleRate &&
+        request.inputChannels == currentInputChannelCount &&
+        request.outputChannels == currentOutputChannelCount;
+    if (unchanged)
     {
-        return true;
+        return {};
+    }
+
+    PaStreamParameters input{};
+    PaStreamParameters output{};
+    const PaStreamParameters *inputPtr = nullptr;
+    const PaStreamParameters *outputPtr = nullptr;
+    if (auto result =
+            makeParameters(request, input, inputPtr, output, outputPtr);
+        !result)
+    {
+        return result;
+    }
+
+    const PaError support =
+        Pa_IsFormatSupported(inputPtr, outputPtr, request.sampleRate);
+    if (support != paFormatIsSupported)
+    {
+        return failureResult(request, AudioStreamFailureStage::FormatProbe,
+                             support);
     }
 
     closeDeviceLocked();
-
-    if (outputDeviceIndex < 0)
-    {
-        return false;
-    }
-
-    const PaDeviceInfo *outputInfo = Pa_GetDeviceInfo(outputDeviceIndex);
-    if (!outputInfo)
-    {
-        return false;
-    }
-
-    PaStreamParameters outputParameters{};
-    outputParameters.device = outputDeviceIndex;
-    outputParameters.channelCount = 2;
-    outputParameters.sampleFormat = paFloat32;
-    outputParameters.suggestedLatency = outputInfo->defaultLowOutputLatency;
-    outputParameters.hostApiSpecificStreamInfo = nullptr;
-
-    PaStreamParameters inputParameters{};
-    PaStreamParameters *inputParametersPtr = nullptr;
-    paData.inputChannelCount = 0;
-    if (inputDeviceIndex >= 0)
-    {
-        const PaDeviceInfo *inputInfo = Pa_GetDeviceInfo(inputDeviceIndex);
-        if (!inputInfo || inputInfo->maxInputChannels <= 0)
-        {
-            return false;
-        }
-        inputParameters.device = inputDeviceIndex;
-        inputParameters.channelCount =
-            std::clamp(inputInfo->maxInputChannels, 1, 2);
-        inputParameters.sampleFormat = paFloat32;
-        inputParameters.suggestedLatency = inputInfo->defaultLowInputLatency;
-        inputParameters.hostApiSpecificStreamInfo = nullptr;
-        inputParametersPtr = &inputParameters;
-        paData.inputChannelCount =
-            static_cast<uint8_t>(inputParameters.channelCount);
-    }
-
+    PaStream *candidateStream = nullptr;
     paData.device = this;
-
-    PaError err =
-        Pa_OpenStream(&stream, inputParametersPtr, &outputParameters,
-                      SAMPLE_RATE, BUFFER_SIZE, paNoFlag, paCallback, &paData);
-    if (err != paNoError)
+    PaError error =
+        Pa_OpenStream(&candidateStream, inputPtr, outputPtr, request.sampleRate,
+                      BUFFER_SIZE, paNoFlag, paCallback, &paData);
+    if (error != paNoError)
     {
-        PaUtil::handlePaError(err);
-        stream = nullptr;
-        return false;
+        return failureResult(request, AudioStreamFailureStage::Open, error);
     }
+
+    stream = candidateStream;
+    currentInputDeviceIndex =
+        request.hasInput() ? request.inputDeviceIndex : -1;
+    currentOutputDeviceIndex =
+        request.hasOutput() ? request.outputDeviceIndex : -1;
+    currentSampleRate = request.sampleRate;
+    currentInputChannelCount = request.inputChannels;
+    currentOutputChannelCount = request.outputChannels;
+    paData.inputChannelCount = request.inputChannels;
+    paData.outputChannelCount = request.outputChannels;
 
     monitorPipeline.reset();
-    if (inputParametersPtr)
+    if (request.purpose == AudioStreamPurpose::Monitoring ||
+        (request.isDuplex() && isInputMonitoringEnabled()))
     {
         const PaStreamInfo *streamInfo = Pa_GetStreamInfo(stream);
         MonitorStreamFormat monitorFormat{
-            .sampleRate = streamInfo ? static_cast<int>(
-                                           std::lround(streamInfo->sampleRate))
-                                     : SAMPLE_RATE,
+            .sampleRate =
+                streamInfo
+                    ? static_cast<int>(std::lround(streamInfo->sampleRate))
+                    : static_cast<int>(std::lround(request.sampleRate)),
             .callbackFrames = BUFFER_SIZE,
-            .inputChannels = paData.inputChannelCount,
-            .outputChannels = 2,
-            .inputLatencySeconds = streamInfo
-                                       ? streamInfo->inputLatency
-                                       : inputParameters.suggestedLatency,
-            .outputLatencySeconds = streamInfo
-                                        ? streamInfo->outputLatency
-                                        : outputParameters.suggestedLatency};
+            .inputChannels = request.inputChannels,
+            .outputChannels = request.outputChannels,
+            .inputLatencySeconds =
+                streamInfo ? streamInfo->inputLatency : input.suggestedLatency,
+            .outputLatencySeconds = streamInfo ? streamInfo->outputLatency
+                                               : output.suggestedLatency};
         auto candidate = std::make_unique<InputMonitorPipeline>();
         if (candidate->prepare(monitorFormat))
         {
@@ -404,18 +675,35 @@ bool AudioDevices::openDevice(const int inputDeviceIndex,
                 feedbackSuppressionMode.load(std::memory_order_acquire));
             monitorPipeline = std::move(candidate);
         }
+        else
+        {
+            closeDeviceLocked();
+            return failureResult(
+                request, AudioStreamFailureStage::MonitorPreparation,
+                paInternalError,
+                "The input monitoring pipeline could not be prepared.");
+        }
     }
 
-    err = Pa_StartStream(stream);
-    if (err != paNoError)
+    if (!startStream)
     {
-        PaUtil::handlePaError(err);
-        Pa_CloseStream(stream);
-        stream = nullptr;
-        monitorPipeline.reset();
-        return false;
+        return {};
     }
-    return true;
+
+    error = Pa_StartStream(stream);
+    if (error != paNoError)
+    {
+        auto failure =
+            failureResult(request, AudioStreamFailureStage::Start, error);
+        closeDeviceLocked();
+        return failure;
+    }
+    if (monitorPipeline &&
+        inputMonitoringRequested.load(std::memory_order_acquire))
+    {
+        monitorPipeline->startSession();
+    }
+    return {};
 }
 
 void AudioDevices::closeDevice()
@@ -424,22 +712,113 @@ void AudioDevices::closeDevice()
     closeDeviceLocked();
     currentInputDeviceIndex = -1;
     currentOutputDeviceIndex = -1;
+    currentSampleRate = 0.0;
+    currentInputChannelCount = 0;
+    currentOutputChannelCount = 0;
     paData.inputChannelCount = 0;
+    paData.outputChannelCount = 0;
 }
 
-bool AudioDevices::prepareForRecording()
+AudioStreamSetupResult
+AudioDevices::prepareForPlayback(const cupuacu::Document &document)
 {
+    if (!usePortAudioStreams)
+    {
+        return {};
+    }
+    const auto selection = getDeviceSelection();
+    const auto documentChannels = static_cast<uint8_t>(
+        std::clamp<int64_t>(document.getChannelCount(), 0, 2));
+    const double sampleRate = static_cast<double>(document.getSampleRate());
+    const bool monitoring = isInputMonitoringEnabled();
+    AudioStreamRequest request{.purpose = monitoring
+                                              ? AudioStreamPurpose::Monitoring
+                                              : AudioStreamPurpose::Playback,
+                               .outputDeviceIndex = selection.outputDeviceIndex,
+                               .sampleRate = sampleRate,
+                               .outputChannels = documentChannels};
+    if (selection.outputDeviceIndex >= 0)
+    {
+        if (auto result = chooseSupportedChannelCount(
+                selection.outputDeviceIndex, false, sampleRate,
+                documentChannels, request.purpose, request.outputChannels);
+            !result)
+        {
+            return result;
+        }
+    }
+    if (monitoring)
+    {
+        request.inputDeviceIndex = selection.inputDeviceIndex;
+        request.inputChannels = documentChannels;
+        if (selection.inputDeviceIndex >= 0)
+        {
+            if (auto result = chooseSupportedChannelCount(
+                    selection.inputDeviceIndex, true, sampleRate,
+                    documentChannels, request.purpose, request.inputChannels);
+                !result)
+            {
+                return result;
+            }
+        }
+    }
+    return openStream(request);
+}
+
+AudioStreamSetupResult
+AudioDevices::prepareForRecording(const cupuacu::Document &document)
+{
+    if (recordingPreparationResultForTesting &&
+        !*recordingPreparationResultForTesting)
+    {
+        const AudioStreamRequest request{
+            .purpose = AudioStreamPurpose::Recording,
+            .sampleRate = static_cast<double>(document.getSampleRate())};
+        return failureResult(request, AudioStreamFailureStage::Open,
+                             paDeviceUnavailable,
+                             "The selected input device is unavailable.");
+    }
     if (recordingPreparationResultForTesting)
     {
-        return *recordingPreparationResultForTesting;
+        return {};
     }
-
     const auto selection = getDeviceSelection();
-    if (selection.inputDeviceIndex < 0 || selection.outputDeviceIndex < 0)
+    const auto documentChannels = static_cast<uint8_t>(
+        std::clamp<int64_t>(document.getChannelCount(), 0, 2));
+    const double sampleRate = static_cast<double>(document.getSampleRate());
+    const bool monitoring = isInputMonitoringEnabled();
+    AudioStreamRequest request{.purpose = monitoring
+                                              ? AudioStreamPurpose::Monitoring
+                                              : AudioStreamPurpose::Recording,
+                               .inputDeviceIndex = selection.inputDeviceIndex,
+                               .sampleRate = sampleRate,
+                               .inputChannels = documentChannels};
+    if (selection.inputDeviceIndex >= 0)
     {
-        return false;
+        if (auto result = chooseSupportedChannelCount(
+                selection.inputDeviceIndex, true, sampleRate, documentChannels,
+                request.purpose, request.inputChannels);
+            !result)
+        {
+            return result;
+        }
     }
-    return openDevice(selection.inputDeviceIndex, selection.outputDeviceIndex);
+    if (monitoring)
+    {
+        request.outputDeviceIndex = selection.outputDeviceIndex;
+        request.outputChannels = documentChannels;
+        if (selection.outputDeviceIndex >= 0)
+        {
+            if (auto result = chooseSupportedChannelCount(
+                    selection.outputDeviceIndex, false, sampleRate,
+                    documentChannels, request.purpose, request.outputChannels);
+                !result)
+            {
+                return result;
+            }
+        }
+    }
+    return openStream(request);
 }
 
 void AudioDevices::setRecordingPreparationResultForTesting(const bool result)
@@ -447,28 +826,72 @@ void AudioDevices::setRecordingPreparationResultForTesting(const bool result)
     recordingPreparationResultForTesting = result;
 }
 
-bool AudioDevices::setInputMonitoringEnabled(const bool enabled,
-                                             gui::VuMeter *vuMeter)
+AudioStreamSetupResult
+AudioDevices::setInputMonitoringEnabled(const bool enabled,
+                                        const cupuacu::Document *document,
+                                        gui::VuMeter *vuMeter)
 {
     if (enabled)
     {
         if (isPlaying())
         {
-            return false;
+            return failureResult(
+                {.purpose = AudioStreamPurpose::Monitoring},
+                AudioStreamFailureStage::Validation, paStreamIsNotStopped,
+                "Stop playback before enabling input monitoring.");
+        }
+        if (!document || document->getSampleRate() <= 0 ||
+            document->getChannelCount() <= 0)
+        {
+            return failureResult({.purpose = AudioStreamPurpose::Monitoring},
+                                 AudioStreamFailureStage::Validation,
+                                 paInvalidSampleRate,
+                                 "Create or open a formatted document before "
+                                 "enabling input monitoring.");
         }
 
         if (!isRecording())
         {
             const auto selection = getDeviceSelection();
-            if (selection.inputDeviceIndex < 0 ||
-                selection.outputDeviceIndex < 0 ||
-                !openDevice(selection.inputDeviceIndex,
-                            selection.outputDeviceIndex))
+            const auto documentChannels = static_cast<uint8_t>(
+                std::clamp<int64_t>(document->getChannelCount(), 0, 2));
+            const double sampleRate =
+                static_cast<double>(document->getSampleRate());
+            AudioStreamRequest request{
+                .purpose = AudioStreamPurpose::Monitoring,
+                .inputDeviceIndex = selection.inputDeviceIndex,
+                .outputDeviceIndex = selection.outputDeviceIndex,
+                .sampleRate = sampleRate,
+                .inputChannels = documentChannels,
+                .outputChannels = documentChannels};
+            if (selection.inputDeviceIndex >= 0)
+            {
+                if (auto result = chooseSupportedChannelCount(
+                        selection.inputDeviceIndex, true, sampleRate,
+                        documentChannels, request.purpose,
+                        request.inputChannels);
+                    !result)
+                {
+                    return result;
+                }
+            }
+            if (selection.outputDeviceIndex >= 0)
+            {
+                if (auto result = chooseSupportedChannelCount(
+                        selection.outputDeviceIndex, false, sampleRate,
+                        documentChannels, request.purpose,
+                        request.outputChannels);
+                    !result)
+                {
+                    return result;
+                }
+            }
+            if (auto result = openStream(request); !result)
             {
                 inputMonitoringError.store(
                     InputMonitoringError::DeviceUnavailable,
                     std::memory_order_release);
-                return false;
+                return result;
             }
         }
         const auto mode =
@@ -479,7 +902,10 @@ bool AudioDevices::setInputMonitoringEnabled(const bool enabled,
             inputMonitoringError.store(
                 InputMonitoringError::SuppressionUnavailable,
                 std::memory_order_release);
-            return false;
+            return failureResult(
+                {.purpose = AudioStreamPurpose::Monitoring},
+                AudioStreamFailureStage::MonitorPreparation, paInternalError,
+                "Feedback suppression could not be initialized.");
         }
     }
 
@@ -493,10 +919,9 @@ bool AudioDevices::setInputMonitoringEnabled(const bool enabled,
 
     if (!enabled && !isPlaying() && !isRecording())
     {
-        const auto selection = getDeviceSelection();
-        openDevice(-1, selection.outputDeviceIndex);
+        closeDevice();
     }
-    return true;
+    return {};
 }
 
 bool AudioDevices::isInputMonitoringEnabled() const noexcept
@@ -541,14 +966,20 @@ void AudioDevices::releaseInputIfUnused()
     {
         return;
     }
-    const auto selection = getDeviceSelection();
-    openDevice(-1, selection.outputDeviceIndex);
+    closeDevice();
 }
 
 void AudioDevices::closeDeviceLocked()
 {
     if (!stream)
     {
+        currentInputDeviceIndex = -1;
+        currentOutputDeviceIndex = -1;
+        currentSampleRate = 0.0;
+        currentInputChannelCount = 0;
+        currentOutputChannelCount = 0;
+        paData.inputChannelCount = 0;
+        paData.outputChannelCount = 0;
         return;
     }
 
@@ -565,6 +996,13 @@ void AudioDevices::closeDeviceLocked()
     }
     stream = nullptr;
     monitorPipeline.reset();
+    currentInputDeviceIndex = -1;
+    currentOutputDeviceIndex = -1;
+    currentSampleRate = 0.0;
+    currentInputChannelCount = 0;
+    currentOutputChannelCount = 0;
+    paData.inputChannelCount = 0;
+    paData.outputChannelCount = 0;
 }
 
 void AudioDevices::snapshotQueuedPlayMessage(Play &msg)
@@ -799,6 +1237,19 @@ bool AudioDevices::isRecording() const
     return getSnapshot().isRecording();
 }
 
+bool AudioDevices::hasOpenStream() const
+{
+    std::lock_guard<std::mutex> lock(streamMutex);
+    return stream != nullptr;
+}
+
+bool AudioDevices::currentDuplexStreamMatches(const double sampleRate) const
+{
+    std::lock_guard<std::mutex> lock(streamMutex);
+    return stream && currentSampleRate == sampleRate &&
+           currentInputChannelCount > 0 && currentOutputChannelCount > 0;
+}
+
 int64_t AudioDevices::getPlaybackPosition() const
 {
     return getSnapshot().getPlaybackPosition();
@@ -838,7 +1289,7 @@ bool AudioDevices::prepareInputMonitorForTesting(
     std::unique_ptr<MonitorCancellationBackend> backend)
 {
     auto candidate = std::make_unique<InputMonitorPipeline>();
-    const MonitorStreamFormat format{.sampleRate = SAMPLE_RATE,
+    const MonitorStreamFormat format{.sampleRate = 44100,
                                      .callbackFrames = BUFFER_SIZE,
                                      .inputChannels = inputChannels,
                                      .outputChannels = 2};
@@ -870,20 +1321,179 @@ bool AudioDevices::setDeviceSelection(const DeviceSelection &selection)
         deviceSelection = selection;
     }
 
-    const bool needsInput = isInputMonitoringEnabled() || isRecording();
-    const bool opened = openDevice(needsInput ? selection.inputDeviceIndex : -1,
-                                   selection.outputDeviceIndex);
-    if (isInputMonitoringEnabled() &&
-        (!opened || !monitorPipeline || !monitorPipeline->isPrepared() ||
-         !monitorPipeline->isModeAvailable(
-             feedbackSuppressionMode.load(std::memory_order_acquire))))
-    {
-        inputMonitoringError.store(
-            opened ? InputMonitoringError::SuppressionUnavailable
-                   : InputMonitoringError::DeviceUnavailable,
-            std::memory_order_release);
-        inputMonitoringRequested.store(false, std::memory_order_release);
-        Base::enqueue(SetInputMonitoring{.enabled = false});
-    }
     return true;
+}
+
+AudioStreamSetupResult
+AudioDevices::trySetDeviceSelection(const DeviceSelection &selection,
+                                    const double sampleRate,
+                                    const uint8_t channelCount)
+{
+    if (selection == getDeviceSelection())
+    {
+        return {};
+    }
+    if (isPlaying() || isRecording())
+    {
+        return failureResult(
+            {.purpose = AudioStreamPurpose::Probe},
+            AudioStreamFailureStage::Validation, paStreamIsNotStopped,
+            "Stop playback or recording before changing audio devices.");
+    }
+
+    const auto rateFor = [sampleRate](const int deviceIndex)
+    {
+        if (sampleRate > 0.0)
+        {
+            return sampleRate;
+        }
+        if (const PaDeviceInfo *info = Pa_GetDeviceInfo(deviceIndex))
+        {
+            return info->defaultSampleRate;
+        }
+        return 0.0;
+    };
+    const uint8_t preferredChannels = std::clamp<uint8_t>(channelCount, 1, 2);
+    uint8_t outputChannels = 0;
+    uint8_t inputChannels = 0;
+
+    if (selection.outputDeviceIndex >= 0)
+    {
+        if (auto result = chooseSupportedChannelCount(
+                selection.outputDeviceIndex, false,
+                rateFor(selection.outputDeviceIndex), preferredChannels,
+                AudioStreamPurpose::Probe, outputChannels);
+            !result)
+        {
+            return result;
+        }
+    }
+    if (selection.inputDeviceIndex >= 0)
+    {
+        if (auto result = chooseSupportedChannelCount(
+                selection.inputDeviceIndex, true,
+                rateFor(selection.inputDeviceIndex), preferredChannels,
+                AudioStreamPurpose::Probe, inputChannels);
+            !result)
+        {
+            return result;
+        }
+    }
+
+    if (isInputMonitoringEnabled())
+    {
+        const AudioStreamRequest previousRequest{
+            .purpose = AudioStreamPurpose::Monitoring,
+            .inputDeviceIndex = currentInputDeviceIndex,
+            .outputDeviceIndex = currentOutputDeviceIndex,
+            .sampleRate = currentSampleRate,
+            .inputChannels = currentInputChannelCount,
+            .outputChannels = currentOutputChannelCount};
+        const AudioStreamRequest duplexRequest{
+            .purpose = AudioStreamPurpose::Monitoring,
+            .inputDeviceIndex = selection.inputDeviceIndex,
+            .outputDeviceIndex = selection.outputDeviceIndex,
+            .sampleRate = sampleRate,
+            .inputChannels = inputChannels,
+            .outputChannels = outputChannels};
+        if (auto result = openStream(duplexRequest); !result)
+        {
+            if (previousRequest.isDuplex() && previousRequest.sampleRate > 0.0)
+            {
+                (void)openStream(previousRequest);
+            }
+            return result;
+        }
+    }
+
+    setDeviceSelection(selection);
+    return {};
+}
+
+DeviceRateSupport
+AudioDevices::getSupportedSampleRates(const int deviceIndex, const bool isInput,
+                                      const double activeRate) const
+{
+    DeviceRateSupport result;
+    if (deviceIndex < 0)
+    {
+        return result;
+    }
+
+    std::vector<double> rates(kDisplayedSampleRates.begin(),
+                              kDisplayedSampleRates.end());
+    const auto appendRate = [&rates](const double rate)
+    {
+        if (rate <= 0.0 ||
+            std::find(rates.begin(), rates.end(), rate) != rates.end())
+        {
+            return;
+        }
+        rates.push_back(rate);
+    };
+    appendRate(activeRate);
+    if (const PaDeviceInfo *info = Pa_GetDeviceInfo(deviceIndex))
+    {
+        appendRate(info->defaultSampleRate);
+    }
+    std::sort(rates.begin(), rates.end());
+
+    for (const double rate : rates)
+    {
+        for (uint8_t channels = 1; channels <= 2; ++channels)
+        {
+            AudioStreamRequest request{.purpose = AudioStreamPurpose::Probe,
+                                       .sampleRate = rate};
+            if (isInput)
+            {
+                request.inputDeviceIndex = deviceIndex;
+                request.inputChannels = channels;
+            }
+            else
+            {
+                request.outputDeviceIndex = deviceIndex;
+                request.outputChannels = channels;
+            }
+            if (probeStream(request))
+            {
+                (channels == 1 ? result.mono : result.stereo).push_back(rate);
+            }
+        }
+    }
+    return result;
+}
+
+std::string AudioDevices::describeFailure(const AudioStreamFailure &failure)
+{
+    std::ostringstream message;
+    message << "Could not set up " << purposeName(failure.request.purpose)
+            << " (" << stageName(failure.stage) << ").";
+    if (failure.request.sampleRate > 0.0)
+    {
+        message << "\n\nRate: " << std::lround(failure.request.sampleRate)
+                << " Hz";
+    }
+    if (failure.request.inputChannels > 0)
+    {
+        message << "\nInput channels: "
+                << static_cast<int>(failure.request.inputChannels);
+    }
+    if (failure.request.outputChannels > 0)
+    {
+        message << "\nOutput channels: "
+                << static_cast<int>(failure.request.outputChannels);
+    }
+    if (!failure.message.empty())
+    {
+        message << "\n\nPortAudio: " << failure.message;
+    }
+    if (!failure.hostMessage.empty() && failure.hostMessage != failure.message)
+    {
+        message << "\nHost: " << failure.hostMessage;
+    }
+    if (failure.request.purpose != AudioStreamPurpose::Probe)
+    {
+        message << "\n\nChoose input and output devices in Options > Audio.";
+    }
+    return message.str();
 }

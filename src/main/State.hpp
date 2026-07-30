@@ -210,6 +210,7 @@ namespace cupuacu
             unsavedChangesReporter;
         std::optional<std::pair<std::string, std::string>>
             pendingStartupWarning;
+        bool pendingRecordAfterNewFile = false;
         std::optional<std::uint64_t> pendingCloseTabAfterSaveId;
         std::deque<PendingOpenRequest> pendingOpenFiles;
         StartupRestoreStatus startupRestore;

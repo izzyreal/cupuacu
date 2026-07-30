@@ -19,6 +19,7 @@ namespace cupuacu::gui
         ~DevicePropertiesPane() override;
 
         void resized() override;
+        void timerCallback() override;
 
     private:
         bool ownsPortAudio = false;
@@ -26,16 +27,24 @@ namespace cupuacu::gui
         OpaqueRect *background = nullptr;
         Label *deviceTypeLabel = nullptr;
         DropdownMenu *deviceTypeDropdown = nullptr;
+        Label *streamDirectionHelpLabel = nullptr;
         Label *outputDeviceLabel = nullptr;
         DropdownMenu *outputDeviceDropdown = nullptr;
         Label *inputDeviceLabel = nullptr;
         DropdownMenu *inputDeviceDropdown = nullptr;
+        Label *outputMonoRatesLabel = nullptr;
+        Label *outputStereoRatesLabel = nullptr;
+        Label *inputMonoRatesLabel = nullptr;
+        Label *inputStereoRatesLabel = nullptr;
         Label *feedbackSuppressionLabel = nullptr;
         DropdownMenu *feedbackSuppressionDropdown = nullptr;
 
         std::vector<int> hostApiIndices;
         std::vector<int> outputDeviceIndices;
         std::vector<int> inputDeviceIndices;
+        int lastCapabilityDocumentRate = -1;
+        int lastCapabilityOutputDevice = -2;
+        int lastCapabilityInputDevice = -2;
 
         void populateHostApis();
         void populateDevices(const int hostApiIndex,
@@ -45,6 +54,7 @@ namespace cupuacu::gui
         int getSelectedDeviceIndex(const DropdownMenu *dropdown,
                                    const std::vector<int> &indices) const;
         bool syncSelectionToAudioDevices();
+        void refreshSupportedRates();
         void saveAudioProperties() const;
         void layoutComponents() const;
     };

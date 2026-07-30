@@ -4,6 +4,7 @@
 #include "SecondaryWindowLifecycle.hpp"
 #include "UiScale.hpp"
 #include "text.hpp"
+#include "../audio/AudioDevices.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -44,9 +45,10 @@ OptionsWindow::OptionsWindow(State *stateToUse,
     auto rootComponent = std::make_unique<Component>(state, "OptionsRoot");
     rootComponent->setVisible(true);
 
-    background = rootComponent->emplaceChild<OpaqueRect>(state, Colors::background);
-    sidebarBackground =
-        rootComponent->emplaceChild<OpaqueRect>(state, SDL_Color{34, 34, 34, 255});
+    background =
+        rootComponent->emplaceChild<OpaqueRect>(state, Colors::background);
+    sidebarBackground = rootComponent->emplaceChild<OpaqueRect>(
+        state, SDL_Color{34, 34, 34, 255});
     audioButton = rootComponent->emplaceChild<TextButton>(state, "Audio");
     displayButton = rootComponent->emplaceChild<TextButton>(state, "Display");
     audioPane = rootComponent->emplaceChild<DevicePropertiesPane>(state);
@@ -54,9 +56,16 @@ OptionsWindow::OptionsWindow(State *stateToUse,
 
     audioButton->setTriggerOnMouseUp(true);
     displayButton->setTriggerOnMouseUp(true);
-    audioButton->setOnPress([this]() { selectSection(OptionsSection::Audio); });
+    audioButton->setOnPress(
+        [this]()
+        {
+            selectSection(OptionsSection::Audio);
+        });
     displayButton->setOnPress(
-        [this]() { selectSection(OptionsSection::Display); });
+        [this]()
+        {
+            selectSection(OptionsSection::Display);
+        });
 
     window->setOnResize(
         [this]()
@@ -138,12 +147,12 @@ void OptionsWindow::layoutComponents() const
         measureText("Audio", buttonFontPointSize);
     const auto [displayTextW, displayTextH] =
         measureText("Display", buttonFontPointSize);
-    const int buttonTextWidth = std::max(
-        std::max(1, static_cast<int>(std::ceil(audioTextW))),
-        std::max(1, static_cast<int>(std::ceil(displayTextW))));
-    const int buttonTextHeight = std::max(
-        std::max(1, static_cast<int>(std::ceil(audioTextH))),
-        std::max(1, static_cast<int>(std::ceil(displayTextH))));
+    const int buttonTextWidth =
+        std::max(std::max(1, static_cast<int>(std::ceil(audioTextW))),
+                 std::max(1, static_cast<int>(std::ceil(displayTextW))));
+    const int buttonTextHeight =
+        std::max(std::max(1, static_cast<int>(std::ceil(audioTextH))),
+                 std::max(1, static_cast<int>(std::ceil(displayTextH))));
     const int buttonHeight =
         std::max(scaleUi(state, 36.0f), buttonTextHeight + padding * 2);
     const int buttonWidth =
@@ -157,8 +166,8 @@ void OptionsWindow::layoutComponents() const
     audioButton->setFontSize(state ? state->menuFontSize : 24);
     displayButton->setFontSize(state ? state->menuFontSize : 24);
     audioButton->setBounds(padding, padding, buttonWidth, buttonHeight);
-    displayButton->setBounds(padding, padding + buttonHeight + gap,
-                             buttonWidth, buttonHeight);
+    displayButton->setBounds(padding, padding + buttonHeight + gap, buttonWidth,
+                             buttonHeight);
 
     const SDL_Rect contentBounds{
         sidebarWidth + padding, padding,
@@ -196,7 +205,7 @@ void OptionsWindow::renderOnce() const
 void cupuacu::gui::showOptionsWindow(
     State *state, const std::optional<OptionsSection> section)
 {
-    if (!state)
+    if (!state || !isOptionsInteractionAvailable(state))
     {
         return;
     }
@@ -214,5 +223,28 @@ void cupuacu::gui::showOptionsWindow(
     if (state->optionsWindow)
     {
         state->optionsWindow->raise();
+    }
+}
+
+bool cupuacu::gui::isOptionsInteractionAvailable(const State *state)
+{
+    if (!state || !state->audioDevices)
+    {
+        return true;
+    }
+
+    const auto snapshot = state->audioDevices->getSnapshot();
+    return !state->audioDevices->hasOpenStream() &&
+           !state->audioDevices->isPlaying() &&
+           !state->audioDevices->isRecording() &&
+           !state->audioDevices->isInputMonitoringEnabled() &&
+           !snapshot.isInputMonitoringEnabled();
+}
+
+void cupuacu::gui::dismissOptionsWindow(State *state)
+{
+    if (state && state->optionsWindow)
+    {
+        state->optionsWindow.reset();
     }
 }

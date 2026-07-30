@@ -31,10 +31,17 @@ namespace cupuacu::gui
     {
         MenuMouseDownPlan plan{};
 
+        if (!isAvailable)
+        {
+            plan.hideMenuBarSubMenus = true;
+            plan.hideSelfSubMenus = isCurrentlyOpen;
+            return plan;
+        }
+
         if (!hasSubMenus)
         {
             plan.hideMenuBarSubMenus = true;
-            plan.invokeAction = isAvailable;
+            plan.invokeAction = true;
             return plan;
         }
 

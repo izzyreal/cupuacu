@@ -2,6 +2,7 @@
 
 #include "../State.hpp"
 #include "../actions/DocumentLifecycle.hpp"
+#include "../actions/Record.hpp"
 
 #include "Colors.hpp"
 #include "SecondaryWindowLifecycle.hpp"
@@ -72,18 +73,47 @@ namespace cupuacu::gui
         okButton->setTriggerOnMouseUp(true);
         const auto applyNewFile = [this]()
         {
-            cupuacu::actions::createNewDocumentInNewTab(
-                state, selectedSampleRate(), selectedFormat(),
+            State *stateToRecord = state;
+            const bool created = cupuacu::actions::createNewDocumentInNewTab(
+                stateToRecord, selectedSampleRate(), selectedFormat(),
                 selectedChannelCount());
+            const bool recordAfterCreation =
+                stateToRecord && stateToRecord->pendingRecordAfterNewFile;
+            if (stateToRecord)
+            {
+                stateToRecord->pendingRecordAfterNewFile = false;
+            }
             requestClose();
+            if (created && recordAfterCreation)
+            {
+                cupuacu::actions::record(stateToRecord);
+            }
         };
-        cancelButton->setOnPress([this]() { requestClose(); });
+        cancelButton->setOnPress(
+            [this]()
+            {
+                state->pendingRecordAfterNewFile = false;
+                requestClose();
+            });
         okButton->setOnPress(applyNewFile);
 
         window->setOnResize([this]() { layoutComponents(); });
         window->setDefaultAction(applyNewFile);
-        window->setCancelAction([this]() { requestClose(); });
-        window->setOnClose([this]() { detachFromState(); });
+        window->setCancelAction(
+            [this]()
+            {
+                state->pendingRecordAfterNewFile = false;
+                requestClose();
+            });
+        window->setOnClose(
+            [this]()
+            {
+                if (state)
+                {
+                    state->pendingRecordAfterNewFile = false;
+                }
+                detachFromState();
+            });
         window->setRootComponent(std::move(root));
         layoutComponents();
         window->renderFrame();

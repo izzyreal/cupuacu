@@ -396,12 +396,12 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
             return describeSelectionEditAvailability(state);
         });
 
-    auto deleteMenu = editMenu->addSubMenu(
-        state, deleteText,
-        [&]
-        {
-            actions::audio::performDelete(state);
-        });
+    auto deleteMenu =
+        editMenu->addSubMenu(state, deleteText,
+                             [&]
+                             {
+                                 actions::audio::performDelete(state);
+                             });
     deleteMenu->setAvailability(
         [&]
         {
@@ -431,12 +431,12 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
             return describePasteAvailability(state);
         });
 
-    auto *insertMarkerMenu = editMenu->addSubMenu(
-        state, "Insert marker",
-        [&]
-        {
-            actions::markers::insertMarkerAtCursor(state);
-        });
+    auto *insertMarkerMenu =
+        editMenu->addSubMenu(state, "Insert marker",
+                             [&]
+                             {
+                                 actions::markers::insertMarkerAtCursor(state);
+                             });
     insertMarkerMenu->setAvailability(
         [&]
         {
@@ -471,12 +471,12 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
                 actions::describeDocumentMutationAvailability(state));
         });
 
-    auto *splitByMarkersMenu = editMenu->addSubMenu(
-        state, "Split by markers",
-        [&]
-        {
-            actions::markers::splitByMarkers(state);
-        });
+    auto *splitByMarkersMenu =
+        editMenu->addSubMenu(state, "Split by markers",
+                             [&]
+                             {
+                                 actions::markers::splitByMarkers(state);
+                             });
     splitByMarkersMenu->setAvailability(
         [&]
         {
@@ -491,20 +491,19 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
             {
                 return MenuAvailability{
                     .available = false,
-                    .unavailableReason =
-                        "At least two markers are required"};
+                    .unavailableReason = "At least two markers are required"};
             }
 
             return menuAvailabilityFromActionAvailability(
                 actions::describeDocumentMutationAvailability(state));
         });
 
-    auto *reverseMenu = effectsMenu->addSubMenu(
-        state, "Reverse",
-        [&]
-        {
-            effects::performReverse(state);
-        });
+    auto *reverseMenu =
+        effectsMenu->addSubMenu(state, "Reverse",
+                                [&]
+                                {
+                                    effects::performReverse(state);
+                                });
     reverseMenu->setAvailability(
         [&]
         {
@@ -518,12 +517,12 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
             return menuAvailabilityFromActionAvailability(
                 actions::describeDocumentMutationAvailability(state));
         });
-    auto *makeSilentMenu = effectsMenu->addSubMenu(
-        state, "Make silent",
-        [&]
-        {
-            effects::performMakeSilent(state);
-        });
+    auto *makeSilentMenu =
+        effectsMenu->addSubMenu(state, "Make silent",
+                                [&]
+                                {
+                                    effects::performMakeSilent(state);
+                                });
     makeSilentMenu->setAvailability(
         [&]
         {
@@ -616,6 +615,17 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
                                 showOptionsWindow(state,
                                                   OptionsSection::Display);
                             });
+    optionsMenu->setAvailability(
+        [&]
+        {
+            return isOptionsInteractionAvailable(state)
+                       ? MenuAvailability{}
+                       : MenuAvailability{
+                             .available = false,
+                             .unavailableReason =
+                                 "Stop playback or recording and disable "
+                                 "monitoring first"};
+        });
 }
 
 void MenuBar::onDraw(SDL_Renderer *renderer)

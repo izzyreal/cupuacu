@@ -401,7 +401,7 @@ TEST_CASE("AudioCallbackCore computes RMS levels for recorded input", "[audio]")
     };
 
     REQUIRE(cupuacu::audio::callback_core::recordInputIntoChunks(
-        input, 2, 2, recordingPosition, &queue, enqueueChunk, meterLevels));
+        input, 2, 2, 2, recordingPosition, &queue, enqueueChunk, meterLevels));
 
     REQUIRE(recordingPosition == 2);
     REQUIRE(meterLevels.peakLeft == Catch::Approx(1.0f));
@@ -410,20 +410,73 @@ TEST_CASE("AudioCallbackCore computes RMS levels for recorded input", "[audio]")
     REQUIRE(meterLevels.rmsRight == Catch::Approx(0.5f));
 }
 
-TEST_CASE("AudioCallbackCore stops advancing when recorded chunk delivery fails",
+TEST_CASE("AudioCallbackCore adapts physical input channels to the document",
           "[audio]")
+{
+    moodycamel::ReaderWriterQueue<cupuacu::audio::RecordedChunk> queue(8);
+    const auto enqueueChunk =
+        [](void *userdata, const cupuacu::audio::RecordedChunk &chunk) -> bool
+    {
+        auto *typedQueue = static_cast<
+            moodycamel::ReaderWriterQueue<cupuacu::audio::RecordedChunk> *>(
+            userdata);
+        return typedQueue->try_enqueue(chunk);
+    };
+
+    SECTION("mono input becomes dual mono for a stereo document")
+    {
+        const float input[] = {0.25f, -0.5f};
+        int64_t recordingPosition = 0;
+        cupuacu::audio::callback_core::StereoMeterLevels meterLevels{};
+
+        REQUIRE(cupuacu::audio::callback_core::recordInputIntoChunks(
+            input, 2, 1, 2, recordingPosition, &queue, enqueueChunk,
+            meterLevels));
+
+        cupuacu::audio::RecordedChunk chunk{};
+        REQUIRE(queue.try_dequeue(chunk));
+        REQUIRE(chunk.channelCount == 2);
+        REQUIRE(chunk.interleavedSamples[0] == Catch::Approx(0.25f));
+        REQUIRE(chunk.interleavedSamples[1] == Catch::Approx(0.25f));
+        REQUIRE(chunk.interleavedSamples[2] == Catch::Approx(-0.5f));
+        REQUIRE(chunk.interleavedSamples[3] == Catch::Approx(-0.5f));
+    }
+
+    SECTION("stereo input is downmixed for a mono document")
+    {
+        const float input[] = {1.0f, -0.5f, 0.25f, 0.75f};
+        int64_t recordingPosition = 0;
+        cupuacu::audio::callback_core::StereoMeterLevels meterLevels{};
+
+        REQUIRE(cupuacu::audio::callback_core::recordInputIntoChunks(
+            input, 2, 2, 1, recordingPosition, &queue, enqueueChunk,
+            meterLevels));
+
+        cupuacu::audio::RecordedChunk chunk{};
+        REQUIRE(queue.try_dequeue(chunk));
+        REQUIRE(chunk.channelCount == 1);
+        REQUIRE(chunk.interleavedSamples[0] == Catch::Approx(0.25f));
+        REQUIRE(chunk.interleavedSamples[1] == Catch::Approx(0.25f));
+        REQUIRE(chunk.interleavedSamples[2] == Catch::Approx(0.5f));
+        REQUIRE(chunk.interleavedSamples[3] == Catch::Approx(0.5f));
+    }
+}
+
+TEST_CASE(
+    "AudioCallbackCore stops advancing when recorded chunk delivery fails",
+    "[audio]")
 {
     const float input[] = {0.25f, -0.25f, 0.5f, -0.5f};
     int64_t recordingPosition = 17;
     cupuacu::audio::callback_core::StereoMeterLevels meterLevels{};
-    const auto rejectChunk =
-        [](void *, const cupuacu::audio::RecordedChunk &) -> bool
+    const auto rejectChunk = [](void *,
+                                const cupuacu::audio::RecordedChunk &) -> bool
     {
         return false;
     };
 
     REQUIRE_FALSE(cupuacu::audio::callback_core::recordInputIntoChunks(
-        input, 2, 2, recordingPosition, nullptr, rejectChunk, meterLevels));
+        input, 2, 2, 2, recordingPosition, nullptr, rejectChunk, meterLevels));
     REQUIRE(recordingPosition == 17);
 }
 

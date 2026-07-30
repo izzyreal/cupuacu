@@ -103,6 +103,8 @@ TEST_CASE("Record action reports an unavailable audio input", "[audio]")
     cupuacu::test::StateWithTestPaths state{};
     state.audioDevices = std::make_shared<cupuacu::audio::AudioDevices>(false);
     state.audioDevices->setRecordingPreparationResultForTesting(false);
+    state.getActiveDocumentSession().document.initialize(
+        cupuacu::SampleFormat::FLOAT32, 44100, 2, 0);
     std::string reportedTitle;
     std::string reportedMessage;
     state.errorReporter =
@@ -146,7 +148,37 @@ TEST_CASE(
     REQUIRE(stored.hostApiIndex == changed.hostApiIndex);
     REQUIRE(stored.outputDeviceIndex == -1);
     REQUIRE(stored.inputDeviceIndex == -1);
-    REQUIRE_FALSE(devices.prepareForRecording());
+    cupuacu::Document document;
+    document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 0);
+    REQUIRE_FALSE(devices.prepareForRecording(document));
+}
+
+TEST_CASE(
+    "Operation stream setup reports missing directions with document context",
+    "[audio]")
+{
+    cupuacu::audio::AudioDevices devices(true);
+    devices.setDeviceSelection(
+        {.hostApiIndex = -1, .outputDeviceIndex = -1, .inputDeviceIndex = -1});
+    cupuacu::Document document;
+    document.initialize(cupuacu::SampleFormat::PCM_S16, 48000, 1, 0);
+
+    const auto playback = devices.prepareForPlayback(document);
+    REQUIRE_FALSE(playback);
+    REQUIRE(playback.failure.has_value());
+    REQUIRE(playback.failure->stage ==
+            cupuacu::audio::AudioStreamFailureStage::Validation);
+    REQUIRE(playback.failure->request.sampleRate == 48000);
+    REQUIRE(playback.failure->request.outputChannels == 1);
+    REQUIRE(playback.failure->message.find("output device") !=
+            std::string::npos);
+
+    const auto recording = devices.prepareForRecording(document);
+    REQUIRE_FALSE(recording);
+    REQUIRE(recording.failure.has_value());
+    REQUIRE(recording.failure->request.inputChannels == 1);
+    REQUIRE(recording.failure->message.find("input device") !=
+            std::string::npos);
 }
 
 TEST_CASE("Input monitoring routes idle input and survives stop", "[audio]")
@@ -292,6 +324,28 @@ TEST_CASE("Monitored recording preserves captured samples", "[audio]")
     REQUIRE(devices.popRecordedChunk(chunk));
     REQUIRE(chunk.interleavedSamples[0] == input[0]);
     REQUIRE(chunk.interleavedSamples[1] == input[1]);
+}
+
+TEST_CASE("Input-only callback records without an output buffer", "[audio]")
+{
+    cupuacu::audio::AudioDevices devices(false);
+    cupuacu::Document document{};
+    document.initialize(cupuacu::SampleFormat::PCM_S24, 48000, 1, 8);
+    devices.applyMessageImmediate(cupuacu::audio::Record{.document = &document,
+                                                         .startPos = 0,
+                                                         .endPos = 0,
+                                                         .boundedToEnd = false,
+                                                         .vuMeter = nullptr});
+
+    const std::vector<float> input{0.25f, -0.5f};
+    REQUIRE(devices.processCallbackCycle(input.data(), nullptr, 2) == 0);
+
+    cupuacu::audio::AudioDevices::RecordedChunk chunk{};
+    REQUIRE(devices.popRecordedChunk(chunk));
+    REQUIRE(chunk.channelCount == 1);
+    REQUIRE(chunk.frameCount == 2);
+    REQUIRE(chunk.interleavedSamples[0] == input[0]);
+    REQUIRE(chunk.interleavedSamples[2] == input[1]);
 }
 
 TEST_CASE("Input monitoring action reports unavailable device selection",

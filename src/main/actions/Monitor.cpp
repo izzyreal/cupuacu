@@ -1,6 +1,7 @@
 #include "Monitor.hpp"
 
 #include "../State.hpp"
+#include "../gui/OptionsWindow.hpp"
 #include "../gui/VuMeterAccess.hpp"
 #include "audio/AudioDevices.hpp"
 
@@ -97,6 +98,14 @@ namespace cupuacu::actions
         reportWarning(state, "Input monitoring unavailable", message);
     }
 
+    void reportAudioStreamFailure(State *state,
+                                  const audio::AudioStreamFailure &failure,
+                                  const std::string &title)
+    {
+        reportWarning(state, title,
+                      audio::AudioDevices::describeFailure(failure));
+    }
+
     bool setInputMonitoring(State *state, const bool enabled)
     {
         if (!state || !state->audioDevices)
@@ -116,9 +125,18 @@ namespace cupuacu::actions
             }
         }
 
-        if (!state->audioDevices->setInputMonitoringEnabled(
-                enabled, gui::getVuMeterIfPresent(state)))
+        auto *document =
+            enabled ? &state->getActiveDocumentSession().document : nullptr;
+        const auto result = state->audioDevices->setInputMonitoringEnabled(
+            enabled, document, gui::getVuMeterIfPresent(state));
+        if (!result)
         {
+            if (result.failure)
+            {
+                reportAudioStreamFailure(state, *result.failure,
+                                         "Input monitoring unavailable");
+                return false;
+            }
             const auto error = state->audioDevices->getInputMonitoringError();
             if (error == audio::InputMonitoringError::SuppressionUnavailable)
             {
@@ -135,6 +153,10 @@ namespace cupuacu::actions
             return false;
         }
 
+        if (enabled)
+        {
+            gui::dismissOptionsWindow(state);
+        }
         if (!enabled && !state->audioDevices->isPlaying() &&
             !state->audioDevices->isRecording())
         {
@@ -152,7 +174,7 @@ namespace cupuacu::actions
 
         const auto telemetry =
             state->audioDevices->getMonitorProtectionTelemetry();
-        state->audioDevices->setInputMonitoringEnabled(false);
+        state->audioDevices->setInputMonitoringEnabled(false, nullptr);
         if (!state->audioDevices->isPlaying() &&
             !state->audioDevices->isRecording())
         {

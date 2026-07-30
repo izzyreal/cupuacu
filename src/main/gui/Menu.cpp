@@ -173,7 +173,7 @@ void Menu::resized()
 
 void Menu::showSubMenus()
 {
-    if (subMenus.empty())
+    if (subMenus.empty() || !isEffectivelyAvailable())
     {
         return;
     }

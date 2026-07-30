@@ -73,6 +73,17 @@ TEST_CASE("Menu planning opens and closes submenu parents on click", "[gui]")
         REQUIRE_FALSE(plan.showSelfSubMenus);
         REQUIRE_FALSE(plan.invokeAction);
     }
+
+    SECTION("unavailable parent menu does not open")
+    {
+        const auto plan = cupuacu::gui::planMenuMouseDown(true, false, false);
+
+        REQUIRE(plan.handled);
+        REQUIRE(plan.hideMenuBarSubMenus);
+        REQUIRE_FALSE(plan.hideSelfSubMenus);
+        REQUIRE_FALSE(plan.showSelfSubMenus);
+        REQUIRE_FALSE(plan.invokeAction);
+    }
 }
 
 TEST_CASE("Menu planning invokes leaf actions only when available", "[gui]")

@@ -92,12 +92,18 @@ namespace
     }
 } // namespace
 
-TEST_CASE("Input monitor pipeline rejects unsupported stream formats",
-          "[audio][monitor]")
+TEST_CASE(
+    "Input monitor pipeline accepts document rates and rejects invalid formats",
+    "[audio][monitor]")
 {
     cupuacu::audio::InputMonitorPipeline pipeline;
     auto format = stereoFormat();
     format.sampleRate = 48000;
+    REQUIRE(pipeline.prepare(
+        format, std::make_unique<PassthroughCancellationBackend>()));
+
+    format = stereoFormat();
+    format.sampleRate = 192001;
     REQUIRE_FALSE(pipeline.prepare(
         format, std::make_unique<PassthroughCancellationBackend>()));
 
@@ -135,6 +141,35 @@ TEST_CASE("Input monitor pipeline primes before producing protected output",
     REQUIRE(pipeline.getTelemetry().state ==
             cupuacu::audio::MonitorProtectionState::Active);
     REQUIRE(pipeline.getTelemetry().estimatedDelayMs >= 10);
+}
+
+TEST_CASE(
+    "Input monitor pipeline adapts common document rates and callback sizes",
+    "[audio][monitor]")
+{
+    for (const int sampleRate : {11025, 44100, 48000, 96000})
+    {
+        cupuacu::audio::InputMonitorPipeline pipeline;
+        auto format = stereoFormat();
+        format.sampleRate = sampleRate;
+        format.callbackFrames = 137;
+        format.outputChannels = 1;
+        REQUIRE(pipeline.prepare(
+            format, std::make_unique<PassthroughCancellationBackend>()));
+        pipeline.startSession();
+
+        std::vector<float> input(137 * 2, 0.2f);
+        std::vector<float> output(137 * 2, 0.0f);
+        bool produced = false;
+        for (int callback = 0; callback < 80 && !produced; ++callback)
+        {
+            produced = pipeline.process(input.data(), output.data(), 137, {})
+                           .producedOutput;
+        }
+        REQUIRE(produced);
+        REQUIRE(pipeline.getTelemetry().state ==
+                cupuacu::audio::MonitorProtectionState::Active);
+    }
 }
 
 TEST_CASE("Input monitor pipeline fades in without a startup discontinuity",
@@ -314,13 +349,14 @@ TEST_CASE("Input monitor pipeline fades safely if cancellation fails",
     std::vector<float> output(441 * 2, 0.0f);
     pipeline.process(input.data(), output.data(), 441, {});
     pipeline.process(input.data(), output.data(), 441, {});
+    pipeline.process(input.data(), output.data(), 441, {});
     const auto result = pipeline.process(input.data(), output.data(), 441, {});
 
     REQUIRE(result.telemetry.state ==
             cupuacu::audio::MonitorProtectionState::Unavailable);
     REQUIRE(result.telemetry.tripGeneration == 1);
-    REQUIRE(result.producedOutput);
-    REQUIRE(std::all_of(output.end() - 200, output.end(),
+    REQUIRE_FALSE(result.producedOutput);
+    REQUIRE(std::all_of(output.begin(), output.end(),
                         [](const float sample)
                         {
                             return sample == 0.0f;

@@ -7,10 +7,12 @@
 #include "audio/AudioMessage.hpp"
 #include "audio/AudioProcessor.hpp"
 #include "audio/AudioCallbackCore.hpp"
+#include "audio/AudioStreamConfiguration.hpp"
 #include "audio/InputMonitorPipeline.hpp"
 #include "audio/RecordedChunk.hpp"
 
 #include <atomic>
+#include <array>
 #include <cstdint>
 #include <limits>
 #include <mutex>
@@ -67,19 +69,26 @@ namespace cupuacu::audio
             }
         };
 
-        explicit AudioDevices(bool openDefaultDevice = true);
+        explicit AudioDevices(bool usePortAudioStreams = true);
         ~AudioDevices();
 
         using Base::enqueue;
         void enqueue(Play msg) noexcept;
         void enqueue(Record msg) noexcept;
 
-        bool openDevice(int inputDeviceIndex, int outputDeviceIndex);
+        AudioStreamSetupResult openStream(const AudioStreamRequest &request);
+        AudioStreamSetupResult
+        probeStream(const AudioStreamRequest &request) const;
         void closeDevice();
-        [[nodiscard]] bool prepareForRecording();
+        [[nodiscard]] AudioStreamSetupResult
+        prepareForPlayback(const cupuacu::Document &document);
+        [[nodiscard]] AudioStreamSetupResult
+        prepareForRecording(const cupuacu::Document &document);
         void setRecordingPreparationResultForTesting(bool result);
-        bool setInputMonitoringEnabled(bool enabled,
-                                       gui::VuMeter *vuMeter = nullptr);
+        AudioStreamSetupResult
+        setInputMonitoringEnabled(bool enabled,
+                                  const cupuacu::Document *document,
+                                  gui::VuMeter *vuMeter = nullptr);
         bool isInputMonitoringEnabled() const noexcept;
         InputMonitoringError getInputMonitoringError() const noexcept;
         MonitorProtectionTelemetry getMonitorProtectionTelemetry() const;
@@ -89,6 +98,8 @@ namespace cupuacu::audio
 
         bool isPlaying() const;
         bool isRecording() const;
+        bool hasOpenStream() const;
+        bool currentDuplexStreamMatches(double sampleRate) const;
         int64_t getPlaybackPosition() const;
         int64_t getRecordingPosition() const;
         bool popRecordedChunk(RecordedChunk &outChunk);
@@ -105,6 +116,13 @@ namespace cupuacu::audio
 
         DeviceSelection getDeviceSelection() const;
         bool setDeviceSelection(const DeviceSelection &selection);
+        AudioStreamSetupResult
+        trySetDeviceSelection(const DeviceSelection &selection,
+                              double sampleRate, uint8_t channelCount);
+        DeviceRateSupport
+        getSupportedSampleRates(int deviceIndex, bool isInput,
+                                double activeRate = 0.0) const;
+        static std::string describeFailure(const AudioStreamFailure &failure);
 
     protected:
         void applyMessage(const AudioMessage &msg) noexcept override;
@@ -129,8 +147,10 @@ namespace cupuacu::audio
             bool recordingBoundedToEnd = false;
             uint8_t recordingDocumentChannelCount = 0;
             uint8_t inputChannelCount = 0;
+            uint8_t outputChannelCount = 0;
             gui::VuMeter *vuMeter = nullptr;
             bool monitorWasSuspendedForPlayback = false;
+            std::array<float, 512> stereoOutputScratch{};
         };
 
         static int paCallback(const void *inputBuffer, void *outputBuffer,
@@ -155,9 +175,15 @@ namespace cupuacu::audio
         static void snapshotQueuedPlayMessage(Play &msg);
         static void snapshotQueuedRecordMessage(Record &msg);
 
+        AudioStreamSetupResult
+        openStreamLocked(const AudioStreamRequest &request, bool startStream);
+        AudioStreamSetupResult chooseSupportedChannelCount(
+            int deviceIndex, bool isInput, double sampleRate,
+            uint8_t preferredChannels, AudioStreamPurpose purpose,
+            uint8_t &selectedChannels) const;
         void closeDeviceLocked();
 
-        std::mutex streamMutex;
+        mutable std::mutex streamMutex;
         mutable std::mutex selectionMutex;
         std::atomic_bool inputMonitoringRequested{false};
         std::atomic<InputMonitoringError> inputMonitoringError{
@@ -165,8 +191,12 @@ namespace cupuacu::audio
         std::atomic<FeedbackSuppressionMode> feedbackSuppressionMode{
             FeedbackSuppressionMode::Standard};
         std::optional<bool> recordingPreparationResultForTesting;
+        bool usePortAudioStreams = true;
         int currentInputDeviceIndex = -1;
         int currentOutputDeviceIndex = -1;
+        double currentSampleRate = 0.0;
+        uint8_t currentInputChannelCount = 0;
+        uint8_t currentOutputChannelCount = 0;
         PaStream *stream = nullptr;
         DeviceSelection deviceSelection;
         moodycamel::ReaderWriterQueue<RecordedChunk> recordedChunkQueue{512};

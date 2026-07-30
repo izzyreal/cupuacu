@@ -107,6 +107,7 @@ namespace cupuacu::gui
         bool lastPlaybackUpdateSelectionActive = false;
         SelectedChannels lastPlaybackUpdateChannels = SelectedChannels::BOTH;
         bool wasRecordingLastTick = false;
+        bool wasPlayingLastTick = false;
         RecordingUndoCapture recordingUndoCapture;
         static constexpr double kRecordingFitZoomMaxSamplesPerPixel = 500.0;
 

@@ -1,7 +1,9 @@
 #include "Play.hpp"
 
 #include "../State.hpp"
+#include "../gui/OptionsWindow.hpp"
 #include "../gui/VuMeterAccess.hpp"
+#include "Monitor.hpp"
 #include "playback/PlaybackRange.hpp"
 
 #include "audio/AudioMessage.hpp"
@@ -39,6 +41,18 @@ void cupuacu::actions::play(cupuacu::State *state)
     {
         channelCount = 2;
     }
+
+    const auto streamResult = state->audioDevices->prepareForPlayback(doc);
+    if (!streamResult)
+    {
+        if (streamResult.failure)
+        {
+            actions::reportAudioStreamFailure(state, *streamResult.failure,
+                                              "Playback unavailable");
+        }
+        return;
+    }
+    gui::dismissOptionsWindow(state);
 
     const auto range = cupuacu::playback::computeRangeForPlay(
         session, state->loopPlaybackEnabled);

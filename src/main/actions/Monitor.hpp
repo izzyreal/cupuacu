@@ -7,6 +7,11 @@ namespace cupuacu
     struct State;
 }
 
+namespace cupuacu::audio
+{
+    struct AudioStreamFailure;
+}
+
 namespace cupuacu::actions
 {
     bool ensureAudioInputAccess(cupuacu::State *state);
@@ -14,5 +19,9 @@ namespace cupuacu::actions
     bool setInputMonitoring(cupuacu::State *state, bool enabled);
     void reportInputMonitoringError(cupuacu::State *state,
                                     const std::string &message);
+    void
+    reportAudioStreamFailure(cupuacu::State *state,
+                             const cupuacu::audio::AudioStreamFailure &failure,
+                             const std::string &title);
     void handleInputMonitoringProtectionTrip(cupuacu::State *state);
 } // namespace cupuacu::actions

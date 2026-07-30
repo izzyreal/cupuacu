@@ -91,10 +91,7 @@ namespace
     class CounterUndoable : public cupuacu::actions::Undoable
     {
     public:
-        explicit CounterUndoable(cupuacu::State *state)
-            : Undoable(state)
-        {
-        }
+        explicit CounterUndoable(cupuacu::State *state) : Undoable(state) {}
 
         int redoCalls = 0;
         int undoCalls = 0;
@@ -544,7 +541,8 @@ TEST_CASE(
 }
 
 TEST_CASE(
-    "MenuBar edit actions invoke trim copy cut delete and paste through submenu "
+    "MenuBar edit actions invoke trim copy cut delete and paste through "
+    "submenu "
     "actions",
     "[gui]")
 {
@@ -626,7 +624,8 @@ TEST_CASE(
     insertMarkerEntry->mouseDown(leftMouseDown());
     REQUIRE(doc.getMarkers().size() == 1);
     REQUIRE(doc.getMarkers()[0].frame == 2);
-    REQUIRE(state.getActiveViewState().selectedMarkerId == doc.getMarkers()[0].id);
+    REQUIRE(state.getActiveViewState().selectedMarkerId ==
+            doc.getMarkers()[0].id);
 
     auto *editMarkersEntry = editEntries[8];
     editMarkersEntry->mouseDown(leftMouseDown());
@@ -696,8 +695,9 @@ TEST_CASE("MenuBar edit actions are unavailable while playback is active",
     REQUIRE_FALSE(state.canRedo());
 }
 
-TEST_CASE("MenuBar generate and effects actions are unavailable while recording",
-          "[gui][audio]")
+TEST_CASE(
+    "MenuBar generate and effects actions are unavailable while recording",
+    "[gui][audio]")
 {
     cupuacu::test::StateWithTestPaths state{};
     state.audioDevices = std::make_shared<cupuacu::audio::AudioDevices>(false);
@@ -710,12 +710,12 @@ TEST_CASE("MenuBar generate and effects actions are unavailable while recording"
     auto &doc = session.document;
     doc.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 8);
 
-    state.audioDevices->applyMessageImmediate(cupuacu::audio::Record{
-        .document = &doc,
-        .startPos = 0,
-        .endPos = 0,
-        .boundedToEnd = false,
-        .vuMeter = nullptr});
+    state.audioDevices->applyMessageImmediate(
+        cupuacu::audio::Record{.document = &doc,
+                               .startPos = 0,
+                               .endPos = 0,
+                               .boundedToEnd = false,
+                               .vuMeter = nullptr});
     REQUIRE(state.audioDevices->isRecording());
 
     auto *generateMenu = topLevelMenus[3];
@@ -729,7 +729,65 @@ TEST_CASE("MenuBar generate and effects actions are unavailable while recording"
             std::string::npos);
 }
 
-TEST_CASE("MenuBar view menu toggles snap and persists it", "[gui][persistence]")
+TEST_CASE("MenuBar options and children are unavailable during active audio",
+          "[gui][audio]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    state.audioDevices = std::make_shared<cupuacu::audio::AudioDevices>(false);
+    RootComponent root(&state);
+    auto *menuBar = makeMenuBar(&state, root);
+    auto topLevelMenus = menuChildren(menuBar);
+    REQUIRE(topLevelMenus.size() == 6);
+    auto *optionsMenu = topLevelMenus[5];
+    const auto optionEntries = menuChildren(optionsMenu);
+    REQUIRE(optionEntries.size() == 3);
+
+    auto &document = state.getActiveDocumentSession().document;
+    document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 8);
+
+    SECTION("playback")
+    {
+        state.audioDevices->applyMessageImmediate(cupuacu::audio::Play{
+            .document = &document,
+            .startPos = 0,
+            .endPos = 8,
+            .loopEnabled = false,
+            .selectionIsActive = false,
+            .selectedChannels = cupuacu::SelectedChannels::BOTH,
+            .vuMeter = nullptr});
+    }
+
+    SECTION("recording")
+    {
+        state.audioDevices->applyMessageImmediate(
+            cupuacu::audio::Record{.document = &document,
+                                   .startPos = 0,
+                                   .endPos = 0,
+                                   .boundedToEnd = false,
+                                   .vuMeter = nullptr});
+    }
+
+    SECTION("monitoring")
+    {
+        state.audioDevices->applyMessageImmediate(
+            cupuacu::audio::SetInputMonitoring{
+                .enabled = true, .inputChannelCount = 1, .vuMeter = nullptr});
+    }
+
+    const std::string reason =
+        "Stop playback or recording and disable monitoring first";
+    REQUIRE(optionsMenu->getTooltipText().find(reason) != std::string::npos);
+    for (auto *entry : optionEntries)
+    {
+        REQUIRE(entry->getTooltipText().find(reason) != std::string::npos);
+    }
+
+    optionsMenu->mouseDown(leftMouseDown());
+    REQUIRE_FALSE(optionsMenu->isOpen());
+}
+
+TEST_CASE("MenuBar view menu toggles snap and persists it",
+          "[gui][persistence]")
 {
     const auto rootPath =
         cupuacu::test::makeUniqueTestRoot("menu-view-snap-persist");
@@ -779,10 +837,14 @@ TEST_CASE("MenuBar split by markers creates one new document per marker gap",
     REQUIRE(state.tabs.size() == 3);
     REQUIRE(state.tabs[1].session.document.getFrameCount() == 3);
     REQUIRE(state.tabs[2].session.document.getFrameCount() == 4);
-    REQUIRE(state.tabs[1].session.document.getSample(0, 0) == Catch::Approx(3.0f));
-    REQUIRE(state.tabs[1].session.document.getSample(0, 2) == Catch::Approx(5.0f));
-    REQUIRE(state.tabs[2].session.document.getSample(0, 0) == Catch::Approx(6.0f));
-    REQUIRE(state.tabs[2].session.document.getSample(0, 3) == Catch::Approx(9.0f));
+    REQUIRE(state.tabs[1].session.document.getSample(0, 0) ==
+            Catch::Approx(3.0f));
+    REQUIRE(state.tabs[1].session.document.getSample(0, 2) ==
+            Catch::Approx(5.0f));
+    REQUIRE(state.tabs[2].session.document.getSample(0, 0) ==
+            Catch::Approx(6.0f));
+    REQUIRE(state.tabs[2].session.document.getSample(0, 3) ==
+            Catch::Approx(9.0f));
     REQUIRE(state.tabs[1].session.document.getMarkers().size() == 2);
     REQUIRE(state.tabs[2].session.document.getMarkers().size() == 2);
 }

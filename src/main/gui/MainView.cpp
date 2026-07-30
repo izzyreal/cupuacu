@@ -22,6 +22,7 @@
 #include "Colors.hpp"
 #include "../actions/DocumentSessionPersistence.hpp"
 #include "../actions/ZoomPlanning.hpp"
+#include "../actions/Monitor.hpp"
 
 #include <SDL3/SDL.h>
 #include <algorithm>
@@ -901,12 +902,30 @@ void MainView::timerCallback()
 {
     auto &session = state->getActiveDocumentSession();
     auto &viewState = state->getActiveViewState();
+    if (state->audioDevices && state->audioDevices->isInputMonitoringEnabled())
+    {
+        const auto channels = static_cast<uint8_t>(
+            std::clamp<int64_t>(session.document.getChannelCount(), 0, 2));
+        const double rate =
+            static_cast<double>(session.document.getSampleRate());
+        if (rate <= 0.0 || channels == 0)
+        {
+            actions::setInputMonitoring(state, false);
+        }
+        else if (!state->audioDevices->currentDuplexStreamMatches(rate))
+        {
+            actions::setInputMonitoring(state, false);
+            actions::setInputMonitoring(state, true);
+        }
+    }
     const bool consumedRecordedAudio = consumePendingRecordedAudio();
     const bool adjustedRecordingZoom =
         updateZoomForRecordingIntoStartedEmptyDocument();
     const bool followedTransport = followTransportHead();
     const bool isRecordingNow =
         state->audioDevices && state->audioDevices->isRecording();
+    const bool isPlayingNow =
+        state->audioDevices && state->audioDevices->isPlaying();
     updateWaveformPlaybackPositions();
 
     const bool selectionActive = session.selection.isActive();
@@ -916,8 +935,7 @@ void MainView::timerCallback()
     syncLivePlaybackRange(selectionActive, viewState.selectedChannels);
 
     const bool hasPendingRecordedAudio =
-        state->audioDevices &&
-        state->audioDevices->hasPendingRecordedAudio();
+        state->audioDevices && state->audioDevices->hasPendingRecordedAudio();
     if (!isRecordingNow && wasRecordingLastTick && !hasPendingRecordedAudio)
     {
         finalizeRecordingUndoCaptureIfComplete();
@@ -927,6 +945,16 @@ void MainView::timerCallback()
     else if (isRecordingNow)
     {
         wasRecordingLastTick = true;
+    }
+
+    if (!isPlayingNow && wasPlayingLastTick)
+    {
+        state->audioDevices->releaseInputIfUnused();
+        wasPlayingLastTick = false;
+    }
+    else if (isPlayingNow)
+    {
+        wasPlayingLastTick = true;
     }
 
     if (state->audioDevices && state->audioDevices->takeRecordingOverflow())

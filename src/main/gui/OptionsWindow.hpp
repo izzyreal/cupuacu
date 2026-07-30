@@ -16,9 +16,9 @@ namespace cupuacu::gui
     class OptionsWindow
     {
     public:
-        explicit OptionsWindow(State *stateToUse,
-                               OptionsSection initialSection =
-                                   OptionsSection::Audio);
+        explicit OptionsWindow(
+            State *stateToUse,
+            OptionsSection initialSection = OptionsSection::Audio);
         ~OptionsWindow();
 
         bool isOpen() const
@@ -56,7 +56,9 @@ namespace cupuacu::gui
         void renderOnce() const;
     };
 
-    void showOptionsWindow(State *state,
-                           std::optional<OptionsSection> section =
-                               std::nullopt);
+    void
+    showOptionsWindow(State *state,
+                      std::optional<OptionsSection> section = std::nullopt);
+    bool isOptionsInteractionAvailable(const State *state);
+    void dismissOptionsWindow(State *state);
 } // namespace cupuacu::gui

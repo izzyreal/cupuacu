@@ -14,9 +14,11 @@ namespace cupuacu::audio
 {
     namespace
     {
-        constexpr std::size_t kDeviceFrameCount = 441;
-        constexpr std::size_t kOutputFifoFrames = 4096;
-        constexpr std::size_t kOutputPrimeFrames = kDeviceFrameCount * 2;
+        constexpr std::size_t kMaxProcessingFramesPerDeviceBlock = 4;
+        constexpr std::size_t kMaxProcessingBlockFrameCount =
+            kMonitorProcessingFrameCount * kMaxProcessingFramesPerDeviceBlock;
+        constexpr std::size_t kMaxDeviceBlockFrameCount = 7680;
+        constexpr std::size_t kOutputFifoFrames = 32768;
         constexpr std::size_t kFftSize = 2048;
         constexpr float kMinimumPower = 1.0e-12f;
         constexpr int kDecorrelationReleaseFrames = 20;
@@ -163,17 +165,14 @@ namespace cupuacu::audio
                 }
             }
 
-            FeedbackDecision
-            analyze(const std::array<std::array<float, kDeviceFrameCount>,
-                                     kMonitorMaxChannels> &capture,
-                    const std::array<std::array<float, kDeviceFrameCount>,
-                                     kMonitorMaxChannels> &render,
-                    const uint8_t channels,
-                    const bool smoothTransitions) noexcept
+            FeedbackDecision analyze(const MonitorProcessingFrame &capture,
+                                     const MonitorProcessingFrame &render,
+                                     const uint8_t channels,
+                                     const bool smoothTransitions) noexcept
             {
                 bool clipped = false;
-                for (std::size_t sample = 0; sample < kDeviceFrameCount;
-                     ++sample)
+                for (std::size_t sample = 0;
+                     sample < kMonitorProcessingFrameCount; ++sample)
                 {
                     const float captureMono =
                         channels == 2
@@ -370,21 +369,24 @@ namespace cupuacu::audio
     {
         explicit Impl(const MonitorStreamFormat &streamFormat)
             : format(streamFormat),
+              processingFramesPerDeviceBlock(
+                  streamFormat.sampleRate % 50 == 0 ? 2 : 4),
+              processingBlockFrameCount(kMonitorProcessingFrameCount *
+                                        processingFramesPerDeviceBlock),
+              deviceBlockFrameCount(static_cast<std::size_t>(std::lround(
+                  static_cast<double>(streamFormat.sampleRate) *
+                  static_cast<double>(processingFramesPerDeviceBlock) /
+                  100.0))),
               captureUpsamplers{
                   std::make_unique<webrtc::PushSincResampler>(
-                      kDeviceFrameCount, kMonitorProcessingFrameCount),
+                      deviceBlockFrameCount, processingBlockFrameCount),
                   std::make_unique<webrtc::PushSincResampler>(
-                      kDeviceFrameCount, kMonitorProcessingFrameCount)},
+                      deviceBlockFrameCount, processingBlockFrameCount)},
               outputDownsamplers{
                   std::make_unique<webrtc::PushSincResampler>(
-                      kMonitorProcessingFrameCount, kDeviceFrameCount),
+                      processingBlockFrameCount, deviceBlockFrameCount),
                   std::make_unique<webrtc::PushSincResampler>(
-                      kMonitorProcessingFrameCount, kDeviceFrameCount)},
-              renderUpsamplers{
-                  std::make_unique<webrtc::PushSincResampler>(
-                      kDeviceFrameCount, kMonitorProcessingFrameCount),
-                  std::make_unique<webrtc::PushSincResampler>(
-                      kDeviceFrameCount, kMonitorProcessingFrameCount)}
+                      processingBlockFrameCount, deviceBlockFrameCount)}
         {
         }
 
@@ -395,7 +397,6 @@ namespace cupuacu::audio
             outputWrite = 0;
             outputCount = 0;
             outputPrimed = false;
-            warmupFrames = 0;
             gain = mode == FeedbackSuppressionMode::Smooth ? 0.0f : 1.0f;
             tripRampRemaining = 0;
             tripRampGainStep = 0.0f;
@@ -458,71 +459,89 @@ namespace cupuacu::audio
                  ++channel)
             {
                 captureUpsamplers[channel]->Resample(
-                    inputFrame[channel].data(), kDeviceFrameCount,
-                    processingFrame[channel].data(),
-                    kMonitorProcessingFrameCount);
+                    inputFrame[channel].data(), deviceBlockFrameCount,
+                    captureProcessingBlock[channel].data(),
+                    processingBlockFrameCount);
             }
 
             MonitorCancellationMetrics metrics{};
             FeedbackDecision decision{};
-            if (mode != FeedbackSuppressionMode::Off)
+            for (std::size_t block = 0; block < processingFramesPerDeviceBlock;
+                 ++block)
             {
-                auto *backend = activeBackend();
-                if (!backend ||
-                    !backend->process(processingFrame, renderReference,
-                                      estimateDelayMs(timing), echoPathChanged,
-                                      feedbackRisk, metrics))
+                const std::size_t offset = block * kMonitorProcessingFrameCount;
+                for (std::size_t channel = 0; channel < format.inputChannels;
+                     ++channel)
                 {
-                    beginEmergencyStop(MonitorProtectionState::Unavailable);
-                    return false;
+                    std::copy_n(captureProcessingBlock[channel].data() + offset,
+                                kMonitorProcessingFrameCount,
+                                processingFrame[channel].data());
                 }
-                echoPathChanged = false;
-            }
+                rawProcessingFrame = processingFrame;
 
-            if (format.inputChannels == 1)
-            {
-                processingFrame[1] = processingFrame[0];
-            }
-            if (mode != FeedbackSuppressionMode::Off)
-            {
-                frequencyShifter.process(processingFrame, 2,
-                                         mode ==
-                                             FeedbackSuppressionMode::Smooth);
+                if (mode != FeedbackSuppressionMode::Off)
+                {
+                    auto *backend = activeBackend();
+                    if (!backend || !backend->process(
+                                        processingFrame, renderReference,
+                                        estimateDelayMs(timing),
+                                        echoPathChanged, feedbackRisk, metrics))
+                    {
+                        beginEmergencyStop(MonitorProtectionState::Unavailable);
+                        return false;
+                    }
+                    echoPathChanged = false;
+                }
+
+                if (format.inputChannels == 1)
+                {
+                    processingFrame[1] = processingFrame[0];
+                    rawProcessingFrame[1] = rawProcessingFrame[0];
+                }
+                if (mode != FeedbackSuppressionMode::Off)
+                {
+                    frequencyShifter.process(
+                        processingFrame, 2,
+                        mode == FeedbackSuppressionMode::Smooth);
+                }
+
+                if (mode != FeedbackSuppressionMode::Off)
+                {
+                    decision = detector.analyze(
+                        rawProcessingFrame, processingFrame,
+                        format.inputChannels,
+                        mode == FeedbackSuppressionMode::Smooth);
+                    feedbackRisk = decision.shiftHz > 0.0f;
+                    frequencyShifter.setTargetShift(decision.shiftHz);
+                    if (decision.trip)
+                    {
+                        beginEmergencyStop(MonitorProtectionState::Tripped);
+                    }
+                }
+
+                for (std::size_t channel = 0; channel < 2; ++channel)
+                {
+                    std::copy_n(processingFrame[channel].data(),
+                                kMonitorProcessingFrameCount,
+                                outputProcessingBlock[channel].data() + offset);
+                }
+                if (mode != FeedbackSuppressionMode::Off)
+                {
+                    renderReference = processingFrame;
+                }
             }
 
             for (std::size_t channel = 0; channel < 2; ++channel)
             {
                 outputDownsamplers[channel]->Resample(
-                    processingFrame[channel].data(),
-                    kMonitorProcessingFrameCount,
-                    processedDeviceFrame[channel].data(), kDeviceFrameCount);
+                    outputProcessingBlock[channel].data(),
+                    processingBlockFrameCount,
+                    processedDeviceFrame[channel].data(),
+                    deviceBlockFrameCount);
             }
 
-            if (mode != FeedbackSuppressionMode::Off)
-            {
-                decision = detector.analyze(
-                    inputFrame, processedDeviceFrame, format.inputChannels,
-                    mode == FeedbackSuppressionMode::Smooth);
-                feedbackRisk = decision.shiftHz > 0.0f;
-                frequencyShifter.setTargetShift(decision.shiftHz);
-                if (decision.trip)
-                {
-                    beginEmergencyStop(MonitorProtectionState::Tripped);
-                }
-            }
-
-            if (mode != FeedbackSuppressionMode::Off)
-            {
-                for (std::size_t channel = 0; channel < 2; ++channel)
-                {
-                    renderUpsamplers[channel]->Resample(
-                        processedDeviceFrame[channel].data(), kDeviceFrameCount,
-                        renderReference[channel].data(),
-                        kMonitorProcessingFrameCount);
-                }
-            }
-
-            for (std::size_t sample = 0; sample < kDeviceFrameCount; ++sample)
+            for (std::size_t sample = 0; sample < deviceBlockFrameCount;
+                 ++sample)
             {
                 if (outputCount >= kOutputFifoFrames)
                 {
@@ -534,16 +553,13 @@ namespace cupuacu::audio
                 ++outputCount;
             }
 
-            ++warmupFrames;
             if (pendingTerminalState == MonitorProtectionState::Inactive)
             {
-                telemetry.state =
-                    mode == FeedbackSuppressionMode::Off
-                        ? MonitorProtectionState::Disabled
-                    : decision.shiftHz > 0.0f
-                        ? MonitorProtectionState::Decorrelating
-                        : (warmupFrames < 2 ? MonitorProtectionState::WarmingUp
-                                            : MonitorProtectionState::Active);
+                telemetry.state = mode == FeedbackSuppressionMode::Off
+                                      ? MonitorProtectionState::Disabled
+                                  : decision.shiftHz > 0.0f
+                                      ? MonitorProtectionState::Decorrelating
+                                      : MonitorProtectionState::Active;
             }
             telemetry.estimatedDelayMs =
                 metrics.delayMs > 0
@@ -583,6 +599,9 @@ namespace cupuacu::audio
         }
 
         MonitorStreamFormat format;
+        std::size_t processingFramesPerDeviceBlock = 0;
+        std::size_t processingBlockFrameCount = 0;
+        std::size_t deviceBlockFrameCount = 0;
         std::unique_ptr<MonitorCancellationBackend> customBackend;
         std::unique_ptr<MonitorCancellationBackend> standardBackend;
         std::unique_ptr<MonitorCancellationBackend> smoothBackend;
@@ -590,14 +609,20 @@ namespace cupuacu::audio
             captureUpsamplers;
         std::array<std::unique_ptr<webrtc::PushSincResampler>, 2>
             outputDownsamplers;
-        std::array<std::unique_ptr<webrtc::PushSincResampler>, 2>
-            renderUpsamplers;
-
-        std::array<std::array<float, kDeviceFrameCount>, kMonitorMaxChannels>
+        std::array<std::array<float, kMaxDeviceBlockFrameCount>,
+                   kMonitorMaxChannels>
             inputFrame{};
+        std::array<std::array<float, kMaxProcessingBlockFrameCount>,
+                   kMonitorMaxChannels>
+            captureProcessingBlock{};
+        std::array<std::array<float, kMaxProcessingBlockFrameCount>,
+                   kMonitorMaxChannels>
+            outputProcessingBlock{};
         MonitorProcessingFrame processingFrame{};
+        MonitorProcessingFrame rawProcessingFrame{};
         MonitorProcessingFrame renderReference{};
-        std::array<std::array<float, kDeviceFrameCount>, kMonitorMaxChannels>
+        std::array<std::array<float, kMaxDeviceBlockFrameCount>,
+                   kMonitorMaxChannels>
             processedDeviceFrame{};
         std::array<std::array<float, kOutputFifoFrames>, kMonitorMaxChannels>
             outputFifo{};
@@ -609,7 +634,6 @@ namespace cupuacu::audio
         std::size_t outputRead = 0;
         std::size_t outputWrite = 0;
         std::size_t outputCount = 0;
-        std::size_t warmupFrames = 0;
         std::size_t tripRampRemaining = 0;
         float gain = 1.0f;
         float tripRampGainStep = 0.0f;
@@ -631,9 +655,9 @@ namespace cupuacu::audio
         const MonitorStreamFormat &format,
         std::unique_ptr<MonitorCancellationBackend> backend)
     {
-        if (format.sampleRate != 44100 ||
+        if (format.sampleRate <= 0 || format.sampleRate > 192000 ||
             (format.inputChannels != 1 && format.inputChannels != 2) ||
-            format.outputChannels != 2)
+            (format.outputChannels != 1 && format.outputChannels != 2))
         {
             impl.reset();
             return false;
@@ -778,7 +802,7 @@ namespace cupuacu::audio
                 impl->format.inputChannels == 2 ? input[inputBase + 1]
                                                 : input[inputBase];
             ++impl->inputFill;
-            if (impl->inputFill == kDeviceFrameCount)
+            if (impl->inputFill == impl->deviceBlockFrameCount)
             {
                 impl->processDeviceFrame(timing);
                 impl->inputFill = 0;
@@ -790,7 +814,8 @@ namespace cupuacu::audio
             }
         }
 
-        if (!impl->outputPrimed && impl->outputCount >= kOutputPrimeFrames)
+        if (!impl->outputPrimed &&
+            impl->outputCount >= impl->deviceBlockFrameCount)
         {
             impl->outputPrimed = true;
         }

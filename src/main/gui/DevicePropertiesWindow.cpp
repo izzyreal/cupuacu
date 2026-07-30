@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <sstream>
 #include <portaudio.h>
 
 using namespace cupuacu::gui;
@@ -36,6 +37,28 @@ namespace
         }
         return isInput ? info->defaultInputDevice : info->defaultOutputDevice;
     }
+
+    std::string formatRates(const std::string &prefix,
+                            const std::vector<double> &rates)
+    {
+        std::ostringstream text;
+        text << prefix;
+        if (rates.empty())
+        {
+            text << "not supported";
+            return text.str();
+        }
+        for (std::size_t index = 0; index < rates.size(); ++index)
+        {
+            if (index > 0)
+            {
+                text << (index == 6 ? "\n" : ", ");
+            }
+            text << static_cast<double>(std::lround(rates[index])) / 1000.0;
+        }
+        text << " kHz";
+        return text.str();
+    }
 } // namespace
 
 DevicePropertiesPane::DevicePropertiesPane(State *stateToUse)
@@ -45,12 +68,18 @@ DevicePropertiesPane::DevicePropertiesPane(State *stateToUse)
 
     deviceTypeLabel = emplaceChild<Label>(state, "Device Type");
     deviceTypeDropdown = emplaceChild<DropdownMenu>(state);
+    streamDirectionHelpLabel = emplaceChild<Label>(
+        state, "Play: Output  |  Record: Input  |  Monitor: Input + Output");
 
     outputDeviceLabel = emplaceChild<Label>(state, "Output Device");
     outputDeviceDropdown = emplaceChild<DropdownMenu>(state);
 
     inputDeviceLabel = emplaceChild<Label>(state, "Input Device");
     inputDeviceDropdown = emplaceChild<DropdownMenu>(state);
+    outputMonoRatesLabel = emplaceChild<Label>(state, "");
+    outputStereoRatesLabel = emplaceChild<Label>(state, "");
+    inputMonoRatesLabel = emplaceChild<Label>(state, "");
+    inputStereoRatesLabel = emplaceChild<Label>(state, "");
     feedbackSuppressionLabel =
         emplaceChild<Label>(state, "Feedback Suppression");
     feedbackSuppressionDropdown = emplaceChild<DropdownMenu>(state);
@@ -64,6 +93,17 @@ DevicePropertiesPane::DevicePropertiesPane(State *stateToUse)
     outputDeviceDropdown->setFontSize(labelFontSize);
     inputDeviceDropdown->setFontSize(labelFontSize);
     feedbackSuppressionDropdown->setFontSize(labelFontSize);
+    const int secondaryFontSize = std::max(12, labelFontSize * 3 / 4);
+    streamDirectionHelpLabel->setFontSize(secondaryFontSize);
+    outputMonoRatesLabel->setFontSize(secondaryFontSize);
+    outputStereoRatesLabel->setFontSize(secondaryFontSize);
+    inputMonoRatesLabel->setFontSize(secondaryFontSize);
+    inputStereoRatesLabel->setFontSize(secondaryFontSize);
+    streamDirectionHelpLabel->setCenterHorizontally(false);
+    outputMonoRatesLabel->setCenterHorizontally(false);
+    outputStereoRatesLabel->setCenterHorizontally(false);
+    inputMonoRatesLabel->setCenterHorizontally(false);
+    inputStereoRatesLabel->setCenterHorizontally(false);
 
     deviceTypeDropdown->setExpanded(false);
     outputDeviceDropdown->setExpanded(false);
@@ -104,6 +144,7 @@ DevicePropertiesPane::DevicePropertiesPane(State *stateToUse)
             : -1;
     populateDevices(hostApiIndex, preferredOutputDeviceIndex,
                     preferredInputDeviceIndex);
+    refreshSupportedRates();
     if (syncSelectionToAudioDevices())
     {
         saveAudioProperties();
@@ -128,10 +169,12 @@ DevicePropertiesPane::DevicePropertiesPane(State *stateToUse)
             }
             populateDevices(hostApiIndexToUse, preferredOutputDeviceIndex,
                             preferredInputDeviceIndex);
+            refreshSupportedRates();
             if (syncSelectionToAudioDevices())
             {
                 saveAudioProperties();
             }
+            refreshSupportedRates();
             layoutComponents();
             if (window)
             {
@@ -145,6 +188,7 @@ DevicePropertiesPane::DevicePropertiesPane(State *stateToUse)
             {
                 saveAudioProperties();
             }
+            refreshSupportedRates();
         });
     inputDeviceDropdown->setOnSelectionChanged(
         [this](const int)
@@ -153,6 +197,7 @@ DevicePropertiesPane::DevicePropertiesPane(State *stateToUse)
             {
                 saveAudioProperties();
             }
+            refreshSupportedRates();
         });
     feedbackSuppressionDropdown->setOnSelectionChanged(
         [this](const int index)
@@ -184,6 +229,26 @@ DevicePropertiesPane::~DevicePropertiesPane()
 void DevicePropertiesPane::resized()
 {
     layoutComponents();
+}
+
+void DevicePropertiesPane::timerCallback()
+{
+    if (!state || !state->audioDevices)
+    {
+        return;
+    }
+    const int documentRate =
+        state->getActiveDocumentSession().document.getSampleRate();
+    const int output =
+        getSelectedDeviceIndex(outputDeviceDropdown, outputDeviceIndices);
+    const int input =
+        getSelectedDeviceIndex(inputDeviceDropdown, inputDeviceIndices);
+    if (documentRate != lastCapabilityDocumentRate ||
+        output != lastCapabilityOutputDevice ||
+        input != lastCapabilityInputDevice)
+    {
+        refreshSupportedRates();
+    }
 }
 
 void DevicePropertiesPane::populateHostApis()
@@ -241,8 +306,10 @@ void DevicePropertiesPane::populateDevices(const int hostApiIndex,
     outputDeviceIndices.clear();
     inputDeviceIndices.clear();
 
-    std::vector<std::string> outputItems;
-    std::vector<std::string> inputItems;
+    std::vector<std::string> outputItems{"<None>"};
+    std::vector<std::string> inputItems{"<None>"};
+    outputDeviceIndices.push_back(-1);
+    inputDeviceIndices.push_back(-1);
 
     const int deviceCount = Pa_GetDeviceCount();
     if (deviceCount < 0)
@@ -281,16 +348,6 @@ void DevicePropertiesPane::populateDevices(const int hostApiIndex,
         }
     }
 
-    if (outputItems.empty())
-    {
-        outputItems.emplace_back("No output devices");
-    }
-
-    if (inputItems.empty())
-    {
-        inputItems.emplace_back("No input devices");
-    }
-
     outputDeviceDropdown->setItems(outputItems);
     int outputSelectionIndex =
         findIndex(outputDeviceIndices, preferredOutputDeviceIndex);
@@ -303,7 +360,7 @@ void DevicePropertiesPane::populateDevices(const int hostApiIndex,
     }
     if (outputSelectionIndex < 0)
     {
-        outputSelectionIndex = 0;
+        outputSelectionIndex = findIndex(outputDeviceIndices, -1);
     }
     outputDeviceDropdown->setSelectedIndex(outputSelectionIndex);
 
@@ -319,7 +376,7 @@ void DevicePropertiesPane::populateDevices(const int hostApiIndex,
     }
     if (inputSelectionIndex < 0)
     {
-        inputSelectionIndex = 0;
+        inputSelectionIndex = findIndex(inputDeviceIndices, -1);
     }
     inputDeviceDropdown->setSelectedIndex(inputSelectionIndex);
 }
@@ -360,24 +417,67 @@ bool DevicePropertiesPane::syncSelectionToAudioDevices()
         return false;
     }
 
-    const bool monitoringWasEnabled =
-        state->audioDevices->isInputMonitoringEnabled();
+    const auto previous = state->audioDevices->getDeviceSelection();
     const audio::AudioDevices::DeviceSelection selection{
         .hostApiIndex = getSelectedHostApiIndex(),
         .outputDeviceIndex =
             getSelectedDeviceIndex(outputDeviceDropdown, outputDeviceIndices),
         .inputDeviceIndex =
             getSelectedDeviceIndex(inputDeviceDropdown, inputDeviceIndices)};
-    const bool changed = state->audioDevices->setDeviceSelection(selection);
-    if (monitoringWasEnabled &&
-        !state->audioDevices->isInputMonitoringEnabled())
+    if (selection == previous)
     {
-        actions::reportInputMonitoringError(
-            state,
-            "The selected input and output devices could not be opened "
-            "together.");
+        return false;
     }
-    return changed;
+    const auto &document = state->getActiveDocumentSession().document;
+    const uint8_t validationChannels =
+        document.getChannelCount() == 1 ? uint8_t{1} : uint8_t{2};
+    const auto result = state->audioDevices->trySetDeviceSelection(
+        selection, static_cast<double>(document.getSampleRate()),
+        validationChannels);
+    if (result)
+    {
+        return true;
+    }
+
+    if (result.failure)
+    {
+        actions::reportAudioStreamFailure(
+            state, *result.failure, "Audio device configuration unavailable");
+    }
+    const int hostIndex = findIndex(hostApiIndices, previous.hostApiIndex);
+    if (hostIndex >= 0)
+    {
+        deviceTypeDropdown->setSelectedIndex(hostIndex);
+    }
+    populateDevices(previous.hostApiIndex, previous.outputDeviceIndex,
+                    previous.inputDeviceIndex);
+    return false;
+}
+
+void DevicePropertiesPane::refreshSupportedRates()
+{
+    if (!state || !state->audioDevices)
+    {
+        return;
+    }
+    const double activeRate = static_cast<double>(
+        state->getActiveDocumentSession().document.getSampleRate());
+    const int output =
+        getSelectedDeviceIndex(outputDeviceDropdown, outputDeviceIndices);
+    const int input =
+        getSelectedDeviceIndex(inputDeviceDropdown, inputDeviceIndices);
+    lastCapabilityDocumentRate = static_cast<int>(activeRate);
+    lastCapabilityOutputDevice = output;
+    lastCapabilityInputDevice = input;
+    const auto outputRates =
+        state->audioDevices->getSupportedSampleRates(output, false, activeRate);
+    const auto inputRates =
+        state->audioDevices->getSupportedSampleRates(input, true, activeRate);
+    outputMonoRatesLabel->setText(formatRates("Mono: ", outputRates.mono));
+    outputStereoRatesLabel->setText(
+        formatRates("Stereo: ", outputRates.stereo));
+    inputMonoRatesLabel->setText(formatRates("Mono: ", inputRates.mono));
+    inputStereoRatesLabel->setText(formatRates("Stereo: ", inputRates.stereo));
 }
 
 void DevicePropertiesPane::saveAudioProperties() const
@@ -427,26 +527,44 @@ void DevicePropertiesPane::layoutComponents() const
         padding * 2;
     const int dropdownX = padding + labelWidth + padding;
     const int dropdownW = std::max(1, canvasWi - dropdownX - padding);
+    const int secondaryRowHeight = std::max(1, rowHeight * 3 / 4);
+    const int rateBlockHeight = secondaryRowHeight * 2;
 
     deviceTypeLabel->setBounds(padding, padding, labelWidth, rowHeight);
     deviceTypeDropdown->setBounds(dropdownX, padding, dropdownW, rowHeight);
     deviceTypeDropdown->setCollapsedHeight(rowHeight);
     deviceTypeDropdown->setItemMargin(padding);
 
-    const int secondRowY = padding + rowHeight + padding;
+    const int helpRowY = padding + rowHeight;
+    streamDirectionHelpLabel->setBounds(dropdownX, helpRowY, dropdownW,
+                                        secondaryRowHeight);
+
+    const int secondRowY = helpRowY + secondaryRowHeight + padding;
     outputDeviceLabel->setBounds(padding, secondRowY, labelWidth, rowHeight);
     outputDeviceDropdown->setBounds(dropdownX, secondRowY, dropdownW,
                                     rowHeight);
     outputDeviceDropdown->setCollapsedHeight(rowHeight);
     outputDeviceDropdown->setItemMargin(padding);
 
-    const int thirdRowY = secondRowY + rowHeight + padding;
+    const int outputMonoY = secondRowY + rowHeight;
+    outputMonoRatesLabel->setBounds(dropdownX, outputMonoY, dropdownW,
+                                    rateBlockHeight);
+    outputStereoRatesLabel->setBounds(dropdownX, outputMonoY + rateBlockHeight,
+                                      dropdownW, rateBlockHeight);
+
+    const int thirdRowY = outputMonoY + rateBlockHeight * 2 + padding;
     inputDeviceLabel->setBounds(padding, thirdRowY, labelWidth, rowHeight);
     inputDeviceDropdown->setBounds(dropdownX, thirdRowY, dropdownW, rowHeight);
     inputDeviceDropdown->setCollapsedHeight(rowHeight);
     inputDeviceDropdown->setItemMargin(padding);
 
-    const int fourthRowY = thirdRowY + rowHeight + padding;
+    const int inputMonoY = thirdRowY + rowHeight;
+    inputMonoRatesLabel->setBounds(dropdownX, inputMonoY, dropdownW,
+                                   rateBlockHeight);
+    inputStereoRatesLabel->setBounds(dropdownX, inputMonoY + rateBlockHeight,
+                                     dropdownW, rateBlockHeight);
+
+    const int fourthRowY = inputMonoY + rateBlockHeight * 2 + padding;
     feedbackSuppressionLabel->setBounds(padding, fourthRowY, labelWidth,
                                         rowHeight);
     feedbackSuppressionDropdown->setBounds(dropdownX, fourthRowY, dropdownW,

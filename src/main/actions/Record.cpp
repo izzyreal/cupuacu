@@ -1,9 +1,11 @@
 #include "Record.hpp"
 
 #include "../State.hpp"
+#include "../gui/OptionsWindow.hpp"
 #include "../gui/VuMeterAccess.hpp"
 #include "Monitor.hpp"
 #include "Play.hpp"
+#include "DocumentDialogs.hpp"
 
 #include "audio/AudioDevices.hpp"
 #include "audio/AudioMessage.hpp"
@@ -20,6 +22,14 @@ void cupuacu::actions::record(cupuacu::State *state)
 
     auto &session = state->getActiveDocumentSession();
 
+    if (session.document.getSampleRate() <= 0 ||
+        session.document.getChannelCount() <= 0)
+    {
+        state->pendingRecordAfterNewFile = true;
+        showNewFileDialog(state);
+        return;
+    }
+
     if (state->audioDevices->isRecording())
     {
         return;
@@ -35,11 +45,22 @@ void cupuacu::actions::record(cupuacu::State *state)
         return;
     }
 
-    if (!state->audioDevices->prepareForRecording())
+    const auto streamResult =
+        state->audioDevices->prepareForRecording(session.document);
+    if (!streamResult)
     {
-        reportAudioInputUnavailable(state);
+        if (streamResult.failure)
+        {
+            reportAudioStreamFailure(state, *streamResult.failure,
+                                     "Audio input unavailable");
+        }
+        else
+        {
+            reportAudioInputUnavailable(state);
+        }
         return;
     }
+    gui::dismissOptionsWindow(state);
 
     cupuacu::audio::Record recordMessage;
     recordMessage.document = &session.document;
