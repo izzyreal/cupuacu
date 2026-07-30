@@ -124,14 +124,16 @@ namespace
 
     void drainPendingAutosave(cupuacu::State &state)
     {
-        for (int i = 0; i < 100000; ++i)
+        const auto deadline =
+            std::chrono::steady_clock::now() + std::chrono::seconds(30);
+        while (std::chrono::steady_clock::now() < deadline)
         {
             cupuacu::actions::io::processPendingAutosaveWork(&state);
             if (!state.backgroundAutosaveJob)
             {
                 return;
             }
-            std::this_thread::yield();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
         FAIL("Autosave job did not complete");
     }

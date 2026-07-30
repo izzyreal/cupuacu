@@ -102,8 +102,20 @@ namespace cupuacu::actions
                                   const audio::AudioStreamFailure &failure,
                                   const std::string &title)
     {
-        reportWarning(state, title,
-                      audio::AudioDevices::describeFailure(failure));
+        auto message = audio::AudioDevices::describeFailure(failure);
+        bool offerMicrophoneSettings = false;
+#if defined(_WIN32)
+        if (failure.request.purpose == audio::AudioStreamPurpose::Recording ||
+            failure.request.purpose == audio::AudioStreamPurpose::Monitoring)
+        {
+            message +=
+                "\n\nIf Windows is blocking audio input, allow desktop apps "
+                "to access your microphone in Settings > Privacy & security "
+                "> Microphone.";
+            offerMicrophoneSettings = true;
+        }
+#endif
+        reportWarning(state, title, message, offerMicrophoneSettings);
     }
 
     bool setInputMonitoring(State *state, const bool enabled)
