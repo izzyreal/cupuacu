@@ -316,8 +316,8 @@ pipelines:
             run: rm -rf binaries dist/codesigned-macos && mkdir -p binaries dist/codesigned-macos
           - name: Copy app bundle
             run: cp -R dist/macos-unsigned/Cupuacu.app binaries/Cupuacu.app
-          - name: Copy app bundle
-            run: codesign --force --deep --strict --options=runtime --timestamp --sign "$DEV_IDENTITY_APP" -v binaries/Cupuacu.app
+          - name: Sign app bundle
+            run: codesign --force --deep --strict --options=runtime --entitlements cmake/Cupuacu.entitlements --timestamp --sign "$DEV_IDENTITY_APP" -v binaries/Cupuacu.app
             vault:
               connection: home-vault
               secrets:
@@ -327,7 +327,13 @@ pipelines:
                   key: dev-identity-app
             env:
               DEV_IDENTITY_APP: "{{ secret.dev-identity-app }}"
-          - name: Copy app bundle
+          - name: Verify app bundle signature
+            run: codesign --verify --deep --strict -v binaries/Cupuacu.app
+          - name: Extract signed entitlements
+            run: codesign -d --xml --entitlements binaries/Cupuacu.entitlements binaries/Cupuacu.app
+          - name: Verify audio input entitlement
+            run: test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.audio-input' binaries/Cupuacu.entitlements)" = true
+          - name: Copy signed app bundle
             run: cp -R binaries/Cupuacu.app dist/codesigned-macos/Cupuacu.app
 
   - id: package-macos

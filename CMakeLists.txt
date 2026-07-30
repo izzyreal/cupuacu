@@ -33,7 +33,8 @@ endif()
 if(DEFINED FETCHCONTENT_CACHE_ROOT AND NOT FETCHCONTENT_CACHE_ROOT STREQUAL "")
     file(MAKE_DIRECTORY "${FETCHCONTENT_CACHE_ROOT}")
 endif()
-option(CUPUACU_CODE_SIGNING_ENABLED "Enable post-build code signing on macOS" OFF)
+option(CUPUACU_CODE_SIGNING_ENABLED
+    "Sign macOS builds with Apple Development instead of ad-hoc signing" OFF)
 option(CUPUACU_ENABLE_XCODE_TSAN_SUPPRESSIONS
     "Inject TSAN_OPTIONS suppressions into CMake-generated Xcode schemes" ON)
 option(CUPUACU_ENABLE_RTSAN_LIBS
@@ -674,19 +675,29 @@ if (PROJECT_IS_TOP_LEVEL)
     )
 endif()
 
-if (APPLE AND CUPUACU_CODE_SIGNING_ENABLED)
-    execute_process(
-        COMMAND python3 macos-codesign-details-extractor.py
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        OUTPUT_VARIABLE DEVELOPMENT_TEAM OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
+if(APPLE)
+    set(CUPUACU_CODESIGN_ENTITLEMENTS
+        "${CMAKE_SOURCE_DIR}/cmake/Cupuacu.entitlements")
 
-    set(CODESIGN_IDENTITY "Apple Development")
+    if(CUPUACU_CODE_SIGNING_ENABLED)
+        execute_process(
+            COMMAND python3 macos-codesign-details-extractor.py
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            OUTPUT_VARIABLE DEVELOPMENT_TEAM OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        set(CUPUACU_CODESIGN_IDENTITY "Apple Development")
+        set(CUPUACU_CODESIGN_RUNTIME_OPTIONS --options runtime)
+    else()
+        set(CUPUACU_CODESIGN_IDENTITY "-")
+        set(CUPUACU_CODESIGN_RUNTIME_OPTIONS)
+    endif()
 
-    add_custom_command(TARGET Cupuacu
-        POST_BUILD
-        #COMMAND codesign --force --deep --sign ${CODESIGN_IDENTITY} --timestamp $<TARGET_FILE:Cupuacu>
-        COMMAND codesign --force --deep --sign ${CODESIGN_IDENTITY} $<TARGET_FILE:Cupuacu>
-        VERBATIM
-    )
+    add_custom_command(TARGET Cupuacu POST_BUILD
+        COMMAND codesign --force --deep --strict
+            ${CUPUACU_CODESIGN_RUNTIME_OPTIONS}
+            --entitlements "${CUPUACU_CODESIGN_ENTITLEMENTS}"
+            --sign "${CUPUACU_CODESIGN_IDENTITY}"
+            "$<TARGET_BUNDLE_DIR:Cupuacu>"
+        COMMAND codesign --verify --deep --strict "$<TARGET_BUNDLE_DIR:Cupuacu>"
+        VERBATIM)
 endif()
