@@ -94,13 +94,12 @@ namespace cupuacu::actions
     {
         if (!filelist)
         {
-            SDL_Log("An error occured: %s", SDL_GetError());
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                         "Open file dialog failed: %s", SDL_GetError());
             return;
         }
         else if (!*filelist)
         {
-            SDL_Log("The user did not select any file.");
-            SDL_Log("Most likely, the dialog was canceled.");
             return;
         }
 

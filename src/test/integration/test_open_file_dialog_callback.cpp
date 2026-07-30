@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "IntegrationTestHelpers.hpp"
+#include "../TestSdlLogSilencer.hpp"
 
 #include "State.hpp"
 #include "actions/io/BackgroundOpen.hpp"
@@ -331,6 +332,7 @@ TEST_CASE("Open file dialog callback leaves state unchanged when canceled",
 
 TEST_CASE("Open file dialog callback tolerates dialog errors", "[integration]")
 {
+    cupuacu::test::ScopedSdlLogSilencer silenceExpectedError;
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = "still-unchanged.wav";
 

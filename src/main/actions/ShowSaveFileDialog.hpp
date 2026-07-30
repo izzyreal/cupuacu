@@ -83,7 +83,8 @@ namespace cupuacu::actions
                 state->pendingSaveAsMarkerWarningConfirmed = false;
                 state->pendingCloseTabAfterSaveId.reset();
             }
-            SDL_Log("An error occured: %s", SDL_GetError());
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                         "Save file dialog failed: %s", SDL_GetError());
             return;
         }
         else if (!*filelist)
@@ -93,8 +94,6 @@ namespace cupuacu::actions
                 state->pendingSaveAsMarkerWarningConfirmed = false;
                 state->pendingCloseTabAfterSaveId.reset();
             }
-            SDL_Log("The user did not select any file.");
-            SDL_Log("Most likely, the dialog was canceled.");
             return;
         }
 
