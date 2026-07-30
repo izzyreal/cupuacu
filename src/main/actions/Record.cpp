@@ -35,7 +35,11 @@ void cupuacu::actions::record(cupuacu::State *state)
         return;
     }
 
-    state->audioDevices->prepareForRecording();
+    if (!state->audioDevices->prepareForRecording())
+    {
+        reportAudioInputUnavailable(state);
+        return;
+    }
 
     cupuacu::audio::Record recordMessage;
     recordMessage.document = &session.document;

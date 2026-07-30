@@ -62,6 +62,7 @@ TEST_CASE("Record action stops playback and records bounded selection",
 #endif
     cupuacu::test::StateWithTestPaths state{};
     state.audioDevices = std::make_shared<cupuacu::audio::AudioDevices>(false);
+    state.audioDevices->setRecordingPreparationResultForTesting(true);
     auto &document = state.getActiveDocumentSession().document;
     document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 128);
 
@@ -87,6 +88,44 @@ TEST_CASE("Record action stops playback and records bounded selection",
     REQUIRE(state.audioDevices->getRecordingPosition() == 11);
 }
 
+TEST_CASE("Record action reports an unavailable audio input", "[audio]")
+{
+#if defined(__APPLE__)
+    struct MicrophonePermissionReset
+    {
+        ~MicrophonePermissionReset()
+        {
+            cupuacu::platform::macos::resetMicrophoneAccessOverrideForTesting();
+        }
+    } microphonePermissionReset;
+    cupuacu::platform::macos::setMicrophoneAccessOverrideForTesting(true);
+#endif
+    cupuacu::test::StateWithTestPaths state{};
+    state.audioDevices = std::make_shared<cupuacu::audio::AudioDevices>(false);
+    state.audioDevices->setRecordingPreparationResultForTesting(false);
+    std::string reportedTitle;
+    std::string reportedMessage;
+    state.errorReporter =
+        [&](const std::string &title, const std::string &message)
+    {
+        reportedTitle = title;
+        reportedMessage = message;
+    };
+
+    cupuacu::actions::record(&state);
+    state.audioDevices->drainQueue();
+
+    REQUIRE_FALSE(state.audioDevices->isRecording());
+    REQUIRE(reportedTitle == "Audio input unavailable");
+#if defined(_WIN32)
+    REQUIRE(reportedMessage.find("Allow desktop apps") != std::string::npos);
+    REQUIRE(reportedMessage.find("Privacy & security > Microphone") !=
+            std::string::npos);
+#else
+    REQUIRE(reportedMessage.find("Options > Audio") != std::string::npos);
+#endif
+}
+
 TEST_CASE(
     "Device selection short-circuits unchanged values and stores new ones",
     "[audio]")
@@ -107,6 +146,7 @@ TEST_CASE(
     REQUIRE(stored.hostApiIndex == changed.hostApiIndex);
     REQUIRE(stored.outputDeviceIndex == -1);
     REQUIRE(stored.inputDeviceIndex == -1);
+    REQUIRE_FALSE(devices.prepareForRecording());
 }
 
 TEST_CASE("Input monitoring routes idle input and survives stop", "[audio]")
@@ -272,13 +312,22 @@ TEST_CASE("Input monitoring action reports unavailable device selection",
     state.audioDevices->setDeviceSelection(
         {.hostApiIndex = -1, .outputDeviceIndex = -1, .inputDeviceIndex = -1});
     std::string reportedTitle;
-    state.errorReporter = [&](const std::string &title, const std::string &)
+    std::string reportedMessage;
+    state.errorReporter =
+        [&](const std::string &title, const std::string &message)
     {
         reportedTitle = title;
+        reportedMessage = message;
     };
 
     REQUIRE_FALSE(cupuacu::actions::setInputMonitoring(&state, true));
     REQUIRE(reportedTitle == "Input monitoring unavailable");
+#if defined(_WIN32)
+    REQUIRE(reportedMessage.find("Privacy & security > Microphone") !=
+            std::string::npos);
+#else
+    REQUIRE(reportedMessage.find("Options > Audio") != std::string::npos);
+#endif
     REQUIRE_FALSE(state.audioDevices->isInputMonitoringEnabled());
 }
 

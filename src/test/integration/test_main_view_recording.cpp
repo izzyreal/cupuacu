@@ -33,6 +33,7 @@ TEST_CASE("MainView integration consumes recorded chunks into the document",
 #endif
     cupuacu::test::StateWithTestPaths state{};
     auto ui = cupuacu::test::integration::createSessionUi(&state, 4, true, 2);
+    state.audioDevices->setRecordingPreparationResultForTesting(true);
     auto &session = state.getActiveDocumentSession();
     auto &doc = session.document;
 
@@ -76,6 +77,7 @@ TEST_CASE("MainView integration finalizes recording into an undoable when stoppe
 #endif
     cupuacu::test::StateWithTestPaths state{};
     auto ui = cupuacu::test::integration::createSessionUi(&state, 4, true, 2);
+    state.audioDevices->setRecordingPreparationResultForTesting(true);
     auto &session = state.getActiveDocumentSession();
     auto &doc = session.document;
 
@@ -137,6 +139,7 @@ TEST_CASE(
     cupuacu::test::StateWithTestPaths state{};
     auto ui = cupuacu::test::integration::createSessionUi(
         &state, 0, true, 2, 44100, 96, 240, 180);
+    state.audioDevices->setRecordingPreparationResultForTesting(true);
     auto &session = state.getActiveDocumentSession();
     auto &doc = session.document;
     auto *window = state.mainDocumentSessionWindow->getWindow();
@@ -177,6 +180,7 @@ TEST_CASE(
 #endif
     cupuacu::test::StateWithTestPaths state{};
     auto ui = cupuacu::test::integration::createSessionUi(&state, 0, true, 2);
+    state.audioDevices->setRecordingPreparationResultForTesting(true);
     auto &session = state.getActiveDocumentSession();
 
     REQUIRE_FALSE(state.waveforms.empty());

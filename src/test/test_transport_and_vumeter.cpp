@@ -132,6 +132,7 @@ TEST_CASE(
 #endif
     cupuacu::test::StateWithTestPaths state{};
     state.audioDevices = std::make_shared<cupuacu::audio::AudioDevices>(false);
+    state.audioDevices->setRecordingPreparationResultForTesting(true);
     auto &doc = state.getActiveDocumentSession().document;
     doc.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 16);
 

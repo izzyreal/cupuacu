@@ -6,6 +6,8 @@
 
 #include <SDL3/SDL.h>
 
+#include <iterator>
+
 #if defined(__APPLE__)
 #include "../platform/macos/MicrophonePermission.hpp"
 #endif
@@ -15,15 +17,56 @@ namespace cupuacu::actions
     namespace
     {
         void reportWarning(State *state, const std::string &title,
-                           const std::string &message)
+                           const std::string &message,
+                           const bool offerMicrophoneSettings = false)
         {
             if (state && state->errorReporter)
             {
                 state->errorReporter(title, message);
                 return;
             }
+#if defined(_WIN32)
+            if (offerMicrophoneSettings)
+            {
+                constexpr int openSettingsButtonId = 1;
+                const SDL_MessageBoxButtonData buttons[] = {
+                    {SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, "OK"},
+                    {SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT,
+                     openSettingsButtonId, "Open Microphone Settings"}};
+                const SDL_MessageBoxData messageBox{
+                    .flags = SDL_MESSAGEBOX_WARNING |
+                             SDL_MESSAGEBOX_BUTTONS_RIGHT_TO_LEFT,
+                    .window = nullptr,
+                    .title = title.c_str(),
+                    .message = message.c_str(),
+                    .numbuttons = static_cast<int>(std::size(buttons)),
+                    .buttons = buttons,
+                    .colorScheme = nullptr};
+                int selectedButtonId = 0;
+                if (SDL_ShowMessageBox(&messageBox, &selectedButtonId) &&
+                    selectedButtonId == openSettingsButtonId)
+                {
+                    SDL_OpenURL("ms-settings:privacy-microphone");
+                }
+                return;
+            }
+#else
+            (void)offerMicrophoneSettings;
+#endif
             SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_WARNING, title.c_str(),
                                      message.c_str(), nullptr);
+        }
+
+        const char *audioDeviceUnavailableMessage()
+        {
+#if defined(_WIN32)
+            return "Allow desktop apps to access your microphone in Windows "
+                   "Settings > Privacy & security > Microphone, and select "
+                   "working input and output devices in Options > Audio.";
+#else
+            return "Select working input and output devices in Options > "
+                   "Audio.";
+#endif
         }
     } // namespace
 
@@ -41,6 +84,12 @@ namespace cupuacu::actions
         (void)state;
 #endif
         return true;
+    }
+
+    void reportAudioInputUnavailable(State *state)
+    {
+        reportWarning(state, "Audio input unavailable",
+                      audioDeviceUnavailableMessage(), true);
     }
 
     void reportInputMonitoringError(State *state, const std::string &message)
@@ -71,13 +120,18 @@ namespace cupuacu::actions
                 enabled, gui::getVuMeterIfPresent(state)))
         {
             const auto error = state->audioDevices->getInputMonitoringError();
-            reportInputMonitoringError(
-                state,
-                error == audio::InputMonitoringError::SuppressionUnavailable
-                    ? "Feedback suppression could not be initialized for the "
-                      "selected devices."
-                    : "Select working input and output devices in Options > "
-                      "Audio.");
+            if (error == audio::InputMonitoringError::SuppressionUnavailable)
+            {
+                reportInputMonitoringError(
+                    state,
+                    "Feedback suppression could not be initialized for the "
+                    "selected devices.");
+            }
+            else
+            {
+                reportWarning(state, "Input monitoring unavailable",
+                              audioDeviceUnavailableMessage(), true);
+            }
             return false;
         }
 

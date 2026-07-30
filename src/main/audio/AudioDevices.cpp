@@ -427,10 +427,24 @@ void AudioDevices::closeDevice()
     paData.inputChannelCount = 0;
 }
 
-void AudioDevices::prepareForRecording()
+bool AudioDevices::prepareForRecording()
 {
+    if (recordingPreparationResultForTesting)
+    {
+        return *recordingPreparationResultForTesting;
+    }
+
     const auto selection = getDeviceSelection();
-    openDevice(selection.inputDeviceIndex, selection.outputDeviceIndex);
+    if (selection.inputDeviceIndex < 0 || selection.outputDeviceIndex < 0)
+    {
+        return false;
+    }
+    return openDevice(selection.inputDeviceIndex, selection.outputDeviceIndex);
+}
+
+void AudioDevices::setRecordingPreparationResultForTesting(const bool result)
+{
+    recordingPreparationResultForTesting = result;
 }
 
 bool AudioDevices::setInputMonitoringEnabled(const bool enabled,

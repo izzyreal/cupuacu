@@ -10,6 +10,7 @@ namespace cupuacu
 namespace cupuacu::actions
 {
     bool ensureAudioInputAccess(cupuacu::State *state);
+    void reportAudioInputUnavailable(cupuacu::State *state);
     bool setInputMonitoring(cupuacu::State *state, bool enabled);
     void reportInputMonitoringError(cupuacu::State *state,
                                     const std::string &message);

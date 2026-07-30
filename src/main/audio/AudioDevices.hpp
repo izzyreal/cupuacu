@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <limits>
 #include <mutex>
+#include <optional>
 
 #include <readerwriterqueue.h>
 
@@ -75,7 +76,8 @@ namespace cupuacu::audio
 
         bool openDevice(int inputDeviceIndex, int outputDeviceIndex);
         void closeDevice();
-        void prepareForRecording();
+        [[nodiscard]] bool prepareForRecording();
+        void setRecordingPreparationResultForTesting(bool result);
         bool setInputMonitoringEnabled(bool enabled,
                                        gui::VuMeter *vuMeter = nullptr);
         bool isInputMonitoringEnabled() const noexcept;
@@ -162,6 +164,7 @@ namespace cupuacu::audio
             InputMonitoringError::None};
         std::atomic<FeedbackSuppressionMode> feedbackSuppressionMode{
             FeedbackSuppressionMode::Standard};
+        std::optional<bool> recordingPreparationResultForTesting;
         int currentInputDeviceIndex = -1;
         int currentOutputDeviceIndex = -1;
         PaStream *stream = nullptr;
