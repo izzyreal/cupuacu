@@ -42,9 +42,9 @@ pipelines:
             run: if command -v ccache >/dev/null 2>&1; then ccache --zero-stats; else echo "ccache not found"; fi
           - name: Configure CMake
             run: CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true CCACHE_COMPILERCHECK=content cmake -S . -B build/linux-amd64 -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCUPUACU_BUILD_CCACHE_ENABLED=ON -DFETCHCONTENT_CACHE_ROOT="$CIWI_FETCHCONTENT_SOURCES_DIR"
-          - name: Build CMake targets
+          - name: Build Cupuacu and tests
             run: CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true CCACHE_COMPILERCHECK=content cmake --build build/linux-amd64 --config Release --target Cupuacu cupuacu-tests --parallel 4
-          - name: Run Cupuacu Tests
+          - name: Run Cupuacu tests
             test:
               name: cupuacu-tests
               command: ALSA_CONFIG_PATH=docker/integration/linux/alsa.conf SDL_VIDEODRIVER=offscreen SDL_RENDER_DRIVER=software CUPUACU_SUPPRESS_PORTAUDIO_ERRORS=1 ./build/linux-amd64/cupuacu-tests --reporter JUnit --out build/linux-amd64/result-junit.xml
@@ -52,7 +52,7 @@ pipelines:
               report: build/linux-amd64/result-junit.xml
           - name: Show ccache stats
             run: if command -v ccache >/dev/null 2>&1; then ccache --show-stats; else echo "ccache not found"; fi
-          - name: Check Linux amd64 package
+          - name: Build Linux amd64 package
             run: |
               VERSION="$(cat VERSION)"
               PKG_DIR="build/linux-amd64/package"
@@ -97,11 +97,11 @@ pipelines:
             run: docker buildx build --platform linux/arm64 -t cupuacu-linux-arm64-cross --load -f docker/linux-arm64-cross/Dockerfile docker/linux-arm64-cross
           - name: Reset ccache stats
             run: docker run --rm --platform linux/arm64 --user "$(id -u):$(id -g)" -v "$CCACHE_DIR:/ccache" cupuacu-linux-arm64-cross bash -lc 'export CCACHE_DIR=/ccache && ccache --zero-stats'
-          - name: Configure CMake
+          - name: Configure and build arm64 binary
             run: CONTAINER_SUFFIX="${CIWI_JOB_EXECUTION_ID:-$$}" && CONTAINER_NAME="cupuacu-linux-arm64-build-$CONTAINER_SUFFIX" && cleanup() { docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true; } && trap cleanup EXIT INT TERM && docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true && docker run --name "$CONTAINER_NAME" --platform linux/arm64 --user "$(id -u):$(id -g)" -v "$PWD:/work" -v "$CIWI_FETCHCONTENT_SOURCES_DIR:/ciwi-fetchcontent" -v "$CCACHE_DIR:/ccache" -w /work cupuacu-linux-arm64-cross bash -lc 'export CCACHE_DIR=/ccache && export CCACHE_COMPILERCHECK=content && cmake -S . -B build/linux-arm64 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCUPUACU_BUILD_CCACHE_ENABLED=ON -DFETCHCONTENT_CACHE_ROOT=/ciwi-fetchcontent && cmake --build build/linux-arm64 --config Release --target Cupuacu --parallel 4'
           - name: Show ccache stats
             run: docker run --rm --platform linux/arm64 --user "$(id -u):$(id -g)" -v "$CCACHE_DIR:/ccache" cupuacu-linux-arm64-cross bash -lc 'export CCACHE_DIR=/ccache && ccache --show-stats'
-          - name: Check Linux arm64 package
+          - name: Build Linux arm64 package
             run: |
               VERSION="$(cat VERSION)"
               PKG_DIR="build/linux-arm64/package"
@@ -139,7 +139,7 @@ pipelines:
             run: if command -v ccache >/dev/null 2>&1; then ccache --zero-stats; else echo "ccache not found"; fi
           - name: Build integration image
             run: docker build -t cupuacu-integration-linux-ci -f docker/integration/linux/Dockerfile .
-          - name: Run Cupuacu Tests Integration
+          - name: Build and run Cupuacu integration tests
             test:
               name: cupuacu-tests-integration
               command: docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e DISPLAY=:99 -e SDL_VIDEODRIVER=x11 -e SDL_RENDER_DRIVER=software -e CUPUACU_SUPPRESS_PORTAUDIO_ERRORS=1 -e CCACHE_DIR=/ccache -e CCACHE_BASEDIR=/work -e CCACHE_NOHASHDIR=true -e CCACHE_COMPILERCHECK=content -v "$PWD:/work" -v "$CIWI_FETCHCONTENT_SOURCES_DIR:/ciwi-fetchcontent" -v "$CCACHE_DIR:/ccache" -w /work cupuacu-integration-linux-ci bash -lc 'Xvfb "$DISPLAY" -screen 0 1920x1080x24 >/tmp/cupuacu-xvfb.log 2>&1 & XVFB_PID=$!; trap "kill $XVFB_PID >/dev/null 2>&1 || true" EXIT; cmake -G Ninja -S . -B build/linux-amd64-integration -DCUPUACU_BUILD_INTEGRATION_TESTS=ON -DCUPUACU_BUILD_CCACHE_ENABLED=ON -DFETCHCONTENT_CACHE_ROOT=/ciwi-fetchcontent && cmake --build build/linux-amd64-integration --target cupuacu-tests-integration --parallel 4 && ./build/linux-amd64-integration/cupuacu-tests-integration --reporter JUnit --out dist/integration-junit.xml'
@@ -173,15 +173,15 @@ pipelines:
             run: mkdir -p "$CCACHE_DIR"
           - name: Build integration image
             run: docker build -t cupuacu-integration-linux-ci -f docker/integration/linux/Dockerfile .
-          - name: Configure CMake
+          - name: Configure and build coverage tests
             run: docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e CCACHE_DIR=/ccache -e CCACHE_BASEDIR=/work -e CCACHE_NOHASHDIR=true -e CCACHE_COMPILERCHECK=content -v "$PWD:/work" -v "$CIWI_FETCHCONTENT_SOURCES_DIR:/ciwi-fetchcontent" -v "$CCACHE_DIR:/ccache" -w /work cupuacu-integration-linux-ci bash -lc 'ccache --zero-stats && cmake -G Ninja -S . -B build/linux-amd64-coverage -DCMAKE_BUILD_TYPE=Debug -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON -DCUPUACU_BUILD_CCACHE_ENABLED=ON -DCUPUACU_ENABLE_COVERAGE=ON -DCUPUACU_BUILD_INTEGRATION_TESTS=ON -DFETCHCONTENT_CACHE_ROOT=/ciwi-fetchcontent && cmake --build build/linux-amd64-coverage --target cupuacu-tests cupuacu-tests-integration --parallel 4'
-          - name: Run Cupuacu Tests Coverage Unit
+          - name: Run unit tests for coverage
             test:
               name: cupuacu-tests-coverage-unit
               command: mkdir -p dist && docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e SDL_VIDEODRIVER=offscreen -e CUPUACU_SUPPRESS_PORTAUDIO_ERRORS=1 -v "$PWD:/work" -w /work cupuacu-integration-linux-ci bash -lc './build/linux-amd64-coverage/cupuacu-tests --reporter JUnit --out dist/junit-unit.xml'
               format: junit-xml
               report: dist/junit-unit.xml
-          - name: Run Cupuacu Tests Coverage Integration
+          - name: Run integration tests and collect coverage
             test:
               name: cupuacu-tests-coverage-integration
               command: mkdir -p dist && docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e DISPLAY=:99 -e SDL_VIDEODRIVER=x11 -e SDL_RENDER_DRIVER=software -e CUPUACU_SUPPRESS_PORTAUDIO_ERRORS=1 -v "$PWD:/work" -w /work cupuacu-integration-linux-ci bash -lc 'Xvfb "$DISPLAY" -screen 0 1920x1080x24 >/tmp/cupuacu-coverage-xvfb.log 2>&1 & XVFB_PID=$!; trap "kill $XVFB_PID >/dev/null 2>&1 || true" EXIT; ./build/linux-amd64-coverage/cupuacu-tests-integration --reporter JUnit --out dist/junit-integration.xml && lcov --capture -j 4 --rc geninfo_unexecuted_blocks=1 --ignore-errors source --directory build/linux-amd64-coverage --base-directory /work --output-file dist/coverage.raw.info && lcov --extract dist/coverage.raw.info "*/src/main/*" --output-file dist/coverage.info && perl -pe '"'"'s{^SF:.*/src/main/}{SF:src/main/}'"'"' dist/coverage.info > dist/coverage.info.tmp && mv dist/coverage.info.tmp dist/coverage.info'
@@ -218,11 +218,11 @@ pipelines:
             run: ccache --dir "$CCACHE_DIR" --zero-stats
           - name: Configure CMake
             run: CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true CCACHE_COMPILERCHECK=content cmake -S . -B build/macos-universal -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCUPUACU_BUILD_CCACHE_ENABLED=ON -DFETCHCONTENT_CACHE_ROOT="$CIWI_FETCHCONTENT_SOURCES_DIR"
-          - name: Build CMake targets
+          - name: Build Cupuacu and tests
             run: CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true CCACHE_COMPILERCHECK=content cmake --build build/macos-universal --config Release --target Cupuacu cupuacu-tests --parallel 4
           - name: Show ccache stats
             run: ccache --dir "$CCACHE_DIR" --show-stats
-          - name: Run Cupuacu Tests
+          - name: Run Cupuacu tests
             test:
               name: cupuacu-tests
               command: ./build/macos-universal/cupuacu-tests --reporter JUnit --out build/macos-universal/result-junit.xml
@@ -230,9 +230,9 @@ pipelines:
               report: build/macos-universal/result-junit.xml
           - name: Prepare unsigned app
             run: rm -rf dist/macos-unsigned && mkdir -p dist/macos-unsigned
-          - name: Copy app bundle
+          - name: Stage unsigned app bundle
             run: cp -R build/macos-universal/Cupuacu.app dist/macos-unsigned/Cupuacu.app
-          - name: Copy signing entitlements
+          - name: Stage signing entitlements
             run: cp cmake/Cupuacu.entitlements dist/macos-unsigned/Cupuacu.entitlements
           - name: Copy version file
             run: cp VERSION dist/version-macos-universal.txt
@@ -266,17 +266,17 @@ pipelines:
             run: '"C:\ProgramData\chocolatey\bin\ccache.exe" --dir "%CCACHE_DIR%" --zero-stats'
           - name: Configure CMake
             run: set "CCACHE_BASEDIR=%CD%" && set "CCACHE_NOHASHDIR=true" && set "CCACHE_COMPILERCHECK=content" && (cmake -S . -B build\windows-amd64 -G "Visual Studio 18 2026" -A x64 -DCUPUACU_BUILD_CCACHE_ENABLED=ON -DFETCHCONTENT_CACHE_ROOT="%CIWI_FETCHCONTENT_SOURCES_DIR%" || ((if exist build\windows-amd64 rmdir /s /q build\windows-amd64) & cmake -S . -B build\windows-amd64 -G "Visual Studio 17 2022" -A x64 -DCUPUACU_BUILD_CCACHE_ENABLED=ON -DFETCHCONTENT_CACHE_ROOT="%CIWI_FETCHCONTENT_SOURCES_DIR%") || ((if exist build\windows-amd64 rmdir /s /q build\windows-amd64) & cmake -S . -B build\windows-amd64 -G "Visual Studio 16 2019" -A x64 -DCUPUACU_BUILD_CCACHE_ENABLED=ON -DFETCHCONTENT_CACHE_ROOT="%CIWI_FETCHCONTENT_SOURCES_DIR%"))
-          - name: Build CMake targets
+          - name: Build Cupuacu and tests
             run: set "CCACHE_BASEDIR=%CD%" && set "CCACHE_NOHASHDIR=true" && set "CCACHE_COMPILERCHECK=content" && cmake --build build\windows-amd64 --config Release --target Cupuacu cupuacu-tests
           - name: Show ccache stats
             run: '"C:\ProgramData\chocolatey\bin\ccache.exe" --dir "%CCACHE_DIR%" --show-stats'
-          - name: Run Cupuacu Tests
+          - name: Run Cupuacu tests
             test:
               name: cupuacu-tests
               command: build\windows-amd64\Release\cupuacu-tests.exe --reporter JUnit --out build\windows-amd64\result-junit.xml
               format: junit-xml
               report: build/windows-amd64/result-junit.xml
-          - name: Check Windows package
+          - name: Build Windows installer
             run: for /f %%i in (VERSION) do powershell -ExecutionPolicy Bypass -File packaging\build-windows-installer.ps1 -Version "%%i" -InputExe "build\windows-amd64\Release\Cupuacu.exe" -OutputExe "dist\Cupuacu-windows-Setup-x86_64-v%%i.exe"
 
   - id: codesign-macos
@@ -301,7 +301,7 @@ pipelines:
           - dist/codesigned-macos/**
           - dist/version-macos-universal.txt
         steps:
-          - name: Check credentials
+          - name: Check Apple signing credentials
             run: test -n "$DEV_IDENTITY_APP"
             vault:
               connection: home-vault
@@ -312,11 +312,11 @@ pipelines:
                   key: dev-identity-app
             env:
               DEV_IDENTITY_APP: "{{ secret.dev-identity-app }}"
-          - name: Check artifact
+          - name: Verify unsigned app artifacts
             run: test -d dist/macos-unsigned/Cupuacu.app && test -f dist/macos-unsigned/Cupuacu.entitlements && test -f dist/version-macos-universal.txt
           - name: Prepare staging directories
             run: rm -rf binaries dist/codesigned-macos && mkdir -p binaries dist/codesigned-macos
-          - name: Copy app bundle
+          - name: Stage unsigned app bundle
             run: cp -R dist/macos-unsigned/Cupuacu.app binaries/Cupuacu.app
           - name: Sign app bundle
             run: codesign --force --deep --strict --options=runtime --entitlements dist/macos-unsigned/Cupuacu.entitlements --timestamp --sign "$DEV_IDENTITY_APP" -v binaries/Cupuacu.app
@@ -335,7 +335,7 @@ pipelines:
             run: codesign -d --xml --entitlements binaries/Cupuacu.entitlements binaries/Cupuacu.app
           - name: Verify audio input entitlement
             run: test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.audio-input' binaries/Cupuacu.entitlements)" = true
-          - name: Copy signed app bundle
+          - name: Publish signed app bundle
             run: cp -R binaries/Cupuacu.app dist/codesigned-macos/Cupuacu.app
 
   - id: package-macos
@@ -363,7 +363,7 @@ pipelines:
         artifacts:
           - dist/Cupuacu-macos-v*.dmg
         steps:
-          - name: Check credentials
+          - name: Check Apple notarization credentials
             run: test -n "$NOTARYTOOL_PASSWORD" && test -n "$APPLE_TEAM_ID" && test -n "$APPLE_ID"
             vault:
               connection: home-vault
@@ -384,17 +384,17 @@ pipelines:
               NOTARYTOOL_PASSWORD: "{{ secret.notarytool-password }}"
               APPLE_TEAM_ID: "{{ secret.apple-team-id }}"
               APPLE_ID: "{{ secret.apple-id }}"
-          - name: Check artifact
+          - name: Verify signed app artifacts
             run: test -d dist/codesigned-macos/Cupuacu.app && test -f dist/version-macos-universal.txt
           - name: Prepare staging directories
             run: rm -rf binaries && mkdir -p binaries
-          - name: Copy app bundle
+          - name: Stage signed app bundle
             run: cp -R dist/codesigned-macos/Cupuacu.app binaries/Cupuacu.app
-          - name: Fix executable bits
+          - name: Ensure app executable permissions
             run: test -f binaries/Cupuacu.app/Contents/MacOS/Cupuacu && chmod +x binaries/Cupuacu.app/Contents/MacOS/Cupuacu
-          - name: Check macOS package
+          - name: Build macOS disk image
             run: VERSION="$(cat dist/version-macos-universal.txt | tr -d '\r\n')" && test -n "$VERSION" && sh packaging/build-macos-dmg.sh binaries/Cupuacu.app "$VERSION" "dist/Cupuacu-macos-v${VERSION}.dmg"
-          - name: Check macOS package
+          - name: Notarize macOS disk image
             run: VERSION="$(cat dist/version-macos-universal.txt | tr -d '\r\n')" && RESULT_JSON="$PWD/dist/notary-result-macos.json" && xcrun notarytool submit "$PWD/dist/Cupuacu-macos-v${VERSION}.dmg" --apple-id "$APPLE_ID" --password "$NOTARYTOOL_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait --output-format json > "$RESULT_JSON" && STATUS="$(/usr/bin/plutil -extract status raw -o - "$RESULT_JSON")" && SUBMISSION_ID="$(/usr/bin/plutil -extract id raw -o - "$RESULT_JSON")" && if [ "$STATUS" != "Accepted" ]; then echo "notarytool status=${STATUS} submission_id=${SUBMISSION_ID}"; xcrun notarytool log "$SUBMISSION_ID" --apple-id "$APPLE_ID" --password "$NOTARYTOOL_PASSWORD" --team-id "$APPLE_TEAM_ID"; exit 1; fi
             vault:
               connection: home-vault
@@ -416,7 +416,7 @@ pipelines:
               APPLE_TEAM_ID: "{{ secret.apple-team-id }}"
               APPLE_ID: "{{ secret.apple-id }}"
             skip_dry_run: true
-          - name: Check macOS package
+          - name: Staple macOS disk image
             run: VERSION="$(cat dist/version-macos-universal.txt | tr -d '\r\n')" && xcrun stapler staple "$PWD/dist/Cupuacu-macos-v${VERSION}.dmg"
             skip_dry_run: true
 
@@ -462,7 +462,7 @@ pipelines:
             gh: "*"
         timeout_seconds: 2400
         steps:
-          - name: Check credentials
+          - name: Check GitHub credentials
             run: test -n "$GITHUB_TOKEN"
             vault:
               connection: home-vault
@@ -475,15 +475,15 @@ pipelines:
             env:
               GITHUB_TOKEN: "{{ secret.github-secret }}"
             skip_dry_run: true
-          - name: Check release version
+          - name: Verify VERSION file
             run: test -f VERSION
-          - name: Check Linux amd64 package
+          - name: Verify Linux amd64 release artifact
             run: VERSION="$(cat VERSION)" && test -f "dist/Cupuacu-linux-amd64-v${VERSION}.zip"
-          - name: Check Linux arm64 package
+          - name: Verify Linux arm64 release artifact
             run: VERSION="$(cat VERSION)" && test -f "dist/Cupuacu-linux-arm64-v${VERSION}.zip"
-          - name: Check macOS package
+          - name: Verify macOS release artifact
             run: VERSION="$(cat VERSION)" && test -f "dist/Cupuacu-macos-v${VERSION}.dmg"
-          - name: Check Windows package
+          - name: Verify Windows release artifact
             run: VERSION="$(cat VERSION)" && test -f "dist/Cupuacu-windows-Setup-x86_64-v${VERSION}.exe"
           - name: Create checksums
             run: |
@@ -509,7 +509,7 @@ pipelines:
             env:
               GITHUB_TOKEN: "{{ secret.github-secret }}"
             skip_dry_run: true
-          - name: Check release tag
+          - name: Ensure release tag
             run: |
               TAG="${CIWI_PIPELINE_TAG}"
               if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
@@ -517,7 +517,7 @@ pipelines:
                 git push origin "$TAG"
               fi
             skip_dry_run: true
-          - name: Upload release assets
+          - name: Create release and upload assets
             run: |
               TAG="${CIWI_PIPELINE_TAG}"
               VERSION="$(cat VERSION)"
