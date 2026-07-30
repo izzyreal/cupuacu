@@ -23,5 +23,8 @@ namespace cupuacu::actions
     reportAudioStreamFailure(cupuacu::State *state,
                              const cupuacu::audio::AudioStreamFailure &failure,
                              const std::string &title);
+    [[nodiscard]] std::string audioStreamFailureMessage(
+        const cupuacu::audio::AudioStreamFailure &failure,
+        bool includeWindowsMicrophoneGuidance);
     void handleInputMonitoringProtectionTrip(cupuacu::State *state);
 } // namespace cupuacu::actions

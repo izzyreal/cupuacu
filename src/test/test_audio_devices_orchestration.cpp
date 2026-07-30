@@ -128,6 +128,23 @@ TEST_CASE("Record action reports an unavailable audio input", "[audio]")
 #endif
 }
 
+TEST_CASE("Audio stream failures can include Windows microphone guidance",
+          "[audio]")
+{
+    const cupuacu::audio::AudioStreamFailure failure{
+        .stage = cupuacu::audio::AudioStreamFailureStage::Open,
+        .message = "The selected input device is unavailable.",
+        .request = {.purpose = cupuacu::audio::AudioStreamPurpose::Recording,
+                    .sampleRate = 44100.0}};
+
+    const auto message =
+        cupuacu::actions::audioStreamFailureMessage(failure, true);
+
+    REQUIRE(message.find("Allow desktop apps") != std::string::npos);
+    REQUIRE(message.find("Privacy & security > Microphone") !=
+            std::string::npos);
+}
+
 TEST_CASE(
     "Device selection short-circuits unchanged values and stores new ones",
     "[audio]")
