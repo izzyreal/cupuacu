@@ -232,6 +232,8 @@ pipelines:
             run: rm -rf dist/macos-unsigned && mkdir -p dist/macos-unsigned
           - name: Copy app bundle
             run: cp -R build/macos-universal/Cupuacu.app dist/macos-unsigned/Cupuacu.app
+          - name: Copy signing entitlements
+            run: cp cmake/Cupuacu.entitlements dist/macos-unsigned/Cupuacu.entitlements
           - name: Copy version file
             run: cp VERSION dist/version-macos-universal.txt
 
@@ -311,13 +313,13 @@ pipelines:
             env:
               DEV_IDENTITY_APP: "{{ secret.dev-identity-app }}"
           - name: Check artifact
-            run: test -d dist/macos-unsigned/Cupuacu.app && test -f dist/version-macos-universal.txt
+            run: test -d dist/macos-unsigned/Cupuacu.app && test -f dist/macos-unsigned/Cupuacu.entitlements && test -f dist/version-macos-universal.txt
           - name: Prepare staging directories
             run: rm -rf binaries dist/codesigned-macos && mkdir -p binaries dist/codesigned-macos
           - name: Copy app bundle
             run: cp -R dist/macos-unsigned/Cupuacu.app binaries/Cupuacu.app
           - name: Sign app bundle
-            run: codesign --force --deep --strict --options=runtime --entitlements cmake/Cupuacu.entitlements --timestamp --sign "$DEV_IDENTITY_APP" -v binaries/Cupuacu.app
+            run: codesign --force --deep --strict --options=runtime --entitlements dist/macos-unsigned/Cupuacu.entitlements --timestamp --sign "$DEV_IDENTITY_APP" -v binaries/Cupuacu.app
             vault:
               connection: home-vault
               secrets:
