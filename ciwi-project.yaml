@@ -540,7 +540,7 @@ pipelines:
               GITHUB_TOKEN: "{{ secret.github-secret }}"
 
 pipeline_chains:
-  - id: build-release
+  - name: Build and release
     pipelines:
       - build
       - codesign-macos
