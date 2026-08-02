@@ -243,6 +243,10 @@ Relevant file:
 
 - `src/test/test_rtsan.cpp`
 
+A dedicated allocation-probe target verifies that RTSan itself is active. The
+RTSan test executable runs the probe as a child process and expects the
+intentional realtime allocation to abort.
+
 ### TSan
 
 When supported, CMake creates `cupuacu-tests-tsan`.

@@ -111,6 +111,42 @@ pipelines:
                 cmake -E tar cf "$PWD/../../../dist/Cupuacu-linux-arm64-v${VERSION}.zip" --format=zip Cupuacu
               )
 
+      - id: linux-amd64-rtsan
+        runs_on:
+          executor: script
+          shell: posix
+          os: linux
+          arch: amd64
+        requires:
+          tools:
+            git: "*"
+            cmake: "*"
+            ccache: "*"
+            xorg-dev: "*"
+        timeout_seconds: 1800
+        artifacts:
+          - dist/junit-rtsan-linux-amd64.xml
+        caches: *build_caches
+        steps:
+          - name: Prepare build directory
+            run: mkdir -p build/linux-amd64-rtsan dist
+          - name: Prepare FetchContent cache
+            run: mkdir -p "$CIWI_FETCHCONTENT_SOURCES_DIR"
+          - name: Prepare ccache
+            run: mkdir -p "$CCACHE_DIR"
+          - name: Reset ccache stats
+            run: if command -v ccache >/dev/null 2>&1; then ccache --zero-stats; else echo "ccache not found"; fi
+          - name: Configure RTSan tests
+            run: CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true CCACHE_COMPILERCHECK=content cmake -S . -B build/linux-amd64-rtsan -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Debug -DCUPUACU_BUILD_CCACHE_ENABLED=ON -DFETCHCONTENT_CACHE_ROOT="$CIWI_FETCHCONTENT_SOURCES_DIR"
+          - name: Build RTSan tests
+            run: CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true CCACHE_COMPILERCHECK=content cmake --build build/linux-amd64-rtsan --config Debug --target cupuacu-tests-rtsan --parallel 4
+          - name: Run RTSan tests
+            test:
+              name: cupuacu-tests-rtsan-linux-amd64
+              command: ALSA_CONFIG_PATH=docker/integration/linux/alsa.conf SDL_VIDEODRIVER=offscreen SDL_RENDER_DRIVER=software CUPUACU_SUPPRESS_PORTAUDIO_ERRORS=1 ./build/linux-amd64-rtsan/cupuacu-tests-rtsan --reporter JUnit --out dist/junit-rtsan-linux-amd64.xml
+              format: junit-xml
+              report: dist/junit-rtsan-linux-amd64.xml
+
       - id: linux-amd64-integration
         runs_on:
           executor: script
@@ -230,6 +266,41 @@ pipelines:
             run: cp cmake/Cupuacu.entitlements dist/macos-unsigned/Cupuacu.entitlements
           - name: Copy version file
             run: cp VERSION dist/version-macos-universal.txt
+
+      - id: macos-arm64-rtsan
+        runs_on:
+          executor: script
+          shell: posix
+          os: darwin
+          arch: arm64
+        requires:
+          tools:
+            git: "*"
+            cmake: "*"
+            ccache: "*"
+        timeout_seconds: 1800
+        artifacts:
+          - dist/junit-rtsan-macos-arm64.xml
+        caches: *build_caches
+        steps:
+          - name: Prepare build directory
+            run: mkdir -p build/macos-arm64-rtsan dist
+          - name: Prepare FetchContent cache
+            run: mkdir -p "$CIWI_FETCHCONTENT_SOURCES_DIR"
+          - name: Prepare ccache
+            run: mkdir -p "$CCACHE_DIR"
+          - name: Reset ccache stats
+            run: ccache --dir "$CCACHE_DIR" --zero-stats
+          - name: Configure RTSan tests
+            run: CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true CCACHE_COMPILERCHECK=content cmake -S . -B build/macos-arm64-rtsan -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Debug -DCMAKE_OSX_ARCHITECTURES=arm64 -DCUPUACU_BUILD_CCACHE_ENABLED=ON -DFETCHCONTENT_CACHE_ROOT="$CIWI_FETCHCONTENT_SOURCES_DIR"
+          - name: Build RTSan tests
+            run: CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true CCACHE_COMPILERCHECK=content cmake --build build/macos-arm64-rtsan --config Debug --target cupuacu-tests-rtsan --parallel 4
+          - name: Run RTSan tests
+            test:
+              name: cupuacu-tests-rtsan-macos-arm64
+              command: ./build/macos-arm64-rtsan/cupuacu-tests-rtsan --reporter JUnit --out dist/junit-rtsan-macos-arm64.xml
+              format: junit-xml
+              report: dist/junit-rtsan-macos-arm64.xml
 
       - id: windows-amd64
         runs_on:

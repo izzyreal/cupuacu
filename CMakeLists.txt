@@ -653,8 +653,15 @@ if(CUPUACU_BUILD_INTEGRATION_TESTS)
 endif()
 
 if(CUPUACU_RTSAN_SUPPORTED)
+    add_executable(cupuacu-rtsan-allocation-probe
+        src/test/rtsan_allocation_probe.cpp
+    )
+    target_compile_options(cupuacu-rtsan-allocation-probe PRIVATE -O0)
+    rtsan_libs_enable(TARGET cupuacu-rtsan-allocation-probe)
+
     add_executable(cupuacu-tests-rtsan
         src/test/test_rtsan.cpp
+        src/test/test_rtsan_verification.cpp
         src/test/test_audio_callback_core.cpp
     )
     target_link_libraries(cupuacu-tests-rtsan PRIVATE cupuacu_core_rtsan Catch2::Catch2WithMain)
@@ -664,7 +671,9 @@ if(CUPUACU_RTSAN_SUPPORTED)
     target_compile_definitions(cupuacu-tests-rtsan PRIVATE
         CUPUACU_RTSAN_LIBS_ENABLED=1
         CUPUACU_TSAN_ENABLED=0
+        CUPUACU_RTSAN_ALLOCATION_PROBE_PATH="$<TARGET_FILE:cupuacu-rtsan-allocation-probe>"
     )
+    add_dependencies(cupuacu-tests-rtsan cupuacu-rtsan-allocation-probe)
 
     if(CUPUACU_TSAN_SUPPORTED)
         add_executable(cupuacu-tsan-race-probe
