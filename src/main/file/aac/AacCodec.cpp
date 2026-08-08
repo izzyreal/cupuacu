@@ -1,5 +1,10 @@
 #include "AacCodec.hpp"
 
+#include <cstdint>
+
+// Match the portability shim in MiniaacCodec.cpp for MSVC's <cstdint>.
+using std::uint32_t;
+
 #define MAAC_COMPACT_CODEBOOKS
 #include <maac.h>
 
