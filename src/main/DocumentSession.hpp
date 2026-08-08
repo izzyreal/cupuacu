@@ -21,6 +21,7 @@ namespace cupuacu
     {
         std::string currentFile;
         std::optional<file::AudioExportSettings> currentFileExportSettings;
+        bool currentFileRequiresSaveAs = false;
         std::string preservationReferenceFile;
         std::optional<file::AudioExportSettings>
             preservationReferenceExportSettings;
@@ -123,6 +124,7 @@ namespace cupuacu
         {
             currentFile.clear();
             currentFileExportSettings.reset();
+            currentFileRequiresSaveAs = false;
             preservationReferenceFile.clear();
             preservationReferenceExportSettings.reset();
             overwritePreservation = {};
@@ -139,6 +141,7 @@ namespace cupuacu
         {
             currentFile = std::move(pathToUse);
             currentFileExportSettings = std::move(settings);
+            currentFileRequiresSaveAs = false;
             preservationReferenceFile = currentFile;
             preservationReferenceExportSettings = currentFileExportSettings;
             overwritePreservation = {};

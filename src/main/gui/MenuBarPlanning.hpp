@@ -278,6 +278,14 @@ namespace cupuacu::gui
                         "yet"};
         }
 
+        if (state->getActiveDocumentSession().currentFileRequiresSaveAs)
+        {
+            return {.available = false,
+                    .unavailableReason =
+                        "AAC export is unavailable; use Save As to choose a "
+                        "writable format"};
+        }
+
         return {};
     }
 

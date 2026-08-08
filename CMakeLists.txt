@@ -256,6 +256,22 @@ target_compile_definitions(alac_codec PRIVATE
 if(NOT CUPUACU_TARGET_BIG_ENDIAN)
     target_compile_definitions(alac_codec PUBLIC TARGET_RT_LITTLE_ENDIAN=1)
 endif()
+fetchcontent_declare_cached_url(
+    miniaac
+    "miniaac"
+    "${CMAKE_SOURCE_DIR}/deps/miniaac"
+    "https://buffering.party/software/miniaac/miniaac-1.0.0.tar.gz"
+    URL_HASH
+    "SHA256=9a81d4e83216e9c659207c4e4e0441cd9e9d11ff658de0fe2b98a3f15112758d"
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_GetProperties(miniaac)
+if(NOT miniaac_POPULATED)
+    FetchContent_Populate(miniaac)
+endif()
+add_library(miniaac_codec STATIC src/main/file/aac/MiniaacCodec.cpp)
+target_include_directories(miniaac_codec PUBLIC "${miniaac_SOURCE_DIR}")
+set_target_properties(miniaac_codec PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(platform_folders INTERFACE
     $<BUILD_INTERFACE:${PlatformFolders_SOURCE_DIR}>
 )
@@ -284,7 +300,9 @@ set(CUPUACU_SHARED_SOURCES
     src/main/file/AudioExport.cpp
     src/main/file/AudioFileWriter.cpp
     src/main/file/alac/AlacCodec.cpp
+    src/main/file/aac/AacCodec.cpp
     src/main/file/m4a/M4aAtoms.cpp
+    src/main/file/m4a/M4aAacReader.cpp
     src/main/file/m4a/M4aAlacReader.cpp
     src/main/file/m4a/M4aAlacWriter.cpp
     src/main/file/m4a/M4aParser.cpp
@@ -449,6 +467,7 @@ target_link_libraries(cupuacu_deps INTERFACE
     SndFile::sndfile
     portaudio
     alac_codec
+    miniaac_codec
     platform_folders
     spdlog::spdlog
     nlohmann_json::nlohmann_json

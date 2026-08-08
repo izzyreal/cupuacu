@@ -107,6 +107,11 @@ cupuacu_add_third_party(
     "https://github.com/macosforge/alac/blob/master/LICENSE"
     "${alac_SOURCE_DIR}/LICENSE")
 cupuacu_add_third_party(
+    "Miniaac" "1.0.0" "AAC-LC decoding"
+    "0BSD" "https://buffering.party/software/miniaac/"
+    "https://buffering.party/software/miniaac/"
+    "${miniaac_SOURCE_DIR}/LICENSE")
+cupuacu_add_third_party(
     "WebRTC Audio Processing" "846fe90a289f" "Feedback suppression"
     "BSD-3-Clause" "https://gitlab.freedesktop.org/pulseaudio/webrtc-audio-processing"
     "https://gitlab.freedesktop.org/pulseaudio/webrtc-audio-processing/-/blob/master/webrtc/LICENSE"

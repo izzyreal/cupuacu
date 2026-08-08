@@ -7,7 +7,9 @@
 #include "OverwritePreservation.hpp"
 #include "SndfilePath.hpp"
 #include "aiff/AiffMarkerMetadata.hpp"
+#include "m4a/M4aAacReader.hpp"
 #include "m4a/M4aAlacReader.hpp"
+#include "m4a/M4aParser.hpp"
 #include "wav/WavMarkerMetadata.hpp"
 
 #include <sndfile.hh>
@@ -33,6 +35,7 @@ namespace cupuacu::file
         waveform::DocumentWaveformCaches waveformCaches;
         bool persistentWaveformCacheChecked = false;
         bool persistentWaveformCacheLoaded = false;
+        bool requiresSaveAs = false;
     };
 
     using LoadProgressCallback =
@@ -437,12 +440,83 @@ namespace cupuacu::file
             doc.markCurrentStateAsSavedSource();
             return result;
         }
+
+        static std::optional<LoadedAudioFile> loadNativeAacM4aIfApplicable(
+            const std::string &path, const LoadProgressCallback &progress,
+            const LoadCancelCheck &isCanceled)
+        {
+            if (!hasM4aExtension(path) ||
+                cupuacu::file::m4a::detectM4aAudioCodecFile(path) !=
+                    cupuacu::file::m4a::M4aAudioCodec::AAC_LC)
+            {
+                return std::nullopt;
+            }
+
+            LoadedAudioFile result;
+            result.requiresSaveAs = true;
+            auto &doc = result.document;
+            std::uint32_t totalFramesLoaded = 0;
+            int lastPercent = -1;
+            const auto info = cupuacu::file::m4a::streamAacM4aFile(
+                path,
+                [&doc, &totalFramesLoaded](const float *samples,
+                                           const std::uint32_t frameCount,
+                                           const std::uint16_t channels)
+                {
+                    doc.writeInterleavedFloatBlock(totalFramesLoaded, samples,
+                                                   frameCount, channels, false);
+                    totalFramesLoaded += frameCount;
+                },
+                [&doc](const cupuacu::file::m4a::M4aAacFileInfo &streamInfo)
+                {
+                    doc.initialize(SampleFormat::FLOAT32, streamInfo.sampleRate,
+                                   streamInfo.channels, streamInfo.frameCount);
+                },
+                [progress, path, isCanceled, &lastPercent](
+                    const std::uint32_t decodedFrames,
+                    const std::uint32_t totalFrames)
+                {
+                    throwIfLoadCanceled(isCanceled);
+                    if (!progress || totalFrames == 0)
+                    {
+                        return;
+                    }
+                    const int percent = static_cast<int>(
+                        std::clamp<double>(
+                            static_cast<double>(decodedFrames) / totalFrames,
+                            0.0, 1.0) *
+                        100.0);
+                    if (percent == lastPercent && decodedFrames < totalFrames)
+                    {
+                        return;
+                    }
+                    lastPercent = percent;
+                    progress(path + " (decoding AAC " +
+                                 std::to_string(percent) + "%)",
+                             std::clamp<double>(
+                                 static_cast<double>(decodedFrames) /
+                                     totalFrames,
+                                 0.0, 1.0));
+                });
+            if (totalFramesLoaded != info.frameCount)
+            {
+                throw std::runtime_error("Decoded AAC M4A sample count mismatch");
+            }
+            doc.replaceMarkers(info.markers);
+            doc.markCurrentStateAsSavedSource();
+            return result;
+        }
     } // namespace detail
 
     static LoadedAudioFile loadAudioFile(
         const std::string &path, const LoadProgressCallback &progress = {},
         const LoadCancelCheck &isCanceled = {})
     {
+        if (auto loaded = detail::loadNativeAacM4aIfApplicable(path, progress,
+                                                               isCanceled))
+        {
+            return std::move(*loaded);
+        }
         if (auto loaded = detail::loadNativeAlacM4aIfApplicable(path, progress,
                                                                 isCanceled))
         {
@@ -543,6 +617,7 @@ namespace cupuacu::file
     {
         session.stopWaveformCacheBuild();
         session.currentFileExportSettings = loaded.exportSettings;
+        session.currentFileRequiresSaveAs = loaded.requiresSaveAs;
         session.setPreservationReference(path, session.currentFileExportSettings);
         session.document = std::move(loaded.document);
         if (loaded.persistentWaveformCacheLoaded)

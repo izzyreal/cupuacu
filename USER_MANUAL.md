@@ -58,13 +58,15 @@ format; Off remains available because it bypasses suppression.
 Use `File -> Open` to open an audio file with the system file picker.
 
 Installed builds also register Cupuacu as an alternate application for WAV,
-AIFF/AIF/AIFC, CAF, M4A/MP4 (ALAC), FLAC, OGG/OGA, and MP3 files. You can use
-your system file explorer's `Open With` action, pass one or more file paths to
-the Cupuacu executable, or drag audio files onto a Cupuacu window. Registering
-Cupuacu does not make it the default application for these formats.
+AIFF/AIF/AIFC, CAF, M4A/MP4 (ALAC or AAC-LC), FLAC, OGG/OGA, and MP3 files. You
+can use your system file explorer's `Open With` action, pass one or more file
+paths to the Cupuacu executable, or drag audio files onto a Cupuacu window.
+Registering Cupuacu does not make it the default application for these formats.
 
-M4A and MP4 are container formats. Cupuacu opens files containing ALAC audio,
-but does not currently decode AAC audio in those containers.
+M4A and MP4 are container formats. Cupuacu opens files containing ALAC or
+AAC-LC audio. Other AAC profiles, including HE-AAC, are not currently
+supported. AAC-LC import is read-only: use `Save As` and choose a writable
+format before saving changes.
 
 When a file is opened successfully:
 

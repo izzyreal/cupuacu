@@ -65,7 +65,7 @@
         </dict>
         <dict>
             <key>CFBundleTypeName</key>
-            <string>M4A ALAC audio</string>
+            <string>M4A audio</string>
             <key>CFBundleTypeRole</key>
             <string>Editor</string>
             <key>LSHandlerRank</key>

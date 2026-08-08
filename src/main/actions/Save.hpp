@@ -244,6 +244,10 @@ namespace cupuacu::actions
         {
             return false;
         }
+        if (session.currentFileRequiresSaveAs)
+        {
+            return false;
+        }
 
         auto settings = session.currentFileExportSettings;
         if (!settings.has_value())
@@ -289,6 +293,10 @@ namespace cupuacu::actions
 
         auto &session = state->getActiveDocumentSession();
         if (session.currentFile.empty())
+        {
+            return false;
+        }
+        if (session.currentFileRequiresSaveAs)
         {
             return false;
         }

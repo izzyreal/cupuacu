@@ -8,6 +8,7 @@
 #include <iterator>
 #include <limits>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 
@@ -229,7 +230,7 @@ namespace cupuacu::file::m4a
                 const auto sampleDelta = readBe32(bytes, entryOffset + 4);
                 if (sampleDelta == 0)
                 {
-                    throw std::runtime_error("Invalid zero-length ALAC packet");
+                    throw std::runtime_error("Invalid zero-length M4A packet");
                 }
                 if (i == 0)
                 {
@@ -378,12 +379,12 @@ namespace cupuacu::file::m4a
             if (sampleOffsets.size() != sampleSizes.size())
             {
                 throw std::runtime_error(
-                    "Chunk tables do not cover all ALAC packets");
+                    "Chunk tables do not cover all M4A packets");
             }
             return sampleOffsets;
         }
 
-        M4aParsedAlacFile parseSampleDescription(const Bytes &bytes,
+        M4aParsedAlacFile parseAlacSampleDescription(const Bytes &bytes,
                                                  const AtomView &stsd)
         {
             requireRange(bytes, stsd.payloadOffset, 8, "Truncated stsd atom");
@@ -444,6 +445,188 @@ namespace cupuacu::file::m4a
             {
                 throw std::runtime_error("Invalid ALAC magic cookie");
             }
+            return parsed;
+        }
+
+        struct DescriptorView
+        {
+            std::uint8_t tag = 0;
+            std::uint64_t payloadOffset = 0;
+            std::uint64_t payloadSize = 0;
+            std::uint64_t endOffset = 0;
+        };
+
+        DescriptorView readDescriptor(const Bytes &bytes,
+                                      const std::uint64_t offset,
+                                      const std::uint64_t end)
+        {
+            if (offset >= end)
+            {
+                throw std::runtime_error("Truncated M4A descriptor");
+            }
+            DescriptorView descriptor{.tag = readU8(bytes, offset)};
+            auto cursor = offset + 1;
+            std::uint64_t size = 0;
+            bool complete = false;
+            for (int i = 0; i < 4; ++i)
+            {
+                if (cursor >= end)
+                {
+                    throw std::runtime_error("Truncated M4A descriptor length");
+                }
+                const auto byte = readU8(bytes, cursor++);
+                size = (size << 7u) | (byte & 0x7fu);
+                if ((byte & 0x80u) == 0)
+                {
+                    complete = true;
+                    break;
+                }
+            }
+            if (!complete || size > end - cursor)
+            {
+                throw std::runtime_error("Invalid M4A descriptor length");
+            }
+            descriptor.payloadOffset = cursor;
+            descriptor.payloadSize = size;
+            descriptor.endOffset = cursor + size;
+            return descriptor;
+        }
+
+        Bytes parseAudioSpecificConfig(const Bytes &bytes, const AtomView &esds)
+        {
+            requireRange(bytes, esds.payloadOffset, 5, "Truncated esds atom");
+            const auto es =
+                readDescriptor(bytes, esds.payloadOffset + 4,
+                               esds.payloadOffset + esds.payloadSize);
+            if (es.tag != 0x03u || es.payloadSize < 3)
+            {
+                throw std::runtime_error("M4A ES descriptor missing");
+            }
+
+            auto cursor = es.payloadOffset + 2;
+            const auto flags = readU8(bytes, cursor++);
+            if ((flags & 0x80u) != 0)
+            {
+                cursor += 2;
+            }
+            if ((flags & 0x40u) != 0)
+            {
+                const auto urlLength = readU8(bytes, cursor++);
+                cursor += urlLength;
+            }
+            if ((flags & 0x20u) != 0)
+            {
+                cursor += 2;
+            }
+            if (cursor > es.endOffset)
+            {
+                throw std::runtime_error("Truncated M4A ES descriptor flags");
+            }
+
+            const auto decoderConfig =
+                readDescriptor(bytes, cursor, es.endOffset);
+            if (decoderConfig.tag != 0x04u || decoderConfig.payloadSize < 13)
+            {
+                throw std::runtime_error("M4A decoder configuration missing");
+            }
+            if (readU8(bytes, decoderConfig.payloadOffset) != 0x40u ||
+                (readU8(bytes, decoderConfig.payloadOffset + 1) >> 2u) != 0x05u)
+            {
+                throw std::runtime_error("M4A sample is not MPEG-4 AAC audio");
+            }
+
+            const auto specific =
+                readDescriptor(bytes, decoderConfig.payloadOffset + 13,
+                               decoderConfig.endOffset);
+            if (specific.tag != 0x05u || specific.payloadSize < 2)
+            {
+                throw std::runtime_error("AAC AudioSpecificConfig missing");
+            }
+            return Bytes(bytes.begin() + static_cast<std::ptrdiff_t>(
+                                             specific.payloadOffset),
+                         bytes.begin() +
+                             static_cast<std::ptrdiff_t>(specific.endOffset));
+        }
+
+        M4aParsedAacFile parseAacSampleDescription(const Bytes &bytes,
+                                                   const AtomView &stsd)
+        {
+            requireRange(bytes, stsd.payloadOffset, 8, "Truncated stsd atom");
+            if (readBe32(bytes, stsd.payloadOffset + 4) == 0)
+            {
+                throw std::runtime_error("M4A AAC sample description missing");
+            }
+            const auto entry = readAtom(bytes, stsd.payloadOffset + 8);
+            if (entry.type != "mp4a")
+            {
+                throw std::runtime_error("M4A audio sample entry is not AAC");
+            }
+            requireRange(bytes, entry.payloadOffset, 28,
+                         "Truncated AAC sample entry");
+            const auto children =
+                childrenInRange(bytes, entry.payloadOffset + 28,
+                                entry.payloadOffset + entry.payloadSize);
+            const auto esds = std::find_if(children.begin(), children.end(),
+                                           [](const AtomView &atom)
+                                           {
+                                               return atom.type == "esds";
+                                           });
+            if (esds == children.end())
+            {
+                throw std::runtime_error("M4A AAC esds atom missing");
+            }
+            M4aParsedAacFile parsed;
+            parsed.audioSpecificConfig = parseAudioSpecificConfig(bytes, *esds);
+
+            std::uint32_t bitPosition = 0;
+            auto readBits = [&](const std::uint32_t count)
+            {
+                std::uint32_t value = 0;
+                for (std::uint32_t i = 0; i < count; ++i)
+                {
+                    const auto byteIndex = bitPosition / 8u;
+                    if (byteIndex >= parsed.audioSpecificConfig.size())
+                    {
+                        throw std::runtime_error(
+                            "Truncated AAC AudioSpecificConfig");
+                    }
+                    const auto shift = 7u - (bitPosition % 8u);
+                    value =
+                        (value << 1u) |
+                        ((parsed.audioSpecificConfig[byteIndex] >> shift) & 1u);
+                    ++bitPosition;
+                }
+                return value;
+            };
+            const auto audioObjectType = readBits(5);
+            if (audioObjectType != 2)
+            {
+                throw std::runtime_error(
+                    "Unsupported AAC profile in M4A file (AAC-LC is required)");
+            }
+            constexpr std::array<std::uint32_t, 13> sampleRates{
+                96000, 88200, 64000, 48000, 44100, 32000, 24000,
+                22050, 16000, 12000, 11025, 8000,  7350};
+            const auto frequencyIndex = readBits(4);
+            if (frequencyIndex == 15)
+            {
+                parsed.sampleRate = readBits(24);
+            }
+            else if (frequencyIndex < sampleRates.size())
+            {
+                parsed.sampleRate = sampleRates[frequencyIndex];
+            }
+            const auto channelConfiguration = readBits(4);
+            constexpr std::array<std::uint16_t, 8> channelCounts{0, 1, 2, 3,
+                                                                 4, 5, 6, 8};
+            if (parsed.sampleRate == 0 ||
+                channelConfiguration >= channelCounts.size() ||
+                channelCounts[channelConfiguration] == 0)
+            {
+                throw std::runtime_error(
+                    "Unsupported AAC channel configuration");
+            }
+            parsed.channels = channelCounts[channelConfiguration];
             return parsed;
         }
 
@@ -637,8 +820,7 @@ namespace cupuacu::file::m4a
                     const auto sampleSizes = parsePacketSizes(bytes, stsz);
                     if (durations.size() != sampleSizes.size())
                     {
-                        throw std::runtime_error(
-                            "M4A chapter timing table does not match sample table");
+                        throw std::runtime_error("M4A chapter timing table does not match sample table");
                     }
                     const auto sampleOffsets =
                         buildSampleOffsets(bytes, stbl, sampleSizes);
@@ -692,6 +874,108 @@ namespace cupuacu::file::m4a
                 }
             }
             return {};
+        }
+
+        std::optional<std::string>
+        parseItunesFreeformValue(const Bytes &bytes, const AtomView &moov,
+                                 const std::string &requestedName)
+        {
+            const auto udta = findChild(bytes, moov, "udta");
+            if (!udta)
+            {
+                return std::nullopt;
+            }
+            const auto meta = findChild(bytes, *udta, "meta");
+            if (!meta || meta->payloadSize < 4)
+            {
+                return std::nullopt;
+            }
+            const auto metaChildren =
+                childrenInRange(bytes, meta->payloadOffset + 4,
+                                meta->payloadOffset + meta->payloadSize);
+            const auto ilst =
+                std::find_if(metaChildren.begin(), metaChildren.end(),
+                             [](const AtomView &atom)
+                             {
+                                 return atom.type == "ilst";
+                             });
+            if (ilst == metaChildren.end())
+            {
+                return std::nullopt;
+            }
+            const auto entries =
+                childrenInRange(bytes, ilst->payloadOffset,
+                                ilst->payloadOffset + ilst->payloadSize);
+            for (const auto &entry : entries)
+            {
+                if (entry.type != "----")
+                {
+                    continue;
+                }
+                const auto children =
+                    childrenInRange(bytes, entry.payloadOffset,
+                                    entry.payloadOffset + entry.payloadSize);
+                const auto name = std::find_if(children.begin(), children.end(),
+                                               [](const AtomView &atom)
+                                               {
+                                                   return atom.type == "name";
+                                               });
+                const auto data = std::find_if(children.begin(), children.end(),
+                                               [](const AtomView &atom)
+                                               {
+                                                   return atom.type == "data";
+                                               });
+                if (name == children.end() || data == children.end() ||
+                    name->payloadSize < 4 || data->payloadSize < 8)
+                {
+                    continue;
+                }
+                const std::string nameValue(
+                    bytes.begin() +
+                        static_cast<std::ptrdiff_t>(name->payloadOffset + 4),
+                    bytes.begin() +
+                        static_cast<std::ptrdiff_t>(name->payloadOffset +
+                                                    name->payloadSize));
+                if (nameValue != requestedName)
+                {
+                    continue;
+                }
+                return std::string(bytes.begin() + static_cast<std::ptrdiff_t>(
+                                                       data->payloadOffset + 8),
+                                   bytes.begin() + static_cast<std::ptrdiff_t>(
+                                                       data->payloadOffset +
+                                                       data->payloadSize));
+            }
+            return std::nullopt;
+        }
+
+        void parseGaplessTrim(const Bytes &bytes, const AtomView &moov,
+                              M4aParsedAacFile &parsed)
+        {
+            const auto value =
+                parseItunesFreeformValue(bytes, moov, "iTunSMPB");
+            if (!value)
+            {
+                return;
+            }
+            std::istringstream stream(*value);
+            std::uint64_t reserved = 0;
+            std::uint64_t priming = 0;
+            std::uint64_t padding = 0;
+            std::uint64_t originalFrames = 0;
+            stream >> std::hex >> reserved >> priming >> padding >>
+                originalFrames;
+            if (!stream ||
+                priming > std::numeric_limits<std::uint32_t>::max() ||
+                padding > std::numeric_limits<std::uint32_t>::max() ||
+                priming + padding > parsed.frameCount ||
+                (originalFrames != 0 &&
+                 originalFrames != parsed.frameCount - priming - padding))
+            {
+                return;
+            }
+            parsed.primingFrames = static_cast<std::uint32_t>(priming);
+            parsed.paddingFrames = static_cast<std::uint32_t>(padding);
         }
 
         struct TopLevelFileLayout
@@ -848,7 +1132,7 @@ namespace cupuacu::file::m4a
             const auto stts = requireChild(moovBytes, stbl, "stts");
             const auto stsz = requireChild(moovBytes, stbl, "stsz");
 
-            auto parsed = parseSampleDescription(moovBytes, stsd);
+            auto parsed = parseAlacSampleDescription(moovBytes, stsd);
             parsed.packetSizes = parsePacketSizes(moovBytes, stsz);
             std::uint32_t sttsFramesPerPacket = 0;
             parsed.packetFrameCounts = parsePacketFrameCounts(
@@ -883,6 +1167,75 @@ namespace cupuacu::file::m4a
                                                  readByteRange);
             return parsed;
         }
+
+        M4aParsedAacFile
+        parseAacM4aFromMoov(const Bytes &moovBytes,
+                            const std::uint64_t mdatPayloadOffset,
+                            const std::uint64_t mdatPayloadSize,
+                            const ByteRangeReader &readByteRange)
+        {
+            const auto moov = requireTopLevel(moovBytes, "moov");
+            const auto audioTrack =
+                requireTrackByHandler(moovBytes, moov, "soun");
+            const auto stbl =
+                requireNested(moovBytes, audioTrack, {"mdia", "minf", "stbl"});
+            const auto stsd = requireChild(moovBytes, stbl, "stsd");
+            const auto stts = requireChild(moovBytes, stbl, "stts");
+            const auto stsz = requireChild(moovBytes, stbl, "stsz");
+
+            auto parsed = parseAacSampleDescription(moovBytes, stsd);
+            parsed.packetSizes = parsePacketSizes(moovBytes, stsz);
+            parsed.packetFrameCounts = parsePacketFrameCounts(
+                moovBytes, stts, parsed.framesPerPacket, parsed.frameCount);
+            if (parsed.packetFrameCounts.size() != parsed.packetSizes.size())
+            {
+                throw std::runtime_error(
+                    "M4A timing table does not match packet table");
+            }
+            parsed.mdatPayloadOffset = mdatPayloadOffset;
+            parsed.mdatPayloadSize = mdatPayloadSize;
+            parsed.packetOffsets =
+                buildSampleOffsets(moovBytes, stbl, parsed.packetSizes);
+            const auto mdatEnd = mdatPayloadOffset + mdatPayloadSize;
+            for (std::size_t i = 0; i < parsed.packetSizes.size(); ++i)
+            {
+                if (parsed.packetOffsets[i] > mdatEnd ||
+                    parsed.packetSizes[i] > mdatEnd - parsed.packetOffsets[i])
+                {
+                    throw std::runtime_error("AAC packet extends outside mdat");
+                }
+            }
+            parseGaplessTrim(moovBytes, moov, parsed);
+            parsed.markers =
+                parseChapterMarkers(moovBytes, moov, audioTrack, readByteRange);
+            return parsed;
+        }
+
+        M4aAudioCodec detectM4aAudioCodecFromMoov(const Bytes &moovBytes)
+        {
+            const auto moov = requireTopLevel(moovBytes, "moov");
+            const auto audioTrack =
+                requireTrackByHandler(moovBytes, moov, "soun");
+            const auto stsd = requireNested(moovBytes, audioTrack,
+                                            {"mdia", "minf", "stbl", "stsd"});
+            requireRange(moovBytes, stsd.payloadOffset, 8,
+                         "Truncated stsd atom");
+            if (readBe32(moovBytes, stsd.payloadOffset + 4) == 0)
+            {
+                throw std::runtime_error(
+                    "M4A audio sample description missing");
+            }
+            const auto entry = readAtom(moovBytes, stsd.payloadOffset + 8);
+            if (entry.type == "alac")
+            {
+                return M4aAudioCodec::ALAC;
+            }
+            if (entry.type == "mp4a")
+            {
+                return M4aAudioCodec::AAC_LC;
+            }
+            throw std::runtime_error("Unsupported audio codec in M4A file");
+        }
     } // namespace
 
     M4aParsedAlacFile parseAlacM4a(const Bytes &bytes)
@@ -914,5 +1267,59 @@ namespace cupuacu::file::m4a
             moovBytes, layout.mdat.payloadOffset, layout.mdat.payloadSize,
             [&](const std::uint64_t offset, const std::uint64_t size)
             { return readFileRange(input, offset, size, layout.fileSize); });
+    }
+
+    M4aAudioCodec detectM4aAudioCodec(const Bytes &bytes)
+    {
+        return detectM4aAudioCodecFromMoov(bytes);
+    }
+
+    M4aAudioCodec detectM4aAudioCodecFile(const std::filesystem::path &path)
+    {
+        std::ifstream input(path, std::ios::binary);
+        if (!input)
+        {
+            throw std::runtime_error("Failed to open M4A file: " +
+                                     path.string());
+        }
+        const auto layout = scanTopLevelFileLayout(input);
+        const auto moovBytes = readFileRange(input, layout.moov.offset,
+                                             layout.moov.size, layout.fileSize);
+        return detectM4aAudioCodecFromMoov(moovBytes);
+    }
+
+    M4aParsedAacFile parseAacM4a(const Bytes &bytes)
+    {
+        const auto mdat = requireTopLevel(bytes, "mdat");
+        return parseAacM4aFromMoov(
+            bytes, mdat.payloadOffset, mdat.payloadSize,
+            [&](const std::uint64_t offset, const std::uint64_t size)
+            {
+                return readByteRangeFromMemory(bytes, offset, size);
+            });
+    }
+
+    M4aParsedAacFile parseAacM4aFile(const std::filesystem::path &path)
+    {
+        std::ifstream input(path, std::ios::binary);
+        if (!input)
+        {
+            throw std::runtime_error("Failed to open M4A file: " +
+                                     path.string());
+        }
+        return parseAacM4aFile(input);
+    }
+
+    M4aParsedAacFile parseAacM4aFile(std::ifstream &input)
+    {
+        const auto layout = scanTopLevelFileLayout(input);
+        const auto moovBytes = readFileRange(input, layout.moov.offset,
+                                             layout.moov.size, layout.fileSize);
+        return parseAacM4aFromMoov(
+            moovBytes, layout.mdat.payloadOffset, layout.mdat.payloadSize,
+            [&](const std::uint64_t offset, const std::uint64_t size)
+            {
+                return readFileRange(input, offset, size, layout.fileSize);
+            });
     }
 } // namespace cupuacu::file::m4a

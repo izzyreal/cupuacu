@@ -149,7 +149,7 @@ namespace
          std::size(kAiffOpenExtensions)},
         {SF_FORMAT_CAF, "CAF audio", kCafOpenExtensions,
          std::size(kCafOpenExtensions)},
-        {cupuacu::file::CUPUACU_FORMAT_M4A, "M4A ALAC audio",
+        {cupuacu::file::CUPUACU_FORMAT_M4A, "M4A audio",
          kM4aOpenExtensions, std::size(kM4aOpenExtensions)},
         {SF_FORMAT_FLAC, "FLAC audio", kFlacOpenExtensions,
          std::size(kFlacOpenExtensions)},

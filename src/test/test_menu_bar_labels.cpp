@@ -356,6 +356,22 @@ TEST_CASE("MenuBar planning builds overwrite labels", "[gui]")
     cupuacu::file::loadSampleData(&state);
 }
 
+TEST_CASE("AAC imports require Save As instead of overwrite", "[gui][aac]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    auto &session = state.getActiveDocumentSession();
+    session.currentFile = "recording.m4a";
+    session.currentFileRequiresSaveAs = true;
+    session.document.initialize(cupuacu::SampleFormat::FLOAT32, 48000, 1, 1);
+
+    const auto availability =
+        cupuacu::gui::describeOverwriteAvailability(&state);
+    REQUIRE_FALSE(availability.available);
+    REQUIRE(availability.unavailableReason ==
+            "AAC export is unavailable; use Save As to choose a writable "
+            "format");
+}
+
 TEST_CASE("MenuBar runtime tracks open menus and hover-open state", "[gui]")
 {
     cupuacu::test::StateWithTestPaths state{};
