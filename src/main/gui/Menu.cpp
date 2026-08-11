@@ -46,6 +46,7 @@ Menu::Menu(State *state, const std::string &menuNameToUse,
     label = emplaceChild<Label>(state);
     label->setInterceptMouseEnabled(false);
     label->setFontSize(state->menuFontSize);
+    syncLabelPresentation();
 }
 
 Menu::Menu(State *state,
@@ -58,6 +59,7 @@ Menu::Menu(State *state,
     label = emplaceChild<Label>(state);
     label->setInterceptMouseEnabled(false);
     label->setFontSize(state->menuFontSize);
+    syncLabelPresentation();
 }
 
 void Menu::setIsAvailable(const std::function<bool()> &isAvailableToUse)
@@ -66,12 +68,14 @@ void Menu::setIsAvailable(const std::function<bool()> &isAvailableToUse)
     {
         return MenuAvailability{.available = isAvailableToUse()};
     };
+    syncLabelPresentation();
 }
 
 void Menu::setAvailability(
     const std::function<MenuAvailability()> &availabilityToUse)
 {
     availabilityGetter = availabilityToUse;
+    syncLabelPresentation();
 }
 
 void Menu::setTooltipText(const std::function<std::string()> &tooltipTextToUse)
@@ -99,6 +103,17 @@ std::string Menu::getMenuName() const
 bool Menu::isFirstLevel() const
 {
     return dynamic_cast<MenuBar *>(getParent()) != nullptr;
+}
+
+void Menu::syncLabelPresentation()
+{
+    if (!label)
+    {
+        return;
+    }
+
+    label->setText(getMenuName());
+    label->setOpacity(isEffectivelyAvailable() ? 255 : 128);
 }
 
 bool Menu::shouldShowAsSubMenuItem() const
@@ -171,6 +186,14 @@ void Menu::resized()
     }
 }
 
+void Menu::timerCallback()
+{
+    if (isVisible())
+    {
+        syncLabelPresentation();
+    }
+}
+
 void Menu::showSubMenus()
 {
     if (subMenus.empty() || !isEffectivelyAvailable())
@@ -217,6 +240,7 @@ void Menu::showSubMenus()
             continue;
         }
         subMenu->setBounds(item.x, item.y, item.width, item.height);
+        subMenu->syncLabelPresentation();
     }
 
     if (!firstLevel)
@@ -245,10 +269,6 @@ void Menu::onDraw(SDL_Renderer *renderer)
     const auto radius = scaleUiF(state, 14.0f);
     const auto rect = getLocalBoundsF();
     const bool available = isEffectivelyAvailable();
-
-    label->setOpacity(available ? 255 : 128);
-
-    label->setText(getMenuName());
 
     if (isFirstLevel())
     {

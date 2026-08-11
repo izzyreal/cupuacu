@@ -4,11 +4,13 @@
 #include "TestPaths.hpp"
 #include "gui/Component.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
+#include "gui/Label.hpp"
 #include "gui/MenuLayoutPlanning.hpp"
 #include "gui/Menu.hpp"
 #include "gui/MenuBar.hpp"
 #include "gui/MenuPlanning.hpp"
 
+#include <string>
 #include <vector>
 
 namespace
@@ -162,6 +164,28 @@ TEST_CASE("Menu runtime leaf actions respect availability", "[gui]")
         });
     REQUIRE(unavailable.mouseDown(leftMouseDown()));
     REQUIRE(unavailableCalls == 0);
+}
+
+TEST_CASE("Menu runtime refreshes dynamic label text before painting", "[gui]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    std::string menuName = "Initial";
+    cupuacu::gui::Menu menu(&state,
+                            [&menuName]()
+                            {
+                                return menuName;
+                            });
+    menu.setVisible(true);
+
+    REQUIRE(menu.getChildren().size() == 1);
+    auto *label =
+        dynamic_cast<cupuacu::gui::Label *>(menu.getChildren()[0].get());
+    REQUIRE(label != nullptr);
+    REQUIRE(label->getText() == "Initial");
+
+    menuName = "Updated";
+    menu.timerCallback();
+    REQUIRE(label->getText() == "Updated");
 }
 
 TEST_CASE("Menu tooltips combine action text with unavailability reason",

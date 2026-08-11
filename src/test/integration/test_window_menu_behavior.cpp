@@ -506,6 +506,84 @@ TEST_CASE("Menu integration opens submenus and switches siblings on hover",
     }
 }
 
+TEST_CASE("Label opacity changes enqueue only necessary repaints",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "label-opacity-dirty", 320, 180, SDL_WINDOW_HIDDEN);
+
+    auto root =
+        std::make_unique<cupuacu::test::integration::RootComponent>(&state);
+    auto *label = root->emplaceChild<cupuacu::gui::Label>(&state, "Label");
+    root->setBounds(0, 0, 320, 180);
+    label->setBounds(0, 0, 120, 40);
+    window->setRootComponent(std::move(root));
+    window->renderFrame();
+
+    auto &dirtyRects = window->getDirtyRects();
+    REQUIRE(dirtyRects.empty());
+
+    label->setOpacity(255);
+    REQUIRE(dirtyRects.empty());
+
+    label->setOpacity(128);
+    REQUIRE(dirtyRects.size() == 1);
+
+    dirtyRects.clear();
+    label->setOpacity(128);
+    REQUIRE(dirtyRects.empty());
+}
+
+TEST_CASE("Menu painting does not mutate the active dirty queue",
+          "[integration]")
+{
+    cupuacu::test::ensureSdlTtfInitialized();
+
+    cupuacu::test::StateWithTestPaths state{};
+    auto window = std::make_unique<cupuacu::gui::Window>(
+        &state, "menu-paint-dirty", 480, 240, SDL_WINDOW_HIDDEN);
+
+    auto root =
+        std::make_unique<cupuacu::test::integration::RootComponent>(&state);
+    auto *menuBar = root->emplaceChild<cupuacu::gui::MenuBar>(&state);
+    root->setBounds(0, 0, 480, 240);
+    menuBar->setBounds(0, 0, 480, 40);
+    window->setRootComponent(std::move(root));
+    window->setMenuBar(menuBar);
+    window->renderFrame();
+
+    auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
+    REQUIRE(topLevelMenus.size() == 7);
+    auto *fileMenu = topLevelMenus[0];
+    auto &dirtyRects = window->getDirtyRects();
+    REQUIRE(dirtyRects.empty());
+
+    fileMenu->onDraw(window->getRenderer());
+    REQUIRE(dirtyRects.empty());
+
+    bool available = true;
+    fileMenu->setIsAvailable(
+        [&available]()
+        {
+            return available;
+        });
+    REQUIRE(dirtyRects.empty());
+
+    available = false;
+    fileMenu->timerCallback();
+    REQUIRE(dirtyRects.size() == 1);
+
+    dirtyRects.clear();
+    fileMenu->timerCallback();
+    REQUIRE(dirtyRects.empty());
+
+    fileMenu->onDraw(window->getRenderer());
+    REQUIRE(dirtyRects.empty());
+}
+
 TEST_CASE("Menu integration undo and redo actions reflect undo stack state",
           "[integration]")
 {

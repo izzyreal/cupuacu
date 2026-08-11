@@ -14,6 +14,11 @@ Label::Label(State *state, const std::string &textToUse)
 
 void Label::setOpacity(const uint8_t opacityToUse)
 {
+    if (opacity == opacityToUse)
+    {
+        return;
+    }
+
     opacity = opacityToUse;
     setDirty();
 }

@@ -42,6 +42,7 @@ namespace cupuacu::gui
         Label *label = nullptr;
 
         bool isFirstLevel() const;
+        void syncLabelPresentation();
 
         bool shouldShowAsSubMenuItem() const;
         MenuAvailability getLocalAvailability() const;
@@ -78,6 +79,7 @@ namespace cupuacu::gui
         std::string getMenuName() const;
         std::string getTooltipText() const override;
 
+        void timerCallback() override;
         void resized() override;
         void onDraw(SDL_Renderer *) override;
         bool mouseDown(const MouseEvent &) override;
