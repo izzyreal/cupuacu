@@ -16,6 +16,7 @@ cleanup() {
     kill "${XVFB_PID}" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
+"${ROOT_DIR}/scripts/wait-for-xvfb.sh" /tmp/cupuacu-xvfb.log
 
 if [[ "${FORCE_CONFIGURE}" == "1" || ! -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
     cmake -G Ninja -S "${ROOT_DIR}" -B "${BUILD_DIR}" \

@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xvfb \
     xauth \
     x11-apps \
+    x11-utils \
     fonts-dejavu-core \
     libasound2-dev \
     libpulse-dev \
