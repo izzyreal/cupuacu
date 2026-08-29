@@ -43,6 +43,12 @@
 
 namespace
 {
+#if defined(__APPLE__)
+    constexpr int kExpectedTopLevelMenuCount = 6;
+#else
+    constexpr int kExpectedTopLevelMenuCount = 7;
+#endif
+
     std::vector<std::uint8_t>
     readCanvasPixels(cupuacu::gui::Window *window,
                      const SDL_Rect *area = nullptr)
@@ -478,7 +484,7 @@ TEST_CASE("Menu integration opens submenus and switches siblings on hover",
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 7);
+    REQUIRE(topLevelMenus.size() == kExpectedTopLevelMenuCount);
     auto *fileMenu = topLevelMenus[0];
     auto *viewMenu = topLevelMenus[2];
 
@@ -556,7 +562,7 @@ TEST_CASE("Menu painting does not mutate the active dirty queue",
     window->renderFrame();
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 7);
+    REQUIRE(topLevelMenus.size() == kExpectedTopLevelMenuCount);
     auto *fileMenu = topLevelMenus[0];
     auto &dirtyRects = window->getDirtyRects();
     REQUIRE(dirtyRects.empty());
@@ -601,7 +607,7 @@ TEST_CASE("Menu integration undo and redo actions reflect undo stack state",
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 7);
+    REQUIRE(topLevelMenus.size() == kExpectedTopLevelMenuCount);
     auto *editMenu = topLevelMenus[1];
     auto editSubMenus = cupuacu::test::integration::menuChildren(editMenu);
     REQUIRE(editSubMenus.size() == 10);
@@ -644,7 +650,7 @@ TEST_CASE("Options menu integration opens audio options in a shared options wind
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 7);
+    REQUIRE(topLevelMenus.size() == kExpectedTopLevelMenuCount);
     auto *optionsMenu = topLevelMenus[5];
 
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
@@ -693,6 +699,7 @@ TEST_CASE("Options menu integration opens audio options in a shared options wind
     REQUIRE(state.windows.size() == initialWindowCount);
 }
 
+#if !defined(__APPLE__)
 TEST_CASE("Help menu integration opens one selectable About window",
           "[integration]")
 {
@@ -798,6 +805,7 @@ TEST_CASE("Help menu integration opens one selectable About window",
     state.aboutWindow.reset();
     REQUIRE(state.windows.size() == initialWindowCount);
 }
+#endif
 
 TEST_CASE("Options menu integration opens display options in a shared options window once",
           "[integration]")
@@ -821,7 +829,7 @@ TEST_CASE("Options menu integration opens display options in a shared options wi
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 7);
+    REQUIRE(topLevelMenus.size() == kExpectedTopLevelMenuCount);
     auto *optionsMenu = topLevelMenus[5];
 
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
@@ -1060,7 +1068,7 @@ TEST_CASE("Device properties integration persists normalized selection when reop
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 7);
+    REQUIRE(topLevelMenus.size() == kExpectedTopLevelMenuCount);
     auto *optionsMenu = topLevelMenus[5];
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
     REQUIRE(optionEntries.size() == 3);
@@ -1115,7 +1123,7 @@ TEST_CASE("Options menu integration replaces a closed options window instance",
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 7);
+    REQUIRE(topLevelMenus.size() == kExpectedTopLevelMenuCount);
     auto *optionsMenu = topLevelMenus[5];
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
     REQUIRE(optionEntries.size() == 3);
@@ -1163,7 +1171,7 @@ TEST_CASE("Options window integration reopens on the last selected section from 
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 7);
+    REQUIRE(topLevelMenus.size() == kExpectedTopLevelMenuCount);
     auto *optionsMenu = topLevelMenus[5];
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
     REQUIRE(optionEntries.size() == 3);
@@ -1215,7 +1223,7 @@ TEST_CASE("Device properties integration refreshes layout when pixel scale chang
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 7);
+    REQUIRE(topLevelMenus.size() == kExpectedTopLevelMenuCount);
     auto *optionsMenu = topLevelMenus[5];
     auto optionEntries = cupuacu::test::integration::menuChildren(optionsMenu);
     REQUIRE(optionEntries.size() == 3);
@@ -1451,7 +1459,7 @@ TEST_CASE("File menu integration opens a recent file into the active session",
     window->setMenuBar(menuBar);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 7);
+    REQUIRE(topLevelMenus.size() == kExpectedTopLevelMenuCount);
     auto *fileMenu = topLevelMenus[0];
     auto fileEntries = cupuacu::test::integration::menuChildren(fileMenu);
     REQUIRE(fileEntries.size() == 9);
@@ -1668,7 +1676,7 @@ TEST_CASE("File menu integration exit entry pushes a quit event", "[integration]
     SDL_FlushEvents(SDL_EVENT_QUIT, SDL_EVENT_QUIT);
 
     auto topLevelMenus = cupuacu::test::integration::menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 7);
+    REQUIRE(topLevelMenus.size() == kExpectedTopLevelMenuCount);
     auto *fileMenu = topLevelMenus[0];
     auto fileEntries = cupuacu::test::integration::menuChildren(fileMenu);
     REQUIRE(fileEntries.size() == 9);

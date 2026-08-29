@@ -83,7 +83,9 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
     generateMenu = emplaceChild<Menu>(state, "Generate");
     effectsMenu = emplaceChild<Menu>(state, "Effects");
     optionsMenu = emplaceChild<Menu>(state, "Options");
+#if !defined(__APPLE__)
     helpMenu = emplaceChild<Menu>(state, "Help");
+#endif
 
 #ifdef __APPLE__
     const std::string newText{"New file (Cmd + N)"};
@@ -629,11 +631,13 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
                                  "monitoring first"};
         });
 
+#if !defined(__APPLE__)
     helpMenu->addSubMenu(state, "About Cupuacu",
                          [&]
                          {
                              showAboutWindow(state);
                          });
+#endif
 }
 
 void MenuBar::onDraw(SDL_Renderer *renderer)
@@ -678,7 +682,10 @@ void MenuBar::hideSubMenus()
     generateMenu->hideSubMenus();
     effectsMenu->hideSubMenus();
     optionsMenu->hideSubMenus();
-    helpMenu->hideSubMenus();
+    if (helpMenu)
+    {
+        helpMenu->hideSubMenus();
+    }
     if (const auto window = getWindow())
     {
         if (const auto root = window->getRootComponent())
@@ -719,12 +726,15 @@ void MenuBar::resized()
     optionsMenu->setBounds(logoSpace + fileW + editW + viewW + generateW +
                                effectsW,
                            0, optionsW, h);
-    helpMenu->setBounds(logoSpace + fileW + editW + viewW + generateW +
-                            effectsW + optionsW,
-                        0, helpW, h);
+    int menuEndX = optionsMenu->getBounds().x + optionsW;
+    if (helpMenu)
+    {
+        helpMenu->setBounds(menuEndX, 0, helpW, h);
+        menuEndX += helpW;
+    }
 
     SDL_Rect backgroundBounds = getLocalBounds();
-    backgroundBounds.x = helpMenu->getBounds().x + helpW;
+    backgroundBounds.x = menuEndX;
     backgroundBounds.w = getWidth() - backgroundBounds.x;
 
     background->setBounds(backgroundBounds);
@@ -761,7 +771,7 @@ Menu *MenuBar::getOpenMenu() const
     {
         return optionsMenu;
     }
-    if (helpMenu->isOpen())
+    if (helpMenu && helpMenu->isOpen())
     {
         return helpMenu;
     }

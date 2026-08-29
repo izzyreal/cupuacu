@@ -34,6 +34,12 @@
 
 namespace
 {
+#if defined(__APPLE__)
+    constexpr int kExpectedTopLevelMenuCount = 6;
+#else
+    constexpr int kExpectedTopLevelMenuCount = 7;
+#endif
+
     void drainPendingSaveWork(cupuacu::State *state)
     {
         for (int attempt = 0; attempt < 5000; ++attempt)
@@ -379,11 +385,13 @@ TEST_CASE("MenuBar runtime tracks open menus and hover-open state", "[gui]")
     auto *menuBar = makeMenuBar(&state, root);
 
     auto topLevelMenus = menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 7);
+    REQUIRE(topLevelMenus.size() == kExpectedTopLevelMenuCount);
+#if !defined(__APPLE__)
     REQUIRE(topLevelMenus[6]->getMenuName() == "Help");
     const auto helpEntries = menuChildren(topLevelMenus[6]);
     REQUIRE(helpEntries.size() == 1);
     REQUIRE(helpEntries[0]->getMenuName() == "About Cupuacu");
+#endif
 
     REQUIRE(menuBar->getOpenMenu() == nullptr);
     REQUIRE_FALSE(menuBar->hasMenuOpen());
@@ -406,7 +414,7 @@ TEST_CASE("MenuBar disables document-dependent menus when no file is open",
     auto *menuBar = makeMenuBar(&state, root);
 
     auto topLevelMenus = menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 7);
+    REQUIRE(topLevelMenus.size() == kExpectedTopLevelMenuCount);
     auto *fileMenu = topLevelMenus[0];
     auto *generateMenu = topLevelMenus[3];
     auto *effectsMenu = topLevelMenus[4];
@@ -456,7 +464,7 @@ TEST_CASE(
     auto *menuBar = makeMenuBar(&state, root);
 
     auto topLevelMenus = menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 7);
+    REQUIRE(topLevelMenus.size() == kExpectedTopLevelMenuCount);
     auto *fileMenu = topLevelMenus[0];
     auto fileEntries = menuChildren(fileMenu);
     REQUIRE(fileEntries.size() == 9);
@@ -724,7 +732,7 @@ TEST_CASE(
     RootComponent root(&state);
     auto *menuBar = makeMenuBar(&state, root);
     auto topLevelMenus = menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 7);
+    REQUIRE(topLevelMenus.size() == kExpectedTopLevelMenuCount);
 
     auto &session = state.getActiveDocumentSession();
     auto &doc = session.document;
@@ -757,7 +765,7 @@ TEST_CASE("MenuBar options and children are unavailable during active audio",
     RootComponent root(&state);
     auto *menuBar = makeMenuBar(&state, root);
     auto topLevelMenus = menuChildren(menuBar);
-    REQUIRE(topLevelMenus.size() == 7);
+    REQUIRE(topLevelMenus.size() == kExpectedTopLevelMenuCount);
     auto *optionsMenu = topLevelMenus[5];
     const auto optionEntries = menuChildren(optionsMenu);
     REQUIRE(optionEntries.size() == 3);

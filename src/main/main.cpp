@@ -188,7 +188,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     state->windows.push_back(mainWindow);
 
 #if defined(__APPLE__)
-    cupuacu::platform::macos::clearWindowCloseShortcut();
+    cupuacu::platform::macos::configureApplicationMenu(state);
 #endif
 
     resetWaveformState(state);
@@ -294,6 +294,9 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
     TTF_Quit();
     cupuacu::State *state = (cupuacu::State *)appstate;
+#if defined(__APPLE__)
+    cupuacu::platform::macos::clearApplicationMenuState();
+#endif
     const auto shutdownStartedAt = std::chrono::steady_clock::now();
     cupuacu::actions::flushAutosaveSnapshotsForShutdown(state);
     const auto autosaveFlushedAt = std::chrono::steady_clock::now();

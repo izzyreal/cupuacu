@@ -36,6 +36,12 @@ using Catch::Approx;
 
 namespace
 {
+#if defined(__APPLE__)
+    constexpr int kExpectedTopLevelMenuCount = 6;
+#else
+    constexpr int kExpectedTopLevelMenuCount = 7;
+#endif
+
     struct EffectsMenuHarness
     {
         std::unique_ptr<cupuacu::gui::Window> window;
@@ -76,7 +82,7 @@ namespace
 
         auto topLevelMenus =
             cupuacu::test::integration::menuChildren(harness.menuBar);
-        REQUIRE(topLevelMenus.size() == 7);
+        REQUIRE(topLevelMenus.size() == kExpectedTopLevelMenuCount);
         auto *effectsMenu = topLevelMenus[4];
         auto effectSubMenus =
             cupuacu::test::integration::menuChildren(effectsMenu);

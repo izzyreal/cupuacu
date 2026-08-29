@@ -362,6 +362,7 @@ set(CUPUACU_SHARED_SOURCES
 if(APPLE)
     list(APPEND CUPUACU_SHARED_SOURCES
         src/main/actions/CocoaSaveFileDialog.mm
+        src/main/platform/macos/MenuAdjustments.mm
         src/main/platform/macos/MicrophonePermission.mm
     )
 endif()
@@ -417,6 +418,12 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_waveform_render_and_buffers.cpp
     src/test/test_waveform_cache_persistence.cpp
 )
+
+if(APPLE)
+    list(APPEND CUPUACU_TEST_SOURCES
+        src/test/test_macos_menu_adjustments.mm
+    )
+endif()
 
 set(CUPUACU_INTEGRATION_TEST_SOURCES
     src/test/TestSdlTtfGuard.cpp
@@ -475,8 +482,10 @@ target_link_libraries(cupuacu_deps INTERFACE
 )
 if(APPLE)
     find_library(CUPUACU_AVFOUNDATION_FRAMEWORK AVFoundation REQUIRED)
+    find_library(CUPUACU_APPKIT_FRAMEWORK AppKit REQUIRED)
     target_link_libraries(cupuacu_deps INTERFACE
         "${CUPUACU_AVFOUNDATION_FRAMEWORK}"
+        "${CUPUACU_APPKIT_FRAMEWORK}"
     )
 endif()
 
@@ -603,16 +612,7 @@ if(UNIX AND NOT APPLE)
     install(FILES "${CUPUACU_LINUX_ICON}"
         DESTINATION share/icons/hicolor/256x256/apps)
 endif()
-if(APPLE)
-    target_sources(Cupuacu PRIVATE
-        src/main/platform/macos/MenuAdjustments.mm
-    )
-endif()
 target_link_libraries(Cupuacu PRIVATE "${_cupuacu_app_core_target}")
-if(APPLE)
-    find_library(CUPUACU_APPKIT_FRAMEWORK AppKit REQUIRED)
-    target_link_libraries(Cupuacu PRIVATE "${CUPUACU_APPKIT_FRAMEWORK}")
-endif()
 if(CUPUACU_ENABLE_RTSAN_LIBS)
     rtsan_libs_enable(TARGET Cupuacu)
 endif()
