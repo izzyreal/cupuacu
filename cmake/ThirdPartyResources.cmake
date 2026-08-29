@@ -27,6 +27,14 @@ cupuacu_dependency_revision("${portaudio_SOURCE_DIR}" "19.8"
     CUPUACU_PORTAUDIO_VERSION)
 cupuacu_dependency_revision("${libsndfile_SOURCE_DIR}" "1.2.2"
     CUPUACU_LIBSNDFILE_VERSION)
+cupuacu_dependency_revision("${CUPUACU_OGG_SOURCE_DIR}" "1.3.6"
+    CUPUACU_OGG_VERSION)
+cupuacu_dependency_revision("${CUPUACU_VORBIS_SOURCE_DIR}" "1.3.7"
+    CUPUACU_VORBIS_VERSION)
+cupuacu_dependency_revision("${CUPUACU_FLAC_SOURCE_DIR}" "1.5.0"
+    CUPUACU_FLAC_VERSION)
+cupuacu_dependency_revision("${CUPUACU_OPUS_SOURCE_DIR}" "1.5.2"
+    CUPUACU_OPUS_VERSION)
 cupuacu_dependency_revision("${alac_SOURCE_DIR}" "source revision"
     CUPUACU_ALAC_VERSION)
 cupuacu_dependency_revision("${readerwriterqueue_SOURCE_DIR}" "1.0.7"
@@ -101,6 +109,36 @@ cupuacu_add_third_party(
     "LGPL-2.1-or-later" "https://libsndfile.github.io/libsndfile/"
     "https://github.com/libsndfile/libsndfile/blob/master/COPYING"
     "${libsndfile_SOURCE_DIR}/COPYING")
+cupuacu_add_third_party(
+    "libogg" "${CUPUACU_OGG_VERSION}" "Ogg bitstream support for audio codecs"
+    "BSD-3-Clause" "https://xiph.org/ogg/"
+    "https://github.com/xiph/ogg/blob/master/COPYING"
+    "${CUPUACU_OGG_SOURCE_DIR}/COPYING")
+cupuacu_add_third_party(
+    "libvorbis" "${CUPUACU_VORBIS_VERSION}" "Ogg Vorbis audio encoding and decoding"
+    "BSD-3-Clause" "https://xiph.org/vorbis/"
+    "https://github.com/xiph/vorbis/blob/master/COPYING"
+    "${CUPUACU_VORBIS_SOURCE_DIR}/COPYING")
+cupuacu_add_third_party(
+    "libFLAC" "${CUPUACU_FLAC_VERSION}" "FLAC audio encoding and decoding"
+    "BSD-3-Clause" "https://xiph.org/flac/"
+    "https://github.com/xiph/flac/blob/master/COPYING.Xiph"
+    "${CUPUACU_FLAC_SOURCE_DIR}/COPYING.Xiph")
+cupuacu_add_third_party(
+    "libopus" "${CUPUACU_OPUS_VERSION}" "Opus audio encoding and decoding"
+    "BSD-3-Clause" "https://opus-codec.org/"
+    "https://github.com/xiph/opus/blob/main/COPYING"
+    "${CUPUACU_OPUS_SOURCE_DIR}/COPYING")
+cupuacu_add_third_party(
+    "mpg123" "1.33.7" "MPEG audio decoding"
+    "LGPL-2.1-only" "https://www.mpg123.de/"
+    "https://www.mpg123.de/cgi-bin/scm/mpg123/trunk/COPYING?view=markup"
+    "${CUPUACU_MPG123_SOURCE_DIR}/COPYING")
+cupuacu_add_third_party(
+    "LAME" "4.0" "MP3 audio encoding"
+    "LGPL-2.0-or-later" "https://lame.sourceforge.io/"
+    "https://sourceforge.net/p/lame/svn/HEAD/tree/trunk/lame/COPYING"
+    "${CUPUACU_LAME_SOURCE_DIR}/COPYING")
 cupuacu_add_third_party(
     "Apple Lossless Audio Codec" "${CUPUACU_ALAC_VERSION}" "ALAC encoding and decoding"
     "Apache-2.0" "https://github.com/macosforge/alac"

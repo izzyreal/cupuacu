@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.16)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
@@ -6,6 +6,7 @@ include(cmake/ResourceBundling.cmake)
 include(cmake/ClangFormat.cmake)
 include(cmake/ThreadSanitizer.cmake)
 include(cmake/FetchContentCache.cmake)
+include(cmake/AudioCodecDependencies.cmake)
 include(TestBigEndian)
 
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" CUPUACU_PROJECT_VERSION_RAW)
@@ -193,7 +194,16 @@ set(SDLTTF_PLUTOSVG OFF CACHE BOOL "" FORCE)
 
 AddDependency(SDL3 "SDL3" "${CMAKE_SOURCE_DIR}/deps/SDL3" "https://github.com/libsdl-org/SDL.git" "release-3.2.14")
 AddDependency(SDL_ttf "SDL_ttf" "${CMAKE_SOURCE_DIR}/deps/SDL_ttf" "https://github.com/libsdl-org/SDL_ttf.git" "release-3.2.2")
+cupuacu_add_audio_codec_dependencies()
 AddDependency(libsndfile "libsndfile" "${CMAKE_SOURCE_DIR}/deps/libsndfile" "https://github.com/libsndfile/libsndfile.git" "master")
+file(READ "${libsndfile_BINARY_DIR}/src/config.h" CUPUACU_SNDFILE_CONFIG)
+if(NOT CUPUACU_SNDFILE_CONFIG MATCHES
+       "#define HAVE_EXTERNAL_XIPH_LIBS 1" OR
+   NOT CUPUACU_SNDFILE_CONFIG MATCHES "#define HAVE_MPEG 1")
+    message(FATAL_ERROR
+        "Cupuacu requires hermetic FLAC, Ogg/Vorbis, and MPEG codec support")
+endif()
+unset(CUPUACU_SNDFILE_CONFIG)
 AddDependency(Catch2 "Catch2" "${CMAKE_SOURCE_DIR}/deps/Catch2" "https://github.com/catchorg/Catch2.git" "v3.8.1")
 AddDependency(readerwriterqueue "readerwriterqueue" "${CMAKE_SOURCE_DIR}/deps/readerwriterqueue" "https://github.com/cameron314/readerwriterqueue.git" "master")
 AddDependency(portaudio "portaudio" "${CMAKE_SOURCE_DIR}/deps/portaudio" "https://github.com/PortAudio/portaudio.git" "master")
@@ -376,6 +386,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_session_loading.cpp
     src/test/test_aiff_writer.cpp
     src/test/test_wav_writer.cpp
+    src/test/test_codec_support.cpp
     src/test/test_alac_codec.cpp
     src/test/test_m4a_atoms.cpp
     src/test/test_m4a_parser.cpp

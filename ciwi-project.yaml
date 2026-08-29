@@ -252,6 +252,8 @@ pipelines:
             run: CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true CCACHE_COMPILERCHECK=content cmake -S . -B build/macos-universal -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCUPUACU_BUILD_CCACHE_ENABLED=ON -DFETCHCONTENT_CACHE_ROOT="$CIWI_FETCHCONTENT_SOURCES_DIR"
           - name: Build Cupuacu and tests
             run: CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true CCACHE_COMPILERCHECK=content cmake --build build/macos-universal --config Release --target Cupuacu cupuacu-tests --parallel 4
+          - name: Verify universal and hermetic app binary
+            run: lipo build/macos-universal/Cupuacu.app/Contents/MacOS/Cupuacu -verify_arch x86_64 arm64 && if otool -L build/macos-universal/Cupuacu.app/Contents/MacOS/Cupuacu | grep -Eq '/(opt/homebrew|usr/local)/'; then echo 'Cupuacu links a Homebrew dependency'; exit 1; fi
           - name: Run Cupuacu tests
             test:
               name: cupuacu-tests

@@ -1,0 +1,22 @@
+#ifndef CUPUACU_LAME_CONFIG_H
+#define CUPUACU_LAME_CONFIG_H
+
+#define HAVE_ERRNO_H 1
+#define HAVE_FCNTL_H 1
+#define HAVE_INTTYPES_H 1
+#define HAVE_LIMITS_H 1
+#define HAVE_MEMCPY 1
+#define HAVE_STDINT_H 1
+#define HAVE_STRCHR 1
+#define STDC_HEADERS 1
+
+typedef float ieee754_float32_t;
+
+#define LAME_LIBRARY_BUILD 1
+#define PACKAGE "lame"
+#define PACKAGE_NAME "lame"
+#define PACKAGE_STRING "lame 4.0"
+#define PACKAGE_VERSION "4.0"
+#define VERSION "4.0"
+
+#endif
