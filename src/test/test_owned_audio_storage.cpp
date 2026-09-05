@@ -3,6 +3,8 @@
 #include "TestPaths.hpp"
 #include "file/OwnedAudioImport.hpp"
 #include "storage/DocumentAudioReader.hpp"
+#include "storage/AsyncAudioReader.hpp"
+#include <chrono>
 
 using namespace cupuacu;
 
@@ -62,6 +64,26 @@ TEST_CASE(
                       std::out_of_range);
     revision->readChannel(0, frames, {});
     REQUIRE_THROWS(builder.finish());
+
+    {
+        storage::AsyncAudioReader async(revision, actual.size());
+        const auto generation = async.submit(1, 65530, actual.size());
+        std::optional<storage::AsyncAudioReader::Result> result;
+        const auto deadline =
+            std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (!(result = async.takePublished()) &&
+               std::chrono::steady_clock::now() < deadline)
+        {
+            std::this_thread::yield();
+        }
+        REQUIRE(result);
+        REQUIRE(result->generation == generation);
+        REQUIRE_FALSE(result->error);
+        reference.readChannel(1, 65530, expected);
+        REQUIRE(result->samples == expected);
+        async.close();
+        async.waitUntilClosed();
+    }
 
     auto slice = std::make_unique<storage::AudioSlice>(revision, 65530, 20000);
     slice->readChannel(0, 13, actual);

@@ -2,6 +2,7 @@
 #include "Component.hpp"
 #include "../State.hpp"
 #include "../concurrency/LatestWinsBackgroundWorker.hpp"
+#include "../storage/AudioReader.hpp"
 #include <SDL3/SDL.h>
 
 #include "SamplePoint.hpp"
@@ -289,7 +290,9 @@ namespace cupuacu::gui
             int64_t samplesPerPeak = 0;
             int64_t cachedPeakStart = 0;
             int64_t rawSampleStart = 0;
-            std::vector<float> rawSamples;
+            int rawChannel = 0;
+            std::size_t rawSampleCount = 0;
+            std::shared_ptr<const cupuacu::storage::AudioReader> rawReader;
             std::vector<Peak> cachedPeaks;
         };
         struct BackgroundBlockRenderChunk

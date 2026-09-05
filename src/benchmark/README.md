@@ -187,11 +187,75 @@ This backend is not yet the editor default. Its cache limit bounds decoded
 payload residency, not total process memory: decoder/import scratch, the flat
 block index and resident peak pyramid are separate. The cache exposes a 10%-of-
 physical-RAM default calculation, but application-wide admission, preferences
-and pressure handling remain to be integrated. Structural edit transactions,
-paged sequence indexes, asynchronous UI/transport reads and durable revision
-manifests are subsequent slices. Existing codec frame-count limits still apply.
+and pressure handling remain to be integrated. Paged sequence indexes, default
+editor/transport integration and durable
+revision manifests are subsequent slices. Existing codec frame-count limits still apply.
 The external-sink metadata is rejected by the legacy document commit path to
 prevent publishing a document without its samples.
+
+`AsyncAudioReader` adds worker-owned range requests for a pinned revision. It
+retains one pending request and one published result, rejects windows exceeding
+its caller-supplied frame limit, and cancels obsolete requests between 65,536-frame
+reads. Closing does not wait for disk I/O; the worker releases its reader reference
+and any resulting working-store ownership. Consumers must bound results they
+retain themselves. This is a per-revision service; global scheduling and memory
+admission are still pending.
+
+The current waveform geometry worker now captures a memory-backed reader and
+copies raw viewport samples on its worker. Its existing synchronous painting
+fallbacks and joining geometry-worker lifetime still operate on the legacy
+memory backend. The disk reader is deliberately not connected to those fallbacks.
+
+```sh
+python3 scripts/run-benchmarks.py --build-dir build --mode timing \
+  --profile extended --filter 'open_owned_viewport*' --sizes-mib 1 256 \
+  --repetitions 3 --output dist/benchmarks/owned-viewport.json
+```
+
+These two cases compare synchronous and asynchronous range access using the same
+64 viewport requests spread across the recording, varying window sizes from
+1,024 to 131,072 frames. Each fresh process imports its own revision before timing,
+with a 2 MiB decoded cache and a 512 KiB maximum result. `bounded_storage` reports
+submission and completion latency separately, plus cache residency and logical
+sample I/O. The synchronous control performs the same allocation and block reads
+on the caller. Validation of every returned sample and final cleanup are excluded
+from timing. OS caching is uncontrolled; this is neither a GUI event-latency
+measurement nor a claim that dispatching work makes I/O itself faster. Completion
+includes polling/thread scheduling overhead; imports remain outside this timer.
+
+`AudioEditRevision` provides a persistent balanced sequence over imported block
+ranges. Leaves retain the import revision, channel, source offset and length;
+they never reference other edited revisions. Splitting/splicing shares unaffected
+subtrees. Silence has no sample payload. `AudioEditTransaction` exposes erase,
+insert/replace, trim and channel-specific replacement; a trimmed revision can
+serve as a clipboard reference. Undo/redo can retain and switch immutable roots.
+Source-range traversal preserves original-source provenance for later save
+integration. Existing editor commands/history are not switched over by this step.
+
+```sh
+python3 scripts/run-benchmarks.py --build-dir build --mode timing \
+  --profile extended --filter open_owned_edit --sizes-mib 1 256 \
+  --repetitions 3 --output dist/benchmarks/owned-edit.json
+```
+
+This case imports real data, then fragments each channel with 1,024 reference
+replacements outside timing. It measures 128 one-frame erase/insert transactions
+and undo/redo reference switches, retaining their revisions. It checks that those
+operations issue zero sample I/O, counts new index nodes per edit, and validates
+every output sample afterward with bounded scratch. Additional warm 1,024- and
+65,536-frame reads compare the fragmented tree to its unfragmented counterpart.
+They report navigation overhead separately from edit timing. These are storage
+operations, not complete UI commands (markers, dirty state, peaks, and persistence
+are not included). Separate tests stress repeated inserts, randomized edit/history
+sequences, 64-bit overflow and trillion-frame logical lengths using shared data;
+those logical-length tests are not disk-throughput or real-file import tests.
+
+Tree indexes are currently resident. A leaf pins its imported block directory
+and packed store, so partial deletion does not reclaim individual source blocks.
+Final release belongs on workers, as for imported revisions. Paging, per-block
+reclamation, aggregate peak summaries, effects and default editor/history/save
+integration remain pending. Cross-format pastes require a conversion step before
+entering this transaction API.
 
 Comparisons with `open_uncached` are architectural references, not identical
 operations: the owned path retains source bytes and writes decoded sample

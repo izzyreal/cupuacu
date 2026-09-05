@@ -7,6 +7,8 @@
 #include "actions/Zoom.hpp"
 #include "file/file_loading.hpp"
 #include "file/OwnedAudioImport.hpp"
+#include "storage/AsyncAudioReader.hpp"
+#include "storage/AudioEditRevision.hpp"
 #include "file/m4a/M4aAlacWriter.hpp"
 #include "gui/WaveformOverviewPlanning.hpp"
 #include "performance/WorkMetrics.hpp"
@@ -570,6 +572,227 @@ namespace
 #endif
         const std::string name = request.at("scenario");
         const int64_t frames = request.at("frames");
+        if (name == "open_owned_edit")
+        {
+            auto cache =
+                std::make_shared<storage::DecodedBlockCache>(2 * 1024 * 1024);
+            auto imported = file::importOwnedAudio(
+                request.at("fixture").get<std::string>(),
+                std::filesystem::path(request.at("root").get<std::string>()) /
+                    "owned-audio",
+                cache);
+            auto original = storage::AudioEditRevision::from(imported.audio);
+            auto base = original;
+            // Fragment without changing samples. This prevents the benchmark
+            // from measuring only the trivial one-leaf import representation.
+            for (int step = 0; step < 1024; ++step)
+            {
+                const auto at = (frames - 1) * step / 1024;
+                storage::AudioEditTransaction fragment(*base);
+                for (int c = 0; c < channels; ++c)
+                {
+                    fragment.replaceChannel(c, at, 1, original.get(), c, at);
+                }
+                base = fragment.finish();
+            }
+            storage::AudioEditTransaction copy(*original);
+            copy.trim(65530, 1);
+            auto clipboard = copy.finish();
+            std::vector<std::shared_ptr<const storage::AudioEditRevision>>
+                history;
+            history.reserve(128);
+            const auto beforeIO = imported.audio->blockStore()->ioBytes();
+            uint64_t maxNodes = 0;
+            double editMs = 0, undoMs = 0;
+            for (auto iteration : measurement)
+            {
+                (void)iteration;
+                for (int step = 0; step < 128; ++step)
+                {
+                    auto started = Clock::now();
+                    storage::AudioEditTransaction edit(*base);
+                    edit.erase(10001, 1);
+                    edit.insert(10001, *clipboard);
+                    auto changed = edit.finish();
+                    editMs += elapsed(started);
+                    maxNodes = std::max(maxNodes, edit.allocatedIndexNodes());
+                    history.push_back(changed);
+                    started = Clock::now();
+                    auto current = changed;
+                    current = base; // Undo; history pins the edited revision.
+                    benchmark::DoNotOptimize(current.get());
+                    current = changed; // Redo.
+                    benchmark::DoNotOptimize(current.get());
+                    undoMs += elapsed(started);
+                }
+                measurement.SetIterationTime((editMs + undoMs) / 1000.0);
+            }
+            require(imported.audio->blockStore()->ioBytes() == beforeIO,
+                    "Reference edit/undo accessed sample files");
+            require(maxNodes < 1024,
+                    "Local edit copied too much index metadata");
+            // Check every sample with bounded scratch after the edit timer.
+            std::vector<float> block(storage::AudioBlockFrames);
+            for (int c = 0; c < channels; ++c)
+            {
+                for (int64_t start = 0; start < frames; start += block.size())
+                {
+                    const auto count =
+                        std::min<int64_t>(block.size(), frames - start);
+                    history.back()->readChannel(
+                        c, start, std::span<float>(block).first(count));
+                    for (int64_t i = 0; i < count; ++i)
+                    {
+                        require(
+                            block[i] ==
+                                sampleAt(start + i == 10001 ? 65530 : start + i,
+                                         c),
+                            "Reference edit sample mismatch");
+                    }
+                }
+            }
+            // Check the navigation cost of the fragmented index too. Warm
+            // both paths first and time bounded reads with identical samples.
+            for (const auto count : {std::size_t{1024}, std::size_t{65536}})
+            {
+                std::vector<float> direct(count), indexed(count);
+                const auto start = frames / 2;
+                original->readChannel(0, start, direct);
+                base->readChannel(0, start, indexed);
+                require(direct == indexed, "Fragmented read mismatch");
+                const auto beforeWarm = imported.audio->blockStore()->ioBytes();
+                double directMs = 0, indexedMs = 0;
+                for (int repetition = 0; repetition < 64; ++repetition)
+                {
+                    auto started = Clock::now();
+                    original->readChannel(0, start, direct);
+                    directMs += elapsed(started);
+                    started = Clock::now();
+                    base->readChannel(0, start, indexed);
+                    indexedMs += elapsed(started);
+                }
+                require(imported.audio->blockStore()->ioBytes() == beforeWarm,
+                        "Warm tree read accessed sample files");
+                result["bounded_storage"]["direct_" + std::to_string(count) +
+                                          "_frames_ms"] = directMs / 64;
+                result["bounded_storage"]
+                      ["fragmented_" + std::to_string(count) + "_frames_ms"] =
+                          indexedMs / 64;
+            }
+            result["bounded_storage"].update(
+                {{"edit_mean_ms", editMs / 128},
+                 {"undo_redo_mean_ms", undoMs / 128},
+                 {"max_edit_index_nodes", maxNodes},
+                 {"index_height", base->indexHeight()},
+                 {"edit_sample_bytes_read", 0},
+                 {"edit_sample_bytes_written", 0}});
+            result["milestones_ms"]["background_complete"] = editMs + undoMs;
+            result["validated"] = true;
+            return;
+        }
+        if (name == "open_owned_viewport" || name == "open_owned_viewport_sync")
+        {
+            constexpr uint64_t budget = 2 * 1024 * 1024;
+            constexpr std::size_t maxWindow = 131072;
+            auto cache = std::make_shared<storage::DecodedBlockCache>(budget);
+            auto imported = file::importOwnedAudio(
+                request.at("fixture").get<std::string>(),
+                std::filesystem::path(request.at("root").get<std::string>()) /
+                    "owned-audio",
+                cache);
+            const bool asynchronous = name == "open_owned_viewport";
+            std::unique_ptr<storage::AsyncAudioReader> reader;
+            if (asynchronous)
+            {
+                reader = std::make_unique<storage::AsyncAudioReader>(
+                    imported.audio, maxWindow);
+            }
+            std::vector<double> dispatch, completion;
+            double totalMs = 0;
+            for (auto iteration : measurement)
+            {
+                (void)iteration;
+                for (int step = 0; step < 64; ++step)
+                {
+                    const auto count = std::min<std::size_t>(
+                        frames, std::array<std::size_t, 4>{
+                                    1024, 65536, 8193, maxWindow}[step % 4]);
+                    const int64_t start =
+                        (frames - count) * ((step * 37) % 64) / 63;
+                    std::vector<float> samples;
+                    const auto started = Clock::now();
+                    if (asynchronous)
+                    {
+                        const auto generation =
+                            reader->submit(step % channels, start, count);
+                        dispatch.push_back(elapsed(started));
+                        for (;;)
+                        {
+                            if (auto window = reader->takePublished())
+                            {
+                                require(window->generation == generation,
+                                        "Stale audio window published");
+                                if (window->error)
+                                {
+                                    std::rethrow_exception(window->error);
+                                }
+                                samples = std::move(window->samples);
+                                break;
+                            }
+                            require(elapsed(started) < 10000,
+                                    "Timed out waiting for audio window");
+                            std::this_thread::yield();
+                        }
+                    }
+                    else
+                    {
+                        samples.resize(count);
+                        storage::readAudioWindow(
+                            *imported.audio, step % channels, start, samples,
+                            []
+                            {
+                                return false;
+                            });
+                        dispatch.push_back(elapsed(started));
+                    }
+                    completion.push_back(elapsed(started));
+                    totalMs += completion.back();
+                    require(samples.size() == count,
+                            "Audio window size mismatch");
+                    for (std::size_t i = 0; i < count; ++i)
+                    {
+                        require(samples[i] ==
+                                    sampleAt(start + i, step % channels),
+                                "Audio window sample mismatch");
+                    }
+                }
+                measurement.SetIterationTime(totalMs / 1000.0);
+            }
+            if (reader)
+            {
+                reader->close();
+                reader->waitUntilClosed();
+            }
+            const auto stats = cache->stats();
+            require(stats.peakResidentBytes <= budget,
+                    "Viewport cache exceeded budget");
+            std::sort(dispatch.begin(), dispatch.end());
+            std::sort(completion.begin(), completion.end());
+            result["bounded_storage"] = {
+                {"submit_p50_ms", dispatch[dispatch.size() / 2]},
+                {"submit_max_ms", dispatch.back()},
+                {"completion_p50_ms", completion[completion.size() / 2]},
+                {"completion_max_ms", completion.back()},
+                {"window_limit_bytes", maxWindow * sizeof(float)},
+                {"peak_cached_sample_bytes", stats.peakResidentBytes},
+                {"sample_bytes_read",
+                 imported.audio->blockStore()->ioBytes().first},
+                {"cache_hits", stats.hits},
+                {"cache_misses", stats.misses}};
+            result["milestones_ms"]["background_complete"] = totalMs;
+            result["validated"] = true;
+            return;
+        }
         if (name == "open_owned")
         {
             constexpr uint64_t budget = 2 * 1024 * 1024;

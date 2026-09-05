@@ -1,4 +1,6 @@
 #include "Waveform.hpp"
+#include "storage/AudioWindow.hpp"
+#include "storage/DocumentAudioReader.hpp"
 
 #include "audio/AudioDevices.hpp"
 #include "WaveformBlockRenderPlanning.hpp"
@@ -339,9 +341,8 @@ Waveform::captureBackgroundBlockRenderRequest(
 
     const auto &session = state->getActiveDocumentSession();
     const auto &document = session.document;
-    auto lease = document.acquireReadLease();
-    const int64_t frameCount = lease.getFrameCount();
-    const int64_t channelCount = lease.getChannelCount();
+    const int64_t frameCount = document.getFrameCount();
+    const int64_t channelCount = document.getChannelCount();
     if (channelIndex >= channelCount || frameCount <= 0)
     {
         return std::nullopt;
@@ -356,15 +357,13 @@ Waveform::captureBackgroundBlockRenderRequest(
         frameCount, targetKey.sampleOffset, targetKey.samplesPerPixel,
         targetKey.width, targetKey.pixelScale, waveformCache);
 
-    std::vector<float> rawSamples;
+    std::shared_ptr<const cupuacu::storage::AudioReader> rawReader;
     std::vector<Peak> cachedPeaks;
     int64_t cachedPeakStart = 0;
     if (inputPlan.bypassCache)
     {
-        rawSamples.resize(static_cast<std::size_t>(std::max<int64_t>(
-            0, inputPlan.rawSampleEndExclusive - inputPlan.rawSampleStart)));
-        lease.readChannelFloatBlock(channelIndex, inputPlan.rawSampleStart,
-                                    rawSamples.data(), rawSamples.size());
+        rawReader =
+            std::make_shared<cupuacu::storage::DocumentAudioReader>(document);
     }
     else
     {
@@ -398,7 +397,10 @@ Waveform::captureBackgroundBlockRenderRequest(
         .samplesPerPeak = inputPlan.samplesPerPeak,
         .cachedPeakStart = cachedPeakStart,
         .rawSampleStart = inputPlan.rawSampleStart,
-        .rawSamples = std::move(rawSamples),
+        .rawChannel = channelIndex,
+        .rawSampleCount = static_cast<std::size_t>(std::max<int64_t>(
+            0, inputPlan.rawSampleEndExclusive - inputPlan.rawSampleStart)),
+        .rawReader = std::move(rawReader),
         .cachedPeaks = std::move(cachedPeaks),
     };
 }
@@ -409,6 +411,21 @@ void Waveform::processBackgroundBlockRenderRequest(
     const BackgroundBlockRenderWorker::PublishFn &publish) const
 {
     (void)generation;
+    if (isCanceled())
+    {
+        return;
+    }
+    std::vector<float> rawSamples;
+    if (request.rawReader)
+    {
+        rawSamples.resize(request.rawSampleCount);
+        if (!cupuacu::storage::readAudioWindow(
+                *request.rawReader, request.rawChannel, request.rawSampleStart,
+                rawSamples, isCanceled))
+        {
+            return;
+        }
+    }
     const double blockRenderPhasePx =
         getBlockRenderPhasePixels(request.key.sampleOffset,
                                   request.key.samplesPerPixel);
@@ -431,17 +448,16 @@ void Waveform::processBackgroundBlockRenderRequest(
         }
 
         const auto sampleEndExclusive =
-            request.rawSampleStart +
-            static_cast<int64_t>(request.rawSamples.size());
+            request.rawSampleStart + static_cast<int64_t>(rawSamples.size());
         const auto sampleAt = [&](const int64_t sampleIndex) -> float
         {
             const auto localIndex = sampleIndex - request.rawSampleStart;
             if (localIndex < 0 ||
-                localIndex >= static_cast<int64_t>(request.rawSamples.size()))
+                localIndex >= static_cast<int64_t>(rawSamples.size()))
             {
                 return 0.0f;
             }
-            return request.rawSamples[static_cast<std::size_t>(localIndex)];
+            return rawSamples[static_cast<std::size_t>(localIndex)];
         };
 
         int64_t a = static_cast<int64_t>(std::floor(startSampleInclusive));
