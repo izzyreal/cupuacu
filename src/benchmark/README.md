@@ -21,7 +21,7 @@ python3 scripts/run-benchmarks.py --build-dir build-benchmark \
 
 For multi-configuration generators, build Release and pass its executable
 directory to `--build-dir`. Run on an idle machine after compilation finishes.
-Repeat the same command after rebuilding, adding
+Repeat the same command after an incremental build, adding
 `--compare dist/benchmarks/before.json --output dist/benchmarks/after.json`.
 JSON contains raw repetitions, summary statistics, adjacent-size scaling
 ratios, environment and source fingerprints, and comparison results. A sibling
@@ -29,10 +29,34 @@ Markdown file gives a compact overview. Host, compiler, renderer, dependency,
 or fixture changes make comparisons explicitly incompatible. Failed and missing
 cases remain visible; timing changes do not cause a failing exit status.
 
+For performance iterations, keep one native Release build directory and build
+only the timing executable. It shares `cupuacu_core` with the app; the diagnostic
+executable uses a separately compiled core with counters enabled. For example,
+in the existing configured `build` directory:
+
+```sh
+time cmake --build build --target cupuacu-benchmarks -j4
+python3 scripts/run-benchmarks.py --build-dir build --mode timing \
+  --filter 'open_uncached' --sizes-mib 1 256 --repetitions 3 \
+  --output dist/benchmarks/open-before.json
+```
+
+`--mode timing` needs no diagnostic executable; `--mode diagnostic` selects
+counter measurements, and the default `--mode all` preserves combined runs.
+Preserve the baseline executable and reuse fixtures. Measure one affected
+scenario at a small and larger size, adding repetitions only when noise prevents
+a conclusion. Run focused correctness tests for changed behavior. Build the app
+when needed for manual verification; reserve broader tests and cross-platform
+checks for demonstrated performance checkpoints. Do not clean, reconfigure, or
+switch platforms during the routine loop. Investigate unexpected compilation
+instead of accepting it as normal iteration cost.
+
 `--filter '*gain*'`, `--sizes-mib 1 4 16`, and `--repetitions 3` select smaller
 runs. `--profile extended` adds 64/256 MiB inputs, copy/paste/trim, unshared
 sample editing, dirty-cache navigation, different delete positions, FLAC
-opening, and histories of 1/8/32 fixed-size edits on a 4 MiB document.
+opening, ALAC M4A opening in both core and SDL suites, and histories of 1/8/32
+fixed-size edits on a 4 MiB document. ALAC fixtures encode the same deterministic
+16-bit samples as WAV/FLAC; sizes always describe decoded float audio.
 
 Quick core runs target roughly one minute, excluding build and fixture
 generation. They use 1/4/16 MiB of **decoded stereo float samples**, three
@@ -89,6 +113,45 @@ long-task gate; being allowed by that gate does not prove a visible scroll.
 The report emits p95 only with at least 100 observations and p99 only with at
 least 1000. Short cases usually provide a maximum and count instead.
 
+Opening cases now collect event probes too, including in the core suite.
+`event_loop.max_iteration_ms` records the longest application-loop iteration;
+core runs omit drawing, so use SDL runs or native profiling for rendering stalls.
+The probe overhead is included in opening timings and should be present on both
+sides of a timing comparison. Earlier reports without opening probes are not
+equivalent measurements.
+
+Background opening builds peaks from each decoded block and publishes them
+through an eight-batch queue. The UI consumes at most eight batches or three
+milliseconds of application work per iteration. It displays a read-only preview
+at the full file duration; decoding retains ownership of the audio until success.
+Cancel or failure restores the previous tabs. Preview edge windows use base
+peaks, without reading unavailable audio. Final document queries remain exact.
+Persistent peak-cache hits bypass generation and can display the saved waveform
+during decoding. This does not yet impose a decoded-audio RAM limit.
+
+`first_waveform` records the first available nonempty peak prefix in the active
+session. In core benchmarks this measures availability, not pixels presented on
+screen. `audio_available` and `committed` exclude the preview and still describe
+the completed, editable document.
+
+Initial waveform-cache persistence uses a worker with at most four pending
+requests and one active write. Requests share immutable peak pages and hold no
+audio. A full queue is retried; an audio edit invalidates the pending retry.
+`waveform_complete` can precede cache-file completion. `background_complete`
+still includes that disk work, and the benchmark keeps pumping events while it
+waits. No file-format or clipboard-persistence behavior changes.
+
+Exact overview queries combine finer cached peaks at coarse-peak boundaries.
+For a completely built cache, raw scanning is limited to fewer than 256 samples
+per query, regardless of zoom level. Dirty/unbuilt ranges retain exact raw
+fallback. Navigation's `waveform_queries` counters expose this work separately
+from rendering and disk persistence. The extended `zoom_unaligned` case uses
+fractional fit-to-file windows to exercise coarse-peak boundaries that ordinary
+power-of-two fixtures and viewport widths would otherwise miss.
+While an overview cache is being built, rendering clips queries to its published
+prefix. This avoids an initial full-file raw scan before the first peaks arrive.
+Sample-level rendering and exact non-rendering queries keep their raw fallback.
+
 ## Interpreting measurements
 
 The timing executable links the ordinary core. The diagnostic executable links
@@ -108,6 +171,7 @@ Milestones are milliseconds from command submission:
 | `command_return` | The command or complete navigation sequence returned. |
 | `committed` | The new document/edit became available to the main loop. |
 | `audio_available` | An opening document exposed its full decoded audio. |
+| `first_waveform` | A nonempty waveform prefix became available; core runs do not measure screen presentation. |
 | `view_ready` | SDL has a current waveform texture and no active long task. |
 | `waveform_complete` | Both channel peak caches are clean. |
 | `background_complete` | Resulting open/effect/cache/autosave work and scheduled clipboard writes drained. |

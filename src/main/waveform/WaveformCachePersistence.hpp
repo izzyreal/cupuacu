@@ -45,6 +45,21 @@ namespace cupuacu::waveform
         const cupuacu::DocumentSession &session,
         const std::filesystem::path &cacheRoot);
 
+    enum class CacheSaveScheduleResult
+    {
+        Scheduled,
+        Unavailable,
+        Busy,
+    };
+
+    // Retains shared peak pages only, never the document's audio. A full queue
+    // returns Busy so the caller can retry without blocking the event loop.
+    [[nodiscard]] CacheSaveScheduleResult
+    schedulePersistentWaveformCache(const cupuacu::DocumentSession &session,
+                                    const Paths &paths);
+    [[nodiscard]] bool hasScheduledPersistentWaveformCacheWork();
+    void flushScheduledPersistentWaveformCaches();
+
     [[nodiscard]] bool loadPersistentWaveformCache(
         cupuacu::DocumentSession &session, const Paths &paths);
 

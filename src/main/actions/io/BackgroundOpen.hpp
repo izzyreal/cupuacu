@@ -2,6 +2,7 @@
 
 #include "../../State.hpp"
 #include "../../file/file_loading.hpp"
+#include "../../waveform/DecodedWaveformBuilder.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -11,6 +12,8 @@
 #include <atomic>
 #include <string>
 #include <thread>
+#include <condition_variable>
+#include <deque>
 
 namespace cupuacu::actions::io
 {
@@ -40,6 +43,8 @@ namespace cupuacu::actions::io
         void start();
         [[nodiscard]] Snapshot snapshot() const;
         [[nodiscard]] std::unique_ptr<file::LoadedAudioFile> takeLoadedFile();
+        [[nodiscard]] std::optional<waveform::DecodedWaveformChunk>
+        takePreview();
         [[nodiscard]] std::uint64_t getId() const;
         [[nodiscard]] const std::string &getPath() const;
         [[nodiscard]] const PendingOpenRequest &getRequest() const;
@@ -58,8 +63,11 @@ namespace cupuacu::actions::io
         std::unique_ptr<file::LoadedAudioFile> loadedFile;
         std::thread worker;
         std::atomic<bool> cancelRequested{false};
+        std::condition_variable previewCv;
+        std::deque<waveform::DecodedWaveformChunk> previews;
 
         void run();
+        void publishPreview(waveform::DecodedWaveformChunk chunk);
         void publishProgress(const std::string &detailToUse,
                              std::optional<double> progressToUse);
     };

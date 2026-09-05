@@ -35,12 +35,15 @@ namespace cupuacu::file
         waveform::DocumentWaveformCaches waveformCaches;
         bool persistentWaveformCacheChecked = false;
         bool persistentWaveformCacheLoaded = false;
+        bool waveformCachesReady = false;
         bool requiresSaveAs = false;
     };
 
     using LoadProgressCallback =
         std::function<void(const std::string &, std::optional<double>)>;
     using LoadCancelCheck = std::function<bool()>;
+    // Called on the decoder thread after a contiguous prefix has been written.
+    using LoadChunkCallback = std::function<void(const Document &, int64_t)>;
 
     namespace detail
     {
@@ -246,7 +249,7 @@ namespace cupuacu::file
 
         static std::optional<LoadedAudioFile> loadNativeAlacM4aIfApplicable(
             const std::string &path, const LoadProgressCallback &progress,
-            const LoadCancelCheck &isCanceled)
+            const LoadCancelCheck &isCanceled, const LoadChunkCallback &chunk)
         {
             if (!hasM4aExtension(path))
             {
@@ -267,7 +270,7 @@ namespace cupuacu::file
             std::vector<float> interleaved;
             std::uint16_t streamChannels = 0;
             auto flushInterleaved = [&doc, &interleaved, &totalFramesLoaded,
-                                     &streamChannels]()
+                                     &streamChannels, &chunk, &isCanceled]()
             {
                 if (interleaved.empty() || streamChannels == 0)
                 {
@@ -277,10 +280,18 @@ namespace cupuacu::file
                 const auto frameCount = static_cast<std::uint32_t>(
                     interleaved.size() /
                     static_cast<std::size_t>(streamChannels));
+                CUPUACU_METRIC(
+                    performance::add(performance::Work::DecodedBytesRead,
+                                     interleaved.size() * sizeof(float)));
                 doc.writeInterleavedFloatBlock(totalFramesLoaded,
                                                interleaved.data(), frameCount,
                                                streamChannels, false);
                 totalFramesLoaded += frameCount;
+                throwIfLoadCanceled(isCanceled);
+                if (chunk)
+                {
+                    chunk(doc, totalFramesLoaded);
+                }
                 interleaved.clear();
             };
             cupuacu::file::m4a::M4aAlacFileInfo fileInfo;
@@ -443,7 +454,7 @@ namespace cupuacu::file
 
         static std::optional<LoadedAudioFile> loadNativeAacM4aIfApplicable(
             const std::string &path, const LoadProgressCallback &progress,
-            const LoadCancelCheck &isCanceled)
+            const LoadCancelCheck &isCanceled, const LoadChunkCallback &chunk)
         {
             if (!hasM4aExtension(path) ||
                 cupuacu::file::m4a::detectM4aAudioCodecFile(path) !=
@@ -459,22 +470,26 @@ namespace cupuacu::file
             int lastPercent = -1;
             const auto info = cupuacu::file::m4a::streamAacM4aFile(
                 path,
-                [&doc, &totalFramesLoaded](const float *samples,
-                                           const std::uint32_t frameCount,
-                                           const std::uint16_t channels)
+                [&doc, &totalFramesLoaded,
+                 &chunk](const float *samples, const std::uint32_t frameCount,
+                         const std::uint16_t channels)
                 {
                     doc.writeInterleavedFloatBlock(totalFramesLoaded, samples,
                                                    frameCount, channels, false);
                     totalFramesLoaded += frameCount;
+                    if (chunk)
+                    {
+                        chunk(doc, totalFramesLoaded);
+                    }
                 },
                 [&doc](const cupuacu::file::m4a::M4aAacFileInfo &streamInfo)
                 {
                     doc.initialize(SampleFormat::FLOAT32, streamInfo.sampleRate,
                                    streamInfo.channels, streamInfo.frameCount);
                 },
-                [progress, path, isCanceled, &lastPercent](
-                    const std::uint32_t decodedFrames,
-                    const std::uint32_t totalFrames)
+                [progress, path, isCanceled,
+                 &lastPercent](const std::uint32_t decodedFrames,
+                               const std::uint32_t totalFrames)
                 {
                     throwIfLoadCanceled(isCanceled);
                     if (!progress || totalFrames == 0)
@@ -508,17 +523,19 @@ namespace cupuacu::file
         }
     } // namespace detail
 
-    static LoadedAudioFile loadAudioFile(
-        const std::string &path, const LoadProgressCallback &progress = {},
-        const LoadCancelCheck &isCanceled = {})
+    static LoadedAudioFile
+    loadAudioFile(const std::string &path,
+                  const LoadProgressCallback &progress = {},
+                  const LoadCancelCheck &isCanceled = {},
+                  const LoadChunkCallback &chunk = {})
     {
-        if (auto loaded = detail::loadNativeAacM4aIfApplicable(path, progress,
-                                                               isCanceled))
+        if (auto loaded = detail::loadNativeAacM4aIfApplicable(
+                path, progress, isCanceled, chunk))
         {
             return std::move(*loaded);
         }
-        if (auto loaded = detail::loadNativeAlacM4aIfApplicable(path, progress,
-                                                                isCanceled))
+        if (auto loaded = detail::loadNativeAlacM4aIfApplicable(
+                path, progress, isCanceled, chunk))
         {
             return std::move(*loaded);
         }
@@ -537,6 +554,13 @@ namespace cupuacu::file
             throw std::runtime_error("Failed to open file: " + path + ": " +
                                      detail);
         }
+
+        const auto closeSndfile = [](SNDFILE *file)
+        {
+            sf_close(file);
+        };
+        const std::unique_ptr<SNDFILE, decltype(closeSndfile)> fileHandle(
+            snd, closeSndfile);
 
         const SampleFormat sampleFormat =
             sampleFormatForSndfileFormat(sfinfo.format);
@@ -567,7 +591,6 @@ namespace cupuacu::file
             if (framesRead <= 0)
             {
                 const std::string detail = sf_strerror(snd);
-                sf_close(snd);
                 throw std::runtime_error("Failed to read samples from file: " +
                                          path + ": " + detail);
             }
@@ -579,11 +602,14 @@ namespace cupuacu::file
                                            framesRead, channels, false);
 
             totalFramesRead += framesRead;
+            if (chunk)
+            {
+                chunk(doc, totalFramesRead);
+            }
             detail::updateLoadProgress(progress, path, totalFramesRead, frames);
         }
 
         // Done with file
-        sf_close(snd);
 
         try
         {
@@ -623,7 +649,8 @@ namespace cupuacu::file
         session.currentFileRequiresSaveAs = loaded.requiresSaveAs;
         session.setPreservationReference(path, session.currentFileExportSettings);
         session.document = std::move(loaded.document);
-        if (loaded.persistentWaveformCacheLoaded)
+        session.openingPreview = false;
+        if (loaded.persistentWaveformCacheLoaded || loaded.waveformCachesReady)
         {
             session.waveformCaches = std::move(loaded.waveformCaches);
         }
