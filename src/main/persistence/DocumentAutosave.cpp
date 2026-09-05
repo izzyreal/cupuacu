@@ -318,10 +318,11 @@ namespace cupuacu::persistence
                 level.resize(peakCount);
                 for (uint32_t peakIndex = 0; peakIndex < peakCount; ++peakIndex)
                 {
-                    level[static_cast<std::size_t>(peakIndex)] = {
-                        .min = readFloat(input),
-                        .max = readFloat(input),
-                    };
+                    level.set(static_cast<std::size_t>(peakIndex),
+                              {
+                                  .min = readFloat(input),
+                                  .max = readFloat(input),
+                              });
                 }
             }
             return result;

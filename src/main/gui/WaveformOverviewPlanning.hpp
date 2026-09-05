@@ -92,7 +92,7 @@ namespace cupuacu::gui
             bypassCache ? 0 : waveformCache.getLevelIndex(samplesPerPixel);
         const int64_t samplesPerPeak =
             bypassCache ? 0 : WaveformCache::samplesPerPeakForLevel(cacheLevel);
-        const std::vector<Peak> *peaks =
+        const PeakLevel *peaks =
             bypassCache ? nullptr : &waveformCache.getLevel(samplesPerPixel);
         const int64_t validCachedPeakCount =
             bypassCache ? 0 : waveformCache.validPeakCountForLevel(cacheLevel);

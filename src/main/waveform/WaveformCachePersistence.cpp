@@ -318,10 +318,11 @@ namespace cupuacu::waveform
                     level.resize(static_cast<std::size_t>(peakCount));
                     for (int64_t peakIndex = 0; peakIndex < peakCount; ++peakIndex)
                     {
-                        level[static_cast<std::size_t>(peakIndex)] = {
-                            .min = readFloat(input),
-                            .max = readFloat(input),
-                        };
+                        level.set(static_cast<std::size_t>(peakIndex),
+                                  {
+                                      .min = readFloat(input),
+                                      .max = readFloat(input),
+                                  });
                     }
                 }
                 results.push_back(std::move(result));

@@ -501,6 +501,33 @@ namespace
                 "Deep-copy byte observation mismatch");
             require(copy->getFrameCount() == 128, "Deep-copy control failed");
         }
+        // Shared pages are charged once, and snapshots must not copy peaks.
+        const auto capacityBeforePeaks = performance::registry.liveBytes.load();
+        {
+            gui::PeakLevel peaks;
+            peaks.resize(gui::PeakLevel::PEAKS_PER_PAGE + 7);
+            peaks.set(0, {-1, 1});
+            const auto originalCapacity =
+                performance::registry.liveBytes.load();
+            performance::resetWork();
+            auto snapshot = peaks;
+            require(performance::registry.liveBytes.load() == originalCapacity,
+                    "Shared peak capacity was counted twice");
+            require(performance::registry
+                            .work[unsigned(performance::Work::PeakBytesCopied)]
+                            .load() == 0,
+                    "Peak snapshot unexpectedly copied data");
+            snapshot.set(0, {-2, 2});
+            require(peaks[0].max == 1 && snapshot[0].max == 2,
+                    "Peak snapshot isolation failed");
+            require(performance::registry
+                            .work[unsigned(performance::Work::PeakBytesCopied)]
+                            .load() ==
+                        gui::PeakLevel::PEAKS_PER_PAGE * sizeof(gui::Peak),
+                    "Peak page copy observation mismatch");
+        }
+        require(performance::registry.liveBytes.load() == capacityBeforePeaks,
+                "Peak capacity was not released");
 #endif
         const std::string name = request.at("scenario");
         const int64_t frames = request.at("frames");
