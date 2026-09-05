@@ -5,6 +5,7 @@
 #include <SDL3_ttf/SDL_ttf.h>
 
 #include "State.hpp"
+#include "ApplicationLoop.hpp"
 #include "Logger.hpp"
 #include "gui/EventHandling.hpp"
 #include "gui/Gui.hpp"
@@ -223,66 +224,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
-    cupuacu::State *state = (cupuacu::State *)appstate;
-    cupuacu::actions::effects::processPendingEffectWork(state);
-    cupuacu::actions::io::processPendingOpenWork(state);
-    cupuacu::actions::io::processPendingSaveWork(state);
-    cupuacu::actions::io::processPendingAutosaveWork(state);
-
-    if (state->quitRequestedAfterLongTaskCancel &&
-        !state->backgroundOpenJob && !state->pendingOpenWaveformBuild.active &&
-        !state->longTask.active)
-    {
-        cupuacu::gui::cleanupCursors();
-        return SDL_APP_SUCCESS;
-    }
-
-    for (auto *window : state->windows)
-    {
-        if (window && window->isOpen() && window->getRootComponent())
-        {
-            window->getRootComponent()->timerCallbackRecursive();
-        }
-    }
-
-    bool renderedAnyWindow = false;
-    for (auto *window : state->windows)
-    {
-        if (window && window->isOpen())
-        {
-            window->updateTooltip();
-            const bool hadDirty = !window->getDirtyRects().empty();
-            window->renderFrameIfDirty();
-            renderedAnyWindow = renderedAnyWindow || hadDirty;
-        }
-    }
-
-    if (state->optionsWindow && !state->optionsWindow->isOpen())
-    {
-        state->optionsWindow.reset();
-    }
-    if (state->newFileDialogWindow && !state->newFileDialogWindow->isOpen())
-    {
-        state->newFileDialogWindow.reset();
-    }
-    if (state->generateSilenceDialogWindow &&
-        !state->generateSilenceDialogWindow->isOpen())
-    {
-        state->generateSilenceDialogWindow.reset();
-    }
-    state->windows.erase(std::remove_if(state->windows.begin(),
-                                        state->windows.end(),
-                                        [](cupuacu::gui::Window *window)
-                                        {
-                                            return !window || !window->isOpen();
-                                        }),
-                         state->windows.end());
-
-    if (!renderedAnyWindow)
-    {
-        SDL_Delay(1);
-    }
-    return SDL_APP_CONTINUE;
+    return cupuacu::iterateApplication(static_cast<cupuacu::State *>(appstate));
 }
 
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)

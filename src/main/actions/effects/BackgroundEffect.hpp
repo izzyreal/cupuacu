@@ -58,6 +58,7 @@ namespace cupuacu::actions::effects
         std::vector<int64_t> targetChannels;
         std::vector<std::vector<float>> oldSamples;
         std::vector<std::vector<float>> newSamples;
+        [[no_unique_address]] performance::Capacity observedCapacity;
         std::vector<::cupuacu::effects::SilenceRange> silenceRuns;
         std::vector<std::vector<std::vector<float>>> removedSamples;
         int64_t originalRelevantLength = 0;

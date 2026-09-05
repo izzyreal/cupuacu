@@ -250,6 +250,9 @@ namespace cupuacu::waveform
                             const PersistentCacheKey &key)
         {
             std::ofstream output(path, std::ios::binary);
+            CUPUACU_METRIC(
+                auto ioObservation = performance::observeWrite(
+                    output, performance::Work::PeakFileBytesWritten));
             if (!output.is_open())
             {
                 throw std::runtime_error("Failed to open waveform cache");
@@ -445,6 +448,8 @@ namespace cupuacu::waveform
         {
             std::ifstream input(cacheRoot / key->cacheBasename(),
                                 std::ios::binary);
+            CUPUACU_METRIC(auto ioObservation = performance::observeRead(
+                               input, performance::Work::PeakFileBytesRead));
             if (!input.is_open())
             {
                 return false;

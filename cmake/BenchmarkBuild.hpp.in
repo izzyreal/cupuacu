@@ -1,0 +1,4 @@
+#pragma once
+inline constexpr auto benchmarkRevision = "@CUPUACU_GIT_REVISION@";
+inline constexpr bool benchmarkDirty = @CUPUACU_GIT_DIRTY_BOOL@;
+inline constexpr auto benchmarkDependencies = "@_benchmark_dependencies@";

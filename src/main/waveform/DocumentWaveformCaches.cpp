@@ -126,6 +126,9 @@ namespace cupuacu::waveform
             for (const auto &channel : request.channels)
             {
                 totalBlocks += channel.totalDirtyBlocks;
+                CUPUACU_METRIC(performance::add(
+                    performance::Work::PeakBytesCopied,
+                    performance::matrixBytes(channel.buildState.levels)));
                 channels.push_back(ChannelBuildRuntime{
                     .channelIndex = channel.channelIndex,
                     .state = channel.buildState,
@@ -189,6 +192,9 @@ namespace cupuacu::waveform
                         }
                     }
 
+                    CUPUACU_METRIC(
+                        performance::add(performance::Work::SampleBytesCopied,
+                                         samples.size() * sizeof(float)));
                     gui::WaveformCache::rebuildDirtyBlockRangeFromSlice(
                         channel.state.levels, channel.state.numSamples,
                         builtFromBlock, builtToBlock, sampleStart,
@@ -224,6 +230,10 @@ namespace cupuacu::waveform
                             static_cast<int64_t>(levelData.size()) - 1);
                         if (clampedTo >= clampedFrom)
                         {
+                            CUPUACU_METRIC(performance::add(
+                                performance::Work::PeakBytesCopied,
+                                (clampedTo - clampedFrom + 1) *
+                                    sizeof(gui::Peak)));
                             auto &levelUpdates =
                                 chunkOutput.channelChunks[0].levelUpdates;
                             levelUpdates.push_back(

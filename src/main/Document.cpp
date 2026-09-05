@@ -115,6 +115,8 @@ namespace cupuacu
     {
         if (buffer.use_count() != 1)
         {
+            CUPUACU_METRIC(
+                performance::add(performance::Work::FullBufferClones, 1));
             buffer = buffer->clone();
         }
     }
@@ -306,6 +308,9 @@ namespace cupuacu
             return;
         }
 
+        CUPUACU_METRIC(performance::add(performance::Work::SampleBytesCopied,
+                                        writableFrames * writableChannels *
+                                            sizeof(float)));
         if (shouldMarkDirty)
         {
             for (int64_t frame = 0; frame < writableFrames; ++frame)
@@ -364,6 +369,8 @@ namespace cupuacu
             return;
         }
 
+        CUPUACU_METRIC(performance::add(performance::Work::SampleBytesCopied,
+                                        writableFrames * sizeof(float)));
         ensureUniqueBufferUnlocked();
         if (shouldMarkDirty)
         {
@@ -508,6 +515,16 @@ namespace cupuacu
             channelSamples.resize(static_cast<std::size_t>(boundedCount));
             channelDirty.resize(static_cast<std::size_t>(boundedCount));
             channelProvenance.resize(static_cast<std::size_t>(boundedCount));
+            CUPUACU_METRIC(result.observedCapacity.set(
+                performance::matrixCapacity(result.samples) +
+                performance::matrixCapacity(result.dirty) +
+                performance::matrixCapacity(result.provenance)));
+            CUPUACU_METRIC(
+                performance::add(performance::Work::SampleBytesCopied,
+                                 boundedCount * sizeof(float)));
+            CUPUACU_METRIC(performance::add(
+                performance::Work::MetadataBytesCopied,
+                boundedCount * (1 + sizeof(audio::SampleProvenance))));
             for (int64_t frame = 0; frame < boundedCount; ++frame)
             {
                 channelSamples[static_cast<std::size_t>(frame)] =
@@ -550,6 +567,13 @@ namespace cupuacu
             std::max<int64_t>(0, getFrameCountUnlocked() - startFrame));
         const auto writableChannels =
             std::min<int64_t>(segment.channelCount, getChannelCountUnlocked());
+        CUPUACU_METRIC(performance::add(performance::Work::SampleBytesCopied,
+                                        writableFrames * writableChannels *
+                                            sizeof(float)));
+        CUPUACU_METRIC(
+            performance::add(performance::Work::MetadataBytesCopied,
+                             writableFrames * writableChannels *
+                                 (1 + sizeof(audio::SampleProvenance))));
         constexpr int64_t kProgressStrideFrames = 16384;
         const int64_t totalProgressUnits =
             writableFrames * std::max<int64_t>(1, writableChannels);

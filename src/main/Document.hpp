@@ -36,6 +36,7 @@ namespace cupuacu
             std::vector<std::vector<float>> samples;
             std::vector<std::vector<std::uint8_t>> dirty;
             std::vector<std::vector<audio::SampleProvenance>> provenance;
+            [[no_unique_address]] performance::Capacity observedCapacity;
         };
 
     private:

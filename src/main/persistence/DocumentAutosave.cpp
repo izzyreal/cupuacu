@@ -347,6 +347,9 @@ namespace cupuacu::persistence
                                const cupuacu::DocumentSession &session)
         {
             std::ofstream output(path, std::ios::binary);
+            CUPUACU_METRIC(
+                auto ioObservation = performance::observeWrite(
+                    output, performance::Work::AutosaveBytesWritten));
             if (!output.is_open())
             {
                 throw std::runtime_error("Failed to open autosave snapshot");
@@ -467,6 +470,8 @@ namespace cupuacu::persistence
         {
             const auto startedAt = std::chrono::steady_clock::now();
             std::ifstream input(path, std::ios::binary);
+            CUPUACU_METRIC(auto ioObservation = performance::observeRead(
+                               input, performance::Work::AutosaveBytesRead));
             if (!input.is_open())
             {
                 return false;

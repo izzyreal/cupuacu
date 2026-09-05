@@ -121,6 +121,11 @@ Monitor DSP must additionally preserve the following:
 
 ## Test Structure
 
+For automated loading, editing, waveform and responsiveness measurements, see
+the [performance benchmark guide](src/benchmark/README.md). Benchmarks use
+separate opt-in Release targets and report scaling and work counts alongside
+timing; the Linux SDL suite uses the existing Xvfb integration environment.
+
 The main test executable is `cupuacu-tests`.
 
 SDL/window/render integration tests are intentionally separate and should not

@@ -44,6 +44,8 @@ option(CUPUACU_ENABLE_COVERAGE
     "Enable compiler and linker coverage instrumentation for supported targets" OFF)
 option(CUPUACU_BUILD_INTEGRATION_TESTS
     "Build SDL/Xvfb-backed integration tests in a dedicated target" OFF)
+option(CUPUACU_BUILD_BENCHMARKS "Build performance benchmark executables" OFF)
+option(CUPUACU_BUILD_SDL_BENCHMARKS "Build Linux/Xvfb waveform benchmarks" OFF)
 option(CUPUACU_RELEASE_SIZE_OPTIMIZATIONS
     "Enable low-risk release dead-code elimination and symbol stripping" ON)
 
@@ -666,6 +668,8 @@ cupuacu_enable_coverage_for_target(cupuacu-tests)
 _bundle_resources(Cupuacu)
 _bundle_resources(cupuacu-tests)
 _bundle_test_resources(cupuacu-tests)
+
+include(cmake/Benchmarks.cmake)
 
 if(CUPUACU_BUILD_INTEGRATION_TESTS)
     add_executable(cupuacu-tests-integration

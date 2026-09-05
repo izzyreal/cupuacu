@@ -572,6 +572,9 @@ namespace cupuacu::file
                                          path + ": " + detail);
             }
 
+            CUPUACU_METRIC(
+                performance::add(performance::Work::DecodedBytesRead,
+                                 framesRead * channels * sizeof(float)));
             doc.writeInterleavedFloatBlock(totalFramesRead, interleaved.data(),
                                            framesRead, channels, false);
 

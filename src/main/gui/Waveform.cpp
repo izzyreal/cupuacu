@@ -2247,3 +2247,22 @@ std::optional<int64_t> Waveform::getSamplePosUnderCursor() const
 {
     return samplePosUnderCursor;
 }
+
+// Read-only readiness observation; does not start or drain rendering work.
+bool cupuacu::gui::Waveform::isCurrentViewTextureReady() const
+{
+    if (!cachedBaseTextureValid || !cachedBaseTexture ||
+        isWaveformCacheBuildActive())
+    {
+        return false;
+    }
+    const auto key = computeBaseTextureCacheKey();
+    if (cachedBaseTextureKey == key)
+    {
+        return true;
+    }
+    SDL_FRect source{};
+    return key.samplesPerPixel >= 1.0 &&
+           canRenderCurrentViewFromCachedBlockTexture(key, cachedBaseTextureKey,
+                                                      source);
+}

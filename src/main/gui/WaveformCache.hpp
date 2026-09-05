@@ -1,4 +1,5 @@
 #pragma once
+#include "../performance/WorkMetrics.hpp"
 #include <vector>
 #include <cstdint>
 #include <algorithm>
@@ -32,6 +33,7 @@ namespace cupuacu::gui
             int64_t dirtyFromBlock = INT64_MAX;
             int64_t dirtyToBlock = -1;
             std::vector<std::vector<Peak>> levels;
+            [[no_unique_address]] performance::Capacity observedCapacity;
         };
 
         struct BuildResult
@@ -40,6 +42,7 @@ namespace cupuacu::gui
             int64_t dirtyFromBlock = INT64_MAX;
             int64_t dirtyToBlock = -1;
             std::vector<std::vector<Peak>> levels;
+            [[no_unique_address]] performance::Capacity observedCapacity;
         };
 
         WaveformCache()
@@ -47,8 +50,42 @@ namespace cupuacu::gui
         {
         }
 
+        WaveformCache(const WaveformCache &other)
+            : numSamples(other.numSamples), levels(other.levels),
+              dirtyFromBlock(other.dirtyFromBlock),
+              dirtyToBlock(other.dirtyToBlock)
+        {
+            CUPUACU_METRIC(
+                observedCapacity.set(performance::matrixCapacity(levels)));
+            CUPUACU_METRIC(performance::add(performance::Work::PeakBytesCopied,
+                                            performance::matrixBytes(levels)));
+        }
+        WaveformCache &operator=(const WaveformCache &other)
+        {
+            if (this != &other)
+            {
+                numSamples = other.numSamples;
+                levels = other.levels;
+                dirtyFromBlock = other.dirtyFromBlock;
+                dirtyToBlock = other.dirtyToBlock;
+                CUPUACU_METRIC(
+                    observedCapacity.set(performance::matrixCapacity(levels)));
+                CUPUACU_METRIC(
+                    performance::add(performance::Work::PeakBytesCopied,
+                                     performance::matrixBytes(levels)));
+            }
+            return *this;
+        }
+        WaveformCache(WaveformCache &&) noexcept = default;
+        WaveformCache &operator=(WaveformCache &&) noexcept = default;
+
         void clear()
         {
+            CUPUACU_METRIC(performance::OnExit observe{
+                [this]
+                {
+                    observedCapacity.set(performance::matrixCapacity(levels));
+                }});
             levels.clear();
             numSamples = 0;
             dirtyFromBlock = INT64_MAX;
@@ -125,6 +162,11 @@ namespace cupuacu::gui
 
         void applyInsert(int64_t posSample, const int64_t countSamples)
         {
+            CUPUACU_METRIC(performance::OnExit observe{
+                [this]
+                {
+                    observedCapacity.set(performance::matrixCapacity(levels));
+                }});
             if (countSamples <= 0)
             {
                 return;
@@ -166,6 +208,11 @@ namespace cupuacu::gui
 
         void applyErase(int64_t startSample, int64_t endSample)
         {
+            CUPUACU_METRIC(performance::OnExit observe{
+                [this]
+                {
+                    observedCapacity.set(performance::matrixCapacity(levels));
+                }});
             if (endSample < startSample)
             {
                 std::swap(startSample, endSample);
@@ -277,11 +324,16 @@ namespace cupuacu::gui
 
         [[nodiscard]] BuildState snapshotBuildState() const
         {
+            CUPUACU_METRIC(performance::add(performance::Work::PeakBytesCopied,
+                                            performance::matrixBytes(levels)));
             return {
                 .numSamples = numSamples,
                 .dirtyFromBlock = dirtyFromBlock,
                 .dirtyToBlock = dirtyToBlock,
                 .levels = levels,
+                .observedCapacity = performance::Capacity(
+                    CUPUACU_WORK_METRICS ? performance::matrixBytes(levels)
+                                         : 0),
             };
         }
 
@@ -289,11 +341,18 @@ namespace cupuacu::gui
             const BuildState &state,
             const float *samples)
         {
+            CUPUACU_METRIC(
+                performance::add(performance::Work::PeakBytesCopied,
+                                 performance::matrixBytes(state.levels)));
             BuildResult result{
                 .numSamples = state.numSamples,
                 .dirtyFromBlock = state.dirtyFromBlock,
                 .dirtyToBlock = state.dirtyToBlock,
                 .levels = state.levels,
+                .observedCapacity = performance::Capacity(
+                    CUPUACU_WORK_METRICS
+                        ? performance::matrixBytes(state.levels)
+                        : 0),
             };
             rebuildDirtyLevels(result.levels, result.numSamples,
                                result.dirtyFromBlock, result.dirtyToBlock,
@@ -320,10 +379,17 @@ namespace cupuacu::gui
 
         void applyBuildResult(BuildResult result)
         {
+            CUPUACU_METRIC(performance::OnExit observe{
+                [this]
+                {
+                    observedCapacity.set(performance::matrixCapacity(levels));
+                }});
             numSamples = result.numSamples;
             dirtyFromBlock = result.dirtyFromBlock;
             dirtyToBlock = result.dirtyToBlock;
             levels = std::move(result.levels);
+            CUPUACU_METRIC(observedCapacity =
+                               std::move(result.observedCapacity));
         }
 
         static void rebuildDirtyBlockRange(std::vector<std::vector<Peak>> &levelsToUse,
@@ -359,6 +425,13 @@ namespace cupuacu::gui
             const int64_t from0 = std::clamp<int64_t>(fromBlock, 0, max0);
             const int64_t to0 = std::clamp<int64_t>(toBlock, 0, max0);
 
+            CUPUACU_METRIC(performance::add(performance::Work::BasePeaksRebuilt,
+                                            to0 - from0 + 1));
+            CUPUACU_METRIC(performance::add(
+                performance::Work::SamplesScanned,
+                std::min<int64_t>(numSamplesToUse,
+                                  (to0 + 1) * BASE_BLOCK_SIZE) -
+                    from0 * BASE_BLOCK_SIZE));
             for (int64_t blk = from0; blk <= to0; ++blk)
             {
                 const int64_t s0 = blk * static_cast<int64_t>(BASE_BLOCK_SIZE);
@@ -459,6 +532,8 @@ namespace cupuacu::gui
                     static_cast<int64_t>(level.size()) - fromIndex;
                 const int64_t count = std::clamp<int64_t>(
                     static_cast<int64_t>(update.peaks.size()), 0, maxWritable);
+                CUPUACU_METRIC(performance::add(
+                    performance::Work::PeakBytesCopied, count * sizeof(Peak)));
                 for (int64_t i = 0; i < count; ++i)
                 {
                     level[static_cast<std::size_t>(fromIndex + i)] =
@@ -519,6 +594,13 @@ namespace cupuacu::gui
                 std::clamp<int64_t>(dirtyFromBlockToUse, 0, max0);
             const int64_t to0 = std::clamp<int64_t>(dirtyToBlockToUse, 0, max0);
 
+            CUPUACU_METRIC(performance::add(performance::Work::BasePeaksRebuilt,
+                                            to0 - from0 + 1));
+            CUPUACU_METRIC(performance::add(
+                performance::Work::SamplesScanned,
+                std::min<int64_t>(numSamplesToUse,
+                                  (to0 + 1) * BASE_BLOCK_SIZE) -
+                    from0 * BASE_BLOCK_SIZE));
             for (int64_t blk = from0; blk <= to0; ++blk)
             {
                 const int64_t s0 = blk * (int64_t)BASE_BLOCK_SIZE;
@@ -589,6 +671,11 @@ namespace cupuacu::gui
 
         void buildStorage()
         {
+            CUPUACU_METRIC(performance::OnExit observe{
+                [this]
+                {
+                    observedCapacity.set(performance::matrixCapacity(levels));
+                }});
             levels.clear();
             levels.resize(MAX_LEVEL_COUNT);
 
@@ -660,6 +747,7 @@ namespace cupuacu::gui
     private:
         int64_t numSamples;
         std::vector<std::vector<Peak>> levels;
+        [[no_unique_address]] performance::Capacity observedCapacity;
         int64_t dirtyFromBlock;
         int64_t dirtyToBlock;
         inline static const std::vector<Peak> empty;
