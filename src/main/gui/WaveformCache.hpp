@@ -564,12 +564,21 @@ namespace cupuacu::gui
             applyBuildResult(std::move(result));
         }
 
+        // For an exclusively owned cache, read only dirty sample ranges and
+        // update peaks in place. The source supplies operator[](sampleIndex).
+        template <typename SampleSource>
+        void rebuildDirtyFrom(const SampleSource &samples)
+        {
+            rebuildDirtyLevels(levels, numSamples, dirtyFromBlock, dirtyToBlock,
+                               samples);
+        }
+
     private:
-        static void rebuildDirtyLevels(std::vector<std::vector<Peak>> &levelsToUse,
-                                       const int64_t numSamplesToUse,
-                                       int64_t &dirtyFromBlockToUse,
-                                       int64_t &dirtyToBlockToUse,
-                                       const float *samples)
+        template <typename SampleSource>
+        static void rebuildDirtyLevels(
+            std::vector<std::vector<Peak>> &levelsToUse,
+            const int64_t numSamplesToUse, int64_t &dirtyFromBlockToUse,
+            int64_t &dirtyToBlockToUse, const SampleSource &samples)
         {
             if (levelsToUse.empty() || numSamplesToUse <= 0)
             {
@@ -613,7 +622,7 @@ namespace cupuacu::gui
                 }
 
                 float minv = samples[s0];
-                float maxv = samples[s0];
+                float maxv = minv;
                 for (int64_t i = s0 + 1; i < s1; ++i)
                 {
                     const float v = samples[i];

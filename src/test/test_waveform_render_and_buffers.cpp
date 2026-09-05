@@ -184,6 +184,62 @@ TEST_CASE("Waveform tolerates a temporary channel mismatch during transitions",
     REQUIRE(waveform.getChildren().empty());
 }
 
+TEST_CASE("In-place waveform rebuild reads only dirty blocks", "[waveform]")
+{
+    std::vector<float> samples(1025);
+    for (std::size_t i = 0; i < samples.size(); ++i)
+    {
+        samples[i] = float(i % 19) / 32.0f;
+    }
+    cupuacu::gui::WaveformCache cache;
+    cache.rebuildAll(samples.data(), samples.size());
+    int64_t first = 0, end = 0;
+    SECTION("clean cache reads no samples") {}
+    SECTION("interior block")
+    {
+        samples[130] = -0.9f;
+        cache.invalidateSample(130);
+        first = 128;
+        end = 256;
+    }
+    SECTION("partial final block")
+    {
+        samples[1024] = -0.9f;
+        cache.invalidateSample(1024);
+        first = 1024;
+        end = 1025;
+    }
+    struct Reader
+    {
+        const std::vector<float> &samples;
+        int64_t first, end;
+        mutable int64_t reads = 0;
+        float operator[](int64_t i) const
+        {
+            REQUIRE(i >= first);
+            REQUIRE(i < end);
+            ++reads;
+            return samples.at(static_cast<std::size_t>(i));
+        }
+    } reader{samples, first, end};
+    cache.rebuildDirtyFrom(reader);
+    REQUIRE(reader.reads == end - first);
+    REQUIRE_FALSE(cache.hasDirtyBlocks());
+    cupuacu::gui::WaveformCache expected;
+    expected.rebuildAll(samples.data(), samples.size());
+    for (int level = 0; level < expected.levelsCount(); ++level)
+    {
+        const auto &a = cache.getLevelByIndex(level);
+        const auto &b = expected.getLevelByIndex(level);
+        REQUIRE(a.size() == b.size());
+        for (std::size_t i = 0; i < a.size(); ++i)
+        {
+            REQUIRE(a[i].min == b[i].min);
+            REQUIRE(a[i].max == b[i].max);
+        }
+    }
+}
+
 TEST_CASE("DocumentSession publishes waveform cache results from background work",
           "[gui][waveform]")
 {

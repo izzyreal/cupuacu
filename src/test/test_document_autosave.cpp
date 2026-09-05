@@ -389,7 +389,7 @@ TEST_CASE("Background autosave job owns its original snapshot path",
         state.getActiveTab()->id, originalPath,
         session.document.getWaveformDataVersion(),
         session.document.getMarkerDataVersion(), session.currentFile,
-        session.document);
+        session.document, session.waveformCaches);
     job.start();
 
     session.autosaveSnapshotPath =
@@ -423,7 +423,7 @@ TEST_CASE("Background autosave job owns its original source identity",
         state.getActiveTab()->id, autosavePath,
         session.document.getWaveformDataVersion(),
         session.document.getMarkerDataVersion(), session.currentFile,
-        session.document);
+        session.document, session.waveformCaches);
     job.start();
 
     session.currentFile = "/tmp/renamed.wav";
@@ -438,6 +438,88 @@ TEST_CASE("Background autosave job owns its original source identity",
     REQUIRE(snapshot.success);
     REQUIRE(snapshot.currentFile == "/tmp/original.wav");
     REQUIRE(std::filesystem::exists(autosavePath));
+}
+
+TEST_CASE("Background autosave preserves peaks from its own audio revision",
+          "[autosave][waveform]")
+{
+    cupuacu::test::StateWithTestPaths state{
+        cupuacu::test::makeUniqueTestRoot("autosave-cache-snapshot")};
+    auto &session = state.getActiveDocumentSession();
+    session.document.initialize(cupuacu::SampleFormat::FLOAT32, 48000, 2, 1025);
+    for (int ch = 0; ch < 2; ++ch)
+    {
+        for (int64_t i = 0; i < 1025; ++i)
+        {
+            session.document.setSample(ch, i, float((i + ch) % 17) / 32.0f);
+        }
+    }
+    session.rebuildWaveformCacheSynchronously();
+
+    SECTION("clean cache") {}
+    SECTION("dirty cache with a worker in flight")
+    {
+        session.document.setSample(0, 130, -0.9f);
+        session.invalidateWaveformSamples(130, 130);
+        session.updateWaveformCache();
+    }
+    SECTION("stale clean cache falls back to rebuilding")
+    {
+        session.document.setSample(1, 1024, -0.9f);
+    }
+    SECTION("missing cache falls back to rebuilding")
+    {
+        session.waveformCaches.resetToChannelCount(2);
+    }
+    SECTION("changed channel count falls back to rebuilding")
+    {
+        session.document.initialize(cupuacu::SampleFormat::FLOAT32, 48000, 3,
+                                    1027);
+        session.document.setSample(2, 1026, 0.9f);
+    }
+
+    cupuacu::DocumentSession expected;
+    expected.document = session.document;
+    expected.rebuildWaveformCacheSynchronously();
+    const auto path = state.paths->autosavePath() / "peaks.cupuacu-autosave";
+    cupuacu::actions::io::BackgroundAutosaveJob job(
+        state.getActiveTab()->id, path,
+        session.document.getWaveformDataVersion(),
+        session.document.getMarkerDataVersion(), session.currentFile,
+        session.document, session.waveformCaches);
+
+    // Edits and cache destruction after submission must not affect recovery.
+    session.stopWaveformCacheBuild();
+    session.document.setSample(0, 130, -0.99f);
+    session.waveformCaches.resetToChannelCount(
+        session.document.getChannelCount());
+    job.start();
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (!job.snapshot().completed &&
+           std::chrono::steady_clock::now() < deadline)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    REQUIRE(job.snapshot().completed);
+    REQUIRE(job.snapshot().success);
+    cupuacu::DocumentSession restored;
+    REQUIRE(cupuacu::persistence::loadDocumentAutosaveSnapshot(path, restored));
+    REQUIRE(restored.document.getChannelCount() ==
+            expected.document.getChannelCount());
+    REQUIRE(restored.document.getFrameCount() ==
+            expected.document.getFrameCount());
+    for (int ch = 0; ch < expected.document.getChannelCount(); ++ch)
+    {
+        for (int64_t i = 0; i < expected.document.getFrameCount(); ++i)
+        {
+            REQUIRE(restored.document.getSample(ch, i) ==
+                    expected.document.getSample(ch, i));
+        }
+        requireBuildStatesEqual(
+            expected.getWaveformCache(ch).snapshotBuildState(),
+            restored.getWaveformCache(ch).snapshotBuildState());
+    }
 }
 
 TEST_CASE("Stale autosave jobs are retried with the latest document version",

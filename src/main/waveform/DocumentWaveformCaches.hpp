@@ -51,6 +51,10 @@ namespace cupuacu::waveform
         getBuildProgress(const Document &document,
                          uint64_t waveformDataVersion) const;
         void rebuildSynchronously(const Document &document);
+        // Copies applied peaks and dirty ranges, never the running worker.
+        // Unknown/stale caches become an empty cache for a safe full rebuild.
+        [[nodiscard]] DocumentWaveformCaches
+        snapshotForDocument(const Document &document) const;
 
     private:
         struct BuildRequestChannel
@@ -118,6 +122,7 @@ namespace cupuacu::waveform
         std::vector<gui::WaveformCache> caches = std::vector<gui::WaveformCache>(2);
         std::unique_ptr<BuildJob> buildJob;
         std::optional<BuildProgress> appliedProgress;
+        std::optional<uint64_t> documentVersion;
 
         [[nodiscard]] bool level0SizeMatches(int64_t channel,
                                              int64_t frameCount) const;
