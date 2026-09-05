@@ -201,10 +201,10 @@ and any resulting working-store ownership. Consumers must bound results they
 retain themselves. This is a per-revision service; global scheduling and memory
 admission are still pending.
 
-The current waveform geometry worker now captures a memory-backed reader and
-copies raw viewport samples on its worker. Its existing synchronous painting
-fallbacks and joining geometry-worker lifetime still operate on the legacy
-memory backend. The disk reader is deliberately not connected to those fallbacks.
+Ready document views now use the session viewport pipeline described below.
+Progressive import and legacy cache-building views retain their existing
+renderer, including its synchronous resident-sample fallbacks and geometry-worker
+join. Disk readers are not connected to those fallbacks.
 
 ```sh
 python3 scripts/run-benchmarks.py --build-dir build --mode timing \
@@ -271,8 +271,8 @@ return exact aggregates; partial pixels can expand to 128-frame source buckets,
 clipped by exact edit-boundary peaks so deleted extrema cannot reappear. This
 is an overview API; fine zoom must use asynchronous samples. Missing summaries
 return pending, and already prepared subtrees can answer partial views while
-ancestors are pending. Detailed peak paging and default GUI integration remain
-pending; there is no sample-file fallback inside this query.
+ancestors are pending. Detailed peak paging and default disk-storage activation
+remain pending; there is no sample-file fallback inside this query.
 
 ```sh
 python3 scripts/run-benchmarks.py --build-dir build --mode timing \
@@ -288,6 +288,46 @@ timing. Overview queries must issue zero sample I/O. Initial tree preparation
 is setup; the boundary preparation mean includes the first read with the decoded
 cache in its post-setup state, and its maximum is also reported. These are headless
 query timings, not measured GUI event or texture-upload latency.
+
+`DocumentSession::getViewportSource` now supplies the normal ready-document GUI
+with a cached immutable audio/peak snapshot. It also accepts an explicitly bound
+disk edit revision through the same interface. This binding is staged: normal
+opening still uses resident decoded audio, and editing, playback, save and recovery
+must migrate before disk storage becomes the default. Marker-only changes reuse
+the source; audio changes replace it without invalidating in-flight readers.
+
+`WaveformViewport` prepares overview peaks, exact block-zoom peaks and padded
+fine-zoom samples on a worker. Painting consumes published results, retaining
+overscan textures and prefetching adjacent coverage. Missing data remains pending
+without synchronous sample reads on this ready-view path. SDL geometry, texture
+upload and spline evaluation remain on the UI thread. Requests are capped at
+16,384 pixels; raw scratch is capped at `(16,385 * 128 + 8)` frames per channel.
+Each view retains one pending request and one published result, with cancellation
+between chunks. `AsyncAudioReader` shares the same latest-value worker. These are
+per-view workers, not the planned application scheduler or global memory budget.
+
+Session source/revision references use a background release queue, including
+bindings that never created a view. Closing the new viewport worker does not join
+or wait for blocked reads. This does not move all legacy document teardown off
+the UI thread; the release queue itself drains during process shutdown.
+
+```sh
+python3 scripts/run-benchmarks.py --build-dir build --mode timing \
+  --profile extended --filter '*_session' --sizes-mib 1 256 \
+  --repetitions 3 --output dist/benchmarks/session-viewport.json
+```
+
+`open_memory_session` and `open_owned_session` exercise this shared session-to-
+viewport path using resident and disk-backed audio respectively. Import and peak
+construction occur outside timing. Each process requests 32 windows of 1,024
+pixels across sample, block and overview zoom levels. Metrics separate initial
+source creation, cached session lookup plus submission, completion including
+worker scheduling/polling, and nonblocking close. Disk cases use a 2 MiB decoded
+cache and report logical sample bytes read. Validation and waiting for final
+worker shutdown are outside timing. These cases do not measure SDL drawing,
+GUI event latency, cold-device latency or opening completion; process RSS still
+includes setup. Compare repeated results and cache/work bounds, rather than
+treating submillisecond completion differences as measured GUI speedups.
 
 Comparisons with `open_uncached` are architectural references, not identical
 operations: the owned path retains source bytes and writes decoded sample

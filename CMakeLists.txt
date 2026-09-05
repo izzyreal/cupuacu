@@ -305,6 +305,8 @@ set(CUPUACU_SHARED_SOURCES
     src/main/waveform/DocumentWaveformCaches.cpp
     src/main/waveform/WaveformCachePersistence.cpp
     src/main/State.cpp
+    src/main/DocumentSession.cpp
+    src/main/concurrency/DeferredRelease.cpp
     src/main/Paths.cpp
     src/main/LongTask.cpp
     src/main/BuildInfo.cpp
@@ -389,6 +391,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_owned_audio_storage.cpp
     src/test/test_async_audio_reader.cpp
     src/test/test_audio_edit_revision.cpp
+    src/test/test_waveform_viewport.cpp
     src/test/test_aiff_writer.cpp
     src/test/test_wav_writer.cpp
     src/test/test_codec_support.cpp

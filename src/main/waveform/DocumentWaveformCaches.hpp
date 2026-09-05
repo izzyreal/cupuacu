@@ -38,6 +38,10 @@ namespace cupuacu::waveform
         void syncToChannelCount(int64_t channelCount);
         void resetToChannelCount(int64_t channelCount);
 
+        int64_t getChannelCount() const
+        {
+            return static_cast<int64_t>(caches.size());
+        }
         gui::WaveformCache &getCache(int channel);
         const gui::WaveformCache &getCache(int channel) const;
 

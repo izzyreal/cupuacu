@@ -7,24 +7,30 @@ namespace cupuacu::storage
     // Pins the existing copy-on-write revision while consumers migrate.
     class DocumentAudioReader final : public AudioReader
     {
-        Document document;
+        std::shared_ptr<const audio::AudioBuffer> buffer;
+        AudioShape dimensions;
 
     public:
-        explicit DocumentAudioReader(const Document &source) : document(source)
+        explicit DocumentAudioReader(const Document &source)
         {
+            auto lease = source.acquireReadLease();
+            dimensions = {lease.getFrameCount(), int(lease.getChannelCount()),
+                          lease.getSampleRate(), lease.getSampleFormat()};
+            buffer = lease.snapshotAudioBuffer();
         }
         AudioShape shape() const override
         {
-            return {document.getFrameCount(), int(document.getChannelCount()),
-                    document.getSampleRate(), document.getSampleFormat()};
+            return dimensions;
         }
         void readChannel(int channel, int64_t start,
                          std::span<float> destination) const override
         {
             validateRange(shape(), channel, start, destination.size());
-            auto lease = document.acquireReadLease();
-            lease.readChannelFloatBlock(channel, start, destination.data(),
-                                        destination.size());
+            if (!destination.empty())
+            {
+                buffer->readChannelSamples(channel, start, destination.data(),
+                                           destination.size(), 1);
+            }
         }
     };
 } // namespace cupuacu::storage

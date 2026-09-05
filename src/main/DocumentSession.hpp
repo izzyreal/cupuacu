@@ -15,6 +15,15 @@
 #include <optional>
 #include <string>
 
+namespace cupuacu::storage
+{
+    class AudioEditRevision;
+}
+namespace cupuacu::waveform
+{
+    struct ViewportSource;
+}
+
 namespace cupuacu
 {
     struct DocumentSession
@@ -40,6 +49,26 @@ namespace cupuacu
         uint64_t autosavedMarkerDataVersion = 0;
         std::optional<uint64_t> pendingPersistentWaveformCacheVersion;
 
+        // Shared reader/summary snapshots for the viewport. Legacy consumers
+        // remain on Document until the remaining editor paths are migrated.
+        std::shared_ptr<const waveform::ViewportSource>
+        getViewportSource() const;
+        void bindReadRevision(
+            std::shared_ptr<const storage::AudioEditRevision> revision);
+        bool hasReadRevision() const
+        {
+            return bool(readRevision);
+        }
+        void clearReadRevision();
+
+    private:
+        std::shared_ptr<const storage::AudioEditRevision> readRevision;
+        uint64_t readRevisionVersion = 0;
+        mutable std::shared_ptr<const waveform::ViewportSource> viewportSource;
+        mutable uint64_t viewportSourceVersion = UINT64_MAX;
+        mutable const void *viewportBufferIdentity = nullptr;
+
+    public:
         using WaveformCacheBuildProgress =
             waveform::DocumentWaveformCaches::BuildProgress;
 
@@ -61,7 +90,7 @@ namespace cupuacu
 
         void updateWaveformCache()
         {
-            if (openingPreview)
+            if (openingPreview || readRevision)
             {
                 return;
             }
@@ -81,7 +110,7 @@ namespace cupuacu
 
         [[nodiscard]] bool pumpWaveformCacheWork(const Paths *paths = nullptr)
         {
-            if (openingPreview)
+            if (openingPreview || readRevision)
             {
                 return false;
             }
@@ -111,6 +140,10 @@ namespace cupuacu
         [[nodiscard]] std::optional<WaveformCacheBuildProgress>
         getWaveformCacheBuildProgress() const
         {
+            if (readRevision)
+            {
+                return std::nullopt;
+            }
             if (openingPreview)
             {
                 return WaveformCacheBuildProgress{
@@ -127,6 +160,10 @@ namespace cupuacu
         [[nodiscard]] std::optional<waveform::PersistentCacheKey>
         getPersistentWaveformCacheKey() const
         {
+            if (readRevision)
+            {
+                return std::nullopt;
+            }
             return waveform::makePersistentCacheKey(currentFile, document);
         }
 
@@ -153,6 +190,7 @@ namespace cupuacu
 
         void clearCurrentFile()
         {
+            clearReadRevision();
             currentFile.clear();
             currentFileExportSettings.reset();
             currentFileRequiresSaveAs = false;
@@ -170,6 +208,7 @@ namespace cupuacu
             std::string pathToUse,
             std::optional<file::AudioExportSettings> settings = std::nullopt)
         {
+            clearReadRevision();
             currentFile = std::move(pathToUse);
             currentFileExportSettings = std::move(settings);
             currentFileRequiresSaveAs = false;
