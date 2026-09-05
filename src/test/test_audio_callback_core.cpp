@@ -494,3 +494,33 @@ TEST_CASE("StereoMeterAccumulator computes peak and RMS per channel", "[audio]")
     REQUIRE(meterLevels.rmsLeft == Catch::Approx(1.0f));
     REQUIRE(meterLevels.rmsRight == Catch::Approx(0.5f));
 }
+
+TEST_CASE("Playback crosses shared sample pages and loops a retained revision",
+          "[audio]")
+{
+    cupuacu::Document document;
+    document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 32781);
+    for (int64_t frame = 16380; frame < 16388; ++frame)
+    {
+        document.setSample(0, frame, float(frame - 16380) / 16, false);
+        document.setSample(1, frame, -float(frame - 16380) / 16, false);
+    }
+    auto playbackRevision = document;
+    document.setSample(0, 16384, -1.0f);
+    int64_t position = 16380;
+    uint64_t start = 16380, end = 16388, pendingStart = 0, pendingEnd = 0;
+    bool pending = false, playing = true;
+    std::vector<float> output(40);
+    cupuacu::audio::callback_core::StereoMeterLevels meter;
+    REQUIRE(fillOutputBuffer(playbackRevision, false,
+                             cupuacu::SelectedChannels::BOTH, position, start,
+                             end, true, pending, pendingStart, pendingEnd,
+                             playing, output.data(), 20, meter));
+    for (std::size_t frame = 0; frame < 20; ++frame)
+    {
+        REQUIRE(output[frame * 2] == float(frame % 8) / 16);
+        REQUIRE(output[frame * 2 + 1] == -float(frame % 8) / 16);
+    }
+    REQUIRE(document.getSample(0, 16384) == -1.0f);
+    REQUIRE(playbackRevision.getSample(0, 16384) == 0.25f);
+}

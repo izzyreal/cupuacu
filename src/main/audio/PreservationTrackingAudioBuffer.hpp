@@ -20,13 +20,14 @@ namespace cupuacu::audio
             std::int64_t sourceStartFrame = -1;
         };
 
-        std::vector<std::uint8_t> dirtyFlags;
+        storage::PagedArray<std::uint8_t, 4096,
+                            performance::Work::MetadataBytesCopied>
+            dirtyFlags;
         std::vector<std::vector<ProvenanceRange>> provenanceRanges;
         [[no_unique_address]] performance::Capacity observedMetadataCapacity;
         void observeMetadata()
         {
             CUPUACU_METRIC(observedMetadataCapacity.set(
-                dirtyFlags.capacity() +
                 performance::matrixCapacity(provenanceRanges)));
         }
 
@@ -45,8 +46,9 @@ namespace cupuacu::audio
 
         void markDirtyByFlatIndex(const std::int64_t index)
         {
-            dirtyFlags[static_cast<std::size_t>(index / 8)] |=
-                (1u << (index % 8));
+            const auto byte = static_cast<std::size_t>(index / 8);
+            dirtyFlags.set(byte, static_cast<std::uint8_t>(
+                                     dirtyFlags[byte] | (1u << (index % 8))));
         }
 
         [[nodiscard]] static bool isValidProvenance(
@@ -160,12 +162,50 @@ namespace cupuacu::audio
             observeMetadata();
             CUPUACU_METRIC(performance::add(
                 performance::Work::MetadataBytesCopied,
-                dirtyFlags.size() +
                     performance::matrixBytes(provenanceRanges)));
         }
         [[nodiscard]] std::shared_ptr<AudioBuffer> clone() const override
         {
+            auto result =
+                std::make_shared<PreservationTrackingAudioBuffer>(*this);
+            result->deepCopySamples();
+            result->dirtyFlags = dirtyFlags.deepCopy();
+            return result;
+        }
+
+        [[nodiscard]] std::shared_ptr<AudioBuffer> snapshot() const override
+        {
             return std::make_shared<PreservationTrackingAudioBuffer>(*this);
+        }
+
+        void writeChannelSamples(int64_t channel, int64_t startFrame,
+                                 const float *samples, int64_t frames,
+                                 bool shouldMarkDirty = true,
+                                 int64_t sourceStride = 1) override
+        {
+            AudioBuffer::writeChannelSamples(channel, startFrame, samples,
+                                             frames, shouldMarkDirty,
+                                             sourceStride);
+            if (!shouldMarkDirty)
+            {
+                return;
+            }
+            const auto channelCount = getChannelCount();
+            const auto end = startFrame + frames;
+            for (auto frame = startFrame; frame < end;)
+            {
+                const auto byteIndex = flatIndex(channel, frame) / 8;
+                const auto lastFrame =
+                    std::min(end - 1, ((byteIndex + 1) * 8 - 1 - channel) /
+                                          channelCount);
+                auto mask = dirtyFlags[byteIndex];
+                for (; frame <= lastFrame; ++frame)
+                {
+                    mask |= static_cast<std::uint8_t>(
+                        1u << (flatIndex(channel, frame) % 8));
+                }
+                dirtyFlags.set(byteIndex, mask);
+            }
         }
 
         void assignChannels(
@@ -211,11 +251,8 @@ namespace cupuacu::audio
                     const auto chunkFrames = std::min<std::size_t>(
                         writableFrames - frame,
                         static_cast<std::size_t>(kProgressStrideFrames));
-                    CUPUACU_METRIC(
-                        performance::add(performance::Work::SampleBytesCopied,
-                                         chunkFrames * sizeof(float)));
-                    std::copy_n(source.data() + frame, chunkFrames,
-                                destination.data() + frame);
+                    destination.write(frame, source.data() + frame,
+                                      chunkFrames);
                     completedSampleFrames += static_cast<std::int64_t>(chunkFrames);
                     if (progress)
                     {
@@ -233,8 +270,10 @@ namespace cupuacu::audio
                               dirtyFillValue);
             if (shouldMarkDirty && sampleCount > 0 && sampleCount % 8 != 0)
             {
-                dirtyFlags.back() &=
-                    static_cast<std::uint8_t>((1u << (sampleCount % 8)) - 1u);
+                const auto last = dirtyFlags.size() - 1;
+                dirtyFlags.set(last, dirtyFlags[last] &
+                                         static_cast<std::uint8_t>(
+                                             (1u << (sampleCount % 8)) - 1u));
             }
 
             provenanceRanges.assign(static_cast<std::size_t>(channelCount), {});
@@ -384,9 +423,7 @@ namespace cupuacu::audio
                 return;
             }
 
-            CUPUACU_METRIC(performance::add(
-                performance::Work::MetadataBytesCopied, dirtyFlags.size()));
-            std::vector<std::uint8_t> oldDirtyFlags = dirtyFlags;
+            auto oldDirtyFlags = dirtyFlags;
             oldDirtyFlags.resize(static_cast<std::size_t>((oldSampleCount + 7) / 8),
                                  0);
 
@@ -547,9 +584,7 @@ namespace cupuacu::audio
             const auto newFrameCount = oldFrameCount - numFrames;
             const auto newSampleCount = newFrameCount * channelCount;
 
-            CUPUACU_METRIC(performance::add(
-                performance::Work::MetadataBytesCopied, dirtyFlags.size()));
-            std::vector<std::uint8_t> oldDirtyFlags = dirtyFlags;
+            auto oldDirtyFlags = dirtyFlags;
             oldDirtyFlags.resize(static_cast<std::size_t>((oldSampleCount + 7) / 8),
                                  0);
 
@@ -730,7 +765,7 @@ namespace cupuacu::audio
 
         void markAllClean() override
         {
-            std::fill(dirtyFlags.begin(), dirtyFlags.end(), 0);
+            dirtyFlags.assign(dirtyFlags.size(), 0);
         }
 
         void establishSequentialProvenance(const std::uint64_t sourceId) override

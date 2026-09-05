@@ -115,9 +115,7 @@ namespace cupuacu
     {
         if (buffer.use_count() != 1)
         {
-            CUPUACU_METRIC(
-                performance::add(performance::Work::FullBufferClones, 1));
-            buffer = buffer->clone();
+            buffer = buffer->snapshot();
         }
     }
 
@@ -308,42 +306,11 @@ namespace cupuacu
             return;
         }
 
-        CUPUACU_METRIC(performance::add(performance::Work::SampleBytesCopied,
-                                        writableFrames * writableChannels *
-                                            sizeof(float)));
-        if (shouldMarkDirty)
-        {
-            for (int64_t frame = 0; frame < writableFrames; ++frame)
-            {
-                for (int64_t channel = 0; channel < writableChannels; ++channel)
-                {
-                    buffer->setSample(
-                        channel, startFrame + frame,
-                        interleaved[static_cast<std::size_t>(frame) *
-                                        static_cast<std::size_t>(
-                                            channelCount) +
-                                    static_cast<std::size_t>(channel)],
-                        true);
-                }
-            }
-            ++waveformDataVersion;
-            return;
-        }
-
         for (int64_t channel = 0; channel < writableChannels; ++channel)
         {
-            auto channelData = buffer->getMutableChannelData(channel);
-            if (channelData.empty())
-            {
-                continue;
-            }
-            for (int64_t frame = 0; frame < writableFrames; ++frame)
-            {
-                channelData[static_cast<std::size_t>(startFrame + frame)] =
-                    interleaved[static_cast<std::size_t>(frame) *
-                                    static_cast<std::size_t>(channelCount) +
-                                static_cast<std::size_t>(channel)];
-            }
+            buffer->writeChannelSamples(channel, startFrame,
+                                        interleaved + channel, writableFrames,
+                                        shouldMarkDirty, channelCount);
         }
         ++waveformDataVersion;
     }
@@ -369,23 +336,9 @@ namespace cupuacu
             return;
         }
 
-        CUPUACU_METRIC(performance::add(performance::Work::SampleBytesCopied,
-                                        writableFrames * sizeof(float)));
         ensureUniqueBufferUnlocked();
-        if (shouldMarkDirty)
-        {
-            for (int64_t frame = 0; frame < writableFrames; ++frame)
-            {
-                buffer->setSample(channel, startFrame + frame,
-                                  samples[static_cast<std::size_t>(frame)], true);
-            }
-        }
-        else
-        {
-            auto channelData = buffer->getMutableChannelData(channel);
-            std::copy_n(samples, static_cast<std::size_t>(writableFrames),
-                        channelData.data() + startFrame);
-        }
+        buffer->writeChannelSamples(channel, startFrame, samples,
+                                    writableFrames, shouldMarkDirty);
         ++waveformDataVersion;
     }
 

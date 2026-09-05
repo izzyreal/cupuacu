@@ -53,6 +53,39 @@ TEST_CASE("playback path is safe", "[rtsan]")
     REQUIRE(output[7] == Catch::Approx(-0.4f));
 }
 
+TEST_CASE("playback of shared sample pages is realtime safe", "[rtsan]")
+{
+    __rtsan::Initialize();
+    cupuacu::Document document;
+    document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 32781);
+    for (int64_t frame = 16380; frame < 16388; ++frame)
+    {
+        document.setSample(0, frame, float(frame - 16380) / 16, false);
+        document.setSample(1, frame, -float(frame - 16380) / 16, false);
+    }
+    cupuacu::audio::AudioDevices devices(false);
+    cupuacu::audio::Play play{};
+    play.document = &document;
+    play.startPos = 16380;
+    play.endPos = 16388;
+    play.loopEnabled = true;
+    play.selectedChannels = cupuacu::SelectedChannels::BOTH;
+    devices.enqueue(play);
+    // The queued playback owns the earlier revision, including both sides of
+    // the page boundary. Editing must not change its samples.
+    document.setSample(0, 16384, -1.0f);
+    std::array<float, 40> output{};
+    {
+        __rtsan::ScopedSanitizeRealtime realtimeScope;
+        devices.processCallbackCycle(nullptr, output.data(), 20);
+    }
+    for (std::size_t frame = 0; frame < 20; ++frame)
+    {
+        REQUIRE(output[frame * 2] == float(frame % 8) / 16);
+        REQUIRE(output[frame * 2 + 1] == -float(frame % 8) / 16);
+    }
+}
+
 TEST_CASE("recording overwrite scenario is safe", "[rtsan]")
 {
     __rtsan::Initialize();

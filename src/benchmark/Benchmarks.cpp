@@ -846,6 +846,14 @@ namespace
             }
         }
 #if CUPUACU_WORK_METRICS
+        if (name == "gain_fixed" || name == "sample_shared")
+        {
+            require(result["work"]["full_buffer_clones"].get<uint64_t>() == 0,
+                    "Small edit cloned the entire sample buffer");
+            require(result["work"]["sample_bytes_copied"].get<uint64_t>() <=
+                        512 * 1024,
+                    "Small edit copied more than its bounded sample pages");
+        }
         if (name == "waveform_build")
         {
             require(result["work"]["base_peaks_rebuilt"].get<uint64_t>() ==
