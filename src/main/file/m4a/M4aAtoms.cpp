@@ -307,6 +307,27 @@ namespace cupuacu::file::m4a
         return fullAtom("stco", 0, 0, payload);
     }
 
+    Bytes wideChunkOffsetAtom(const std::vector<std::uint64_t> &offsets)
+    {
+        if (std::all_of(offsets.begin(), offsets.end(),
+                        [](auto value)
+                        {
+                            return value <=
+                                   std::numeric_limits<std::uint32_t>::max();
+                        }))
+        {
+            return chunkOffsetAtom(
+                std::vector<std::uint32_t>(offsets.begin(), offsets.end()));
+        }
+        Bytes payload;
+        appendBe32(payload, static_cast<std::uint32_t>(offsets.size()));
+        for (const auto offset : offsets)
+        {
+            appendBe64(payload, offset);
+        }
+        return fullAtom("co64", 0, 0, payload);
+    }
+
     Bytes alacSampleEntry(const AlacSampleEntryDescription &description)
     {
         if (description.channels == 0 || description.sampleRate == 0 ||
@@ -536,10 +557,10 @@ namespace cupuacu::file::m4a
              sampleToChunkAtom(
                  static_cast<std::uint32_t>(description.packetSizes.size())),
              sampleSizeAtom(description.packetSizes),
-             chunkOffsetAtom(description.packetSizes.empty()
-                                 ? std::vector<std::uint32_t>{}
-                                 : std::vector<std::uint32_t>{
-                                       description.mdatPayloadOffset})});
+             wideChunkOffsetAtom(description.packetSizes.empty()
+                                     ? std::vector<std::uint64_t>{}
+                                     : std::vector<std::uint64_t>{
+                                           description.mdatPayloadOffset})});
     }
 
     Bytes mediaInformationAtom(const AlacMovieDescription &description)
@@ -578,10 +599,11 @@ namespace cupuacu::file::m4a
              sampleToChunkAtom(static_cast<std::uint32_t>(
                  description.chapterSampleSizes.size())),
              sampleSizeAtom(description.chapterSampleSizes),
-             chunkOffsetAtom(description.chapterSampleSizes.empty()
-                                 ? std::vector<std::uint32_t>{}
-                                 : std::vector<std::uint32_t>{
-                                       description.chapterMdatPayloadOffset})});
+             wideChunkOffsetAtom(
+                 description.chapterSampleSizes.empty()
+                     ? std::vector<std::uint64_t>{}
+                     : std::vector<std::uint64_t>{
+                           description.chapterMdatPayloadOffset})});
     }
 
     Bytes chapterMediaInformationAtom(const AlacMovieDescription &description)
@@ -632,6 +654,78 @@ namespace cupuacu::file::m4a
         return containerAtom("moov", children);
     }
 
+    namespace
+    {
+        void writeBytes(std::ostream &output, const Bytes &bytes)
+        {
+            output.write(reinterpret_cast<const char *>(bytes.data()),
+                         static_cast<std::streamsize>(bytes.size()));
+            if (!output)
+            {
+                throw std::runtime_error("Failed to write M4A output");
+            }
+        }
+    } // namespace
+
+    void beginAlacM4a(std::ostream &output)
+    {
+        writeBytes(output, ftypAtom());
+        Bytes header;
+        appendBe32(header, 1);
+        appendFourCc(header, "mdat");
+        appendBe64(header, 0);
+        writeBytes(output, header);
+    }
+
+    void finishAlacM4a(std::ostream &output, AlacMovieDescription description,
+                       const std::uint64_t audioBytes,
+                       const std::vector<DocumentMarker> &markers)
+    {
+        const auto headerSize = ftypAtom().size();
+        description.mdatPayloadOffset = headerSize + 16;
+        if (audioBytes >
+            std::uint64_t(std::numeric_limits<std::streamoff>::max()) -
+                description.mdatPayloadOffset)
+        {
+            throw std::overflow_error(
+                "M4A payload exceeds stream offset limit");
+        }
+        description.chapterMdatPayloadOffset =
+            description.mdatPayloadOffset + audioBytes;
+        if (output.tellp() !=
+            std::streampos(description.chapterMdatPayloadOffset))
+        {
+            throw std::runtime_error("M4A packet payload size mismatch");
+        }
+        const auto chapters =
+            buildChapterSamples(markers, description.frameCount);
+        std::uint64_t payloadBytes = audioBytes;
+        for (const auto &chapter : chapters)
+        {
+            if (description.chapterSampleSizes.empty())
+            {
+                description.chapterStartOffset = chapter.frame;
+            }
+            description.chapterSampleSizes.push_back(
+                static_cast<std::uint32_t>(chapter.bytes.size()));
+            description.chapterSampleDurations.push_back(chapter.duration);
+            description.chapterMediaDuration += chapter.duration;
+            writeBytes(output, chapter.bytes);
+            payloadBytes += chapter.bytes.size();
+        }
+        writeBytes(output, movieAtom(description));
+        const auto end = output.tellp();
+        output.seekp(static_cast<std::streamoff>(headerSize + 8));
+        Bytes size;
+        appendBe64(size, payloadBytes + 16);
+        writeBytes(output, size);
+        output.seekp(end);
+        if (!output)
+        {
+            throw std::runtime_error("Failed to finalize M4A output");
+        }
+    }
+
     Bytes assembleAlacM4a(
         const cupuacu::file::alac::AlacEncodedPackets &packets,
         const std::vector<cupuacu::DocumentMarker> &markers)
@@ -667,8 +761,8 @@ namespace cupuacu::file::m4a
         }
         const auto mdat = mdatAtom(mdatPayload);
         const auto mdatPayloadOffset = static_cast<std::uint32_t>(ftyp.size() + 8);
-        const auto chapterMdatPayloadOffset = static_cast<std::uint32_t>(
-            mdatPayloadOffset + packets.bytes.size());
+        const auto chapterMdatPayloadOffset =
+            std::uint64_t(mdatPayloadOffset) + packets.bytes.size();
         const AlacMovieDescription description{
             .sampleRate = packets.cookie.sampleRate,
             .frameCount = packets.frameCount,

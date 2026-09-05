@@ -14,10 +14,22 @@ namespace cupuacu::storage
         explicit DocumentAudioReader(const Document &source)
         {
             auto lease = source.acquireReadLease();
+            initialize(lease);
+        }
+        explicit DocumentAudioReader(const Document::ReadLease &lease)
+        {
+            initialize(lease);
+        }
+
+    private:
+        void initialize(const Document::ReadLease &lease)
+        {
             dimensions = {lease.getFrameCount(), int(lease.getChannelCount()),
                           lease.getSampleRate(), lease.getSampleFormat()};
             buffer = lease.snapshotAudioBuffer();
         }
+
+    public:
         AudioShape shape() const override
         {
             return dimensions;

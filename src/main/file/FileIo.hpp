@@ -117,32 +117,10 @@ namespace cupuacu::file
                                     "could not find an unused sibling temp name");
     }
 
-    inline void replaceFile(const std::filesystem::path &source,
-                            const std::filesystem::path &destination)
-    {
-        std::error_code ec;
-        if (std::filesystem::exists(destination, ec))
-        {
-            std::filesystem::remove(destination, ec);
-            if (ec)
-            {
-                throw detail::makeIoFailure("Failed to replace output file",
-                                            detail::describeErrorCode(ec));
-            }
-        }
-        else if (ec)
-        {
-            throw detail::makeIoFailure("Failed to query output file",
-                                        detail::describeErrorCode(ec));
-        }
-
-        std::filesystem::rename(source, destination, ec);
-        if (ec)
-        {
-            throw detail::makeIoFailure("Failed to replace output file",
-                                        detail::describeErrorCode(ec));
-        }
-    }
+    // Replace only after the writer closed successfully. A failed replacement
+    // must leave an existing destination in place.
+    void replaceFile(const std::filesystem::path &source,
+                     const std::filesystem::path &destination);
 
     template <typename Writer>
     inline void writeFileAtomically(const std::filesystem::path &destination,

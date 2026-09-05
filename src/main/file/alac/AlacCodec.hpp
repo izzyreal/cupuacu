@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <span>
 #include <vector>
 
 namespace cupuacu::file::alac
@@ -33,6 +34,25 @@ namespace cupuacu::file::alac
         std::uint32_t framesPerPacket = 0;
     };
 
+    struct AlacEncodingSummary
+    {
+        AlacEncoderCookie cookie;
+        std::uint32_t frameCount = 0;
+        std::uint32_t framesPerPacket = 0;
+    };
+
+    // Worker-only; callbacks consume bounded packet views before returning.
+    // False aborts encoding; exceptions propagate to the transactional writer.
+    using PcmReadCallback =
+        std::function<bool(std::uint64_t startFrame, std::uint32_t frames,
+                           std::span<std::uint8_t> pcm)>;
+    using EncodedPacketCallback =
+        std::function<bool(std::span<const std::uint8_t> packet)>;
+    [[nodiscard]] std::optional<AlacEncodingSummary>
+    streamEncodedPcmPackets(AlacEncodingParameters parameters,
+                            std::uint64_t frameCount, PcmReadCallback readPcm,
+                            EncodedPacketCallback writePacket);
+
     struct AlacDecodingParameters
     {
         std::uint32_t sampleRate = 0;
@@ -61,27 +81,24 @@ namespace cupuacu::file::alac
         std::uint32_t frameCount = 0;
     };
 
-    using DecodeProgressCallback =
-        std::function<void(std::uint32_t decodedFrames,
-                           std::uint32_t totalFrames)>;
+    using DecodeProgressCallback = std::function<void(
+        std::uint32_t decodedFrames, std::uint32_t totalFrames)>;
     struct PacketBufferView
     {
         const std::uint8_t *bytes = nullptr;
         std::size_t accessibleByteCount = 0;
     };
     using PacketReadCallback =
-        std::function<bool(std::uint64_t packetOffset,
-                           std::uint32_t packetSize,
+        std::function<bool(std::uint64_t packetOffset, std::uint32_t packetSize,
                            PacketBufferView &packetView)>;
-    using DecodedPacketCallback =
-        std::function<bool(const std::uint8_t *interleavedPcmBytes,
-                           std::uint32_t pcmByteCount,
-                           std::uint32_t decodedFrames)>;
+    using DecodedPacketCallback = std::function<bool(
+        const std::uint8_t *interleavedPcmBytes, std::uint32_t pcmByteCount,
+        std::uint32_t decodedFrames)>;
 
     [[nodiscard]] std::uint32_t defaultFramesPerPacket();
     [[nodiscard]] std::uint32_t maxChannels();
-    [[nodiscard]] bool isSupportedEncoding(
-        const AlacEncodingParameters &parameters);
+    [[nodiscard]] bool
+    isSupportedEncoding(const AlacEncodingParameters &parameters);
     [[nodiscard]] std::optional<AlacEncoderCookie>
     makeEncoderCookie(AlacEncodingParameters parameters);
     [[nodiscard]] std::optional<AlacEncodedPackets>

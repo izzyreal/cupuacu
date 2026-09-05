@@ -7,6 +7,7 @@
 #include "actions/Zoom.hpp"
 #include "file/file_loading.hpp"
 #include "file/OwnedAudioImport.hpp"
+#include "file/AudioFileWriter.hpp"
 #include "storage/AsyncAudioReader.hpp"
 #include "storage/AudioEditRevision.hpp"
 #include "waveform/WaveformViewport.hpp"
@@ -573,6 +574,88 @@ namespace
 #endif
         const std::string name = request.at("scenario");
         const int64_t frames = request.at("frames");
+        if (name == "export_memory_alac" || name == "export_memory_wav" ||
+            name == "export_owned_alac" || name == "export_owned_wav")
+        {
+            DocumentSession session;
+            std::shared_ptr<storage::DecodedBlockCache> cache;
+            if (name.starts_with("export_owned"))
+            {
+                cache = std::make_shared<storage::DecodedBlockCache>(2 * 1024 *
+                                                                     1024);
+                auto imported = file::importOwnedAudio(
+                    request.at("fixture").get<std::string>(),
+                    std::filesystem::path(
+                        request.at("root").get<std::string>()) /
+                        "export-source",
+                    cache);
+                session.document = std::move(imported.metadata.document);
+                session.bindReadRevision(
+                    storage::AudioEditRevision::from(imported.audio));
+            }
+            else
+            {
+                auto loaded = file::loadAudioFile(
+                    request.at("fixture").get<std::string>());
+                session.document = std::move(loaded.document);
+            }
+            const auto reader = session.getAudioReader();
+            const auto output =
+                std::filesystem::path(request.at("root").get<std::string>()) /
+                (name.ends_with("alac") ? "export.m4a" : "export.wav");
+            const auto settings = file::defaultExportSettingsForPath(
+                output, SampleFormat::PCM_S16);
+            require(bool(settings), "Export settings unavailable");
+            double totalMs = 0, firstProgress = 0;
+            for (auto iteration : measurement)
+            {
+                (void)iteration;
+                auto started = Clock::now();
+                file::AudioFileWriter::writeFile(
+                    *reader, {}, output, *settings,
+                    [&](const std::string &, std::optional<double> progress)
+                    {
+                        if (progress && *progress > 0 && firstProgress == 0)
+                        {
+                            firstProgress = elapsed(started);
+                        }
+                    });
+                totalMs = elapsed(started);
+                measurement.SetIterationTime(totalMs / 1000.0);
+            }
+            int64_t checked = 0;
+            file::loadAudioFile(
+                output, {}, {}, {},
+                [&](const Document &, int64_t start, const float *samples,
+                    int64_t count)
+                {
+                    for (int64_t i = 0; i < count; ++i)
+                    {
+                        for (int ch = 0; ch < channels; ++ch)
+                        {
+                            require(std::abs(samples[i * channels + ch] -
+                                             sampleAt(start + i, ch)) <=
+                                        1.0f / 32768,
+                                    "Export sample mismatch");
+                        }
+                    }
+                    checked += count;
+                });
+            require(checked == frames, "Export length mismatch");
+            if (cache)
+            {
+                require(cache->stats().peakResidentBytes <= 2 * 1024 * 1024,
+                        "Export decoded cache exceeded budget");
+                result["bounded_storage"]["peak_cached_sample_bytes"] =
+                    cache->stats().peakResidentBytes;
+            }
+            result["export"] = {
+                {"first_progress_ms", firstProgress},
+                {"output_bytes", std::filesystem::file_size(output)}};
+            result["milestones_ms"]["background_complete"] = totalMs;
+            result["validated"] = true;
+            return;
+        }
         if (name == "open_owned_session" || name == "open_memory_session")
         {
             DocumentSession session;
