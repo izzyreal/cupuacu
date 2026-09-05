@@ -15,7 +15,7 @@ namespace cupuacu::waveform
 
     DocumentWaveformCaches::DocumentWaveformCaches(
         const DocumentWaveformCaches &other)
-        : caches(other.caches)
+        : caches(other.caches), documentVersion(other.documentVersion)
     {
     }
 
@@ -29,7 +29,20 @@ namespace cupuacu::waveform
 
         caches = other.caches;
         appliedProgress.reset();
+        documentVersion = other.documentVersion;
         return *this;
+    }
+
+    DocumentWaveformCaches
+    DocumentWaveformCaches::snapshotForDocument(const Document &document) const
+    {
+        if (documentVersion == document.getWaveformDataVersion())
+        {
+            return *this;
+        }
+        DocumentWaveformCaches snapshot;
+        snapshot.resetToChannelCount(document.getChannelCount());
+        return snapshot;
     }
 
     DocumentWaveformCaches::BuildJob::BuildJob(const Document &documentToRead,
@@ -313,6 +326,7 @@ namespace cupuacu::waveform
 
     void DocumentWaveformCaches::resetToChannelCount(const int64_t channelCount)
     {
+        documentVersion.reset();
         caches.assign(static_cast<std::size_t>(channelCount),
                       gui::WaveformCache{});
     }
@@ -419,6 +433,7 @@ namespace cupuacu::waveform
 
     void DocumentWaveformCaches::clear()
     {
+        documentVersion.reset();
         for (auto &cache : caches)
         {
             cache.clear();
@@ -594,6 +609,7 @@ namespace cupuacu::waveform
         }
 
         startBuild(document, frameCount, channelCount, waveformDataVersion);
+        documentVersion = waveformDataVersion;
         return applied || stateChanged;
     }
 
@@ -630,28 +646,27 @@ namespace cupuacu::waveform
             return;
         }
 
+        syncToChannelCount(channelCount);
+        const auto version = document.getWaveformDataVersion();
+        const auto lease = document.acquireReadLease();
+        struct ChannelSamples
+        {
+            const Document::ReadLease &lease;
+            int64_t channel;
+            float operator[](int64_t sample) const
+            {
+                return lease.getSample(channel, sample);
+            }
+        };
         for (int64_t channel = 0; channel < channelCount; ++channel)
         {
-            auto buildState =
-                caches[static_cast<std::size_t>(channel)].snapshotBuildState();
+            auto &cache = caches[static_cast<std::size_t>(channel)];
             if (!level0SizeMatches(channel, frameCount))
             {
-                buildState = gui::WaveformCache::makeFullBuildState(frameCount);
+                cache.init(frameCount);
             }
-
-            std::vector<float> samples;
-            samples.reserve(static_cast<std::size_t>(frameCount));
-            {
-                auto lease = document.acquireReadLease();
-                for (int64_t sample = 0; sample < frameCount; ++sample)
-                {
-                    samples.push_back(lease.getSample(channel, sample));
-                }
-            }
-            auto result = gui::WaveformCache::buildFromState(buildState,
-                                                             samples.data());
-            caches[static_cast<std::size_t>(channel)].applyBuildResult(
-                std::move(result));
+            cache.rebuildDirtyFrom(ChannelSamples{lease, channel});
         }
+        documentVersion = version;
     }
 } // namespace cupuacu::waveform

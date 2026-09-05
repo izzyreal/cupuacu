@@ -241,11 +241,13 @@ namespace cupuacu::actions::io
         const uint64_t tabIdToUse, std::filesystem::path pathToUse,
         const uint64_t waveformDataVersionToUse,
         const uint64_t markerDataVersionToUse, std::string currentFileToUse,
-        const cupuacu::Document &documentToSave)
+        const cupuacu::Document &documentToSave,
+        const waveform::DocumentWaveformCaches &cachesToSave)
         : tabId(tabIdToUse), path(std::move(pathToUse)),
           waveformDataVersion(waveformDataVersionToUse),
           markerDataVersion(markerDataVersionToUse),
-          currentFile(std::move(currentFileToUse)), document(documentToSave)
+          currentFile(std::move(currentFileToUse)), document(documentToSave),
+          waveformCaches(cachesToSave.snapshotForDocument(documentToSave))
     {
     }
 
@@ -286,8 +288,7 @@ namespace cupuacu::actions::io
             cupuacu::DocumentSession snapshotSession;
             snapshotSession.document = document;
             snapshotSession.currentFile = currentFile;
-            snapshotSession.waveformCaches.resetToChannelCount(
-                document.getChannelCount());
+            snapshotSession.waveformCaches = std::move(waveformCaches);
             snapshotSession.rebuildWaveformCacheSynchronously();
             const bool saved =
                 cupuacu::persistence::saveDocumentAutosaveSnapshot(
@@ -670,7 +671,8 @@ namespace cupuacu::actions::io
                     tab.id, session.autosaveSnapshotPath,
                     session.document.getWaveformDataVersion(),
                     session.document.getMarkerDataVersion(),
-                    session.currentFile, session.document),
+                    session.currentFile, session.document,
+                    session.waveformCaches),
                 cupuacu::destroyBackgroundAutosaveJob};
             state->backgroundAutosaveJob->start();
         }
@@ -741,7 +743,8 @@ namespace cupuacu::actions::io
                         tab.id, tab.session.autosaveSnapshotPath,
                         tab.session.document.getWaveformDataVersion(),
                         tab.session.document.getMarkerDataVersion(),
-                        tab.session.currentFile, tab.session.document),
+                        tab.session.currentFile, tab.session.document,
+                        tab.session.waveformCaches),
                     cupuacu::destroyBackgroundAutosaveJob};
                 state->backgroundAutosaveJob->start();
                 break;

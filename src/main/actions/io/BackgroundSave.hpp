@@ -99,12 +99,12 @@ namespace cupuacu::actions::io
             std::string error;
         };
 
-        BackgroundAutosaveJob(uint64_t tabIdToUse,
-                              std::filesystem::path pathToUse,
-                              uint64_t waveformDataVersionToUse,
-                              uint64_t markerDataVersionToUse,
-                              std::string currentFileToUse,
-                              const cupuacu::Document &documentToSave);
+        BackgroundAutosaveJob(
+            uint64_t tabIdToUse, std::filesystem::path pathToUse,
+            uint64_t waveformDataVersionToUse, uint64_t markerDataVersionToUse,
+            std::string currentFileToUse,
+            const cupuacu::Document &documentToSave,
+            const waveform::DocumentWaveformCaches &cachesToSave);
         ~BackgroundAutosaveJob();
 
         BackgroundAutosaveJob(const BackgroundAutosaveJob &) = delete;
@@ -121,6 +121,7 @@ namespace cupuacu::actions::io
         uint64_t markerDataVersion = 0;
         std::string currentFile;
         cupuacu::Document document;
+        waveform::DocumentWaveformCaches waveformCaches;
         mutable std::mutex mutex;
         bool completed = false;
         bool success = false;
