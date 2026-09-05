@@ -612,6 +612,38 @@ pipelines:
             env:
               GITHUB_TOKEN: "{{ secret.github-secret }}"
 
+  - id: benchmark
+    trigger: manual
+    vcs_source:
+      repo: https://github.com/izzyreal/cupuacu.git
+    jobs:
+      - id: linux-performance
+        runs_on:
+          executor: script
+          shell: posix
+          os: linux
+          arch: amd64
+        requires:
+          tools:
+            git: "*"
+            docker: "*"
+        timeout_seconds: 3600
+        artifacts:
+          - dist/benchmarks/**
+        caches: *build_caches
+        steps:
+          - name: Prepare benchmark environment
+            run: docker build -t cupuacu-benchmark-linux -f docker/integration/linux/Dockerfile .
+          - name: Run benchmark validation and report timings
+            run: |
+              docker run --rm --hostname "$(hostname)" \
+                -v "$PWD:/work" \
+                -v "$CIWI_FETCHCONTENT_SOURCES_DIR:/deps-cache" \
+                -e FETCHCONTENT_CACHE_ROOT=/deps-cache \
+                -w /work cupuacu-benchmark-linux \
+                /bin/bash scripts/run-benchmarks-linux.sh \
+                --output dist/benchmarks/linux.json
+
 pipeline_chains:
   - name: Build and release
     pipelines:

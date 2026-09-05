@@ -40,5 +40,10 @@ deps/
 # probably other LSP clients too.
 compile_commands.json
 
+# Performance build trees and generated reports/fixtures.
+/build-benchmark*/
+/dist/benchmarks/
+/scripts/__pycache__/
+
 # clangd background index for the project
 .cache/clangd/

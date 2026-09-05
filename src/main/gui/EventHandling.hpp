@@ -347,6 +347,10 @@ namespace cupuacu::gui
 
     inline SDL_AppResult handleAppEvent(State *state, SDL_Event *event)
     {
+        if (state->eventObserver)
+        {
+            state->eventObserver(*event);
+        }
         if (cupuacu::actions::queueExternalFileEvent(state, event))
         {
             return SDL_APP_CONTINUE;

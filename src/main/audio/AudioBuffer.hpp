@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SampleProvenance.hpp"
+#include "../performance/WorkMetrics.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -16,11 +17,34 @@ namespace cupuacu::audio
     {
     protected:
         std::vector<std::vector<float>> channels;
+        [[no_unique_address]] performance::Capacity observedCapacity;
 
     public:
         using ProgressCallback =
             std::function<void(int64_t completed, int64_t total)>;
 
+        AudioBuffer() = default;
+        AudioBuffer(const AudioBuffer &other) : channels(other.channels)
+        {
+            CUPUACU_METRIC(
+                observedCapacity.set(performance::matrixCapacity(channels)));
+            CUPUACU_METRIC(
+                performance::add(performance::Work::SampleBytesCopied,
+                                 performance::matrixBytes(channels)));
+        }
+        AudioBuffer &operator=(const AudioBuffer &other)
+        {
+            if (this != &other)
+            {
+                channels = other.channels;
+                CUPUACU_METRIC(observedCapacity.set(
+                    performance::matrixCapacity(channels)));
+                CUPUACU_METRIC(
+                    performance::add(performance::Work::SampleBytesCopied,
+                                     performance::matrixBytes(channels)));
+            }
+            return *this;
+        }
         virtual ~AudioBuffer() = default;
 
         [[nodiscard]] virtual std::shared_ptr<AudioBuffer> clone() const
@@ -60,6 +84,9 @@ namespace cupuacu::audio
                     const auto chunkFrames = std::min<std::size_t>(
                         writableFrames - frame,
                         static_cast<std::size_t>(kProgressStrideFrames));
+                    CUPUACU_METRIC(
+                        performance::add(performance::Work::SampleBytesCopied,
+                                         chunkFrames * sizeof(float)));
                     std::copy_n(source.data() + frame, chunkFrames,
                                 destination.data() + frame);
                     completedFrames += static_cast<int64_t>(chunkFrames);
@@ -104,6 +131,11 @@ namespace cupuacu::audio
 
         virtual void resize(int64_t numChannels, int64_t numFrames)
         {
+            CUPUACU_METRIC(performance::OnExit observe{
+                [this]
+                {
+                    observedCapacity.set(performance::matrixCapacity(channels));
+                }});
             channels.resize(numChannels);
             for (auto &ch : channels)
             {
@@ -120,6 +152,11 @@ namespace cupuacu::audio
         virtual void insertFrames(int64_t frameIndex, int64_t numFrames,
                                   const ProgressCallback &progress = {})
         {
+            CUPUACU_METRIC(performance::OnExit observe{
+                [this]
+                {
+                    observedCapacity.set(performance::matrixCapacity(channels));
+                }});
             if (numFrames <= 0)
             {
                 if (progress)
@@ -146,6 +183,9 @@ namespace cupuacu::audio
                 }
                 else
                 {
+                    CUPUACU_METRIC(performance::add(
+                        performance::Work::SampleBytesCopied,
+                        (ch.size() - frameIndex) * sizeof(float)));
                     ch.insert(ch.begin() + frameIndex, numFrames, 0.0f);
                 }
                 ++completedChannels;
@@ -165,6 +205,11 @@ namespace cupuacu::audio
         virtual void removeFrames(int64_t frameIndex, int64_t numFrames,
                                   const ProgressCallback &progress = {})
         {
+            CUPUACU_METRIC(performance::OnExit observe{
+                [this]
+                {
+                    observedCapacity.set(performance::matrixCapacity(channels));
+                }});
             if (numFrames <= 0)
             {
                 if (progress)
@@ -198,6 +243,9 @@ namespace cupuacu::audio
                     {
                         const int64_t chunkFrames = std::min<int64_t>(
                             kProgressStrideFrames, framesToShift - movedFrames);
+                        CUPUACU_METRIC(performance::add(
+                            performance::Work::SampleBytesCopied,
+                            chunkFrames * sizeof(float)));
                         std::memmove(ch.data() + frameIndex + movedFrames,
                                      ch.data() + frameIndex + numFrames + movedFrames,
                                      static_cast<std::size_t>(chunkFrames) *

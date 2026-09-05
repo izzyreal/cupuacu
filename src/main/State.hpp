@@ -130,6 +130,10 @@ namespace cupuacu
 
     struct State
     {
+        // Optional observation used by event-loop diagnostics, including nested
+        // pumps.
+        std::function<void(const SDL_Event &)> eventObserver;
+
         struct LongTaskStatus
         {
             bool active = false;

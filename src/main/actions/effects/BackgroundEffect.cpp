@@ -255,6 +255,14 @@ namespace cupuacu::actions::effects
                 auto &newChannel = result->newSamples[channelIndex];
                 oldChannel.resize(static_cast<std::size_t>(request.frameCount));
                 newChannel.resize(static_cast<std::size_t>(request.frameCount));
+                CUPUACU_METRIC(result->observedCapacity.set(
+                    performance::matrixCapacity(result->oldSamples) +
+                    performance::matrixCapacity(result->newSamples)));
+                CUPUACU_METRIC(
+                    performance::add(performance::Work::SampleBytesCopied,
+                                     request.frameCount * sizeof(float)));
+                CUPUACU_METRIC(performance::add(
+                    performance::Work::SamplesScanned, request.frameCount));
 
                 for (int64_t frame = 0; frame < request.frameCount; ++frame)
                 {
@@ -323,6 +331,14 @@ namespace cupuacu::actions::effects
                 auto &newChannel = result->newSamples[channelIndex];
                 oldChannel.resize(static_cast<std::size_t>(request.frameCount));
                 newChannel.resize(static_cast<std::size_t>(request.frameCount));
+                CUPUACU_METRIC(result->observedCapacity.set(
+                    performance::matrixCapacity(result->oldSamples) +
+                    performance::matrixCapacity(result->newSamples)));
+                CUPUACU_METRIC(
+                    performance::add(performance::Work::SampleBytesCopied,
+                                     request.frameCount * sizeof(float)));
+                CUPUACU_METRIC(performance::add(
+                    performance::Work::SamplesScanned, request.frameCount));
 
                 for (int64_t frame = 0; frame < request.frameCount; ++frame)
                 {
@@ -389,6 +405,14 @@ namespace cupuacu::actions::effects
                 auto &newChannel = result->newSamples[channelIndex];
                 oldChannel.resize(static_cast<std::size_t>(request.frameCount));
                 newChannel.resize(static_cast<std::size_t>(request.frameCount));
+                CUPUACU_METRIC(result->observedCapacity.set(
+                    performance::matrixCapacity(result->oldSamples) +
+                    performance::matrixCapacity(result->newSamples)));
+                CUPUACU_METRIC(
+                    performance::add(performance::Work::SampleBytesCopied,
+                                     request.frameCount * sizeof(float)));
+                CUPUACU_METRIC(performance::add(
+                    performance::Work::SamplesScanned, request.frameCount));
 
                 for (int64_t frame = 0; frame < request.frameCount; ++frame)
                 {
@@ -451,6 +475,14 @@ namespace cupuacu::actions::effects
                 auto &newChannel = result->newSamples[channelIndex];
                 oldChannel.resize(static_cast<std::size_t>(request.frameCount));
                 newChannel.resize(static_cast<std::size_t>(request.frameCount));
+                CUPUACU_METRIC(result->observedCapacity.set(
+                    performance::matrixCapacity(result->oldSamples) +
+                    performance::matrixCapacity(result->newSamples)));
+                CUPUACU_METRIC(
+                    performance::add(performance::Work::SampleBytesCopied,
+                                     request.frameCount * sizeof(float)));
+                CUPUACU_METRIC(performance::add(
+                    performance::Work::SamplesScanned, request.frameCount));
 
                 for (int64_t frame = 0; frame < request.frameCount; ++frame)
                 {

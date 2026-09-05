@@ -360,6 +360,10 @@ namespace cupuacu::undo
                 }
             }
 
+            CUPUACU_METRIC(segment.observedCapacity.set(
+                performance::matrixCapacity(segment.samples) +
+                performance::matrixCapacity(segment.dirty) +
+                performance::matrixCapacity(segment.provenance)));
             return segment;
         }
 
@@ -562,6 +566,8 @@ namespace cupuacu::undo
             {
                 writeSegmentFile(temporaryPath, segment);
             });
+        CUPUACU_METRIC(performance::add(performance::Work::UndoBytesWritten,
+                                        std::filesystem::file_size(path)));
         return {.path = path};
     }
 
@@ -578,7 +584,11 @@ namespace cupuacu::undo
         {
             throw std::runtime_error("Failed to open undo segment");
         }
-        return readSegmentFile(input);
+        auto result = readSegmentFile(input);
+        CUPUACU_METRIC(
+            performance::add(performance::Work::UndoBytesRead,
+                             static_cast<std::uint64_t>(input.tellg())));
+        return result;
     }
 
     auto UndoStore::writeSampleMatrix(
@@ -597,6 +607,8 @@ namespace cupuacu::undo
             {
                 writeSampleMatrixFile(temporaryPath, samples);
             });
+        CUPUACU_METRIC(performance::add(performance::Work::UndoBytesWritten,
+                                        std::filesystem::file_size(path)));
         return {.path = path};
     }
 
@@ -613,7 +625,11 @@ namespace cupuacu::undo
         {
             throw std::runtime_error("Failed to open undo sample matrix");
         }
-        return readSampleMatrixFile(input);
+        auto result = readSampleMatrixFile(input);
+        CUPUACU_METRIC(
+            performance::add(performance::Work::UndoBytesRead,
+                             static_cast<std::uint64_t>(input.tellg())));
+        return result;
     }
 
     auto UndoStore::writeSampleCube(
@@ -632,6 +648,8 @@ namespace cupuacu::undo
             {
                 writeSampleCubeFile(temporaryPath, samples);
             });
+        CUPUACU_METRIC(performance::add(performance::Work::UndoBytesWritten,
+                                        std::filesystem::file_size(path)));
         return {.path = path};
     }
 
@@ -648,7 +666,11 @@ namespace cupuacu::undo
         {
             throw std::runtime_error("Failed to open undo sample cube");
         }
-        return readSampleCubeFile(input);
+        auto result = readSampleCubeFile(input);
+        CUPUACU_METRIC(
+            performance::add(performance::Work::UndoBytesRead,
+                             static_cast<std::uint64_t>(input.tellg())));
+        return result;
     }
 
     auto UndoStore::stats() const -> Stats

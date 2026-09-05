@@ -22,6 +22,13 @@ namespace cupuacu::audio
 
         std::vector<std::uint8_t> dirtyFlags;
         std::vector<std::vector<ProvenanceRange>> provenanceRanges;
+        [[no_unique_address]] performance::Capacity observedMetadataCapacity;
+        void observeMetadata()
+        {
+            CUPUACU_METRIC(observedMetadataCapacity.set(
+                dirtyFlags.capacity() +
+                performance::matrixCapacity(provenanceRanges)));
+        }
 
         [[nodiscard]] std::int64_t flatIndex(const std::int64_t channel,
                                              const std::int64_t frame) const
@@ -144,6 +151,18 @@ namespace cupuacu::audio
         }
 
     public:
+        PreservationTrackingAudioBuffer() = default;
+        PreservationTrackingAudioBuffer(
+            const PreservationTrackingAudioBuffer &other)
+            : AudioBuffer(other), dirtyFlags(other.dirtyFlags),
+              provenanceRanges(other.provenanceRanges)
+        {
+            observeMetadata();
+            CUPUACU_METRIC(performance::add(
+                performance::Work::MetadataBytesCopied,
+                dirtyFlags.size() +
+                    performance::matrixBytes(provenanceRanges)));
+        }
         [[nodiscard]] std::shared_ptr<AudioBuffer> clone() const override
         {
             return std::make_shared<PreservationTrackingAudioBuffer>(*this);
@@ -155,6 +174,10 @@ namespace cupuacu::audio
             const bool shouldMarkDirty = false,
             const AudioBuffer::ProgressCallback &progress = {}) override
         {
+            CUPUACU_METRIC(performance::OnExit observe{[this]
+                                                       {
+                                                           observeMetadata();
+                                                       }});
             constexpr std::int64_t kProgressStrideFrames = 262144;
 
             const auto writableChannels = std::min<std::size_t>(
@@ -188,6 +211,9 @@ namespace cupuacu::audio
                     const auto chunkFrames = std::min<std::size_t>(
                         writableFrames - frame,
                         static_cast<std::size_t>(kProgressStrideFrames));
+                    CUPUACU_METRIC(
+                        performance::add(performance::Work::SampleBytesCopied,
+                                         chunkFrames * sizeof(float)));
                     std::copy_n(source.data() + frame, chunkFrames,
                                 destination.data() + frame);
                     completedSampleFrames += static_cast<std::int64_t>(chunkFrames);
@@ -299,6 +325,10 @@ namespace cupuacu::audio
         void resize(const std::int64_t numChannels,
                     const std::int64_t numFrames) override
         {
+            CUPUACU_METRIC(performance::OnExit observe{[this]
+                                                       {
+                                                           observeMetadata();
+                                                       }});
             AudioBuffer::resize(numChannels, numFrames);
             const auto sampleCount = numChannels * numFrames;
             dirtyFlags.assign(static_cast<std::size_t>((sampleCount + 7) / 8), 0);
@@ -320,6 +350,10 @@ namespace cupuacu::audio
             const std::int64_t frameIndex, const std::int64_t numFrames,
             const AudioBuffer::ProgressCallback &progress = {}) override
         {
+            CUPUACU_METRIC(performance::OnExit observe{[this]
+                                                       {
+                                                           observeMetadata();
+                                                       }});
             if (numFrames <= 0)
             {
                 if (progress)
@@ -350,6 +384,8 @@ namespace cupuacu::audio
                 return;
             }
 
+            CUPUACU_METRIC(performance::add(
+                performance::Work::MetadataBytesCopied, dirtyFlags.size()));
             std::vector<std::uint8_t> oldDirtyFlags = dirtyFlags;
             oldDirtyFlags.resize(static_cast<std::size_t>((oldSampleCount + 7) / 8),
                                  0);
@@ -496,6 +532,10 @@ namespace cupuacu::audio
             const std::int64_t frameIndex, const std::int64_t numFrames,
             const AudioBuffer::ProgressCallback &progress = {}) override
         {
+            CUPUACU_METRIC(performance::OnExit observe{[this]
+                                                       {
+                                                           observeMetadata();
+                                                       }});
             if (numFrames <= 0)
             {
                 return;
@@ -507,6 +547,8 @@ namespace cupuacu::audio
             const auto newFrameCount = oldFrameCount - numFrames;
             const auto newSampleCount = newFrameCount * channelCount;
 
+            CUPUACU_METRIC(performance::add(
+                performance::Work::MetadataBytesCopied, dirtyFlags.size()));
             std::vector<std::uint8_t> oldDirtyFlags = dirtyFlags;
             oldDirtyFlags.resize(static_cast<std::size_t>((oldSampleCount + 7) / 8),
                                  0);
@@ -693,6 +735,10 @@ namespace cupuacu::audio
 
         void establishSequentialProvenance(const std::uint64_t sourceId) override
         {
+            CUPUACU_METRIC(performance::OnExit observe{[this]
+                                                       {
+                                                           observeMetadata();
+                                                       }});
             const auto channelCount = getChannelCount();
             const auto frameCount = getFrameCount();
             provenanceRanges.assign(static_cast<std::size_t>(channelCount), {});

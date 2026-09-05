@@ -16,6 +16,8 @@ namespace cupuacu::gui
     {
 
     public:
+        [[nodiscard]] bool isCurrentViewTextureReady() const;
+
         static bool shouldShowSamplePoints(const double samplesPerPixel,
                                            const uint8_t pixelScale);
 
