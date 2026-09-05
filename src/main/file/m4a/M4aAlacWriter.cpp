@@ -3,6 +3,7 @@
 #include "../FileIo.hpp"
 #include "../SampleQuantization.hpp"
 #include "M4aAtoms.hpp"
+#include "../../storage/DocumentAudioReader.hpp"
 
 #include <cstdint>
 #include <fstream>
@@ -15,10 +16,10 @@ namespace cupuacu::file::m4a
 {
     namespace
     {
-        [[nodiscard]] std::uint32_t bitDepthForDocument(
-            const cupuacu::Document::ReadLease &document)
+        [[nodiscard]] std::uint32_t
+        bitDepthForDocument(const cupuacu::SampleFormat format)
         {
-            switch (document.getSampleFormat())
+            switch (format)
             {
                 case cupuacu::SampleFormat::PCM_S24:
                 case cupuacu::SampleFormat::FLOAT32:
@@ -78,8 +79,8 @@ namespace cupuacu::file::m4a
             }
         }
 
-        [[nodiscard]] cupuacu::SampleFormat sampleFormatForBitDepth(
-            const std::uint32_t bitsPerSample)
+        [[nodiscard]] cupuacu::SampleFormat
+        sampleFormatForBitDepth(const std::uint32_t bitsPerSample)
         {
             switch (bitsPerSample)
             {
@@ -95,37 +96,6 @@ namespace cupuacu::file::m4a
             }
         }
 
-        std::vector<std::uint8_t>
-        makeInterleavedPcm(const cupuacu::Document::ReadLease &document,
-                           const std::uint32_t bitsPerSample)
-        {
-            const auto channels = document.getChannelCount();
-            const auto frames = document.getFrameCount();
-            if (channels <= 0 || frames < 0 ||
-                channels > static_cast<int64_t>(alac::maxChannels()) ||
-                frames > std::numeric_limits<std::uint32_t>::max())
-            {
-                throw std::invalid_argument(
-                    "Document format cannot be exported as M4A ALAC");
-            }
-
-            std::vector<std::uint8_t> pcm;
-            pcm.reserve(static_cast<std::size_t>(frames) *
-                        static_cast<std::size_t>(channels) *
-                        static_cast<std::size_t>((bitsPerSample + 7u) / 8u));
-            for (int64_t frame = 0; frame < frames; ++frame)
-            {
-                for (int64_t channel = 0; channel < channels; ++channel)
-                {
-                    const auto quantized =
-                        cupuacu::file::quantizeIntegerPcmSample(
-                            sampleFormatForBitDepth(bitsPerSample),
-                            document.getSample(channel, frame), false);
-                    appendNativePcm(pcm, quantized, bitsPerSample);
-                }
-            }
-            return pcm;
-        }
     } // namespace
 
     void writeAlacM4aFile(const cupuacu::Document &document,
@@ -143,72 +113,137 @@ namespace cupuacu::file::m4a
                           const std::uint32_t requestedBitDepth,
                           cupuacu::file::WriteProgressCallback progress)
     {
-        if (outputPath.empty())
-        {
-            throw std::invalid_argument("Output path is empty");
-        }
-        if (document.getSampleRate() <= 0)
+        storage::DocumentAudioReader reader(document);
+        writeAlacM4aFile(reader, document.getMarkers(), outputPath,
+                         requestedBitDepth, std::move(progress));
+    }
+
+    void writeAlacM4aFile(const storage::AudioReader &audio,
+                          const std::vector<DocumentMarker> &markers,
+                          const std::filesystem::path &outputPath,
+                          const std::uint32_t requestedBitDepth,
+                          WriteProgressCallback progress)
+    {
+        const auto shape = audio.shape();
+        if (outputPath.empty() || shape.sampleRate <= 0 ||
+            shape.channels <= 0 || shape.channels > int(alac::maxChannels()) ||
+            shape.frames <= 0 ||
+            std::uint64_t(shape.frames) >
+                std::numeric_limits<std::uint32_t>::max())
         {
             throw std::invalid_argument(
-                "Document sample rate cannot be exported as M4A ALAC");
+                "Document exceeds supported M4A ALAC format limits");
         }
-
-        const auto bitDepth =
-            requestedBitDepth == 0 ? bitDepthForDocument(document)
-                                   : requestedBitDepth;
+        const auto bitDepth = requestedBitDepth
+                                  ? requestedBitDepth
+                                  : bitDepthForDocument(shape.format);
+        const auto format = sampleFormatForBitDepth(bitDepth);
+        const auto packetFrames = alac::defaultFramesPerPacket();
+        const auto detail = outputPath.string();
         if (progress)
         {
-            progress(outputPath.string() + " (preparing PCM)", 0.0);
+            progress(detail, 0.0);
         }
-        const auto pcm = makeInterleavedPcm(document, bitDepth);
-        if (progress)
-        {
-            progress(outputPath.string() + " (encoding ALAC)", 0.25);
-        }
-        const auto encoded = alac::encodePcmPackets(
-            {
-                .sampleRate =
-                    static_cast<std::uint32_t>(document.getSampleRate()),
-                .channels =
-                    static_cast<std::uint32_t>(document.getChannelCount()),
-                .bitsPerSample = bitDepth,
-                .framesPerPacket = alac::defaultFramesPerPacket(),
-            },
-            pcm);
-        if (!encoded.has_value())
-        {
-            throw std::runtime_error("Failed to encode ALAC packets");
-        }
-
-        if (progress)
-        {
-            progress(outputPath.string() + " (assembling M4A)", 0.85);
-        }
-        const auto bytes = assembleAlacM4a(*encoded, document.getMarkers());
-        cupuacu::file::writeFileAtomically(
+        writeFileAtomically(
             outputPath,
-            [&bytes, &outputPath, &progress](
-                const std::filesystem::path &temporaryPath)
+            [&](const std::filesystem::path &temporaryPath)
             {
-                if (progress)
-                {
-                    progress(outputPath.string() + " (writing file)", 0.95);
-                }
                 std::ofstream output(temporaryPath, std::ios::binary);
                 if (!output)
                 {
                     throw std::runtime_error("Failed to open M4A output file");
                 }
-                output.write(reinterpret_cast<const char *>(bytes.data()),
-                             static_cast<std::streamsize>(bytes.size()));
+                beginAlacM4a(output);
+                AlacMovieDescription description;
+                description.packetSizes.reserve(
+                    std::uint64_t(shape.frames) / packetFrames + 1);
+                std::vector<float> samples(std::size_t(packetFrames) *
+                                           shape.channels);
+                std::vector<std::uint8_t> pcm;
+                pcm.reserve(std::size_t(packetFrames) * shape.channels *
+                            (bitDepth / 8));
+                std::uint64_t audioBytes = 0;
+                const auto encoded = alac::streamEncodedPcmPackets(
+                    {std::uint32_t(shape.sampleRate),
+                     std::uint32_t(shape.channels), bitDepth, packetFrames},
+                    shape.frames,
+                    [&](std::uint64_t start, std::uint32_t count,
+                        std::span<std::uint8_t> destination)
+                    {
+                        // Progress callbacks also check cancellation between
+                        // packets.
+                        if (progress)
+                        {
+                            progress(detail, 0.99 * double(start) /
+                                                 double(shape.frames));
+                        }
+                        for (int ch = 0; ch < shape.channels; ++ch)
+                        {
+                            audio.readChannel(
+                                ch, static_cast<int64_t>(start),
+                                {samples.data() +
+                                     std::size_t(ch) * packetFrames,
+                                 count});
+                        }
+                        pcm.clear();
+                        for (std::uint32_t i = 0; i < count; ++i)
+                        {
+                            for (int ch = 0; ch < shape.channels; ++ch)
+                            {
+                                appendNativePcm(
+                                    pcm,
+                                    quantizeIntegerPcmSample(
+                                        format,
+                                        samples[std::size_t(ch) * packetFrames +
+                                                i],
+                                        false),
+                                    bitDepth);
+                            }
+                        }
+                        std::copy(pcm.begin(), pcm.end(), destination.begin());
+                        return true;
+                    },
+                    [&](std::span<const std::uint8_t> packet)
+                    {
+                        output.write(
+                            reinterpret_cast<const char *>(packet.data()),
+                            static_cast<std::streamsize>(packet.size()));
+                        if (!output)
+                        {
+                            throw std::runtime_error(
+                                "Failed to write ALAC packet");
+                        }
+                        description.packetSizes.push_back(
+                            static_cast<std::uint32_t>(packet.size()));
+                        audioBytes += packet.size();
+                        return true;
+                    });
+                if (!encoded)
+                {
+                    throw std::runtime_error("Failed to encode ALAC packets");
+                }
+                description.sampleRate = encoded->cookie.sampleRate;
+                description.frameCount = encoded->frameCount;
+                description.framesPerPacket = encoded->framesPerPacket;
+                description.sampleEntry = {
+                    encoded->cookie.channels, encoded->cookie.bitDepth,
+                    encoded->cookie.sampleRate, encoded->cookie.bytes};
+                // Cancellation here leaves the original destination untouched.
+                if (progress)
+                {
+                    progress(detail + " (finalizing M4A)", 0.999);
+                }
+                finishAlacM4a(output, std::move(description), audioBytes,
+                              markers);
+                output.close();
                 if (!output)
                 {
-                    throw std::runtime_error("Failed to write M4A output file");
+                    throw std::runtime_error("Failed to close M4A output file");
+                }
+                if (progress)
+                {
+                    progress(detail, 1.0);
                 }
             });
-        if (progress)
-        {
-            progress(outputPath.string(), 1.0);
-        }
     }
 } // namespace cupuacu::file::m4a

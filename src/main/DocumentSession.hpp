@@ -18,6 +18,7 @@
 namespace cupuacu::storage
 {
     class AudioEditRevision;
+    class AudioReader;
 }
 namespace cupuacu::waveform
 {
@@ -53,6 +54,7 @@ namespace cupuacu
         // remain on Document until the remaining editor paths are migrated.
         std::shared_ptr<const waveform::ViewportSource>
         getViewportSource() const;
+        std::shared_ptr<const storage::AudioReader> getAudioReader() const;
         void bindReadRevision(
             std::shared_ptr<const storage::AudioEditRevision> revision);
         bool hasReadRevision() const

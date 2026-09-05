@@ -6,6 +6,21 @@
 
 namespace cupuacu
 {
+    std::shared_ptr<const storage::AudioReader>
+    DocumentSession::getAudioReader() const
+    {
+        if (readRevision)
+        {
+            if (readRevisionVersion != document.getWaveformDataVersion())
+            {
+                throw std::logic_error(
+                    "Session metadata changed without its audio revision");
+            }
+            return readRevision;
+        }
+        return std::make_shared<storage::DocumentAudioReader>(document);
+    }
+
     void DocumentSession::clearReadRevision()
     {
         readRevision.reset();

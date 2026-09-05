@@ -305,9 +305,9 @@ namespace cupuacu::file::alac
         return encoderCookieFrom(encoder, parameters.channels);
     }
 
-    std::optional<AlacEncodedPackets>
-    encodePcmPackets(AlacEncodingParameters parameters,
-                     const std::vector<std::uint8_t> &interleavedPcmBytes)
+    std::optional<AlacEncodingSummary> streamEncodedPcmPackets(
+        AlacEncodingParameters parameters, const std::uint64_t frameCount,
+        PcmReadCallback readPcm, EncodedPacketCallback writePacket)
     {
         if (parameters.framesPerPacket == 0)
         {
@@ -319,14 +319,12 @@ namespace cupuacu::file::alac
         }
 
         const auto inputFormat = makeNativePcmInputFormat(parameters);
-        if (inputFormat.mBytesPerFrame == 0 ||
-            interleavedPcmBytes.size() % inputFormat.mBytesPerFrame != 0)
+        if (!readPcm || !writePacket || inputFormat.mBytesPerFrame == 0 ||
+            frameCount > std::numeric_limits<std::uint32_t>::max())
         {
             return std::nullopt;
         }
 
-        const auto frameCount = static_cast<std::uint32_t>(
-            interleavedPcmBytes.size() / inputFormat.mBytesPerFrame);
         const auto maxPacketBytes = maxOutputPacketBytes(parameters);
         if (maxPacketBytes >
             static_cast<std::size_t>(std::numeric_limits<int>::max()))
@@ -342,19 +340,6 @@ namespace cupuacu::file::alac
             return std::nullopt;
         }
 
-        AlacEncodedPackets encoded{};
-        encoded.frameCount = frameCount;
-        encoded.framesPerPacket = parameters.framesPerPacket;
-        const std::uint32_t packetCount =
-            frameCount == 0
-                ? 0
-                : ((frameCount + parameters.framesPerPacket - 1u) /
-                   parameters.framesPerPacket);
-        encoded.packetSizes.reserve(packetCount);
-        encoded.bytes.reserve(interleavedPcmBytes.size() +
-                              static_cast<std::size_t>(packetCount) *
-                                  kALACMaxEscapeHeaderBytes);
-
         const auto fullPacketInputBytes =
             static_cast<std::size_t>(parameters.framesPerPacket) *
             inputFormat.mBytesPerFrame;
@@ -366,11 +351,12 @@ namespace cupuacu::file::alac
 
         std::vector<unsigned char> packetInput(fullPacketInputBytes);
         std::vector<std::uint8_t> packetOutput(maxPacketBytes);
-        for (std::uint32_t frameOffset = 0; frameOffset < frameCount;
+        for (std::uint64_t frameOffset = 0; frameOffset < frameCount;
              frameOffset += parameters.framesPerPacket)
         {
-            const std::uint32_t packetFrames = std::min(
-                parameters.framesPerPacket, frameCount - frameOffset);
+            const auto packetFrames =
+                static_cast<std::uint32_t>(std::min<std::uint64_t>(
+                    parameters.framesPerPacket, frameCount - frameOffset));
             const auto packetInputBytes =
                 static_cast<std::size_t>(packetFrames) *
                 inputFormat.mBytesPerFrame;
@@ -381,11 +367,11 @@ namespace cupuacu::file::alac
             }
 
             std::fill(packetInput.begin(), packetInput.end(), 0);
-            std::memcpy(packetInput.data(),
-                        interleavedPcmBytes.data() +
-                            static_cast<std::size_t>(frameOffset) *
-                                inputFormat.mBytesPerFrame,
-                        packetInputBytes);
+            if (!readPcm(frameOffset, packetFrames,
+                         {packetInput.data(), packetInputBytes}))
+            {
+                return std::nullopt;
+            }
             auto encodedByteCount = static_cast<std::int32_t>(packetInputBytes);
             auto *writeBuffer =
                 reinterpret_cast<unsigned char *>(packetOutput.data());
@@ -404,12 +390,11 @@ namespace cupuacu::file::alac
                 return std::nullopt;
             }
 
-            encoded.packetSizes.push_back(
-                static_cast<std::uint32_t>(encodedByteCount64));
-            encoded.bytes.insert(
-                encoded.bytes.end(), packetOutput.begin(),
-                packetOutput.begin() +
-                    static_cast<std::ptrdiff_t>(encodedByteCount64));
+            if (!writePacket({packetOutput.data(),
+                              static_cast<std::size_t>(encodedByteCount64)}))
+            {
+                return std::nullopt;
+            }
         }
 
         if (encoder.Finish() != ALAC_noErr)
@@ -421,7 +406,46 @@ namespace cupuacu::file::alac
         {
             return std::nullopt;
         }
-        encoded.cookie = *cookie;
+        return AlacEncodingSummary{std::move(*cookie),
+                                   static_cast<std::uint32_t>(frameCount),
+                                   parameters.framesPerPacket};
+    }
+
+    std::optional<AlacEncodedPackets>
+    encodePcmPackets(AlacEncodingParameters parameters,
+                     const std::vector<std::uint8_t> &interleavedPcmBytes)
+    {
+        const auto bytesPerFrame = std::uint64_t(parameters.channels) *
+                                   ((parameters.bitsPerSample + 7u) / 8u);
+        if (!bytesPerFrame || interleavedPcmBytes.size() % bytesPerFrame)
+        {
+            return std::nullopt;
+        }
+        AlacEncodedPackets encoded;
+        const auto summary = streamEncodedPcmPackets(
+            parameters, interleavedPcmBytes.size() / bytesPerFrame,
+            [&](std::uint64_t start, std::uint32_t, std::span<std::uint8_t> pcm)
+            {
+                std::memcpy(pcm.data(),
+                            interleavedPcmBytes.data() + start * bytesPerFrame,
+                            pcm.size());
+                return true;
+            },
+            [&](std::span<const std::uint8_t> packet)
+            {
+                encoded.packetSizes.push_back(
+                    static_cast<std::uint32_t>(packet.size()));
+                encoded.bytes.insert(encoded.bytes.end(), packet.begin(),
+                                     packet.end());
+                return true;
+            });
+        if (!summary)
+        {
+            return std::nullopt;
+        }
+        encoded.cookie = summary->cookie;
+        encoded.frameCount = summary->frameCount;
+        encoded.framesPerPacket = summary->framesPerPacket;
         return encoded;
     }
 

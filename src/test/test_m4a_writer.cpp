@@ -138,7 +138,10 @@ TEST_CASE("M4A ALAC writer writes ftyp mdat moov file", "[m4a]")
     const auto bytes = readBytes(outputPath);
     const auto ftypSize = readBe32(bytes, 0);
     const auto mdatOffset = static_cast<std::size_t>(ftypSize);
-    const auto mdatSize = readBe32(bytes, mdatOffset);
+    REQUIRE(readBe32(bytes, mdatOffset) == 1);
+    const auto mdatSize =
+        (std::uint64_t(readBe32(bytes, mdatOffset + 8)) << 32) |
+        readBe32(bytes, mdatOffset + 12);
     const auto moovOffset = mdatOffset + mdatSize;
 
     REQUIRE(asciiAt(bytes, 4) == "ftyp");
@@ -153,7 +156,7 @@ TEST_CASE("M4A ALAC writer writes ftyp mdat moov file", "[m4a]")
     const auto stcoOffset = findChildOffset(bytes, stblOffset + 8, "stco");
 
     REQUIRE(readBe32(bytes, stcoOffset + 12) == 1);
-    REQUIRE(readBe32(bytes, stcoOffset + 16) == ftypSize + 8);
+    REQUIRE(readBe32(bytes, stcoOffset + 16) == ftypSize + 16);
 }
 
 TEST_CASE("M4A ALAC writer rejects invalid documents", "[m4a]")
@@ -236,7 +239,10 @@ TEST_CASE("AudioFileWriter routes M4A ALAC exports to native writer", "[m4a]")
     const auto bytes = readBytes(outputPath);
     const auto ftypSize = readBe32(bytes, 0);
     const auto mdatOffset = static_cast<std::size_t>(ftypSize);
-    const auto mdatSize = readBe32(bytes, mdatOffset);
+    REQUIRE(readBe32(bytes, mdatOffset) == 1);
+    const auto mdatSize =
+        (std::uint64_t(readBe32(bytes, mdatOffset + 8)) << 32) |
+        readBe32(bytes, mdatOffset + 12);
     const auto moovOffset = mdatOffset + mdatSize;
 
     REQUIRE(asciiAt(bytes, 4) == "ftyp");
@@ -332,7 +338,10 @@ TEST_CASE("M4A ALAC writer round-trips markers as chapter track", "[m4a]")
     const auto bytes = readBytes(outputPath);
     const auto ftypSize = readBe32(bytes, 0);
     const auto mdatOffset = static_cast<std::size_t>(ftypSize);
-    const auto mdatSize = readBe32(bytes, mdatOffset);
+    REQUIRE(readBe32(bytes, mdatOffset) == 1);
+    const auto mdatSize =
+        (std::uint64_t(readBe32(bytes, mdatOffset + 8)) << 32) |
+        readBe32(bytes, mdatOffset + 12);
     const auto moovOffset = mdatOffset + mdatSize;
     const auto audioTrakOffset = findChildOffset(bytes, moovOffset + 8, "trak");
     const auto trefOffset = findChildOffset(bytes, audioTrakOffset + 8, "tref");

@@ -333,6 +333,43 @@ Comparisons with `open_uncached` are architectural references, not identical
 operations: the owned path retains source bytes and writes decoded sample
 storage; the legacy path retains decoded audio in RAM and persists its peaks.
 
+Ordinary export now consumes a pinned `AudioReader`, including when called
+through the existing document/save API. libsndfile exports use 65,536-frame bulk
+reads. Native ALAC export quantizes and encodes 4,096-frame packets directly into
+temporary output, then writes the packet table and chapter metadata. It no longer
+assembles full-length PCM, encoded audio or M4A byte vectors. The packet index,
+movie metadata and markers still grow with duration; codec scratch and decoded
+cache residency are separate. Buffered codec/container helpers remain for callers
+that explicitly request complete byte arrays, not the production export path.
+
+M4A media sizes and chunk offsets can exceed 32 bits. The existing 32-bit ALAC
+duration limit remains explicit: exports above `UINT32_MAX` frames are rejected
+before reading samples. Original float-to-integer export quantization is unchanged;
+provenance-aware preservation saves retain their separate implementation. WAV/AIFF
+marker rewriting copies audio in 64 KiB chunks and is skipped for fresh exports
+without markers. Writer errors/cancellation close handles and remove temporary
+output; replacement no longer deletes the destination before attempting rename.
+This is atomic replacement, not a new crash-durable recovery protocol.
+
+```sh
+python3 scripts/run-benchmarks.py --build-dir build --mode timing \
+  --profile extended --filter 'export_*' --sizes-mib 1 256 \
+  --repetitions 3 --output dist/benchmarks/export-after.json
+```
+
+`export_memory_alac`, `export_memory_wav`, `export_owned_alac` and
+`export_owned_wav` time ordinary 16-bit export, including output close and
+replacement. Input import and validation are outside timing. Each exported sample
+is checked by streaming the output back, allowing one 16-bit quantization step
+because ordinary export quantizes the fixture's normalized floats. Codec tests
+separately check exact packet round trips. Disk cases exercise the session reader
+binding with a 2 MiB decoded cache. Process peak RSS includes source import and
+validation, so resident-input cases retain the whole source and disk-input cases
+also include import indexes and summaries. These measurements exclude the save
+job's subsequent persistent-waveform-cache rebuild and do not measure GUI latency.
+Default opening/editing/playback/recovery still use the legacy document backend;
+streaming export alone does not activate disk-backed editing.
+
 The timing executable links the ordinary core. The diagnostic executable links
 a separately compiled core with atomic work counters and capacity observations;
 its timing is not a substitute for uninstrumented timing. Google Benchmark

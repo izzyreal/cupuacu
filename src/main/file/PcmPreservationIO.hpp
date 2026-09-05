@@ -88,16 +88,23 @@ namespace cupuacu::file::preservation
         input.clear();
         input.seekg(static_cast<std::streamoff>(startOffset), std::ios::beg);
 
-        std::vector<char> buffer(size);
-        if (!buffer.empty() &&
-            !input.read(buffer.data(), static_cast<std::streamsize>(buffer.size())))
+        if (!input)
         {
             throw std::runtime_error(failureMessage);
         }
-
-        if (!buffer.empty())
+        std::vector<char> buffer(std::min<std::size_t>(size, 65536));
+        std::size_t remaining = size;
+        while (remaining)
         {
-            output.write(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+            const auto count = std::min(remaining, buffer.size());
+            if (!input.read(buffer.data(),
+                            static_cast<std::streamsize>(count)) ||
+                !output.write(buffer.data(),
+                              static_cast<std::streamsize>(count)))
+            {
+                throw std::runtime_error(failureMessage);
+            }
+            remaining -= count;
         }
     }
 

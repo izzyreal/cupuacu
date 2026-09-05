@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <ostream>
 #include <string_view>
 #include <vector>
 
@@ -25,10 +26,10 @@ namespace cupuacu::file::m4a
         std::uint32_t frameCount = 0;
         std::uint32_t framesPerPacket = 0;
         std::vector<std::uint32_t> packetSizes;
-        std::uint32_t mdatPayloadOffset = 0;
+        std::uint64_t mdatPayloadOffset = 0;
         std::vector<std::uint32_t> chapterSampleSizes;
         std::vector<std::uint32_t> chapterSampleDurations;
-        std::uint32_t chapterMdatPayloadOffset = 0;
+        std::uint64_t chapterMdatPayloadOffset = 0;
         std::uint32_t chapterStartOffset = 0;
         std::uint32_t chapterMediaDuration = 0;
         AlacSampleEntryDescription sampleEntry;
@@ -87,6 +88,15 @@ namespace cupuacu::file::m4a
     Bytes chapterMediaAtom(const AlacMovieDescription &description);
     Bytes chapterTrackAtom(const AlacMovieDescription &description);
     Bytes movieAtom(const AlacMovieDescription &description);
+    // Writes ftyp and a 64-bit mdat placeholder. The caller streams packet
+    // payloads, then finalizes metadata and patches the size on a seekable
+    // file.
+    void beginAlacM4a(std::ostream &output);
+    void finishAlacM4a(std::ostream &output, AlacMovieDescription description,
+                       std::uint64_t audioBytes,
+                       const std::vector<DocumentMarker> &markers);
+    Bytes wideChunkOffsetAtom(const std::vector<std::uint64_t> &offsets);
+
     Bytes assembleAlacM4a(
         const cupuacu::file::alac::AlacEncodedPackets &packets,
         const std::vector<cupuacu::DocumentMarker> &markers = {});
