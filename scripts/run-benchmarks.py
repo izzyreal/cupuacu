@@ -20,7 +20,7 @@ import time
 SCHEMA = 1
 QUICK = ["open_uncached", "open_cached", "sample_shared", "delete", "gain_fixed",
          "gain_all", "undo", "redo", "scroll", "zoom"]
-EXTRA = ["sample", "copy", "paste", "trim", "scroll_dirty", "zoom_dirty", "zoom_unaligned", "waveform_build", "open_owned", "open_owned_viewport", "open_owned_viewport_sync", "open_owned_edit"]
+EXTRA = ["sample", "copy", "paste", "trim", "scroll_dirty", "zoom_dirty", "zoom_unaligned", "waveform_build", "open_owned", "open_owned_viewport", "open_owned_viewport_sync", "open_owned_edit", "open_owned_waveform"]
 SDL_CASES = ["open_uncached", "open_cached", "scroll", "zoom", "scroll_dirty", "zoom_dirty", "responsive_gain", "responsive_stall"]
 
 

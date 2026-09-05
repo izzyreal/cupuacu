@@ -2,14 +2,16 @@
 #include "storage/AudioEditRevision.hpp"
 #include "TestPaths.hpp"
 #include <random>
+#include <future>
+#include <barrier>
 
 using namespace cupuacu;
 using namespace cupuacu::storage;
 
 namespace
 {
-    std::shared_ptr<const AudioRevision> makeSource(int64_t frames,
-                                                    int bias = 0)
+    std::shared_ptr<const AudioRevision>
+    makeSource(int64_t frames, int bias = 0, bool withPeaks = true)
     {
         auto store = std::make_shared<AudioBlockStore>(
             test::makeUniqueTestRoot("edit-tree") / "store");
@@ -17,6 +19,7 @@ namespace
         AudioRevisionBuilder builder({frames, 2, 48000, SampleFormat::PCM_S32},
                                      store, cache);
         std::vector<float> input(4096 * 2);
+        std::vector<std::vector<float>> planar(2, std::vector<float>(frames));
         for (int64_t start = 0; start < frames; start += 4096)
         {
             const auto count = std::min<int64_t>(4096, frames - start);
@@ -26,12 +29,27 @@ namespace
                 {
                     input[i * 2 + c] =
                         float((start + i + bias) % 1009 + c) / 1024;
+                    planar[c][start + i] = input[i * 2 + c];
                 }
             }
             builder.appendInterleaved(
                 std::span<const float>(input).first(count * 2));
         }
-        return builder.finish();
+        std::shared_ptr<const waveform::SourcePeaks> peaks;
+        if (withPeaks)
+        {
+            std::vector<std::vector<gui::PeakLevel>> levels;
+            for (int c = 0; c < 2; ++c)
+            {
+                gui::WaveformCache cache;
+                cache.rebuildAll(planar[c].data(), frames);
+                levels.push_back(cache.snapshotBuildState().levels);
+            }
+            peaks = std::make_shared<waveform::SourcePeaks>(
+                AudioShape{frames, 2, 48000, SampleFormat::PCM_S32},
+                std::move(levels));
+        }
+        return builder.finish({}, std::move(peaks));
     }
     using Samples = std::vector<std::vector<float>>;
     Samples read(const AudioReader &reader)
@@ -161,6 +179,18 @@ TEST_CASE("Randomized tree edits and undo redo match contiguous samples",
         REQUIRE(otherSource->blockStore()->ioBytes() == otherIO);
         REQUIRE(read(*current) == expected);
         REQUIRE(current->indexHeight() < 32);
+        AudioEditRevision::PeakWork work;
+        REQUIRE(current->prepareWaveform(work));
+        for (int c = 0; c < 2 && current->shape().frames; ++c)
+        {
+            auto peak = current->queryWaveformOverview(
+                c, 0, current->shape().frames, work);
+            REQUIRE(peak);
+            const auto [minimum, maximum] =
+                std::minmax_element(expected[c].begin(), expected[c].end());
+            REQUIRE(peak->min == *minimum);
+            REQUIRE(peak->max == *maximum);
+        }
     }
     // Undo/redo is a reference change. Check every retained revision twice.
     for (auto it = history.rbegin(); it != history.rend(); ++it)
@@ -210,6 +240,17 @@ TEST_CASE(
     current->readChannel(0, 4, before);
     shortened->readChannel(0, 1, after);
     REQUIRE(before == after);
+    AudioEditRevision::PeakWork peaks;
+    REQUIRE(shortened->prepareWaveform(peaks));
+    REQUIRE(peaks.preparedNodes <
+            40000); // Unique shared nodes, not logical length.
+    AudioEditRevision::PeakWork overview;
+    auto peak = shortened->queryWaveformOverview(
+        0, 0, shortened->shape().frames, overview);
+    REQUIRE(peak);
+    REQUIRE(peak->min == 0.0f);
+    REQUIRE(peak->max == 16.0f / 1024);
+    REQUIRE(overview.visitedNodes == 1);
 }
 
 TEST_CASE("Invalid and overflowing edits leave the candidate revision intact",
@@ -250,4 +291,180 @@ TEST_CASE("A copied range keeps owned storage alive until its final reference",
     REQUIRE(std::filesystem::exists(path));
     clipboard.reset();
     REQUIRE_FALSE(std::filesystem::exists(path));
+}
+
+TEST_CASE(
+    "Waveform summaries exclude deleted spikes and never read samples while "
+    "querying",
+    "[audio-edit-tree]")
+{
+    std::vector<float> samples(65536 + 39, 0.25f);
+    samples[129] = 100.0f;
+    samples[139] = -200.0f;
+    samples.back() = 0.5f;
+    const AudioShape shape{int64_t(samples.size()), 1, 48000,
+                           SampleFormat::FLOAT32};
+    auto store = std::make_shared<AudioBlockStore>(
+        test::makeUniqueTestRoot("spike-peaks") / "store");
+    AudioRevisionBuilder builder(
+        shape, store, std::make_shared<DecodedBlockCache>(AudioBlockBytes));
+    builder.appendInterleaved(samples);
+    gui::WaveformCache cache;
+    cache.rebuildAll(samples.data(), samples.size());
+    auto source =
+        builder.finish({}, std::make_shared<waveform::SourcePeaks>(
+                               shape, std::vector<std::vector<gui::PeakLevel>>{
+                                          cache.snapshotBuildState().levels}));
+    auto base = AudioEditRevision::from(source);
+    AudioEditRevision::PeakWork initial;
+    REQUIRE_FALSE(base->queryWaveformOverview(0, 0, shape.frames, initial));
+    REQUIRE(base->prepareWaveform(initial));
+    REQUIRE(initial.boundarySamples ==
+            0); // Also reuses the final partial bucket.
+    auto before = store->ioBytes();
+    AudioEditTransaction edit(*base);
+    edit.erase(129, 1);
+    edit.erase(138, 1);
+    auto changed = edit.finish();
+    REQUIRE(store->ioBytes() == before);
+    REQUIRE_FALSE(
+        changed->queryWaveformOverview(0, 0, changed->shape().frames, initial));
+    AudioEditRevision::PeakWork preparation;
+    REQUIRE(changed->prepareWaveform(preparation));
+    REQUIRE(preparation.boundarySamples < 1024);
+    auto expected = samples;
+    expected.erase(expected.begin() + 129);
+    expected.erase(expected.begin() + 138);
+    before = store->ioBytes();
+    AudioEditRevision::PeakWork work;
+    auto whole =
+        changed->queryWaveformOverview(0, 0, changed->shape().frames, work);
+    REQUIRE(whole);
+    REQUIRE(whole->min == 0.25f);
+    REQUIRE(whole->max == 0.5f);
+    REQUIRE(work.visitedNodes == 1);
+    for (int64_t start = 0; start < 512; ++start)
+    {
+        auto peak = changed->queryWaveformOverview(0, start, 129, work);
+        REQUIRE(peak);
+        REQUIRE(peak->min == 0.25f);
+        REQUIRE(peak->max ==
+                0.25f); // Neither deleted spike leaks through rounding.
+    }
+    REQUIRE(store->ioBytes() == before);
+    AudioEditRevision::PeakWork reused;
+    REQUIRE(changed->prepareWaveform(reused));
+    REQUIRE(reused.visitedNodes == 1);
+    REQUIRE(reused.preparedNodes == 0);
+    REQUIRE(reused.boundarySamples == 0);
+    // Two copies share the prepared tree, including its exact aggregate.
+    AudioEditTransaction twice(*changed);
+    twice.insert(changed->shape().frames, *changed);
+    auto doubled = twice.finish();
+    AudioEditRevision::PeakWork doubledWork;
+    REQUIRE(doubled->queryWaveformOverview(0, 0, changed->shape().frames,
+                                           doubledWork));
+    REQUIRE(doubled->prepareWaveform(doubledWork));
+    REQUIRE(doubledWork.preparedNodes == 1);
+    REQUIRE(doubledWork.boundarySamples == 0);
+}
+
+TEST_CASE(
+    "Overview pyramids extend beyond sixteen levels with shared source pages",
+    "[audio-edit-tree]")
+{
+    constexpr int64_t blocks = (1 << 17) + 7;
+    std::vector<gui::PeakLevel> levels(1);
+    levels[0].resize(blocks);
+    for (int64_t i = 0; i < blocks; ++i)
+    {
+        levels[0].set(i, {-0.25f, 0.25f});
+    }
+    levels[0].set(0, {-1.0f, 0.25f});
+    levels[0].set(blocks - 1, {-0.25f, 1.0f});
+    for (int i = 1; i < 16; ++i)
+    {
+        gui::PeakLevel next;
+        next.resize((levels.back().size() + 1) / 2);
+        for (std::size_t p = 0; p < next.size(); ++p)
+        {
+            next.set(p, p * 2 + 1 < levels.back().size()
+                            ? waveform::combine(levels.back()[p * 2],
+                                                levels.back()[p * 2 + 1])
+                            : levels.back()[p * 2]);
+        }
+        levels.push_back(std::move(next));
+    }
+    waveform::SourcePeaks peaks({blocks * 128, 1, 48000, SampleFormat::FLOAT32},
+                                {levels});
+    levels[0].set(
+        0, {-99, 99}); // Copy-on-write keeps the attached source immutable.
+    uint64_t visited = 0;
+    auto result = peaks.queryBlocks(0, 0, blocks, visited);
+    REQUIRE(result.min == -1.0f);
+    REQUIRE(result.max == 1.0f);
+    REQUIRE(visited < 20);
+    REQUIRE_THROWS_AS(peaks.queryBlocks(0, 0, blocks + 1, visited),
+                      std::out_of_range);
+}
+
+TEST_CASE(
+    "Missing and canceled waveform work stays pending without raw fallbacks",
+    "[audio-edit-tree]")
+{
+    auto missingSource = makeSource(257, 0, false);
+    auto missing = AudioEditRevision::from(missingSource);
+    const auto before = missingSource->blockStore()->ioBytes();
+    AudioEditRevision::PeakWork work;
+    REQUIRE_FALSE(missing->prepareWaveform(work));
+    REQUIRE_FALSE(missing->queryWaveformOverview(0, 0, 257, work));
+    REQUIRE(missingSource->blockStore()->ioBytes() == before);
+    auto source = makeSource(257);
+    auto base = AudioEditRevision::from(source);
+    AudioEditTransaction edit(*base);
+    edit.erase(1, 3);
+    auto changed = edit.finish();
+    const auto beforeCancel = source->blockStore()->ioBytes();
+    REQUIRE_FALSE(changed->prepareWaveform(work,
+                                           []
+                                           {
+                                               return true;
+                                           }));
+    REQUIRE_FALSE(changed->queryWaveformOverview(0, 0, 254, work));
+    REQUIRE(source->blockStore()->ioBytes() == beforeCancel);
+    REQUIRE(changed->prepareWaveform(work));
+    REQUIRE(changed->queryWaveformOverview(0, 0, 254, work));
+}
+
+TEST_CASE("Concurrent summary preparation safely publishes immutable results",
+          "[audio-edit-tree]")
+{
+    auto source = makeSource(65536 + 39);
+    auto base = AudioEditRevision::from(source);
+    AudioEditTransaction edit(*base);
+    edit.erase(11, 17);
+    auto changed = edit.finish();
+    std::barrier start(3);
+    const auto prepare = [&]
+    {
+        start.arrive_and_wait();
+        AudioEditRevision::PeakWork work;
+        return changed->prepareWaveform(work);
+    };
+    auto first = std::async(std::launch::async, prepare);
+    auto second = std::async(std::launch::async, prepare);
+    start.arrive_and_wait();
+    for (int i = 0; i < 1000; ++i)
+    {
+        AudioEditRevision::PeakWork work;
+        auto peak =
+            changed->queryWaveformOverview(0, 0, changed->shape().frames, work);
+        if (peak)
+        {
+            REQUIRE(peak->min == 0.0f);
+            REQUIRE(peak->max == 1008.0f / 1024);
+        }
+    }
+    REQUIRE(first.get());
+    REQUIRE(second.get());
 }

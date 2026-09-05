@@ -253,9 +253,41 @@ those logical-length tests are not disk-throughput or real-file import tests.
 Tree indexes are currently resident. A leaf pins its imported block directory
 and packed store, so partial deletion does not reclaim individual source blocks.
 Final release belongs on workers, as for imported revisions. Paging, per-block
-reclamation, aggregate peak summaries, effects and default editor/history/save
+reclamation, effects and default editor/history/save
 integration remain pending. Cross-format pastes require a conversion step before
 entering this transaction API.
+
+Source peak pages now stay attached to imported revisions. The shared pyramid
+is extended beyond the legacy 16-level ceiling to cover the source overview.
+`AudioEditRevision::prepareWaveform` is worker-only: it builds exact aggregate
+summaries for new tree nodes and skips prepared subtrees. New leaf boundaries
+need at most 254 raw samples each; this preparation is separate from the edit
+transaction, which still performs no sample I/O. Cold cache misses fetch full
+decoded blocks, so sample counts do not equal physical read sizes. Cancellation leaves unfinished
+summaries pending. Concurrent workers safely publish immutable cached results.
+
+`queryWaveformOverview` reads only resident summaries. Fully covered tree nodes
+return exact aggregates; partial pixels can expand to 128-frame source buckets,
+clipped by exact edit-boundary peaks so deleted extrema cannot reappear. This
+is an overview API; fine zoom must use asynchronous samples. Missing summaries
+return pending, and already prepared subtrees can answer partial views while
+ancestors are pending. Detailed peak paging and default GUI integration remain
+pending; there is no sample-file fallback inside this query.
+
+```sh
+python3 scripts/run-benchmarks.py --build-dir build --mode timing \
+  --profile extended --filter open_owned_waveform --sizes-mib 1 256 \
+  --repetitions 3 --output dist/benchmarks/owned-waveform.json
+```
+
+This extends the fragmented edit case with a prepared starting tree. It times
+boundary preparation separately, counts samples and new summaries, then measures
+an unaligned 1,024-pixel stereo overview averaged over 16 warm queries. Every
+sample in that viewport is checked against the returned min/max bounds after
+timing. Overview queries must issue zero sample I/O. Initial tree preparation
+is setup; the boundary preparation mean includes the first read with the decoded
+cache in its post-setup state, and its maximum is also reported. These are headless
+query timings, not measured GUI event or texture-upload latency.
 
 Comparisons with `open_uncached` are architectural references, not identical
 operations: the owned path retains source bytes and writes decoded sample

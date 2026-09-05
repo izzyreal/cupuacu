@@ -162,8 +162,21 @@ namespace cupuacu::file
                 shape, store, cache);
         }
         detail::throwIfLoadCanceled(cancel);
-        auto audio = builder->finish(owned);
         metadata.waveformCaches = peaks.takeCaches();
+        std::shared_ptr<const waveform::SourcePeaks> sourcePeaks;
+        if (shape.frames)
+        {
+            std::vector<std::vector<gui::PeakLevel>> levels;
+            for (int channel = 0; channel < shape.channels; ++channel)
+            {
+                levels.push_back(metadata.waveformCaches.getCache(channel)
+                                     .snapshotBuildState()
+                                     .levels);
+            }
+            sourcePeaks = std::make_shared<waveform::SourcePeaks>(
+                shape, std::move(levels));
+        }
+        auto audio = builder->finish(owned, std::move(sourcePeaks));
         metadata.waveformCachesReady = true;
         return {std::move(audio), std::move(metadata), cloned};
     }

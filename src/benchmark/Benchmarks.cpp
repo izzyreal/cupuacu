@@ -572,8 +572,9 @@ namespace
 #endif
         const std::string name = request.at("scenario");
         const int64_t frames = request.at("frames");
-        if (name == "open_owned_edit")
+        if (name == "open_owned_edit" || name == "open_owned_waveform")
         {
+            const bool waveformCase = name == "open_owned_waveform";
             auto cache =
                 std::make_shared<storage::DecodedBlockCache>(2 * 1024 * 1024);
             auto imported = file::importOwnedAudio(
@@ -601,6 +602,14 @@ namespace
             std::vector<std::shared_ptr<const storage::AudioEditRevision>>
                 history;
             history.reserve(128);
+            if (waveformCase)
+            {
+                storage::AudioEditRevision::PeakWork setup;
+                require(base->prepareWaveform(setup),
+                        "Initial tree peaks missing");
+            }
+            double preparationMs = 0, maxPreparationMs = 0;
+            uint64_t maxBoundarySamples = 0, maxPreparedNodes = 0;
             const auto beforeIO = imported.audio->blockStore()->ioBytes();
             uint64_t maxNodes = 0;
             double editMs = 0, undoMs = 0;
@@ -609,12 +618,29 @@ namespace
                 (void)iteration;
                 for (int step = 0; step < 128; ++step)
                 {
+                    const auto editIO = imported.audio->blockStore()->ioBytes();
                     auto started = Clock::now();
                     storage::AudioEditTransaction edit(*base);
                     edit.erase(10001, 1);
                     edit.insert(10001, *clipboard);
                     auto changed = edit.finish();
                     editMs += elapsed(started);
+                    require(imported.audio->blockStore()->ioBytes() == editIO,
+                            "Reference edit accessed sample files");
+                    if (waveformCase)
+                    {
+                        storage::AudioEditRevision::PeakWork work;
+                        started = Clock::now();
+                        require(changed->prepareWaveform(work),
+                                "Edited peaks missing");
+                        const auto duration = elapsed(started);
+                        preparationMs += duration;
+                        maxPreparationMs = std::max(maxPreparationMs, duration);
+                        maxBoundarySamples =
+                            std::max(maxBoundarySamples, work.boundarySamples);
+                        maxPreparedNodes =
+                            std::max(maxPreparedNodes, work.preparedNodes);
+                    }
                     maxNodes = std::max(maxNodes, edit.allocatedIndexNodes());
                     history.push_back(changed);
                     started = Clock::now();
@@ -625,10 +651,60 @@ namespace
                     benchmark::DoNotOptimize(current.get());
                     undoMs += elapsed(started);
                 }
-                measurement.SetIterationTime((editMs + undoMs) / 1000.0);
+                measurement.SetIterationTime((editMs + undoMs + preparationMs) /
+                                             1000.0);
             }
-            require(imported.audio->blockStore()->ioBytes() == beforeIO,
-                    "Reference edit/undo accessed sample files");
+            if (!waveformCase)
+            {
+                require(imported.audio->blockStore()->ioBytes() == beforeIO,
+                        "Reference edit/undo accessed sample files");
+            }
+            std::vector<gui::Peak> viewport;
+            if (waveformCase)
+            {
+                require(maxBoundarySamples <= 4 * 254,
+                        "Peak preparation scanned too much boundary audio");
+                require(maxPreparedNodes < 128,
+                        "Peak preparation rebuilt unaffected subtrees");
+                viewport.resize(viewportWidth * channels);
+                const auto queryIO = imported.audio->blockStore()->ioBytes();
+                const auto started = Clock::now();
+                storage::AudioEditRevision::PeakWork queries;
+                for (int repeat = 0; repeat < 16; ++repeat)
+                {
+                    for (int c = 0; c < channels; ++c)
+                    {
+                        for (int pixel = 0; pixel < viewportWidth; ++pixel)
+                        {
+                            const auto first =
+                                17 + (frames - 53) * pixel / viewportWidth;
+                            const auto end = 17 + (frames - 53) * (pixel + 1) /
+                                                      viewportWidth;
+                            auto peak = history.back()->queryWaveformOverview(
+                                c, first, end - first, queries);
+                            require(peak.has_value(),
+                                    "Prepared viewport returned pending");
+                            viewport[c * viewportWidth + pixel] = *peak;
+                        }
+                    }
+                }
+                result["bounded_storage"]["overview_ms"] =
+                    elapsed(started) / 16;
+                result["bounded_storage"]["overview_tree_nodes"] =
+                    queries.visitedNodes / 16;
+                result["bounded_storage"]["overview_source_peaks"] =
+                    queries.sourcePeaks / 16;
+                result["bounded_storage"]["peak_prepare_mean_ms"] =
+                    preparationMs / 128;
+                result["bounded_storage"]["peak_prepare_max_ms"] =
+                    maxPreparationMs;
+                result["bounded_storage"]["max_boundary_samples"] =
+                    maxBoundarySamples;
+                result["bounded_storage"]["max_prepared_nodes"] =
+                    maxPreparedNodes;
+                require(imported.audio->blockStore()->ioBytes() == queryIO,
+                        "Overview query read sample files");
+            }
             require(maxNodes < 1024,
                     "Local edit copied too much index metadata");
             // Check every sample with bounded scratch after the edit timer.
@@ -648,6 +724,18 @@ namespace
                                 sampleAt(start + i == 10001 ? 65530 : start + i,
                                          c),
                             "Reference edit sample mismatch");
+                        if (waveformCase && start + i >= 17 &&
+                            start + i < frames - 36)
+                        {
+                            const auto pixel =
+                                ((start + i - 17 + 1) * viewportWidth - 1) /
+                                (frames - 53);
+                            const auto peak =
+                                viewport[c * viewportWidth + pixel];
+                            require(peak.min <= block[i] &&
+                                        peak.max >= block[i],
+                                    "Waveform missed a sample extremum");
+                        }
                     }
                 }
             }
@@ -686,7 +774,8 @@ namespace
                  {"index_height", base->indexHeight()},
                  {"edit_sample_bytes_read", 0},
                  {"edit_sample_bytes_written", 0}});
-            result["milestones_ms"]["background_complete"] = editMs + undoMs;
+            result["milestones_ms"]["background_complete"] =
+                editMs + undoMs + preparationMs;
             result["validated"] = true;
             return;
         }
