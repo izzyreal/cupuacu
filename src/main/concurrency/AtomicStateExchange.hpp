@@ -42,6 +42,11 @@ namespace cupuacu::concurrency
             queue.enqueue(Message(std::forward<M>(msg)));
         }
 
+        template <class M> bool tryEnqueue(M &&msg) noexcept
+        {
+            return queue.enqueue(Message(std::forward<M>(msg)));
+        }
+
         void enqueueCallback(utils::SimpleAction cb) noexcept
         {
             callbackQueue.enqueue(std::move(cb));

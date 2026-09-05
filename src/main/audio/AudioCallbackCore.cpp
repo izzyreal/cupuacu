@@ -1,5 +1,6 @@
 #include "AudioCallbackCore.hpp"
 #include "MeterAccumulator.hpp"
+#include "../playback/ReadAhead.hpp"
 
 #include <algorithm>
 
@@ -66,8 +67,8 @@ bool cupuacu::audio::callback_core::measureInput(
 }
 
 bool cupuacu::audio::callback_core::fillOutputBuffer(
-    const std::shared_ptr<cupuacu::audio::AudioBuffer> &buffer,
-    const uint8_t channelCount, const bool selectionIsActive,
+    const cupuacu::audio::AudioBuffer *buffer, const uint8_t channelCount,
+    const bool selectionIsActive,
     const cupuacu::SelectedChannels selectedChannels, int64_t &playbackPosition,
     uint64_t &playbackStartPos, uint64_t &playbackEndPos,
     const bool playbackLoopEnabled, bool &playbackHasPendingSwitch,
@@ -76,22 +77,36 @@ bool cupuacu::audio::callback_core::fillOutputBuffer(
     StereoMeterLevels &meterLevels,
     const cupuacu::audio::AudioProcessor *processor,
     const uint64_t effectStartPos, const uint64_t effectEndPos,
-    const cupuacu::SelectedChannels processorChannels)
+    const cupuacu::SelectedChannels processorChannels,
+    playback::ReadAhead *readAhead, uint64_t *underrunFrames)
 {
     if (!out)
     {
         return false;
     }
 
-    if (!buffer || (channelCount != 1 && channelCount != 2))
+    if ((!buffer && !readAhead) || (channelCount != 1 && channelCount != 2))
     {
         writeSilenceToOutput(out, framesPerBuffer);
         return false;
     }
 
-    const auto chBufL = buffer->getImmutableChannelData(0);
+    const auto chBufL = buffer ? buffer->getImmutableChannelData(0)
+                               : decltype(buffer->getImmutableChannelData(0)){};
     const auto chBufR =
-        buffer->getImmutableChannelData(channelCount == 2 ? 1 : 0);
+        buffer ? buffer->getImmutableChannelData(channelCount == 2 ? 1 : 0)
+               : decltype(chBufL){};
+
+    if (readAhead)
+    {
+        readAhead->request(
+            playbackPosition,
+            playbackLoopEnabled
+                ? static_cast<int64_t>(playbackHasPendingSwitch
+                                           ? playbackPendingStartPos
+                                           : playbackStartPos)
+                : -1);
+    }
 
     const bool shouldPlayChannelL =
         !selectionIsActive ||
@@ -103,11 +118,27 @@ bool cupuacu::audio::callback_core::fillOutputBuffer(
         selectedChannels == cupuacu::SelectedChannels::BOTH ||
         selectedChannels == cupuacu::SelectedChannels::RIGHT;
 
-    float *const outputStart = out;
+    float *segmentOutput = out;
+    unsigned long segmentFrames = 0;
     bool playedAnyFrame = false;
     bool capturedBufferStart = false;
     int64_t bufferStartFrame = 0;
     unsigned long playedFrameCount = 0;
+    const auto processSegment = [&]
+    {
+        if (segmentFrames && processor && effectEndPos > effectStartPos)
+        {
+            processor->process(segmentOutput, segmentFrames,
+                               {.bufferStartFrame = bufferStartFrame,
+                                .frameCount = segmentFrames,
+                                .effectStartFrame = effectStartPos,
+                                .effectEndFrame = effectEndPos,
+                                .targetChannels = processorChannels});
+        }
+        segmentFrames = 0;
+        segmentOutput = out;
+        capturedBufferStart = false;
+    };
     cupuacu::audio::StereoMeterAccumulator meterAccumulator;
     for (unsigned long i = 0; i < framesPerBuffer; ++i)
     {
@@ -120,6 +151,7 @@ bool cupuacu::audio::callback_core::fillOutputBuffer(
 
         if (playbackPosition >= static_cast<int64_t>(playbackEndPos))
         {
+            processSegment();
             const bool canLoop =
                 playbackLoopEnabled && playbackEndPos > playbackStartPos;
             if (canLoop)
@@ -148,8 +180,28 @@ bool cupuacu::audio::callback_core::fillOutputBuffer(
             capturedBufferStart = true;
         }
 
-        const float outL = shouldPlayChannelL ? chBufL[playbackPosition] : 0.0f;
-        const float outR = shouldPlayChannelR ? chBufR[playbackPosition] : 0.0f;
+        float left = 0, right = 0;
+        if (readAhead)
+        {
+            if (!readAhead->readStereo(playbackPosition, left, right))
+            {
+                // Preserve the source position; do not skip audio on a miss.
+                // Initial buffering is measured separately from underruns.
+                if (underrunFrames && readAhead->hasStarted())
+                {
+                    *underrunFrames += framesPerBuffer - i;
+                }
+                writeSilenceToOutput(out, framesPerBuffer - i);
+                break;
+            }
+        }
+        else
+        {
+            left = chBufL[playbackPosition];
+            right = chBufR[playbackPosition];
+        }
+        const float outL = shouldPlayChannelL ? left : 0.0f;
+        const float outR = shouldPlayChannelR ? right : 0.0f;
 
         *out++ = outL;
         *out++ = outR;
@@ -157,18 +209,16 @@ bool cupuacu::audio::callback_core::fillOutputBuffer(
         meterAccumulator.addFrame(outL, outR);
         ++playbackPosition;
         ++playedFrameCount;
+        ++segmentFrames;
         playedAnyFrame = true;
     }
 
-    if (playedAnyFrame && processor && effectEndPos > effectStartPos)
+    if (readAhead)
     {
-        processor->process(outputStart, playedFrameCount,
-                           {.bufferStartFrame = bufferStartFrame,
-                            .frameCount = playedFrameCount,
-                            .effectStartFrame = effectStartPos,
-                            .effectEndFrame = effectEndPos,
-                            .targetChannels = processorChannels});
+        readAhead->endCallback();
     }
+
+    processSegment();
 
     if (playedFrameCount > 0)
     {

@@ -73,7 +73,11 @@ namespace cupuacu::audio
         ~AudioDevices();
 
         using Base::enqueue;
-        void enqueue(Play msg) noexcept;
+        bool enqueue(Play msg) noexcept;
+        void
+        servicePlayback(); // Control thread: retire ownership, never join I/O.
+        bool takePlaybackFailure() noexcept;
+        uint64_t getPlaybackUnderrunFrames() const;
         void enqueue(Record msg) noexcept;
 
         AudioStreamSetupResult openStream(const AudioStreamRequest &request);
@@ -130,6 +134,7 @@ namespace cupuacu::audio
     private:
         struct PaData
         {
+            PreparedPlayback *preparedPlayback = nullptr;
             std::shared_ptr<cupuacu::audio::AudioBuffer> playbackBuffer;
             bool selectionIsActive = false;
             cupuacu::SelectedChannels selectedChannels =
@@ -172,7 +177,10 @@ namespace cupuacu::audio
         pushPeaksToVuMeter(PaData &data,
                            const callback_core::StereoMeterLevels &meterLevels,
                            bool isPlaying, bool isRecording, bool isMonitoring);
-        static void snapshotQueuedPlayMessage(Play &msg);
+        static void retirePlayback(PaData &data) noexcept;
+        std::vector<std::shared_ptr<PreparedPlayback>> preparedPlaybacks;
+        std::atomic<bool> playbackFailure{false};
+        bool reportedPlaybackUnderrun = false;
         static void snapshotQueuedRecordMessage(Record &msg);
 
         AudioStreamSetupResult

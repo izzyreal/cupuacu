@@ -1,4 +1,6 @@
 #include "audio/AudioDevices.hpp"
+#include "audio/PreparedPlayback.hpp"
+#include "concurrency/DeferredRelease.hpp"
 #include "audio/AudioCallbackCore.hpp"
 
 #include "Document.hpp"
@@ -247,10 +249,105 @@ AudioDevices::~AudioDevices()
     Pa_Terminate();
 }
 
-void AudioDevices::enqueue(Play msg) noexcept
+bool AudioDevices::enqueue(Play msg) noexcept
 {
-    snapshotQueuedPlayMessage(msg);
-    Base::enqueue(std::move(msg));
+    try
+    {
+        servicePlayback();
+        // Bound ownership and possible I/O workers even when the callback is
+        // stopped or a slow device has not consumed queued starts yet.
+        if (preparedPlaybacks.size() >= 8)
+        {
+            throw std::runtime_error("Playback queue is full");
+        }
+        auto source = std::make_shared<PreparedPlayback>();
+        if (msg.readerSnapshot)
+        {
+            source->shape = msg.readerSnapshot->shape();
+            source->readAhead = std::make_unique<playback::ReadAhead>(
+                std::move(msg.readerSnapshot),
+                static_cast<int64_t>(msg.startPos));
+        }
+        else if (msg.document)
+        {
+            const auto lease = msg.document->acquireReadLease();
+            source->resident = lease.snapshotAudioBuffer();
+            source->shape = {lease.getFrameCount(),
+                             int(lease.getChannelCount()),
+                             lease.getSampleRate(), lease.getSampleFormat()};
+        }
+        else if (msg.bufferSnapshot)
+        {
+            source->resident = msg.bufferSnapshot;
+            source->shape.frames = source->resident->getFrameCount();
+            source->shape.channels = msg.channelCountSnapshot;
+        }
+        if (source->shape.channels < 1 || source->shape.channels > 2 ||
+            msg.endPos <= msg.startPos ||
+            msg.endPos > uint64_t(source->shape.frames))
+        {
+            throw std::invalid_argument("Invalid playback range");
+        }
+        source->processor = std::move(msg.previewProcessor);
+        msg.channelCountSnapshot = static_cast<uint8_t>(source->shape.channels);
+        msg.prepared = source.get();
+        msg.document = nullptr;
+        msg.bufferSnapshot.reset();
+        preparedPlaybacks.push_back(
+            concurrency::releaseOnWorker(std::move(source)));
+        if (!Base::tryEnqueue(std::move(msg)))
+        {
+            preparedPlaybacks.pop_back();
+            throw std::runtime_error("Audio command queue is full");
+        }
+        reportedPlaybackUnderrun = false;
+        return true;
+    }
+    catch (...)
+    {
+        playbackFailure.store(true, std::memory_order_release);
+        return false;
+    }
+}
+
+void AudioDevices::servicePlayback()
+{
+    std::erase_if(preparedPlaybacks,
+                  [](const auto &source)
+                  {
+                      return source->retired.load(std::memory_order_acquire) &&
+                             (!source->readAhead ||
+                              source->readAhead->finished());
+                  });
+    const auto underruns = getPlaybackUnderrunFrames();
+    if (underruns && !reportedPlaybackUnderrun)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO,
+                    "Playback read-ahead underrun: %llu frames of silence; "
+                    "source position preserved",
+                    static_cast<unsigned long long>(underruns));
+        reportedPlaybackUnderrun = true;
+    }
+}
+
+bool AudioDevices::takePlaybackFailure() noexcept
+{
+    return playbackFailure.exchange(false, std::memory_order_acq_rel);
+}
+
+uint64_t AudioDevices::getPlaybackUnderrunFrames() const
+{
+    return getSnapshot().getPlaybackUnderrunFrames();
+}
+
+void AudioDevices::retirePlayback(PaData &data) noexcept
+{
+    if (data.preparedPlayback)
+    {
+        auto *source = data.preparedPlayback;
+        data.preparedPlayback = nullptr;
+        source->retire(); // Last callback access precedes the release store.
+    }
 }
 
 void AudioDevices::enqueue(Record msg) noexcept
@@ -269,16 +366,28 @@ bool AudioDevices::fillOutputBuffer(
     callback_core::StereoMeterLevels &meterLevels)
 {
     AudioDeviceState *state = &data.device->activeState;
+    auto *source = data.preparedPlayback;
+    if (source && source->readAhead && source->readAhead->failed())
+    {
+        state->isPlaying = false;
+        state->playbackPosition = -1;
+        data.device->playbackFailure.store(true, std::memory_order_release);
+    }
     const bool playedAnyFrame = callback_core::fillOutputBuffer(
-        data.playbackBuffer, data.playbackChannelCount, data.selectionIsActive,
+        source ? source->resident.get() : data.playbackBuffer.get(),
+        data.playbackChannelCount, data.selectionIsActive,
         data.selectedChannels, state->playbackPosition, data.playbackStartPos,
         data.playbackEndPos, data.playbackLoopEnabled,
         data.playbackHasPendingSwitch, data.playbackPendingStartPos,
         data.playbackPendingEndPos, state->isPlaying, out, framesPerBuffer,
-        meterLevels, data.previewProcessor.get(), data.playbackStartPos,
-        data.playbackEndPos, data.selectedChannels);
+        meterLevels,
+        source ? source->processor.get() : data.previewProcessor.get(),
+        data.playbackStartPos, data.playbackEndPos, data.selectedChannels,
+        source ? source->readAhead.get() : nullptr,
+        &state->playbackUnderrunFrames);
     if (!state->isPlaying)
     {
+        retirePlayback(data);
         data.playbackBuffer.reset();
         data.playbackChannelCount = 0;
         data.previewProcessor.reset();
@@ -710,6 +819,11 @@ void AudioDevices::closeDevice()
 {
     std::lock_guard<std::mutex> lock(streamMutex);
     closeDeviceLocked();
+    // With the callback stopped, consume pending borrowed handles and retire
+    // their sources even if no subsequent stream will ever open.
+    drainQueue();
+    applyMessageImmediate(Stop{});
+    servicePlayback();
     currentInputDeviceIndex = -1;
     currentOutputDeviceIndex = -1;
     currentSampleRate = 0.0;
@@ -1005,20 +1119,6 @@ void AudioDevices::closeDeviceLocked()
     paData.outputChannelCount = 0;
 }
 
-void AudioDevices::snapshotQueuedPlayMessage(Play &msg)
-{
-    if (!msg.document)
-    {
-        msg.bufferSnapshot.reset();
-        msg.channelCountSnapshot = 0;
-        return;
-    }
-
-    msg.bufferSnapshot = msg.document->getAudioBuffer();
-    msg.channelCountSnapshot = static_cast<uint8_t>(
-        std::clamp<int64_t>(msg.document->getChannelCount(), 0, 2));
-}
-
 void AudioDevices::snapshotQueuedRecordMessage(Record &msg)
 {
     if (!msg.document)
@@ -1036,6 +1136,9 @@ void AudioDevices::applyMessage(const AudioMessage &msg) noexcept
     auto visitor = Overload{
         [&](const Play &m)
         {
+            retirePlayback(paData);
+            paData.preparedPlayback = m.prepared;
+            activeState.playbackUnderrunFrames = 0;
             paData.playbackBuffer = m.bufferSnapshot;
             paData.playbackChannelCount = m.channelCountSnapshot;
             if (!paData.playbackBuffer && m.document)
@@ -1061,6 +1164,7 @@ void AudioDevices::applyMessage(const AudioMessage &msg) noexcept
         },
         [&](const Stop &)
         {
+            retirePlayback(paData);
             paData.playbackBuffer.reset();
             paData.playbackChannelCount = 0;
             paData.playbackLoopEnabled = false;
@@ -1161,8 +1265,11 @@ void AudioDevices::applyMessage(const AudioMessage &msg) noexcept
             paData.selectionIsActive = m.selectionIsActive;
             paData.selectedChannels = m.selectedChannels;
 
-            if (m.endPos <= m.startPos)
+            if (m.endPos <= m.startPos ||
+                (paData.preparedPlayback &&
+                 m.endPos > uint64_t(paData.preparedPlayback->shape.frames)))
             {
+                retirePlayback(paData);
                 paData.playbackBuffer.reset();
                 paData.playbackChannelCount = 0;
                 activeState.isPlaying = false;
@@ -1217,6 +1324,7 @@ void AudioDevices::applyMessage(const AudioMessage &msg) noexcept
             if (activeState.playbackPosition >=
                 static_cast<int64_t>(paData.playbackEndPos))
             {
+                retirePlayback(paData);
                 paData.playbackBuffer.reset();
                 paData.playbackChannelCount = 0;
                 activeState.isPlaying = false;

@@ -104,3 +104,8 @@ int64_t AudioDeviceView::getRecordingPosition() const
 {
     return state ? state->recordingPosition : -1;
 }
+
+uint64_t AudioDeviceView::getPlaybackUnderrunFrames() const
+{
+    return state ? state->playbackUnderrunFrames : 0;
+}

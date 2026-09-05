@@ -23,6 +23,7 @@ namespace cupuacu::audio
         bool isRecording() const;
         bool isInputMonitoringEnabled() const;
         MonitorProtectionTelemetry getMonitorProtectionTelemetry() const;
+        uint64_t getPlaybackUnderrunFrames() const;
         int64_t getPlaybackPosition() const;
         int64_t getRecordingPosition() const;
 
