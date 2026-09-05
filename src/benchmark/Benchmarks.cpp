@@ -749,7 +749,9 @@ namespace
                     result["milestones_ms"]["view_ready"] = elapsed(started);
                 }
                 auto &session = state.getActiveDocumentSession();
-                if (sawAudio && !session.getWaveformCacheBuildProgress() &&
+                if (sawAudio &&
+                    !result["milestones_ms"]["committed"].is_null() &&
+                    !session.getWaveformCacheBuildProgress() &&
                     session.getWaveformCache(0).levelsCount() > 0 &&
                     !session.getWaveformCache(0).hasDirtyBlocks() &&
                     session.getWaveformCache(1).levelsCount() > 0 &&
