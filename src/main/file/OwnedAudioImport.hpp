@@ -1,0 +1,170 @@
+#pragma once
+
+#include "file_loading.hpp"
+#include "../storage/AudioRevision.hpp"
+#include "../waveform/DecodedWaveformBuilder.hpp"
+#include <fstream>
+#ifdef __APPLE__
+#include <sys/clonefile.h>
+#endif
+
+namespace cupuacu::file
+{
+    struct OwnedAudioImport
+    {
+        std::shared_ptr<const storage::AudioRevision> audio;
+        LoadedAudioFile metadata;
+        bool sourceCloned = false;
+    };
+
+    struct OwnedImportOptions
+    {
+        bool preferFilesystemClone = true;
+    };
+
+    // Worker-only staged backend. The original bytes are retained independently
+    // of the source path, including PCM32 precision not representable in float.
+    inline OwnedAudioImport importOwnedAudio(
+        const std::filesystem::path &source,
+        const std::filesystem::path &workingDirectory,
+        std::shared_ptr<storage::DecodedBlockCache> cache,
+        const LoadProgressCallback &progress = {},
+        const LoadCancelCheck &cancel = {},
+        const std::function<void(waveform::DecodedWaveformChunk)> &preview = {},
+        OwnedImportOptions options = {})
+    {
+        detail::throwIfLoadCanceled(cancel);
+        if (!cache)
+        {
+            throw std::invalid_argument(
+                "Audio import requires a decoded block cache");
+        }
+        auto store =
+            std::make_shared<storage::AudioBlockStore>(workingDirectory);
+        const auto owned =
+            store->path() / ("source" + source.extension().string());
+        const auto sourceBytes = std::filesystem::file_size(source);
+        const auto sourceTime = std::filesystem::last_write_time(source);
+        bool cloned = false;
+#ifdef __APPLE__
+        if (options.preferFilesystemClone)
+        {
+            cloned = clonefile(source.c_str(), owned.c_str(), 0) == 0;
+        }
+#endif
+        if (cloned)
+        {
+            if (progress)
+            {
+                progress("Copying source", 1.0);
+            }
+        }
+        else
+        {
+            std::ifstream input(source, std::ios::binary);
+            std::ofstream output(owned, std::ios::binary | std::ios::trunc);
+            if (!input || !output)
+            {
+                throw std::runtime_error("Cannot copy imported source");
+            }
+            std::array<char, 65536> buffer;
+            uint64_t copied = 0;
+            while (copied < sourceBytes)
+            {
+                detail::throwIfLoadCanceled(cancel);
+                const auto count =
+                    std::min<uint64_t>(buffer.size(), sourceBytes - copied);
+                input.read(buffer.data(), std::streamsize(count));
+                output.write(buffer.data(), std::streamsize(count));
+                if (!input || !output)
+                {
+                    throw std::runtime_error("Imported source copy failed");
+                }
+                copied += count;
+                if (progress)
+                {
+                    progress("Copying source",
+                             sourceBytes ? double(copied) / sourceBytes : 1.0);
+                }
+            }
+            output.close();
+            if (!output)
+            {
+                throw std::runtime_error(
+                    "Imported source copy could not be completed");
+            }
+        }
+        detail::throwIfLoadCanceled(cancel);
+        if (std::filesystem::file_size(source) != sourceBytes ||
+            std::filesystem::last_write_time(source) != sourceTime)
+        {
+            throw std::runtime_error("Source changed during import");
+        }
+
+        waveform::DecodedWaveformBuilder peaks;
+        std::unique_ptr<storage::AudioRevisionBuilder> builder;
+        storage::AudioShape shape;
+        auto metadata = loadAudioFile(
+            owned.string(), progress, cancel, {},
+            [&](const Document &document, int64_t start, const float *samples,
+                int64_t count)
+            {
+                detail::throwIfLoadCanceled(cancel);
+                if (!builder)
+                {
+                    shape = {document.getFrameCount(),
+                             int(document.getChannelCount()),
+                             document.getSampleRate(),
+                             document.getSampleFormat()};
+                    builder = std::make_unique<storage::AudioRevisionBuilder>(
+                        shape, store, cache,
+                        [&](int64_t blockStart,
+                            std::span<const storage::AudioRevisionBuilder::
+                                          PendingChannel>
+                                channels,
+                            uint32_t frames)
+                        {
+                            detail::throwIfLoadCanceled(cancel);
+                            auto chunk = peaks.appendFrom(
+                                shape, blockStart + frames,
+                                [&](int channel, int64_t first,
+                                    std::span<float> output)
+                                {
+                                    if (first < blockStart ||
+                                        first - blockStart + output.size() >
+                                            frames)
+                                    {
+                                        throw std::logic_error(
+                                            "Waveform requested samples "
+                                            "outside decoded block");
+                                    }
+                                    std::copy_n(channels[channel].data() +
+                                                    first - blockStart,
+                                                output.size(), output.data());
+                                });
+                            if (preview && chunk)
+                            {
+                                preview(std::move(*chunk));
+                            }
+                        });
+                }
+                (void)start;
+                builder->appendInterleaved(std::span<const float>(
+                    samples, std::size_t(count) * shape.channels));
+            });
+        if (!builder)
+        {
+            shape = {metadata.document.getFrameCount(),
+                     int(metadata.document.getChannelCount()),
+                     metadata.document.getSampleRate(),
+                     metadata.document.getSampleFormat()};
+            builder = std::make_unique<storage::AudioRevisionBuilder>(
+                shape, store, cache);
+        }
+        detail::throwIfLoadCanceled(cancel);
+        auto audio = builder->finish(owned);
+        metadata.waveformCaches = peaks.takeCaches();
+        metadata.waveformCachesReady = true;
+        return {std::move(audio), std::move(metadata), cloned};
+    }
+} // namespace cupuacu::file

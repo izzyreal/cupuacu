@@ -6,6 +6,7 @@
 #include "actions/audio/SetSampleValue.hpp"
 #include "actions/Zoom.hpp"
 #include "file/file_loading.hpp"
+#include "file/OwnedAudioImport.hpp"
 #include "file/m4a/M4aAlacWriter.hpp"
 #include "gui/WaveformOverviewPlanning.hpp"
 #include "performance/WorkMetrics.hpp"
@@ -569,6 +570,86 @@ namespace
 #endif
         const std::string name = request.at("scenario");
         const int64_t frames = request.at("frames");
+        if (name == "open_owned")
+        {
+            constexpr uint64_t budget = 2 * 1024 * 1024;
+            for (auto iteration : measurement)
+            {
+                (void)iteration;
+                auto cache =
+                    std::make_shared<storage::DecodedBlockCache>(budget);
+                const auto started = Clock::now();
+                auto imported = file::importOwnedAudio(
+                    request.at("fixture").get<std::string>(),
+                    std::filesystem::path(
+                        request.at("root").get<std::string>()) /
+                        "owned-audio",
+                    cache, {}, {},
+                    [&](waveform::DecodedWaveformChunk)
+                    {
+                        if (result["milestones_ms"]["first_waveform"].is_null())
+                        {
+                            result["milestones_ms"]["first_waveform"] =
+                                elapsed(started);
+                        }
+                    });
+                result["milestones_ms"]["audio_available"] = elapsed(started);
+                result["milestones_ms"]["waveform_complete"] = elapsed(started);
+                result["milestones_ms"]["background_complete"] =
+                    elapsed(started);
+                measurement.SetIterationTime(elapsed(started) / 1000.0);
+                require(imported.audio->shape().frames == frames,
+                        "Owned import length mismatch");
+                std::array<float, 1024> window;
+                auto readStarted = Clock::now();
+                imported.audio->readChannel(0, frames / 2 + 17, window);
+                result["bounded_storage"]["cold_window_ms"] =
+                    elapsed(readStarted);
+                result["source_cloned"] = imported.sourceCloned;
+                const auto beforeWarm =
+                    imported.audio->blockStore()->ioBytes().first;
+                readStarted = Clock::now();
+                imported.audio->readChannel(0, frames / 2 + 17, window);
+                result["bounded_storage"]["warm_window_ms"] =
+                    elapsed(readStarted);
+                require(imported.audio->blockStore()->ioBytes().first ==
+                            beforeWarm,
+                        "Warm read touched disk");
+                // Validate every sample with bounded scratch, outside import
+                // timing.
+                std::vector<float> block(storage::AudioBlockFrames);
+                for (int channel = 0; channel < channels; ++channel)
+                {
+                    for (int64_t start = 0; start < frames;
+                         start += block.size())
+                    {
+                        const auto count =
+                            std::min<int64_t>(block.size(), frames - start);
+                        imported.audio->readChannel(
+                            channel, start,
+                            std::span<float>(block).first(count));
+                        for (int64_t i = 0; i < count; ++i)
+                        {
+                            require(block[i] == sampleAt(start + i, channel),
+                                    "Owned import sample mismatch");
+                        }
+                    }
+                }
+                const auto stats = cache->stats();
+                require(stats.peakResidentBytes <= budget,
+                        "Decoded cache exceeded budget");
+                const auto io = imported.audio->blockStore()->ioBytes();
+                result["bounded_storage"].update(
+                    {{"budget_bytes", budget},
+                     {"peak_cached_sample_bytes", stats.peakResidentBytes},
+                     {"cache_hits", stats.hits},
+                     {"cache_misses", stats.misses},
+                     {"sample_bytes_read", io.first},
+                     {"sample_bytes_written", io.second}});
+            }
+            result["validated"] = true;
+            return;
+        }
         const bool opening = name.starts_with("open_");
         const bool navigating =
             name.starts_with("scroll") || name.starts_with("zoom");
