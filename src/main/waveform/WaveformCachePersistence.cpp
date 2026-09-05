@@ -1,6 +1,7 @@
 #include "WaveformCachePersistence.hpp"
 
 #include "../DocumentSession.hpp"
+#include "../concurrency/BoundedBackgroundWorker.hpp"
 #include "../file/FileIo.hpp"
 
 #include <array>
@@ -245,9 +246,10 @@ namespace cupuacu::waveform
             return true;
         }
 
-        void writeCacheFile(const std::filesystem::path &path,
-                            const cupuacu::DocumentSession &session,
-                            const PersistentCacheKey &key)
+        void writeCacheFile(
+            const std::filesystem::path &path,
+            const std::vector<gui::WaveformCache::BuildState> &channels,
+            const PersistentCacheKey &key)
         {
             std::ofstream output(path, std::ios::binary);
             CUPUACU_METRIC(
@@ -261,13 +263,10 @@ namespace cupuacu::waveform
             output.write(kMagic, sizeof(kMagic));
             writeU32(output, kStorageVersion);
             writePersistentCacheKey(output, key);
-            writeI64(output, session.document.getChannelCount());
+            writeI64(output, key.channelCount);
 
-            for (int64_t channel = 0; channel < session.document.getChannelCount();
-                 ++channel)
+            for (const auto &state : channels)
             {
-                const auto state = session.getWaveformCache(
-                    static_cast<int>(channel)).snapshotBuildState();
                 writeI64(output, state.numSamples);
                 writeI64(output, state.dirtyFromBlock);
                 writeI64(output, state.dirtyToBlock);
@@ -287,6 +286,61 @@ namespace cupuacu::waveform
             {
                 throw std::runtime_error("Failed to write waveform cache");
             }
+        }
+
+        struct CacheSaveRequest
+        {
+            std::filesystem::path root;
+            PersistentCacheKey key;
+            std::vector<gui::WaveformCache::BuildState> channels;
+        };
+
+        CacheSaveRequest
+        captureCacheSaveRequest(const DocumentSession &session,
+                                const std::filesystem::path &root,
+                                PersistentCacheKey key)
+        {
+            CacheSaveRequest request{root, std::move(key), {}};
+            request.channels.reserve(request.key.channelCount);
+            for (int channel = 0; channel < request.key.channelCount; ++channel)
+            {
+                request.channels.push_back(
+                    session.getWaveformCache(channel).snapshotBuildState());
+            }
+            return request;
+        }
+
+        bool writeCacheRequest(const CacheSaveRequest &request)
+        {
+            try
+            {
+                file::writeFileAtomically(
+                    request.root / request.key.cacheBasename(),
+                    [&](const std::filesystem::path &temporaryPath)
+                    {
+                        writeCacheFile(temporaryPath, request.channels,
+                                       request.key);
+                    });
+                return true;
+            }
+            catch (...)
+            {
+                // This is a disposable cache; opening can rebuild it later.
+                return false;
+            }
+        }
+
+        using CacheSaveWorker =
+            concurrency::BoundedBackgroundWorker<CacheSaveRequest, 4>;
+
+        CacheSaveWorker &cacheSaveWorker()
+        {
+            static CacheSaveWorker worker(
+                [](const CacheSaveRequest &request)
+                {
+                    (void)writeCacheRequest(request);
+                });
+            return worker;
         }
 
         std::vector<gui::WaveformCache::BuildResult>
@@ -413,26 +467,39 @@ namespace cupuacu::waveform
             return false;
         }
 
-        try
-        {
-            cupuacu::file::writeFileAtomically(
-                cacheRoot / key->cacheBasename(),
-                [&](const std::filesystem::path &temporaryPath)
-                {
-                    writeCacheFile(temporaryPath, session, *key);
-                });
-            return true;
-        }
-        catch (...)
-        {
-            return false;
-        }
+        return writeCacheRequest(
+            captureCacheSaveRequest(session, cacheRoot, *key));
     }
 
     bool savePersistentWaveformCache(const cupuacu::DocumentSession &session,
                                      const Paths &paths)
     {
         return savePersistentWaveformCache(session, paths.waveformCachePath());
+    }
+
+    CacheSaveScheduleResult
+    schedulePersistentWaveformCache(const DocumentSession &session,
+                                    const Paths &paths)
+    {
+        const auto key = session.getPersistentWaveformCacheKey();
+        if (!key || !sessionHasCompletePersistentCache(session))
+        {
+            return CacheSaveScheduleResult::Unavailable;
+        }
+        return cacheSaveWorker().schedule(captureCacheSaveRequest(
+                   session, paths.waveformCachePath(), *key))
+                   ? CacheSaveScheduleResult::Scheduled
+                   : CacheSaveScheduleResult::Busy;
+    }
+
+    bool hasScheduledPersistentWaveformCacheWork()
+    {
+        return cacheSaveWorker().hasWork();
+    }
+
+    void flushScheduledPersistentWaveformCaches()
+    {
+        cacheSaveWorker().flush();
     }
 
     bool loadPersistentWaveformCache(

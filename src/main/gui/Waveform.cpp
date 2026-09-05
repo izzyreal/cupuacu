@@ -1015,7 +1015,9 @@ void Waveform::appendBlockWaveformGeometryRange(
         return;
     }
 
-    const int64_t frameCount = doc.getFrameCount();
+    const int64_t frameCount = planWaveformRenderFrameLimit(
+        doc.getFrameCount(), samplesPerPixel, state->pixelScale,
+        session.getWaveformCache(channelIndex), isWaveformCacheBuildActive());
     auto getPeakForPixel = [&](const int x, Peak &out) -> bool
     {
         double aD = 0.0;
@@ -1032,6 +1034,7 @@ void Waveform::appendBlockWaveformGeometryRange(
             return false;
         }
 
+        bD = std::min(bD, static_cast<double>(frameCount));
         return computeWaveformPeakForSampleWindow(
             session, channelIndex, sampleOffset, samplesPerPixel,
             state->pixelScale,
@@ -1851,7 +1854,9 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
         return;
     }
 
-    const int64_t frameCount = doc.getFrameCount();
+    const int64_t frameCount = planWaveformRenderFrameLimit(
+        doc.getFrameCount(), samplesPerPixel, state->pixelScale,
+        session.getWaveformCache(channelIndex), isWaveformCacheBuildActive());
 
     auto getPeakForPixel = [&](const int x, const int drawXi,
                                Peak &out) -> bool
@@ -1870,6 +1875,7 @@ void Waveform::renderBlockWaveformRange(SDL_Renderer *renderer, int xStart,
             return false;
         }
 
+        bD = std::min(bD, static_cast<double>(frameCount));
         return computeWaveformPeakForSampleWindow(
             session, channelIndex, sampleOffset, samplesPerPixel,
             state->pixelScale, aD, bD, out);

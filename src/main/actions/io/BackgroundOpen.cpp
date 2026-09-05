@@ -101,9 +101,19 @@ namespace cupuacu::actions::io
                                            BackgroundOpenJob &job)
         {
             const auto snapshot = job.snapshot();
-            const auto previousTabs = state->tabs;
-            const auto previousRecentFiles = state->recentFiles;
-            const int previousActiveTabIndex = state->activeTabIndex;
+            const bool hasPreview =
+                state->pendingOpenWaveformBuild.active &&
+                state->getActiveDocumentSession().openingPreview;
+            const auto previousTabs =
+                hasPreview ? state->pendingOpenWaveformBuild.previousTabs
+                           : state->tabs;
+            const auto previousRecentFiles =
+                hasPreview ? state->pendingOpenWaveformBuild.previousRecentFiles
+                           : state->recentFiles;
+            const int previousActiveTabIndex =
+                hasPreview
+                    ? state->pendingOpenWaveformBuild.previousActiveTabIndex
+                    : state->activeTabIndex;
 
             const auto recordStartupFailure = [&]()
             {
@@ -131,6 +141,10 @@ namespace cupuacu::actions::io
 
             if (!snapshot.success)
             {
+                if (hasPreview)
+                {
+                    cancelPendingOpenWaveformBuild(state);
+                }
                 cupuacu::clearLongTask(state, false);
                 const bool showUi = !isStartupRestore;
                 detail::reportDocumentIoFailure(state, "Open", snapshot.path,
@@ -158,7 +172,7 @@ namespace cupuacu::actions::io
                 return;
             }
 
-            if (!prepareTabForOpenedDocument(state))
+            if (!hasPreview && !prepareTabForOpenedDocument(state))
             {
                 cupuacu::clearLongTask(state, false);
                 detail::reportDocumentIoFailure(
@@ -174,6 +188,7 @@ namespace cupuacu::actions::io
             }
 
             prepareForDocumentTransition(state);
+            state->pendingOpenWaveformBuild = {};
             auto &session = state->getActiveDocumentSession();
             session.setCurrentFile(snapshot.path);
             cupuacu::file::commitLoadedAudioFile(session, snapshot.path,
@@ -235,6 +250,56 @@ namespace cupuacu::actions::io
             }
 
             cupuacu::clearLongTask(state, false);
+        }
+
+        void applyOpeningPreview(State *state, BackgroundOpenJob &job,
+                                 waveform::DecodedWaveformChunk chunk)
+        {
+            if (!state->pendingOpenWaveformBuild.active)
+            {
+                auto previousTabs = state->tabs;
+                const auto previousIndex = state->activeTabIndex;
+                if (!prepareTabForOpenedDocument(state))
+                {
+                    job.cancel();
+                    return;
+                }
+                state->pendingOpenWaveformBuild = {
+                    .active = true,
+                    .request = job.getRequest(),
+                    .path = job.getPath(),
+                    .tabIndex = state->activeTabIndex,
+                    .revertOnCancel = true,
+                    .previousTabs = std::move(previousTabs),
+                    .previousRecentFiles = state->recentFiles,
+                    .previousActiveTabIndex = previousIndex};
+                auto &session = state->getActiveDocumentSession();
+                session.openingPreview = true;
+                session.document.initialize(chunk.format, chunk.sampleRate,
+                                            chunk.channels.size(),
+                                            chunk.frameCount);
+                session.waveformCaches.resetToChannelCount(
+                    chunk.channels.size());
+                session.setCurrentFile(job.getPath());
+                session.syncSelectionAndCursorToDocumentLength();
+                refreshDocumentUi(state);
+                setMainWindowTitleToActiveDocument(state);
+            }
+            auto &session = state->getActiveDocumentSession();
+            if (chunk.cached)
+            {
+                session.waveformCaches = std::move(*chunk.cached);
+            }
+            else
+            {
+                for (std::size_t c = 0; c < chunk.channels.size(); ++c)
+                {
+                    session.getWaveformCache(c).applyLevelSpanUpdates(
+                        chunk.frameCount, chunk.fromBlock, chunk.toBlock,
+                        chunk.channels[c]);
+                }
+            }
+            gui::Waveform::applyAllPendingCacheUpdates(state);
         }
 
         void finalizeStartupRestoreIfComplete(cupuacu::State *state)
@@ -319,6 +384,7 @@ namespace cupuacu::actions::io
 
     BackgroundOpenJob::~BackgroundOpenJob()
     {
+        cancel();
         if (worker.joinable())
         {
             worker.join();
@@ -352,6 +418,35 @@ namespace cupuacu::actions::io
         return std::move(loadedFile);
     }
 
+    std::optional<waveform::DecodedWaveformChunk>
+    BackgroundOpenJob::takePreview()
+    {
+        std::lock_guard lock(mutex);
+        if (previews.empty())
+        {
+            return std::nullopt;
+        }
+        auto result = std::move(previews.front());
+        previews.pop_front();
+        previewCv.notify_one();
+        return result;
+    }
+
+    void BackgroundOpenJob::publishPreview(waveform::DecodedWaveformChunk chunk)
+    {
+        std::unique_lock lock(mutex);
+        previewCv.wait(lock,
+                       [this]
+                       {
+                           return previews.size() < 8 || cancelRequested.load();
+                       });
+        if (cancelRequested.load())
+        {
+            throw LongTaskCanceledError{};
+        }
+        previews.push_back(std::move(chunk));
+    }
+
     std::uint64_t BackgroundOpenJob::getId() const
     {
         return id;
@@ -370,6 +465,7 @@ namespace cupuacu::actions::io
     void BackgroundOpenJob::cancel()
     {
         cancelRequested.store(true);
+        previewCv.notify_all();
     }
 
     void BackgroundOpenJob::publishProgress(
@@ -384,36 +480,74 @@ namespace cupuacu::actions::io
     {
         try
         {
-            auto loaded = std::make_unique<file::LoadedAudioFile>(
-                file::loadAudioFile(request.path,
-                                    [this](const std::string &detailToUse,
-                                           std::optional<double> progressToUse)
-                                    {
-                                        publishProgress(detailToUse,
-                                                        progressToUse);
-                                    },
-                                    [this]()
-                                    {
-                                        return cancelRequested.load();
-                                    }));
-            if (!waveformCacheRoot.empty() &&
-                !cancelRequested.load(std::memory_order_acquire))
+            waveform::DecodedWaveformBuilder builder;
+            waveform::DocumentWaveformCaches cached;
+            bool cacheChecked = false;
+            bool cacheLoaded = false;
+            auto loaded =
+                std::make_unique<file::LoadedAudioFile>(file::loadAudioFile(
+                    request.path,
+                    [this](const std::string &detailToUse,
+                           std::optional<double> progressToUse)
+                    {
+                        publishProgress(detailToUse, progressToUse);
+                    },
+                    [this]()
+                    {
+                        return cancelRequested.load();
+                    },
+                    [&](const Document &document, int64_t frames)
+                    {
+                        if (cancelRequested.load())
+                        {
+                            throw LongTaskCanceledError{};
+                        }
+                        if (!cacheChecked)
+                        {
+                            cacheChecked = true;
+                            if (!waveformCacheRoot.empty())
+                            {
+                                DocumentSession cacheSession;
+                                cacheSession.currentFile = request.path;
+                                cacheSession.document = document;
+                                cacheLoaded =
+                                    waveform::loadPersistentWaveformCache(
+                                        cacheSession, waveformCacheRoot);
+                                if (cacheLoaded)
+                                {
+                                    cached =
+                                        std::move(cacheSession.waveformCaches);
+                                }
+                            }
+                            if (cacheLoaded)
+                            {
+                                waveform::DecodedWaveformChunk preview;
+                                preview.format = document.getSampleFormat();
+                                preview.sampleRate = document.getSampleRate();
+                                preview.frameCount = document.getFrameCount();
+                                preview.channels.resize(
+                                    document.getChannelCount());
+                                preview.cached = cached;
+                                publishPreview(std::move(preview));
+                            }
+                        }
+                        if (!cacheLoaded)
+                        {
+                            if (auto chunk = builder.append(document, frames))
+                            {
+                                publishPreview(std::move(*chunk));
+                            }
+                        }
+                    }));
+            if (cancelRequested.load())
             {
-                cupuacu::DocumentSession cacheSession;
-                cacheSession.currentFile = request.path;
-                cacheSession.document = loaded->document;
-                cacheSession.waveformCaches.resetToChannelCount(
-                    cacheSession.document.getChannelCount());
-                loaded->persistentWaveformCacheLoaded =
-                    cupuacu::waveform::loadPersistentWaveformCache(
-                        cacheSession, waveformCacheRoot);
-                loaded->persistentWaveformCacheChecked = true;
-                if (loaded->persistentWaveformCacheLoaded)
-                {
-                    loaded->waveformCaches =
-                        std::move(cacheSession.waveformCaches);
-                }
+                throw LongTaskCanceledError{};
             }
+            loaded->persistentWaveformCacheChecked = cacheChecked;
+            loaded->persistentWaveformCacheLoaded = cacheLoaded;
+            loaded->waveformCachesReady = loaded->document.getFrameCount() > 0;
+            loaded->waveformCaches =
+                cacheLoaded ? std::move(cached) : builder.takeCaches();
             std::lock_guard lock(mutex);
             loadedFile = std::move(loaded);
             success = true;
@@ -464,12 +598,32 @@ namespace cupuacu::actions::io
             {
                 state->backgroundOpenJob->cancel();
             }
+            // Bound UI work even when decoding outruns rendering. The producer
+            // waits on its eight-entry queue and cancellation wakes that wait.
+            const auto deadline =
+                std::chrono::steady_clock::now() + std::chrono::milliseconds(3);
+            for (int count = 0; count < 8 && !isLongTaskCancelRequested(state);
+                 ++count)
+            {
+                auto preview = state->backgroundOpenJob->takePreview();
+                if (!preview)
+                {
+                    break;
+                }
+                applyOpeningPreview(state, *state->backgroundOpenJob,
+                                    std::move(*preview));
+                if (std::chrono::steady_clock::now() >= deadline)
+                {
+                    break;
+                }
+            }
             const auto snapshot = state->backgroundOpenJob->snapshot();
             if (snapshot.completed)
             {
                 auto job = std::move(state->backgroundOpenJob);
                 if (snapshot.canceled)
                 {
+                    cancelPendingOpenWaveformBuild(state);
                     cupuacu::clearLongTask(state, false);
                     if (snapshot.request.kind == PendingOpenKind::StartupRestore ||
                         state->quitRequestedAfterLongTaskCancel)

@@ -20,7 +20,7 @@ import time
 SCHEMA = 1
 QUICK = ["open_uncached", "open_cached", "sample_shared", "delete", "gain_fixed",
          "gain_all", "undo", "redo", "scroll", "zoom"]
-EXTRA = ["sample", "copy", "paste", "trim", "scroll_dirty", "zoom_dirty", "waveform_build"]
+EXTRA = ["sample", "copy", "paste", "trim", "scroll_dirty", "zoom_dirty", "zoom_unaligned", "waveform_build"]
 SDL_CASES = ["open_uncached", "open_cached", "scroll", "zoom", "scroll_dirty", "zoom_dirty", "responsive_gain", "responsive_stall"]
 
 
@@ -196,7 +196,7 @@ def summarize(rows):
                     metrics.setdefault(k + "_ms", []).append(v)
             for k, v in (row.get("work") or {}).items():
                 metrics.setdefault(k, []).append(v)
-            for group in ("event_latency", "waveform_queries", "navigation_dispatch", "navigation_during_work"):
+            for group in ("event_latency", "event_loop", "waveform_queries", "navigation_dispatch", "navigation_during_work"):
                 for k, v in row.get(group, {}).items():
                     if v is not None:
                         metrics.setdefault(group + "_" + k, []).append(v)
@@ -279,6 +279,12 @@ def cases(profile, sizes, suites):
                 for mode in (["timing", "diagnostic"] if suite == "core" else ["timing"]):
                     yield {"suite": suite, "mode": mode, "scenario": scenario, "frames": int(mib * 1048576 / 8),
                            "format": "wav" if mib < 4096 else "caf", "position": "begin", "history_depth": 1}
+        if profile != "quick":
+            for mib in sizes:
+                for scenario in ("open_uncached", "open_cached"):
+                    for mode in (["timing", "diagnostic"] if suite == "core" else ["timing"]):
+                        yield {"suite": suite, "mode": mode, "scenario": scenario, "frames": int(mib * 1048576 / 8),
+                               "format": "m4a", "position": "begin", "history_depth": 1}
         if suite == "core":
             for scenario in ["responsive_stall", "responsive_gain", "waveform_build"]:
                 if scenario in scenarios:
@@ -321,6 +327,8 @@ def main(argv=None):
     parser.add_argument("--build-dir", type=Path, default=Path("build"))
     parser.add_argument("--profile", choices=("quick", "extended", "large"), default="quick")
     parser.add_argument("--suite", choices=("core", "sdl", "all"), default="core")
+    parser.add_argument("--mode", choices=("timing", "diagnostic", "all"), default="all",
+                        help="Select measurements; timing needs only the ordinary core benchmark")
     parser.add_argument("--filter", default="*", help="Scenario glob, e.g. '*gain*'")
     parser.add_argument("--sizes-mib", type=float, nargs="+")
     parser.add_argument("--repetitions", type=int)
@@ -344,7 +352,9 @@ def main(argv=None):
     max_disk = (args.max_disk_mib or 4096) * 1048576
     suites = ["core", "sdl"] if args.suite == "all" else [args.suite]
     binaries = {("core", "timing"): "cupuacu-benchmarks", ("core", "diagnostic"): "cupuacu-benchmarks-metrics", ("sdl", "timing"): "cupuacu-benchmarks-sdl"}
-    selected = [case for case in cases(args.profile, sizes, suites) if fnmatch.fnmatch(case["scenario"], args.filter)]
+    selected = [case for case in cases(args.profile, sizes, suites)
+                if fnmatch.fnmatch(case["scenario"], args.filter)
+                and (args.mode == "all" or case["mode"] == args.mode)]
     if not selected:
         parser.error("No scenarios selected")
     for key in {(case["suite"], case["mode"]) for case in selected} | {("core", "timing")}:
@@ -382,6 +392,7 @@ def main(argv=None):
                  "node": platform.node(), "processor": platform.processor()},
         "fixture_generation_seconds": time.monotonic() - fixture_started,
         "os_cache_state": "uncontrolled", "isolation": "spawn" if os.name == "nt" else "fork_before_sdl_and_documents", "selected_suites": suites,
+        "selected_mode": args.mode,
         "runs": [], "limits": {"max_rss_bytes": max_rss, "max_disk_bytes": max_disk, "timeout_seconds": args.timeout_seconds}}
     started = time.monotonic()
     for index, case in enumerate(selected):

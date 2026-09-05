@@ -25,6 +25,23 @@ def report(value=2):
 
 
 class ReportingTests(unittest.TestCase):
+    def test_timing_only_runs_without_diagnostic_executable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            executable = "cupuacu-benchmarks" + (".exe" if runner.os.name == "nt" else "")
+            (root / executable).touch()
+            output = root / "result.json"
+            with patch.object(runner, "run_child", return_value={"status": "ok", "validated": True}) as child:
+                self.assertEqual(runner.main([
+                    "--build-dir", str(root), "--mode", "timing", "--filter", "delete",
+                    "--sizes-mib", "1", "--repetitions", "1",
+                    "--fixtures", str(root / "fixtures"), "--output", str(output),
+                ]), 0)
+            child.assert_called_once()
+            result = json.loads(output.read_text())
+            self.assertEqual(result["selected_mode"], "timing")
+            self.assertEqual([row["case"]["mode"] for row in result["runs"]], ["timing"])
+
     def test_comparison_and_missing_scenarios(self):
         a, b = report(2), report(3)
         comparison = runner.compare(a, b)
@@ -48,11 +65,21 @@ class ReportingTests(unittest.TestCase):
     def test_latency_and_query_counts_are_comparable(self):
         row = report()["runs"][0]
         row["event_latency"] = {"max_ms": 80, "p99_ms": None}
+        row["event_loop"] = {"max_iteration_ms": 75}
         row["waveform_queries"] = {"raw_samples_scanned": 512}
         metrics = runner.summarize([row])[0]["metrics"]
         self.assertEqual(metrics["event_latency_max_ms"]["median"], 80)
+        self.assertEqual(metrics["event_loop_max_iteration_ms"]["median"], 75)
         self.assertEqual(metrics["waveform_queries_raw_samples_scanned"]["median"], 512)
         self.assertNotIn("event_latency_p99_ms", metrics)
+
+    def test_extended_alac_opening_covers_core_and_rendering(self):
+        cases = list(runner.cases("extended", [1, 16], ["core", "sdl"]))
+        alac = [c for c in cases if c["format"] == "m4a"]
+        self.assertEqual(len(alac), 12)
+        self.assertEqual({c["scenario"] for c in alac}, {"open_cached", "open_uncached"})
+        self.assertEqual({c["suite"] for c in alac}, {"core", "sdl"})
+        self.assertFalse(any(c["format"] == "m4a" for c in runner.cases("quick", [1], ["core"])))
 
     def test_missing_measurements_and_failures_stay_visible(self):
         rows = report()["runs"] + [dict(case=CASE, status="timeout")]

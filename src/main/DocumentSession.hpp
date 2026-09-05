@@ -30,6 +30,7 @@ namespace cupuacu
         std::string overwritePreservationBrokenReason;
         Document document;
         waveform::DocumentWaveformCaches waveformCaches;
+        bool openingPreview = false;
         gui::Selection<double> selection = gui::Selection<double>(0.0);
         int64_t cursor = 0;
         undo::UndoStore undoStore;
@@ -37,7 +38,7 @@ namespace cupuacu
         std::filesystem::path autosaveSnapshotPath;
         uint64_t autosavedWaveformDataVersion = 0;
         uint64_t autosavedMarkerDataVersion = 0;
-        bool pendingPersistentWaveformCacheSave = false;
+        std::optional<uint64_t> pendingPersistentWaveformCacheVersion;
 
         using WaveformCacheBuildProgress =
             waveform::DocumentWaveformCaches::BuildProgress;
@@ -60,28 +61,49 @@ namespace cupuacu
 
         void updateWaveformCache()
         {
+            if (openingPreview)
+            {
+                return;
+            }
             waveformCaches.update(document, document.getWaveformDataVersion());
         }
 
         void markPendingPersistentWaveformCacheSave()
         {
-            pendingPersistentWaveformCacheSave = true;
+            pendingPersistentWaveformCacheVersion =
+                document.getWaveformDataVersion();
         }
 
         void clearPendingPersistentWaveformCacheSave()
         {
-            pendingPersistentWaveformCacheSave = false;
+            pendingPersistentWaveformCacheVersion.reset();
         }
 
         [[nodiscard]] bool pumpWaveformCacheWork(const Paths *paths = nullptr)
         {
+            if (openingPreview)
+            {
+                return false;
+            }
             const bool stateChanged = waveformCaches.pumpWork(
                 document, document.getWaveformDataVersion());
-            if (pendingPersistentWaveformCacheSave && paths &&
+            // A deferred retry must never publish edited peaks under the
+            // original source file's cache key.
+            if (pendingPersistentWaveformCacheVersion &&
+                *pendingPersistentWaveformCacheVersion !=
+                    document.getWaveformDataVersion())
+            {
+                clearPendingPersistentWaveformCacheSave();
+            }
+            if (pendingPersistentWaveformCacheVersion && paths &&
                 !getWaveformCacheBuildProgress().has_value())
             {
-                (void)waveform::savePersistentWaveformCache(*this, *paths);
-                pendingPersistentWaveformCacheSave = false;
+                const auto result =
+                    waveform::schedulePersistentWaveformCache(*this, *paths);
+                if (result != waveform::CacheSaveScheduleResult::Busy)
+                {
+                    clearPendingPersistentWaveformCacheSave();
+                }
             }
             return stateChanged;
         }
@@ -89,6 +111,15 @@ namespace cupuacu
         [[nodiscard]] std::optional<WaveformCacheBuildProgress>
         getWaveformCacheBuildProgress() const
         {
+            if (openingPreview)
+            {
+                return WaveformCacheBuildProgress{
+                    getWaveformCache(0).builtSamplePrefixEnd() /
+                        gui::WaveformCache::BASE_BLOCK_SIZE,
+                    (document.getFrameCount() +
+                     gui::WaveformCache::BASE_BLOCK_SIZE - 1) /
+                        gui::WaveformCache::BASE_BLOCK_SIZE};
+            }
             return waveformCaches.getBuildProgress(
                 document, document.getWaveformDataVersion());
         }

@@ -6,6 +6,7 @@
 #include "actions/audio/SetSampleValue.hpp"
 #include "actions/Zoom.hpp"
 #include "file/file_loading.hpp"
+#include "file/m4a/M4aAlacWriter.hpp"
 #include "gui/WaveformOverviewPlanning.hpp"
 #include "performance/WorkMetrics.hpp"
 
@@ -106,6 +107,32 @@ namespace
     {
         require(frames >= 2048, "Fixture must contain at least 2048 frames");
         std::filesystem::create_directories(path.parent_path());
+        if (format == "m4a")
+        {
+            Document document;
+            document.initialize(SampleFormat::PCM_S16, sampleRate, channels,
+                                frames);
+            std::vector<float> block(16384 * channels);
+            for (int64_t pos = 0; pos < frames; pos += 16384)
+            {
+                const auto count = std::min<int64_t>(16384, frames - pos);
+                for (int64_t i = 0; i < count; ++i)
+                {
+                    for (int ch = 0; ch < channels; ++ch)
+                    {
+                        // The export writer rounds normalized input against
+                        // 32767. Recover the exact same integer PCM codes that
+                        // the WAV/FLAC fixture generator writes directly.
+                        block[i * channels + ch] =
+                            sampleAt(pos + i, ch) * (32768.0f / 32767.0f);
+                    }
+                }
+                document.writeInterleavedFloatBlock(pos, block.data(), count,
+                                                    channels, false);
+            }
+            file::m4a::writeAlacM4aFile(document, path, 16);
+            return;
+        }
         SF_INFO info{};
         info.channels = channels;
         info.samplerate = sampleRate;
@@ -232,6 +259,10 @@ namespace
 
     bool busy(State &state)
     {
+        if (waveform::hasScheduledPersistentWaveformCacheWork())
+        {
+            return true;
+        }
         if (state.backgroundEffectJob || state.backgroundOpenJob ||
             state.backgroundSaveJob || state.backgroundAutosaveJob ||
             state.pendingOpenWaveformBuild.active ||
@@ -427,6 +458,12 @@ namespace
                         : step % 3 == 1 ? 128.0
                                         : double(frames) / viewportWidth)
                      : 128.0;
+            if (scenario == "zoom_unaligned" && step % 3 == 2)
+            {
+                // Power-of-two fixtures and viewport widths otherwise align
+                // every fit-to-file query to coarse peak boundaries.
+                spp = (double(frames) - 17.0) / (viewportWidth - 3.0);
+            }
             auto offset =
                 int64_t((double(std::max<int64_t>(
                              0, frames - int64_t(spp * viewportWidth))) *
@@ -459,6 +496,7 @@ namespace
                 {
                     gui::Peak peak{};
                     const double begin = offset + x * spp;
+                    ++stats.windowsRequested;
                     if (gui::computeWaveformPeakForSampleWindow(
                             state.getActiveDocumentSession(), ch, offset, spp,
                             1, begin, begin + spp, peak, &stats))
@@ -534,7 +572,7 @@ namespace
         const bool opening = name.starts_with("open_");
         const bool navigating =
             name.starts_with("scroll") || name.starts_with("zoom");
-        const bool latency = name.starts_with("responsive_");
+        const bool latency = name.starts_with("responsive_") || opening;
         State state;
         state.paths =
             std::make_unique<BenchPaths>(request.at("root").get<std::string>());
@@ -748,14 +786,18 @@ namespace
                 result["milestones_ms"]["committed"] = elapsed(started);
             }
             bool sawAudio = !opening;
+            double maxPumpMs = 0;
             const auto deadline =
                 Clock::now() +
                 std::chrono::seconds(request.value("timeout_seconds", 120));
             do
             {
                 require(Clock::now() < deadline, "Scenario timed out");
+                const auto pumpStarted = Clock::now();
                 pump(state);
+                maxPumpMs = std::max(maxPumpMs, elapsed(pumpStarted));
                 if (opening && !sawAudio &&
+                    !state.getActiveDocumentSession().openingPreview &&
                     state.getActiveDocumentSession().document.getFrameCount() ==
                         frames)
                 {
@@ -776,6 +818,13 @@ namespace
                     result["milestones_ms"]["view_ready"] = elapsed(started);
                 }
                 auto &session = state.getActiveDocumentSession();
+                if (opening && session.document.getChannelCount() > 0 &&
+                    session.getWaveformCache(0).builtSamplePrefixEnd() > 0 &&
+                    result["milestones_ms"]["first_waveform"].is_null())
+                {
+                    result["milestones_ms"]["first_waveform"] =
+                        elapsed(started);
+                }
                 if (sawAudio &&
                     !result["milestones_ms"]["committed"].is_null() &&
                     !session.getWaveformCacheBuildProgress() &&
@@ -791,6 +840,7 @@ namespace
                 require(error.empty(), error);
             } while (busy(state) ||
                      (CUPUACU_BENCHMARK_SDL && !renderReady(state)));
+            result["event_loop"]["max_iteration_ms"] = maxPumpMs;
             persistence::flushScheduledClipboardSnapshots();
             result["milestones_ms"]["background_complete"] = elapsed(started);
             measurement.SetIterationTime(elapsed(started) / 1000.0);
@@ -937,6 +987,7 @@ int runMain(int argc, char **argv)
              {{"command_return", nullptr},
               {"committed", nullptr},
               {"audio_available", nullptr},
+              {"first_waveform", nullptr},
               {"view_ready", nullptr},
               {"waveform_complete", nullptr},
               {"background_complete", nullptr}}}};

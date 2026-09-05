@@ -13,6 +13,25 @@
 
 namespace cupuacu::gui
 {
+    inline int64_t planWaveformRenderFrameLimit(const int64_t frameCount,
+                                                const double samplesPerPixel,
+                                                const uint8_t pixelScale,
+                                                const WaveformCache &cache,
+                                                const bool cacheBuildActive)
+    {
+        const double rawThreshold =
+            WaveformCache::BASE_BLOCK_SIZE *
+            static_cast<double>(std::max<uint8_t>(1, pixelScale));
+        if (cacheBuildActive && samplesPerPixel >= rawThreshold)
+        {
+            // Rendering an unbuilt overview must not trigger a full audio
+            // scan on the UI thread. Sample-level views remain bounded.
+            return std::clamp<int64_t>(cache.builtSamplePrefixEnd(), 0,
+                                       frameCount);
+        }
+        return frameCount;
+    }
+
     struct BackgroundBlockRenderInputPlan
     {
         bool bypassCache = true;
@@ -73,6 +92,64 @@ namespace cupuacu::gui
         WaveformOverviewDebugStats *debugStats = nullptr)
     {
         const auto &document = session.document;
+        if (session.openingPreview)
+        {
+            // Opening previews contain peaks only. Expand edge windows to base
+            // peaks instead of consulting audio which has not been committed.
+            if (channelIndex < 0 || channelIndex >= document.getChannelCount())
+            {
+                return false;
+            }
+            const auto &cache = session.getWaveformCache(channelIndex);
+            constexpr int64_t base = WaveformCache::BASE_BLOCK_SIZE;
+            const auto prefix = cache.builtSamplePrefixEnd();
+            if (endSampleExclusive <= 0 || startSampleInclusive >= prefix)
+            {
+                return false;
+            }
+            int64_t position =
+                static_cast<int64_t>(std::max(0.0, startSampleInclusive)) /
+                base;
+            const auto end = std::min<int64_t>(
+                cache.validPeakCountForLevel(0),
+                static_cast<int64_t>(std::ceil(
+                    std::min(endSampleExclusive, static_cast<double>(prefix)) /
+                    base)));
+            bool found = false;
+            while (position < end)
+            {
+                int level = cache.getLevelIndex(samplesPerPixel);
+                int64_t width = int64_t{1} << level;
+                while (level > 0 &&
+                       (position % width != 0 || width > end - position))
+                {
+                    --level;
+                    width /= 2;
+                }
+                const auto peak =
+                    cache.getLevelByIndex(level)[position / width];
+                if (!found)
+                {
+                    outPeak = peak;
+                }
+                else
+                {
+                    outPeak.min = std::min(outPeak.min, peak.min);
+                    outPeak.max = std::max(outPeak.max, peak.max);
+                }
+                found = true;
+                position += width;
+                if (debugStats)
+                {
+                    ++debugStats->cachedPeaksUsed;
+                }
+            }
+            if (debugStats)
+            {
+                ++debugStats->windowsUsedCache;
+            }
+            return found;
+        }
         // Keep the borrowed sample view alive and use dimensions from the
         // same revision throughout the query.
         const auto buffer = document.getAudioBuffer();
@@ -93,13 +170,6 @@ namespace cupuacu::gui
         const auto &waveformCache = session.getWaveformCache(channelIndex);
         const int cacheLevel =
             bypassCache ? 0 : waveformCache.getLevelIndex(samplesPerPixel);
-        const int64_t samplesPerPeak =
-            bypassCache ? 0 : WaveformCache::samplesPerPeakForLevel(cacheLevel);
-        const PeakLevel *peaks =
-            bypassCache ? nullptr : &waveformCache.getLevel(samplesPerPixel);
-        const int64_t validCachedPeakCount =
-            bypassCache ? 0 : waveformCache.validPeakCountForLevel(cacheLevel);
-
         auto accumulateRawPeakRange = [&](const int64_t startSample,
                                           const int64_t endSampleWindowExclusive,
                                           Peak &ioPeak,
@@ -166,55 +236,59 @@ namespace cupuacu::gui
             ++debugStats->windowsUsedCache;
         }
 
-        if (!peaks || peaks->empty())
+        if (waveformCache.levelsCount() == 0)
         {
             return false;
         }
 
         Peak peak{};
         bool hasPeak = false;
-        const int64_t firstFullBlockStart =
-            ((a + samplesPerPeak - 1) / samplesPerPeak) * samplesPerPeak;
-        const int64_t lastFullBlockEnd = (b / samplesPerPeak) * samplesPerPeak;
-
+        // Use finer cached levels at the edges of a coarse display peak.
+        // Raw work for a completely built cache is bounded by two base blocks,
+        // independent of the zoom level or file length.
+        constexpr int64_t base = WaveformCache::BASE_BLOCK_SIZE;
+        const int64_t firstFullBlockStart = ((a + base - 1) / base) * base;
+        const int64_t lastFullBlockEnd = (b / base) * base;
+        if (firstFullBlockStart >= b)
+        {
+            accumulateRawPeakRange(a, b, outPeak, hasPeak);
+            return hasPeak;
+        }
         accumulateRawPeakRange(a, std::min(b, firstFullBlockStart), peak, hasPeak);
 
-        if (firstFullBlockStart < lastFullBlockEnd)
+        int64_t position = firstFullBlockStart;
+        const int64_t cachedEnd = std::min(
+            lastFullBlockEnd, waveformCache.validPeakCountForLevel(0) * base);
+        while (position < cachedEnd)
         {
-            const int64_t requestedI0 = firstFullBlockStart / samplesPerPeak;
-            const int64_t requestedI1Exclusive = lastFullBlockEnd / samplesPerPeak;
-            const int64_t cachedI0 = std::clamp<int64_t>(
-                requestedI0, 0, validCachedPeakCount);
-            const int64_t cachedI1Exclusive = std::clamp<int64_t>(
-                requestedI1Exclusive, 0, validCachedPeakCount);
-            const int64_t cachedFullBlockStart = cachedI0 * samplesPerPeak;
-            const int64_t cachedFullBlockEnd = cachedI1Exclusive * samplesPerPeak;
-
-            accumulateRawPeakRange(firstFullBlockStart,
-                                   std::min(lastFullBlockEnd, cachedFullBlockStart),
-                                   peak, hasPeak);
-
-            for (int64_t i = cachedI0; i < cachedI1Exclusive; ++i)
+            int level = cacheLevel;
+            int64_t width = WaveformCache::samplesPerPeakForLevel(level);
+            while (level > 0 &&
+                   (position % width != 0 || width > cachedEnd - position))
             {
-                if (debugStats)
-                {
-                    ++debugStats->cachedPeaksUsed;
-                }
-                if (!hasPeak)
-                {
-                    peak = (*peaks)[i];
-                    hasPeak = true;
-                }
-                else
-                {
-                    peak.min = std::min(peak.min, (*peaks)[i].min);
-                    peak.max = std::max(peak.max, (*peaks)[i].max);
-                }
+                --level;
+                width /= 2;
             }
-
-            accumulateRawPeakRange(std::max(firstFullBlockStart, cachedFullBlockEnd),
-                                   lastFullBlockEnd, peak, hasPeak);
+            const auto &levelPeaks = waveformCache.getLevelByIndex(level);
+            const auto next = levelPeaks[position / width];
+            if (debugStats)
+            {
+                ++debugStats->cachedPeaksUsed;
+            }
+            if (!hasPeak)
+            {
+                peak = next;
+                hasPeak = true;
+            }
+            else
+            {
+                peak.min = std::min(peak.min, next.min);
+                peak.max = std::max(peak.max, next.max);
+            }
+            position += width;
         }
+        // Dirty/unbuilt cache ranges still need exact raw fallback.
+        accumulateRawPeakRange(position, lastFullBlockEnd, peak, hasPeak);
 
         accumulateRawPeakRange(std::max(a, lastFullBlockEnd), b, peak, hasPeak);
         if (!hasPeak)

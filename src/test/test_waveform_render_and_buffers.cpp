@@ -457,6 +457,82 @@ TEST_CASE("Overview rendering falls back to raw samples past the dirty cache fro
     REQUIRE(stats.windowsBypassedCache == 2);
 }
 
+TEST_CASE("Progressive overview rendering only requests built audio",
+          "[gui][waveform]")
+{
+    using cupuacu::gui::planWaveformRenderFrameLimit;
+    cupuacu::gui::WaveformCache cache;
+    constexpr int64_t frames = 32768;
+    REQUIRE(planWaveformRenderFrameLimit(frames, 4096, 1, cache, true) == 0);
+    cache.init(frames);
+    REQUIRE(planWaveformRenderFrameLimit(frames, 4096, 1, cache, true) == 0);
+    std::vector<float> samples(frames, 0.5f);
+    cache.rebuildAll(samples.data(), frames);
+    cache.invalidateSamples(128 * 37, frames - 1);
+    REQUIRE(planWaveformRenderFrameLimit(frames, 4096, 1, cache, true) ==
+            128 * 37);
+    REQUIRE(planWaveformRenderFrameLimit(frames, 4096, 1, cache, false) ==
+            frames);
+    REQUIRE(planWaveformRenderFrameLimit(frames, 1, 1, cache, true) == frames);
+    REQUIRE(planWaveformRenderFrameLimit(frames, 128, 2, cache, true) ==
+            frames);
+    REQUIRE(planWaveformRenderFrameLimit(frames, 256, 2, cache, true) ==
+            128 * 37);
+    cache.rebuildDirty(samples.data());
+    REQUIRE(planWaveformRenderFrameLimit(frames, 4096, 1, cache, true) ==
+            frames);
+}
+
+TEST_CASE("Zoomed-out exact peak queries bound raw scans at cache boundaries",
+          "[gui][waveform]")
+{
+    cupuacu::DocumentSession session;
+    constexpr int64_t frames = 262147;
+    std::vector<float> samples(frames);
+    for (int64_t i = 0; i < frames; ++i)
+    {
+        samples[i] = float((i * 37) % 1009 - 504) / 512.0f;
+    }
+    session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1,
+                                frames);
+    session.document.writeInterleavedFloatBlock(0, samples.data(), frames, 1,
+                                                false);
+    session.rebuildWaveformCacheSynchronously();
+
+    for (const double zoom : {128.0, 1024.0, 16384.0, 131072.0})
+    {
+        for (const int64_t start : {0, 1, 127, 128, 333, 65535, 262140})
+        {
+            for (const int64_t length : {1, 127, 128, 129, 1931, 98309})
+            {
+                const auto end = std::min(frames, start + length);
+                cupuacu::gui::Peak peak{};
+                cupuacu::gui::WaveformOverviewDebugStats stats{};
+                REQUIRE(cupuacu::gui::computeWaveformPeakForSampleWindow(
+                    session, 0, 0, zoom, 1, start, end, peak, &stats));
+                const auto expected = std::minmax_element(
+                    samples.begin() + start, samples.begin() + end);
+                REQUIRE(peak.min == *expected.first);
+                REQUIRE(peak.max == *expected.second);
+                REQUIRE(stats.rawSamplesScanned < 256);
+            }
+        }
+    }
+
+    // The top level covering this window is incomplete; its lower-level
+    // children before the dirty frontier are still usable.
+    session.invalidateWaveformSamples(100 * 128, frames - 1);
+    cupuacu::gui::Peak peak{};
+    cupuacu::gui::WaveformOverviewDebugStats stats{};
+    REQUIRE(cupuacu::gui::computeWaveformPeakForSampleWindow(
+        session, 0, 0, 131072, 1, 1, 100 * 128, peak, &stats));
+    const auto expected =
+        std::minmax_element(samples.begin() + 1, samples.begin() + 100 * 128);
+    REQUIRE(peak.min == *expected.first);
+    REQUIRE(peak.max == *expected.second);
+    REQUIRE(stats.rawSamplesScanned == 127);
+}
+
 TEST_CASE("Background block render input avoids raw sample snapshots for zoomed-out views",
           "[gui][waveform]")
 {
