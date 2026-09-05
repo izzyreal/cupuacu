@@ -387,6 +387,8 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_waveform_selection.cpp
     src/test/test_session_loading.cpp
     src/test/test_owned_audio_storage.cpp
+    src/test/test_async_audio_reader.cpp
+    src/test/test_audio_edit_revision.cpp
     src/test/test_aiff_writer.cpp
     src/test/test_wav_writer.cpp
     src/test/test_codec_support.cpp
