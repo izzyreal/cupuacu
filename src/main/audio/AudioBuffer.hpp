@@ -61,6 +61,14 @@ namespace cupuacu::audio
             channels[channel].write(startFrame, samples, frames, sourceStride);
         }
 
+        void readChannelSamples(int64_t channel, int64_t startFrame,
+                                float *samples, int64_t frames,
+                                int64_t destinationStride = 1) const
+        {
+            channels[channel].read(startFrame, samples, frames,
+                                   destinationStride);
+        }
+
         virtual void assignChannels(
             const std::vector<std::vector<float>> &samples,
             const std::vector<std::vector<SampleProvenance>> &provenance,

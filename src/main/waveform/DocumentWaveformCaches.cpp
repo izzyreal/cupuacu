@@ -185,20 +185,22 @@ namespace cupuacu::waveform
                                                  gui::WaveformCache::BASE_BLOCK_SIZE));
 
                     std::vector<float> samples;
-                    samples.reserve(static_cast<std::size_t>(std::max<int64_t>(
+                    samples.resize(static_cast<std::size_t>(std::max<int64_t>(
                         0, sampleEndExclusive - sampleStart)));
                     {
                         auto lease = document.acquireReadLease();
                         for (int64_t sample = sampleStart;
-                             sample < sampleEndExclusive; ++sample)
+                             sample < sampleEndExclusive; sample += 4096)
                         {
-                            if ((sample & 4095) == 0 &&
-                                cancelRequested.load(std::memory_order_acquire))
+                            if (cancelRequested.load(std::memory_order_acquire))
                             {
                                 return;
                             }
-                            samples.push_back(
-                                lease.getSample(channel.channelIndex, sample));
+                            lease.readChannelFloatBlock(
+                                channel.channelIndex, sample,
+                                samples.data() + (sample - sampleStart),
+                                std::min<int64_t>(4096,
+                                                  sampleEndExclusive - sample));
                         }
                     }
 
@@ -635,8 +637,10 @@ namespace cupuacu::waveform
     {
         stopBuild();
 
-        const int64_t frameCount = document.getFrameCount();
-        const int64_t channelCount = document.getChannelCount();
+        const auto version = document.getWaveformDataVersion();
+        const auto lease = document.acquireReadLease();
+        const int64_t frameCount = lease.getFrameCount();
+        const int64_t channelCount = lease.getChannelCount();
         if (frameCount <= 0 || channelCount <= 0)
         {
             clear();
@@ -644,8 +648,6 @@ namespace cupuacu::waveform
         }
 
         syncToChannelCount(channelCount);
-        const auto version = document.getWaveformDataVersion();
-        const auto lease = document.acquireReadLease();
         struct ChannelSamples
         {
             const Document::ReadLease &lease;
@@ -653,6 +655,10 @@ namespace cupuacu::waveform
             float operator[](int64_t sample) const
             {
                 return lease.getSample(channel, sample);
+            }
+            void read(int64_t start, float *destination, int64_t count) const
+            {
+                lease.readChannelFloatBlock(channel, start, destination, count);
             }
         };
         for (int64_t channel = 0; channel < channelCount; ++channel)

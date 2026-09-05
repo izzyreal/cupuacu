@@ -393,15 +393,11 @@ namespace cupuacu::persistence
             {
                 const auto framesToWrite = std::min<int64_t>(
                     kAudioBlockFrames, lease.getFrameCount() - frameStart);
-                for (int64_t frame = 0; frame < framesToWrite; ++frame)
+                for (int64_t channel = 0; channel < channelCount; ++channel)
                 {
-                    for (int64_t channel = 0; channel < channelCount; ++channel)
-                    {
-                        interleaved[static_cast<std::size_t>(frame) *
-                                        static_cast<std::size_t>(channelCount) +
-                                    static_cast<std::size_t>(channel)] =
-                            lease.getSample(channel, frameStart + frame);
-                    }
+                    lease.readChannelFloatBlock(channel, frameStart,
+                                                interleaved.data() + channel,
+                                                framesToWrite, channelCount);
                 }
 
                 const auto sampleCount = framesToWrite * channelCount;

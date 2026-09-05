@@ -443,6 +443,18 @@ TEST_CASE("Overview rendering falls back to raw samples past the dirty cache fro
         session, 0, 0, 1024.0, 1, 20 * 1024.0, 21 * 1024.0, peak));
     REQUIRE(peak.min == Catch::Approx(-0.75f));
     REQUIRE(peak.max == Catch::Approx(-0.75f));
+
+    cupuacu::gui::WaveformOverviewDebugStats stats{};
+    REQUIRE(cupuacu::gui::computeWaveformPeakForSampleWindow(
+        session, 0, 0, 2.0, 1, 16383.0, 16385.0, peak, &stats));
+    REQUIRE(peak.min == -0.75f);
+    REQUIRE(peak.max == 0.25f);
+    REQUIRE(cupuacu::gui::computeWaveformPeakForSampleWindow(
+        session, 0, 0, 0.5, 1, 16384.0, 16384.5, peak, &stats));
+    REQUIRE(peak.min == -0.75f);
+    REQUIRE(peak.max == -0.75f);
+    REQUIRE(stats.rawSamplesScanned == 3);
+    REQUIRE(stats.windowsBypassedCache == 2);
 }
 
 TEST_CASE("Background block render input avoids raw sample snapshots for zoomed-out views",

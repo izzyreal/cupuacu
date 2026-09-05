@@ -86,6 +86,29 @@ TEST_CASE("playback of shared sample pages is realtime safe", "[rtsan]")
     }
 }
 
+TEST_CASE("Bulk sample reads are realtime safe across allocated and zero pages",
+          "[rtsan]")
+{
+    __rtsan::Initialize();
+    cupuacu::Document document;
+    document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, 32781);
+    document.setSample(0, 16383, 0.5f, false);
+    const auto lease = document.acquireReadLease();
+    std::array<float, 40> output;
+    output.fill(1.0f);
+    int64_t read = 0;
+    {
+        __rtsan::ScopedSanitizeRealtime realtimeScope;
+        read = lease.readChannelFloatBlock(0, 16380, output.data(), 20, 2);
+    }
+    REQUIRE(read == 20);
+    for (std::size_t i = 0; i < 20; ++i)
+    {
+        REQUIRE(output[i * 2] == (i == 3 ? 0.5f : 0.0f));
+        REQUIRE(output[i * 2 + 1] == 1.0f);
+    }
+}
+
 TEST_CASE("recording overwrite scenario is safe", "[rtsan]")
 {
     __rtsan::Initialize();

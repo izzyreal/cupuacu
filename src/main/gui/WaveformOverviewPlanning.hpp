@@ -6,6 +6,7 @@
 #include "WaveformCache.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -72,11 +73,13 @@ namespace cupuacu::gui
         WaveformOverviewDebugStats *debugStats = nullptr)
     {
         const auto &document = session.document;
-        const auto &sampleData =
-            document.getAudioBuffer()->getImmutableChannelData(channelIndex);
-        const int64_t frameCount = document.getFrameCount();
+        // Keep the borrowed sample view alive and use dimensions from the
+        // same revision throughout the query.
+        const auto buffer = document.getAudioBuffer();
+        const auto sampleData = buffer->getImmutableChannelData(channelIndex);
+        const int64_t frameCount = buffer->getFrameCount();
         if (frameCount <= 0 || channelIndex < 0 ||
-            channelIndex >= document.getChannelCount() ||
+            channelIndex >= buffer->getChannelCount() ||
             endSampleExclusive <= 0.0 ||
             startSampleInclusive >= static_cast<double>(frameCount))
         {
@@ -113,12 +116,22 @@ namespace cupuacu::gui
             }
 
             float minv = sampleData[startSample];
-            float maxv = sampleData[startSample];
-            for (int64_t i = startSample + 1; i < endSampleWindowExclusive; ++i)
+            float maxv = minv;
+            std::array<float, WaveformCache::BASE_BLOCK_SIZE> block;
+            CUPUACU_METRIC(performance::add(
+                performance::Work::SampleBytesCopied,
+                (endSampleWindowExclusive - startSample - 1) * sizeof(float)));
+            for (int64_t start = startSample + 1; start < endSampleWindowExclusive;
+                 start += block.size())
             {
-                const float v = sampleData[i];
-                minv = std::min(minv, v);
-                maxv = std::max(maxv, v);
+                const auto count = std::min<int64_t>(
+                    block.size(), endSampleWindowExclusive - start);
+                sampleData.read(start, block.data(), count);
+                for (int64_t i = 0; i < count; ++i)
+                {
+                    minv = std::min(minv, block[i]);
+                    maxv = std::max(maxv, block[i]);
+                }
             }
 
             if (!ioHasPeak)
@@ -142,18 +155,10 @@ namespace cupuacu::gui
             if (debugStats)
             {
                 ++debugStats->windowsBypassedCache;
-                debugStats->rawSamplesScanned += b - a;
             }
-            float minv = sampleData[a];
-            float maxv = sampleData[a];
-            for (int64_t i = a + 1; i < b; ++i)
-            {
-                const float v = sampleData[i];
-                minv = std::min(minv, v);
-                maxv = std::max(maxv, v);
-            }
-            outPeak = {minv, maxv};
-            return true;
+            bool hasPeak = false;
+            accumulateRawPeakRange(a, b, outPeak, hasPeak);
+            return hasPeak;
         }
 
         if (debugStats)

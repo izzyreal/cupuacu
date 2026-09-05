@@ -203,6 +203,22 @@ namespace cupuacu
         return document->getSampleUnlocked(channel, frame);
     }
 
+    int64_t Document::ReadLease::readChannelFloatBlock(
+        const int64_t channel, const int64_t startFrame, float *destination,
+        const int64_t frames, const int64_t destinationStride) const
+    {
+        if (!destination || channel < 0 || channel >= getChannelCount() ||
+            startFrame < 0 || startFrame >= getFrameCount() || frames <= 0 ||
+            destinationStride <= 0)
+        {
+            return 0;
+        }
+        const auto readable = std::min(frames, getFrameCount() - startFrame);
+        document->buffer->readChannelSamples(channel, startFrame, destination,
+                                             readable, destinationStride);
+        return readable;
+    }
+
     bool Document::ReadLease::isDirty(const int64_t channel,
                                       const int64_t frame) const
     {

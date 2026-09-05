@@ -251,6 +251,8 @@ namespace cupuacu::actions
         }
 
         const bool removingActiveTab = index == state->activeTabIndex;
+        detail::discardAutosaveSnapshot(
+            state->tabs[static_cast<std::size_t>(index)].session);
         detail::discardUndoStore(
             state->tabs[static_cast<std::size_t>(index)].session);
         state->tabs.erase(state->tabs.begin() + index);

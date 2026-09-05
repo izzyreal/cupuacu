@@ -361,14 +361,10 @@ Waveform::captureBackgroundBlockRenderRequest(
     int64_t cachedPeakStart = 0;
     if (inputPlan.bypassCache)
     {
-        rawSamples.reserve(static_cast<std::size_t>(
-            std::max<int64_t>(0, inputPlan.rawSampleEndExclusive -
-                                     inputPlan.rawSampleStart)));
-        for (int64_t sample = inputPlan.rawSampleStart;
-             sample < inputPlan.rawSampleEndExclusive; ++sample)
-        {
-            rawSamples.push_back(lease.getSample(channelIndex, sample));
-        }
+        rawSamples.resize(static_cast<std::size_t>(std::max<int64_t>(
+            0, inputPlan.rawSampleEndExclusive - inputPlan.rawSampleStart)));
+        lease.readChannelFloatBlock(channelIndex, inputPlan.rawSampleStart,
+                                    rawSamples.data(), rawSamples.size());
     }
     else
     {
