@@ -62,13 +62,20 @@ void cupuacu::actions::play(cupuacu::State *state)
     {
         Play playMsg;
         playMsg.document = &doc;
+        if (session.hasReadRevision())
+        {
+            playMsg.readerSnapshot = session.getAudioReader();
+        }
         playMsg.startPos = start;
         playMsg.endPos = end;
         playMsg.loopEnabled = state->loopPlaybackEnabled;
         playMsg.selectedChannels = viewState.selectedChannels;
         playMsg.selectionIsActive = session.selection.isActive();
         playMsg.vuMeter = gui::getVuMeterIfPresent(state);
-        state->audioDevices->enqueue(std::move(playMsg));
+        if (!state->audioDevices->enqueue(std::move(playMsg)))
+        {
+            return;
+        }
     }
 
     state->playbackRangeStart = start;

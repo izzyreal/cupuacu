@@ -957,6 +957,24 @@ void MainView::timerCallback()
         wasPlayingLastTick = true;
     }
 
+    if (state->audioDevices && state->audioDevices->takePlaybackFailure())
+    {
+        constexpr const char *title = "Playback unavailable";
+        constexpr const char *message =
+            "Audio could not be prepared or read for playback.";
+        if (state->errorReporter)
+        {
+            state->errorReporter(title, message);
+        }
+        else if (state->mainDocumentSessionWindow &&
+                 state->mainDocumentSessionWindow->getWindow())
+        {
+            SDL_ShowSimpleMessageBox(
+                SDL_MESSAGEBOX_ERROR, title, message,
+                state->mainDocumentSessionWindow->getWindow()->getSdlWindow());
+        }
+    }
+
     if (state->audioDevices && state->audioDevices->takeRecordingOverflow())
     {
         constexpr const char *title = "Recording stopped";

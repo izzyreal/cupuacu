@@ -8,6 +8,7 @@
 #include "file/file_loading.hpp"
 #include "file/OwnedAudioImport.hpp"
 #include "file/AudioFileWriter.hpp"
+#include "playback/ReadAhead.hpp"
 #include "storage/AsyncAudioReader.hpp"
 #include "storage/AudioEditRevision.hpp"
 #include "waveform/WaveformViewport.hpp"
@@ -574,6 +575,213 @@ namespace
 #endif
         const std::string name = request.at("scenario");
         const int64_t frames = request.at("frames");
+        if (name == "playback_memory" || name == "playback_owned")
+        {
+            DocumentSession session;
+            std::shared_ptr<storage::DecodedBlockCache> cache;
+            const bool owned = name == "playback_owned";
+            if (owned)
+            {
+                cache = std::make_shared<storage::DecodedBlockCache>(2 * 1024 *
+                                                                     1024);
+                auto imported = file::importOwnedAudio(
+                    request.at("fixture").get<std::string>(),
+                    std::filesystem::path(
+                        request.at("root").get<std::string>()) /
+                        "playback-source",
+                    cache);
+                session.document = std::move(imported.metadata.document);
+                session.bindReadRevision(
+                    storage::AudioEditRevision::from(imported.audio));
+            }
+            else
+            {
+                auto loaded = file::loadAudioFile(
+                    request.at("fixture").get<std::string>());
+                session.document = std::move(loaded.document);
+            }
+            audio::AudioDevices device(false); // No device stream or GUI.
+            std::array<float, 512> output;
+            std::vector<double> callbacks, starts, firstData, stops;
+            double callbackMs = 0;
+            for (auto iteration : measurement)
+            {
+                (void)iteration;
+                for (int step = 0; step < 8; ++step)
+                {
+                    const int64_t start = 17 + (frames - 8192) * step / 8;
+                    const int64_t end = start + 4096;
+                    audio::Play play{};
+                    play.document = &session.document;
+                    if (owned)
+                    {
+                        play.readerSnapshot = session.getAudioReader();
+                    }
+                    play.startPos = start;
+                    play.endPos = end;
+                    play.loopEnabled = true;
+                    play.selectedChannels = SelectedChannels::BOTH;
+                    auto began = Clock::now();
+                    require(device.enqueue(std::move(play)),
+                            "Playback start rejected");
+                    starts.push_back(elapsed(began));
+                    bool received = false;
+                    int64_t warmFrames = 0, previous = start;
+                    while (warmFrames < 8192)
+                    {
+                        device.processCallbackCycle(nullptr, output.data(),
+                                                    256);
+                        const auto pos = device.getPlaybackPosition();
+                        require(!device.takePlaybackFailure(),
+                                "Playback read failed");
+                        if (pos != previous)
+                        {
+                            if (!received)
+                            {
+                                firstData.push_back(elapsed(began));
+                                received = true;
+                            }
+                            warmFrames += pos >= previous
+                                              ? pos - previous
+                                              : end - previous + pos - start;
+                            previous = pos;
+                        }
+                        else
+                        {
+                            std::this_thread::sleep_for(
+                                std::chrono::milliseconds(1));
+                        }
+                        require(elapsed(began) < 10000,
+                                "Playback warmup timed out");
+                    }
+                    const auto initialUnderruns =
+                        device.getPlaybackUnderrunFrames();
+                    int64_t expectedFrame = device.getPlaybackPosition();
+                    for (int block = 0; block < 128; ++block)
+                    {
+                        const auto started = Clock::now();
+                        device.processCallbackCycle(nullptr, output.data(),
+                                                    256);
+                        callbacks.push_back(elapsed(started));
+                        callbackMs += callbacks.back();
+                        // Validate outside the callback timer, including wraps.
+                        for (int i = 0; i < 256; ++i)
+                        {
+                            if (expectedFrame == end)
+                            {
+                                expectedFrame = start;
+                            }
+                            for (int ch = 0; ch < 2; ++ch)
+                            {
+                                require(output[i * 2 + ch] ==
+                                            sampleAt(expectedFrame, ch),
+                                        "Playback sample mismatch");
+                            }
+                            ++expectedFrame;
+                        }
+                    }
+                    require(device.getPlaybackUnderrunFrames() ==
+                                initialUnderruns,
+                            "Warm loop underrun");
+                    began = Clock::now();
+                    device.enqueue(audio::Stop{});
+                    device.processCallbackCycle(nullptr, output.data(), 256);
+                    stops.push_back(elapsed(began));
+                    require(!device.isPlaying(), "Playback stop failed");
+                    device.servicePlayback();
+                }
+                measurement.SetIterationTime(callbackMs / 1000.0);
+            }
+            // Pace a separate sequential pass at the fixture sample rate to
+            // exercise replenishment. This is a simulated callback clock, not
+            // a hardware-device or cold-disk deadline measurement.
+            audio::Play sequential{};
+            sequential.document = &session.document;
+            if (owned)
+            {
+                sequential.readerSnapshot = session.getAudioReader();
+            }
+            const int64_t sequentialStart = frames / 3;
+            sequential.startPos = sequentialStart;
+            sequential.endPos = sequentialStart + 32768 + 256;
+            sequential.selectedChannels = SelectedChannels::BOTH;
+            require(device.enqueue(std::move(sequential)),
+                    "Sequential playback rejected");
+            auto waiting = Clock::now();
+            do
+            {
+                device.processCallbackCycle(nullptr, output.data(), 256);
+                require(!device.takePlaybackFailure(),
+                        "Sequential read failed");
+                require(elapsed(waiting) < 10000,
+                        "Sequential startup timed out");
+                if (device.getPlaybackPosition() == sequentialStart)
+                {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                }
+            } while (device.getPlaybackPosition() == sequentialStart);
+            std::vector<double> sequentialCallbacks;
+            const auto pacedStart = Clock::now();
+            for (int block = 0; block < 128; ++block)
+            {
+                std::this_thread::sleep_until(
+                    pacedStart +
+                    std::chrono::nanoseconds(int64_t(block + 1) * 256 *
+                                             1000000000 / sampleRate));
+                const auto before = device.getPlaybackPosition();
+                const auto began = Clock::now();
+                device.processCallbackCycle(nullptr, output.data(), 256);
+                sequentialCallbacks.push_back(elapsed(began));
+                const auto after = device.getPlaybackPosition();
+                require(after >= before && after - before <= 256,
+                        "Invalid sequential position");
+                for (int i = 0; i < 256; ++i)
+                {
+                    for (int ch = 0; ch < 2; ++ch)
+                    {
+                        require(
+                            output[i * 2 + ch] ==
+                                (i < after - before ? sampleAt(before + i, ch)
+                                                    : 0),
+                            "Sequential sample or underrun silence mismatch");
+                    }
+                }
+            }
+            require(!device.takePlaybackFailure(), "Sequential read failed");
+            result["playback"]["sequential_underrun_frames"] =
+                device.getPlaybackUnderrunFrames();
+            std::sort(sequentialCallbacks.begin(), sequentialCallbacks.end());
+            const auto sequentialP99 =
+                sequentialCallbacks[sequentialCallbacks.size() * 99 / 100];
+            device.enqueue(audio::Stop{});
+            device.processCallbackCycle(nullptr, output.data(), 256);
+            device.servicePlayback();
+            for (auto *values : {&callbacks, &starts, &firstData, &stops})
+            {
+                std::sort(values->begin(), values->end());
+            }
+            result["playback"].update(
+                {{"sequential_callback_p99_ms", sequentialP99},
+                 {"callback_p50_ms", callbacks[callbacks.size() / 2]},
+                 {"callback_p99_ms", callbacks[callbacks.size() * 99 / 100]},
+                 {"callback_max_ms", callbacks.back()},
+                 {"start_p50_ms", starts[starts.size() / 2]},
+                 {"first_data_p50_ms", firstData[firstData.size() / 2]},
+                 {"first_data_max_ms", firstData.back()},
+                 {"stop_max_ms", stops.back()},
+                 {"read_ahead_sample_bytes",
+                  owned ? playback::ReadAhead::sampleBytes : 0}});
+            if (cache)
+            {
+                require(cache->stats().peakResidentBytes <= 2 * 1024 * 1024,
+                        "Playback cache exceeded budget");
+                result["bounded_storage"]["peak_cached_sample_bytes"] =
+                    cache->stats().peakResidentBytes;
+            }
+            result["milestones_ms"]["background_complete"] = callbackMs;
+            result["validated"] = true;
+            return;
+        }
         if (name == "export_memory_alac" || name == "export_memory_wav" ||
             name == "export_owned_alac" || name == "export_owned_wav")
         {

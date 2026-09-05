@@ -43,7 +43,7 @@ namespace
             cupuacu::SelectedChannels::BOTH)
     {
         return cupuacu::audio::callback_core::fillOutputBuffer(
-            doc.getAudioBuffer(),
+            doc.getAudioBuffer().get(),
             static_cast<uint8_t>(
                 std::clamp<int64_t>(doc.getChannelCount(), 0, 2)),
             selectionIsActive, selectedChannels, playbackPosition,

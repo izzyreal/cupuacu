@@ -370,6 +370,53 @@ job's subsequent persistent-waveform-cache rebuild and do not measure GUI latenc
 Default opening/editing/playback/recovery still use the legacy document backend;
 streaming export alone does not activate disk-backed editing.
 
+Queued playback now pins a `PreparedPlayback` on the control side. Resident
+documents retain their direct sample-access path. A session with a disk read
+revision supplies that reader to the same playback action, using `ReadAhead` to
+fill eight preallocated 4,096-frame stereo slots (256 KiB of sample storage, plus
+16 KiB of worker scratch). The worker prioritizes the current position and loop
+entrance, then sequential lead. The callback pins immutable slots using lock-free
+atomics; cache misses never call the reader, allocate buffers, lock a document or
+wait for I/O. A shortage emits silence without skipping source audio. Initial
+buffering is excluded from `playbackUnderrunFrames`; subsequent shortages are
+counted in the device snapshot and logged once per playback. Read/preparation
+failure is reported through the main-thread playback error path.
+
+Playback messages carry borrowed prepared handles. The control side retains
+ownership until callback retirement; final buffer/processor destruction runs on
+the background release queue. At most eight prepared starts, active sources or
+retired-but-still-reading sources are retained. A full queue rejects the start
+explicitly. Stop and source replacement only mark retirement in the callback;
+closing the I/O worker never joins it. Existing PortAudio stream shutdown still
+stops/closes the hardware stream. Legacy immediate-message test entry points are
+not the normal prepared playback path. Recording and application-wide scheduling,
+memory admission and I/O prioritization remain separate migration work.
+
+```sh
+python3 scripts/run-benchmarks.py --build-dir build --mode timing \
+  --profile extended --filter 'playback_*' --sizes-mib 1 256 \
+  --repetitions 3 --output dist/benchmarks/playback-read-ahead.json
+```
+
+`playback_memory` and `playback_owned` use the production device command queue
+and callback, without opening a hardware stream or GUI. Source loading/import is
+setup. Eight ranges across the document measure start submission, first available
+samples (with 1 ms polling), 256-frame warm callbacks across loop boundaries, and
+stop. Every warm-loop sample is checked outside timing, and warm-loop underruns
+fail validation. A separate 128-callback sequential pass is paced at 48 kHz to
+exercise read-ahead replenishment. It reports callback p99 and underrun frames,
+validating both delivered samples and controlled silence on a miss. The main
+iteration timer sums warm callback execution only; paced waiting, startup,
+validation and cleanup are outside it. Disk cases use a 2 MiB decoded cache.
+This is a headless callback/replenishment benchmark, not a hardware underrun,
+cold-storage, scheduler contention or GUI latency measurement. Existing audio
+tests additionally cover selection updates and effect preview; focused read-ahead
+tests cover blocked reads, source release, edited disk ranges and partial EOF.
+
+Playback and ordinary export can now consume disk revisions, but normal file
+opening still keeps decoded samples in RAM. Editor commands/history, recording,
+provenance-aware disk saves and recovery must migrate before default activation.
+
 The timing executable links the ordinary core. The diagnostic executable links
 a separately compiled core with atomic work counters and capacity observations;
 its timing is not a substitute for uninstrumented timing. Google Benchmark

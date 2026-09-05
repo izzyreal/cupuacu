@@ -14,6 +14,10 @@ namespace cupuacu
     // Shared by the SDL callback and the benchmark event driver.
     inline SDL_AppResult iterateApplication(State *state)
     {
+        if (state->audioDevices)
+        {
+            state->audioDevices->servicePlayback();
+        }
         cupuacu::actions::effects::processPendingEffectWork(state);
         cupuacu::actions::io::processPendingOpenWork(state);
         cupuacu::actions::io::processPendingSaveWork(state);

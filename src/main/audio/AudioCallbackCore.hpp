@@ -8,6 +8,11 @@
 #include <cstdint>
 #include <memory>
 
+namespace cupuacu::playback
+{
+    class ReadAhead;
+}
+
 namespace cupuacu::audio::callback_core
 {
     struct StereoMeterLevels
@@ -32,18 +37,19 @@ namespace cupuacu::audio::callback_core
                       StereoMeterLevels &meterLevels);
 
     bool fillOutputBuffer(
-        const std::shared_ptr<cupuacu::audio::AudioBuffer> &buffer,
-        uint8_t channelCount, bool selectionIsActive,
-        cupuacu::SelectedChannels selectedChannels, int64_t &playbackPosition,
-        uint64_t &playbackStartPos, uint64_t &playbackEndPos,
-        bool playbackLoopEnabled, bool &playbackHasPendingSwitch,
-        uint64_t &playbackPendingStartPos, uint64_t &playbackPendingEndPos,
-        bool &isPlaying, float *out, unsigned long framesPerBuffer,
-        StereoMeterLevels &meterLevels,
+        const cupuacu::audio::AudioBuffer *buffer, uint8_t channelCount,
+        bool selectionIsActive, cupuacu::SelectedChannels selectedChannels,
+        int64_t &playbackPosition, uint64_t &playbackStartPos,
+        uint64_t &playbackEndPos, bool playbackLoopEnabled,
+        bool &playbackHasPendingSwitch, uint64_t &playbackPendingStartPos,
+        uint64_t &playbackPendingEndPos, bool &isPlaying, float *out,
+        unsigned long framesPerBuffer, StereoMeterLevels &meterLevels,
         const cupuacu::audio::AudioProcessor *processor = nullptr,
         uint64_t effectStartPos = 0, uint64_t effectEndPos = 0,
         cupuacu::SelectedChannels processorChannels =
-            cupuacu::SelectedChannels::BOTH);
+            cupuacu::SelectedChannels::BOTH,
+        playback::ReadAhead *readAhead = nullptr,
+        uint64_t *underrunFrames = nullptr);
 
     [[nodiscard]] bool
     recordInputIntoChunks(const float *input, unsigned long framesPerBuffer,

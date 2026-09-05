@@ -838,7 +838,10 @@ namespace cupuacu::effects
             playMsg.selectedChannels = getPreviewSelectedChannels(state);
             playMsg.vuMeter = cupuacu::gui::getVuMeterIfPresent(state);
             playMsg.previewProcessor = std::move(processor);
-            state->audioDevices->enqueue(std::move(playMsg));
+            if (!state->audioDevices->enqueue(std::move(playMsg)))
+            {
+                return;
+            }
             state->playbackRangeStart = start;
             state->playbackRangeEnd = end;
             previewStartedByDialog = true;

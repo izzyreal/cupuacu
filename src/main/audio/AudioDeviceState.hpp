@@ -12,6 +12,7 @@ namespace cupuacu::audio
         bool isRecording = false;
         bool isInputMonitoringEnabled = false;
         MonitorProtectionTelemetry monitorProtection{};
+        uint64_t playbackUnderrunFrames = 0;
         int64_t playbackPosition = -1;
         int64_t recordingPosition = -1;
     };
