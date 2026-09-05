@@ -405,6 +405,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_marker_persistence.cpp
     src/test/test_sample_quantization.cpp
     src/test/test_audio_callback_core.cpp
+    src/test/test_audio_storage.cpp
     src/test/test_input_monitor_pipeline.cpp
     src/test/test_long_task.cpp
     src/test/test_background_effects.cpp

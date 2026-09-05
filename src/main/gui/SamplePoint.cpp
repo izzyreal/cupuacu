@@ -63,9 +63,9 @@ bool SamplePoint::mouseUp(const MouseEvent &e)
     auto &session = state->getActiveDocumentSession();
     auto &waveformCache = session.getWaveformCache(channelIndex);
     waveformCache.invalidateSample(sampleIndex);
-    waveformCache.rebuildDirty(session.document.getAudioBuffer()
-                                   ->getImmutableChannelData(channelIndex)
-                                   .data());
+    waveformCache.rebuildDirtyFrom(
+        session.document.getAudioBuffer()->getImmutableChannelData(
+            channelIndex));
     state->lastRealtimeDocumentMutationAt = std::chrono::steady_clock::now();
 
     undoable.reset();

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SampleProvenance.hpp"
+#include "../storage/PagedArray.hpp"
 #include "../performance/WorkMetrics.hpp"
 
 #include <algorithm>
@@ -16,40 +17,48 @@ namespace cupuacu::audio
     class AudioBuffer
     {
     protected:
-        std::vector<std::vector<float>> channels;
-        [[no_unique_address]] performance::Capacity observedCapacity;
+        using SampleChannel =
+            storage::PagedArray<float, 16384,
+                                performance::Work::SampleBytesCopied>;
+        std::vector<SampleChannel> channels;
+
+        void deepCopySamples()
+        {
+            CUPUACU_METRIC(
+                performance::add(performance::Work::FullBufferClones, 1));
+            for (auto &channel : channels)
+            {
+                channel = channel.deepCopy();
+            }
+        }
 
     public:
         using ProgressCallback =
             std::function<void(int64_t completed, int64_t total)>;
 
         AudioBuffer() = default;
-        AudioBuffer(const AudioBuffer &other) : channels(other.channels)
-        {
-            CUPUACU_METRIC(
-                observedCapacity.set(performance::matrixCapacity(channels)));
-            CUPUACU_METRIC(
-                performance::add(performance::Work::SampleBytesCopied,
-                                 performance::matrixBytes(channels)));
-        }
-        AudioBuffer &operator=(const AudioBuffer &other)
-        {
-            if (this != &other)
-            {
-                channels = other.channels;
-                CUPUACU_METRIC(observedCapacity.set(
-                    performance::matrixCapacity(channels)));
-                CUPUACU_METRIC(
-                    performance::add(performance::Work::SampleBytesCopied,
-                                     performance::matrixBytes(channels)));
-            }
-            return *this;
-        }
+        AudioBuffer(const AudioBuffer &) = default;
+        AudioBuffer &operator=(const AudioBuffer &) = default;
         virtual ~AudioBuffer() = default;
+
+        [[nodiscard]] virtual std::shared_ptr<AudioBuffer> snapshot() const
+        {
+            return std::make_shared<AudioBuffer>(*this);
+        }
 
         [[nodiscard]] virtual std::shared_ptr<AudioBuffer> clone() const
         {
-            return std::make_shared<AudioBuffer>(*this);
+            auto result = std::make_shared<AudioBuffer>(*this);
+            result->deepCopySamples();
+            return result;
+        }
+
+        virtual void writeChannelSamples(int64_t channel, int64_t startFrame,
+                                         const float *samples, int64_t frames,
+                                         bool shouldMarkDirty = true,
+                                         int64_t sourceStride = 1)
+        {
+            channels[channel].write(startFrame, samples, frames, sourceStride);
         }
 
         virtual void assignChannels(
@@ -84,11 +93,8 @@ namespace cupuacu::audio
                     const auto chunkFrames = std::min<std::size_t>(
                         writableFrames - frame,
                         static_cast<std::size_t>(kProgressStrideFrames));
-                    CUPUACU_METRIC(
-                        performance::add(performance::Work::SampleBytesCopied,
-                                         chunkFrames * sizeof(float)));
-                    std::copy_n(source.data() + frame, chunkFrames,
-                                destination.data() + frame);
+                    destination.write(frame, source.data() + frame,
+                                      chunkFrames);
                     completedFrames += static_cast<int64_t>(chunkFrames);
                     if (progress)
                     {
@@ -131,11 +137,6 @@ namespace cupuacu::audio
 
         virtual void resize(int64_t numChannels, int64_t numFrames)
         {
-            CUPUACU_METRIC(performance::OnExit observe{
-                [this]
-                {
-                    observedCapacity.set(performance::matrixCapacity(channels));
-                }});
             channels.resize(numChannels);
             for (auto &ch : channels)
             {
@@ -146,17 +147,12 @@ namespace cupuacu::audio
         virtual void setSample(int64_t channel, int64_t frame, float value,
                                const bool shouldMarkDirty = true)
         {
-            channels[channel][frame] = value;
+            channels[channel].set(frame, value);
         }
 
         virtual void insertFrames(int64_t frameIndex, int64_t numFrames,
                                   const ProgressCallback &progress = {})
         {
-            CUPUACU_METRIC(performance::OnExit observe{
-                [this]
-                {
-                    observedCapacity.set(performance::matrixCapacity(channels));
-                }});
             if (numFrames <= 0)
             {
                 if (progress)
@@ -170,23 +166,13 @@ namespace cupuacu::audio
             int64_t completedChannels = 0;
             for (auto &ch : channels)
             {
-                if (frameIndex == static_cast<int64_t>(ch.size()))
+                const auto oldSize = static_cast<int64_t>(ch.size());
+                ch.resize(oldSize + numFrames);
+                if (frameIndex < oldSize)
                 {
-                    const int64_t newSize = static_cast<int64_t>(ch.size()) + numFrames;
-                    if (newSize > static_cast<int64_t>(ch.capacity()))
-                    {
-                        const int64_t grown =
-                            std::max<int64_t>(newSize, static_cast<int64_t>(ch.capacity()) * 2);
-                        ch.reserve(grown);
-                    }
-                    ch.insert(ch.end(), numFrames, 0.0f);
-                }
-                else
-                {
-                    CUPUACU_METRIC(performance::add(
-                        performance::Work::SampleBytesCopied,
-                        (ch.size() - frameIndex) * sizeof(float)));
-                    ch.insert(ch.begin() + frameIndex, numFrames, 0.0f);
+                    ch.copyWithin(frameIndex + numFrames, frameIndex,
+                                  oldSize - frameIndex);
+                    ch.fill(frameIndex, numFrames, 0.0f);
                 }
                 ++completedChannels;
                 if (progress)
@@ -205,11 +191,6 @@ namespace cupuacu::audio
         virtual void removeFrames(int64_t frameIndex, int64_t numFrames,
                                   const ProgressCallback &progress = {})
         {
-            CUPUACU_METRIC(performance::OnExit observe{
-                [this]
-                {
-                    observedCapacity.set(performance::matrixCapacity(channels));
-                }});
             if (numFrames <= 0)
             {
                 if (progress)
@@ -243,13 +224,9 @@ namespace cupuacu::audio
                     {
                         const int64_t chunkFrames = std::min<int64_t>(
                             kProgressStrideFrames, framesToShift - movedFrames);
-                        CUPUACU_METRIC(performance::add(
-                            performance::Work::SampleBytesCopied,
-                            chunkFrames * sizeof(float)));
-                        std::memmove(ch.data() + frameIndex + movedFrames,
-                                     ch.data() + frameIndex + numFrames + movedFrames,
-                                     static_cast<std::size_t>(chunkFrames) *
-                                         sizeof(float));
+                        ch.copyWithin(frameIndex + movedFrames,
+                                      frameIndex + numFrames + movedFrames,
+                                      chunkFrames);
                         completedFrames += chunkFrames;
                         if (progress)
                         {
@@ -297,22 +274,13 @@ namespace cupuacu::audio
             return channels[channel][frame];
         }
 
-        std::span<const float> getImmutableChannelData(int64_t channel) const
+        SampleChannel::ReadView getImmutableChannelData(int64_t channel) const
         {
             if (channel < 0 || channel >= static_cast<int64_t>(channels.size()))
             {
                 return {};
             }
-            return channels[channel];
-        }
-
-        std::span<float> getMutableChannelData(int64_t channel)
-        {
-            if (channel < 0 || channel >= static_cast<int64_t>(channels.size()))
-            {
-                return {};
-            }
-            return channels[channel];
+            return channels[channel].view();
         }
     };
 } // namespace cupuacu::audio

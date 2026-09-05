@@ -138,6 +138,14 @@ Peak page-table copies contribute to `metadata_bytes_copied`; sharing a page
 does not count as copying its peaks. Snapshot creation shares tables, while the
 first write to a shared level copies its table of page pointers. That table
 still grows with file length; peak-data copies are limited to touched pages.
+Audio revisions similarly share pages of up to 16,384 samples per channel
+(64 KiB of float samples), and integer PCM dirty bits use shared 4 KiB pages.
+`AudioBuffer::snapshot()` shares these pages; `clone()` remains an explicit
+deep sample copy and increments `full_buffer_clones`. Fixed gain and retained
+single-sample diagnostics require zero full-buffer clones and at most 512 KiB
+of sample copying. Page-table and provenance-range metadata can still grow
+with document size or edit history. Structural sample shifting and full-file
+autosave I/O remain; this storage is not yet disk-backed or RAM-budgeted.
 Tracked capacity excludes allocator
 overhead, SDL textures, codec buffers, thread stacks, outer-vector allocations
 and transient reallocation overlap. It is not a hard memory bound. Process peak
