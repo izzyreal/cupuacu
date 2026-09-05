@@ -82,11 +82,11 @@ namespace
 Waveform::Waveform(State *state, const uint8_t channelIndexToUse)
     : Component(state, "Waveform"), channelIndex(channelIndexToUse)
 {
-    ensureBackgroundBlockRenderWorker();
 }
 
 Waveform::~Waveform()
 {
+    viewportWorker.reset();
     backgroundBlockRenderWorker.reset();
     invalidateBaseTexture();
 }
@@ -112,13 +112,7 @@ bool Waveform::hasRenderableChannel() const
 void Waveform::resized()
 {
     updateSamplePoints();
-
-    const auto newKey = computeBaseTextureCacheKey();
-    if (newKey.samplesPerPixel >= 1.0)
-    {
-        requestBackgroundBlockRenderPlan(
-            chooseBaseTextureTargetKey(newKey, !isWaveformCacheBuildActive()));
-    }
+    setDirty();
 }
 
 void Waveform::invalidateBaseTexture() const
@@ -1638,6 +1632,10 @@ std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
     }
 
     const auto &session = state->getActiveDocumentSession();
+    if (session.hasReadRevision())
+    {
+        return {};
+    }
     const auto &doc = session.document;
     const auto &viewState = state->getActiveViewState();
     const auto sampleData =
@@ -1749,8 +1747,17 @@ void Waveform::renderSmoothWaveform(SDL_Renderer *renderer) const
     const auto samplesPerPixel = viewState.samplesPerPixel;
     const double halfSampleWidth = 0.5 / samplesPerPixel;
     const int64_t sampleOffset = viewState.sampleOffset;
-    const auto sampleData =
-        doc.getAudioBuffer()->getImmutableChannelData(channelIndex);
+    const auto sampleAt = [&](int64_t frame)
+    {
+        if (viewportData && viewportData->request.offset == sampleOffset &&
+            viewportData->request.samplesPerPixel == samplesPerPixel &&
+            !viewportData->pending)
+        {
+            return viewportData->sampleAt(frame);
+        }
+        return session.hasReadRevision() ? 0.0f
+                                         : doc.getSample(channelIndex, frame);
+    };
     const auto frameCount = doc.getFrameCount();
     const auto verticalZoom = viewState.verticalZoom;
     const auto widthToUse = getWidth();
@@ -1763,7 +1770,7 @@ void Waveform::renderSmoothWaveform(SDL_Renderer *renderer) const
         widthToUse, samplesPerPixel, sampleOffset, halfSampleWidth, frameCount,
         [&](const int64_t sampleIndex)
         {
-            return sampleData[static_cast<std::size_t>(sampleIndex)];
+            return sampleAt(sampleIndex);
         });
 
     if (input.sampleX.empty())
@@ -2056,8 +2063,244 @@ void Waveform::drawHighlight(SDL_Renderer *renderer) const
     }
 }
 
+bool Waveform::consumeViewport() const
+{
+    if (!viewportWorker)
+    {
+        return false;
+    }
+    auto result = viewportWorker->takePublished();
+    if (!result || result->generation != viewportGeneration)
+    {
+        return false;
+    }
+    if (result->error)
+    {
+        if (!viewportFailed)
+        {
+            try
+            {
+                std::rethrow_exception(result->error);
+            }
+            catch (const std::exception &error)
+            {
+                if (state->errorReporter)
+                {
+                    state->errorReporter("Waveform", error.what());
+                }
+            }
+            catch (...)
+            {
+                if (state->errorReporter)
+                {
+                    state->errorReporter("Waveform",
+                                         "Unable to read waveform data");
+                }
+            }
+        }
+        viewportFailed = true;
+        return true;
+    }
+    viewportFailed = false;
+    viewportData = std::move(result->value);
+    return true;
+}
+
+bool Waveform::drawAsyncViewport(SDL_Renderer *renderer) const
+{
+    if (!state || !renderer || getWidth() <= 0 || getHeight() <= 0)
+    {
+        return false;
+    }
+    const auto source = state->getActiveDocumentSession().getViewportSource();
+    if (!source)
+    {
+        viewportWorker.reset();
+        viewportSource.reset();
+        viewportRequest.reset();
+        viewportData.reset();
+        return false; // Progressive import/cache drawing retains its existing
+                      // path.
+    }
+    if (source != viewportSource)
+    {
+        viewportWorker = std::make_unique<waveform::WaveformViewport>(*source);
+        viewportSource = source;
+        viewportRequest.reset();
+        viewportData.reset();
+        viewportFailed = false;
+        invalidateBaseTexture();
+    }
+    if (channelIndex >= source->audio->shape().channels)
+    {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderFillRect(renderer, nullptr);
+        drawHorizontalLines(renderer);
+        return true;
+    }
+    consumeViewport();
+    const auto key = computeBaseTextureCacheKey();
+    auto target = chooseBaseTextureTargetKey(key, key.samplesPerPixel >= 1);
+    if (target.width > waveform::WaveformViewport::maxWidth)
+    {
+        target = key;
+    }
+    const waveform::ViewportRequest desired{channelIndex, target.sampleOffset,
+                                            target.samplesPerPixel,
+                                            target.width};
+    const auto requestView = [&]
+    {
+        if (!viewportRequest || *viewportRequest != desired)
+        {
+            viewportGeneration = viewportWorker->submit(desired);
+            viewportRequest = desired;
+        }
+    };
+    std::optional<BaseTextureCacheKey> readyTarget;
+    if (viewportData && !viewportData->pending && !viewportFailed &&
+        viewportData->request.samplesPerPixel == key.samplesPerPixel)
+    {
+        auto candidate = key;
+        candidate.width = viewportData->request.width;
+        candidate.sampleOffset = viewportData->request.offset;
+        SDL_FRect rect{};
+        if ((key.samplesPerPixel < 1 && candidate == key) ||
+            (key.samplesPerPixel >= 1 &&
+             canRenderCurrentViewFromCachedBlockTexture(key, candidate, rect)))
+        {
+            readyTarget = candidate;
+        }
+    }
+    if (cachedBaseTextureValid && cachedBaseTexture)
+    {
+        SDL_FRect rect{};
+        if (cachedBaseTextureKey == key)
+        {
+            rect = {0, 0, float(key.width), float(key.height)};
+        }
+        else if (key.samplesPerPixel < 1 ||
+                 !canRenderCurrentViewFromCachedBlockTexture(
+                     key, cachedBaseTextureKey, rect))
+        {
+            rect = {};
+        }
+        if (rect.w > 0 &&
+            (!readyTarget || *readyTarget == cachedBaseTextureKey))
+        {
+            // Prepare adjacent coverage before navigation reaches the edge.
+            if (key.samplesPerPixel >= 1 &&
+                (rect.x < key.width / 4 ||
+                 rect.x + rect.w > cachedBaseTextureKey.width - key.width / 4))
+            {
+                requestView();
+            }
+            SDL_RenderTexture(renderer, cachedBaseTexture, &rect, nullptr);
+            return true;
+        }
+    }
+    if (readyTarget)
+    {
+        target = *readyTarget;
+    }
+    else
+    {
+        requestView();
+    }
+    const waveform::ViewportRequest request{channelIndex, target.sampleOffset,
+                                            target.samplesPerPixel,
+                                            target.width};
+    if (!viewportData || viewportData->request != request ||
+        viewportData->pending || viewportFailed)
+    {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderFillRect(renderer, nullptr);
+        drawHorizontalLines(renderer);
+        return true; // Pending never falls back to synchronous sample reads.
+    }
+    if (!ensureBaseTextureStorage(renderer, target))
+    {
+        return true;
+    }
+    auto *previousTarget = SDL_GetRenderTarget(renderer);
+    SDL_Rect previousViewport{};
+    SDL_GetRenderViewport(renderer, &previousViewport);
+    SDL_SetRenderTarget(renderer, cachedBaseTexture);
+    SDL_Rect local{0, 0, target.width, target.height};
+    SDL_SetRenderViewport(renderer, &local);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderFillRect(renderer, nullptr);
+    drawHorizontalLines(renderer);
+    if (target.samplesPerPixel < 1)
+    {
+        renderSmoothWaveform(renderer);
+    }
+    else
+    {
+        std::vector<SDL_Vertex> vertices;
+        std::vector<int> indices;
+        vertices.reserve(viewportData->peaks.size() * 8);
+        indices.reserve(viewportData->peaks.size() * 12);
+        const auto pointSize =
+            getWaveformSamplePointSize(state->pixelScale, state->uiScale);
+        const float scale =
+            float(target.verticalZoom * (target.height - pointSize) * 0.5);
+        int previousY = 0;
+        bool hasPrevious = false;
+        for (int x = 0; x < int(viewportData->peaks.size()); ++x)
+        {
+            const auto peak = viewportData->peaks[x];
+            if (peak.min > peak.max)
+            {
+                hasPrevious = false;
+                continue;
+            }
+            const int y1 = int(target.height / 2 - peak.max * scale);
+            const int y2 = int(target.height / 2 - peak.min * scale);
+            const int middle = (y1 + y2) / 2;
+            if (y1 == y2)
+            {
+                appendPointQuad(vertices, indices, x, y1, waveformFColor);
+            }
+            else
+            {
+                appendLineQuad(vertices, indices, float(x), float(y1), float(x),
+                               float(y2), waveformFColor);
+            }
+            if (hasPrevious)
+            {
+                appendLineQuad(vertices, indices, float(x - 1),
+                               float(previousY), float(x), float(middle),
+                               waveformFColor);
+            }
+            previousY = middle;
+            hasPrevious = true;
+        }
+        if (!vertices.empty())
+        {
+            SDL_RenderGeometry(renderer, nullptr, vertices.data(),
+                               int(vertices.size()), indices.data(),
+                               int(indices.size()));
+        }
+    }
+    SDL_SetRenderTarget(renderer, previousTarget);
+    SDL_SetRenderViewport(renderer, &previousViewport);
+    finalizeBaseTextureForView(key, target, key.samplesPerPixel >= 1);
+    SDL_RenderTexture(renderer, cachedBaseTexture, &cachedBaseTextureSourceRect,
+                      nullptr);
+    return true;
+}
+
 void Waveform::onDraw(SDL_Renderer *renderer)
 {
+    if (drawAsyncViewport(renderer))
+    {
+        drawSelection(renderer);
+        drawHighlight(renderer);
+        drawMarkers(renderer);
+        drawCursor(renderer);
+        drawPlaybackPosition(renderer);
+        return;
+    }
     const auto currentKey = computeBaseTextureCacheKey();
     const bool progressiveGeometryVisible =
         currentKey.samplesPerPixel >= 1.0 &&
@@ -2187,7 +2430,7 @@ void Waveform::timerCallback()
         applyAllPendingCacheUpdates(state);
     }
 
-    if (consumePublishedBackgroundBlockRenderChunks())
+    if (consumeViewport() || consumePublishedBackgroundBlockRenderChunks())
     {
         setDirty();
     }

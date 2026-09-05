@@ -87,6 +87,11 @@ namespace cupuacu
             int64_t readChannelFloatBlock(int64_t channel, int64_t startFrame,
                                           float *destination, int64_t frames,
                                           int64_t destinationStride = 1) const;
+            [[nodiscard]] std::shared_ptr<const audio::AudioBuffer>
+            snapshotAudioBuffer() const
+            {
+                return document->buffer;
+            }
             [[nodiscard]] bool isDirty(int64_t channel, int64_t frame) const;
             [[nodiscard]] audio::SampleProvenance
             getSampleProvenance(int64_t channel, int64_t frame) const;

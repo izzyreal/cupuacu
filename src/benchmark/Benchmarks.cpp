@@ -9,6 +9,7 @@
 #include "file/OwnedAudioImport.hpp"
 #include "storage/AsyncAudioReader.hpp"
 #include "storage/AudioEditRevision.hpp"
+#include "waveform/WaveformViewport.hpp"
 #include "file/m4a/M4aAlacWriter.hpp"
 #include "gui/WaveformOverviewPlanning.hpp"
 #include "performance/WorkMetrics.hpp"
@@ -572,6 +573,152 @@ namespace
 #endif
         const std::string name = request.at("scenario");
         const int64_t frames = request.at("frames");
+        if (name == "open_owned_session" || name == "open_memory_session")
+        {
+            DocumentSession session;
+            std::shared_ptr<storage::AudioBlockStore> store;
+            std::shared_ptr<storage::DecodedBlockCache> cache;
+            if (name == "open_owned_session")
+            {
+                cache = std::make_shared<storage::DecodedBlockCache>(2 * 1024 *
+                                                                     1024);
+                auto imported = file::importOwnedAudio(
+                    request.at("fixture").get<std::string>(),
+                    std::filesystem::path(
+                        request.at("root").get<std::string>()) /
+                        "owned-audio",
+                    cache);
+                store = imported.audio->blockStore();
+                session.document = std::move(imported.metadata.document);
+                session.bindReadRevision(
+                    storage::AudioEditRevision::from(imported.audio));
+            }
+            else
+            {
+                auto loaded = file::loadAudioFile(
+                    request.at("fixture").get<std::string>());
+                session.document = std::move(loaded.document);
+                session.rebuildWaveformCacheSynchronously();
+            }
+            auto started = Clock::now();
+            auto source = session.getViewportSource();
+            require(bool(source), "Session viewport source unavailable");
+            result["bounded_storage"]["source_snapshot_ms"] = elapsed(started);
+            waveform::WaveformViewport worker(*source);
+            std::vector<double> dispatch, completion;
+            double totalMs = 0;
+            for (auto iteration : measurement)
+            {
+                (void)iteration;
+                for (int step = 0; step < 32; ++step)
+                {
+                    const double spp = std::array<double, 4>{
+                        0.25, 7.3, 127.9, double(frames) / 1024}[step % 4];
+                    const int64_t offset =
+                        step % 4 == 3
+                            ? 0
+                            : std::max<int64_t>(0, frames - 1024 * spp - 4) *
+                                  ((step * 37) % 32) / 31;
+                    const waveform::ViewportRequest view{step % channels,
+                                                         offset, spp, 1024};
+                    started = Clock::now();
+                    require(session.getViewportSource() == source,
+                            "Unchanged session rebuilt its snapshot");
+                    const auto generation = worker.submit(view);
+                    dispatch.push_back(elapsed(started));
+                    std::optional<waveform::WaveformViewport::Result> output;
+                    while (!(output = worker.takePublished()))
+                    {
+                        require(elapsed(started) < 10000,
+                                "Viewport completion timed out");
+                        std::this_thread::yield();
+                    }
+                    completion.push_back(elapsed(started));
+                    totalMs += completion.back();
+                    require(output->generation == generation,
+                            "Stale viewport published");
+                    if (output->error)
+                    {
+                        std::rethrow_exception(output->error);
+                    }
+                    require(output->value && !output->value->pending,
+                            "Viewport remained pending");
+                    const auto &data = *output->value;
+                    if (spp < 1)
+                    {
+                        for (std::size_t i = 0; i < data.samples.size(); ++i)
+                        {
+                            require(
+                                data.samples[i] ==
+                                    sampleAt(data.rawStart + i, view.channel),
+                                "Smooth viewport sample mismatch");
+                        }
+                    }
+                    else
+                    {
+                        for (int x = 0; x < view.width; ++x)
+                        {
+                            const auto first = std::min<int64_t>(
+                                frames, std::floor(offset + x * spp));
+                            const auto end = std::min<int64_t>(
+                                frames, std::floor(offset + (x + 1) * spp));
+                            const auto peak = data.peaks[x];
+                            if (spp < 128)
+                            {
+                                auto expected = waveform::emptyPeak();
+                                for (auto frame = first; frame < end; ++frame)
+                                {
+                                    const auto value =
+                                        sampleAt(frame, view.channel);
+                                    expected = waveform::combine(
+                                        expected, {value, value});
+                                }
+                                require(expected.min == peak.min &&
+                                            expected.max == peak.max,
+                                        "Raw viewport peak mismatch");
+                            }
+                            else if (end > first)
+                            {
+                                for (const auto frame :
+                                     {first, first + (end - first) / 2,
+                                      end - 1})
+                                {
+                                    const auto value =
+                                        sampleAt(frame, view.channel);
+                                    require(
+                                        peak.min <= value && peak.max >= value,
+                                        "Overview excluded a visible sample");
+                                }
+                            }
+                        }
+                    }
+                }
+                measurement.SetIterationTime(totalMs / 1000.0);
+            }
+            started = Clock::now();
+            worker.close();
+            result["bounded_storage"]["close_ms"] = elapsed(started);
+            worker.waitUntilClosed();
+            std::sort(dispatch.begin(), dispatch.end());
+            std::sort(completion.begin(), completion.end());
+            result["bounded_storage"].update(
+                {{"submit_p50_ms", dispatch[dispatch.size() / 2]},
+                 {"submit_max_ms", dispatch.back()},
+                 {"completion_p50_ms", completion[completion.size() / 2]},
+                 {"completion_max_ms", completion.back()}});
+            if (cache)
+            {
+                require(cache->stats().peakResidentBytes <= 2 * 1024 * 1024,
+                        "Viewport cache exceeded budget");
+                result["bounded_storage"]["peak_cached_sample_bytes"] =
+                    cache->stats().peakResidentBytes;
+                result["bounded_storage"]["sample_bytes_read"] =
+                    store->ioBytes().first;
+            }
+            result["milestones_ms"]["background_complete"] = totalMs;
+            result["validated"] = true;
+            return;
+        }
         if (name == "open_owned_edit" || name == "open_owned_waveform")
         {
             const bool waveformCase = name == "open_owned_waveform";

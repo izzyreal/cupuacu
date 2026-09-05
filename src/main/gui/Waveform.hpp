@@ -3,6 +3,7 @@
 #include "../State.hpp"
 #include "../concurrency/LatestWinsBackgroundWorker.hpp"
 #include "../storage/AudioReader.hpp"
+#include "../waveform/WaveformViewport.hpp"
 #include <SDL3/SDL.h>
 
 #include "SamplePoint.hpp"
@@ -258,6 +259,15 @@ namespace cupuacu::gui
         mutable std::vector<double> smoothYBuffer;
         mutable std::vector<double> smoothQueryBuffer;
         mutable SDL_Texture *cachedBaseTexture = nullptr;
+
+        mutable std::shared_ptr<const waveform::ViewportSource> viewportSource;
+        mutable std::unique_ptr<waveform::WaveformViewport> viewportWorker;
+        mutable std::optional<waveform::ViewportRequest> viewportRequest;
+        mutable std::optional<waveform::ViewportData> viewportData;
+        mutable uint64_t viewportGeneration = 0;
+        mutable bool viewportFailed = false;
+        bool drawAsyncViewport(SDL_Renderer *renderer) const;
+        bool consumeViewport() const;
 
         struct BaseTextureCacheKey
         {
