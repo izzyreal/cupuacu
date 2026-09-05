@@ -139,9 +139,6 @@ namespace cupuacu::waveform
             for (const auto &channel : request.channels)
             {
                 totalBlocks += channel.totalDirtyBlocks;
-                CUPUACU_METRIC(performance::add(
-                    performance::Work::PeakBytesCopied,
-                    performance::matrixBytes(channel.buildState.levels)));
                 channels.push_back(ChannelBuildRuntime{
                     .channelIndex = channel.channelIndex,
                     .state = channel.buildState,

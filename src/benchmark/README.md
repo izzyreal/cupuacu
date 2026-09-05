@@ -129,9 +129,16 @@ buffers, and unrelated metadata operations. `waveform_queries` separately
 reports raw sample scans and cached-peak use during viewport queries.
 Diagnostic runs check a known explicit deep copy and the expected number of
 base peaks during a complete cache rebuild, outside ordinary timing runs.
+They also check that a peak snapshot copies no peak data, shared pages are
+counted once, and editing one shared page records the actual copied bytes.
 
 Tracked capacity covers observed audio vectors, preservation metadata, captured
-segments, gain scratch buffers and waveform hierarchies. It excludes allocator
+segments, gain scratch buffers, and unique waveform peak pages and page tables.
+Peak page-table copies contribute to `metadata_bytes_copied`; sharing a page
+does not count as copying its peaks. Snapshot creation shares tables, while the
+first write to a shared level copies its table of page pointers. That table
+still grows with file length; peak-data copies are limited to touched pages.
+Tracked capacity excludes allocator
 overhead, SDL textures, codec buffers, thread stacks, outer-vector allocations
 and transient reallocation overlap. It is not a hard memory bound. Process peak
 RSS includes setup and all process allocations and is reported separately.

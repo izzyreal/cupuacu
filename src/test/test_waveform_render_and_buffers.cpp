@@ -578,3 +578,167 @@ TEST_CASE("Block waveform overview preserves pasted-copy peaks in the former com
         }
     }
 }
+
+TEST_CASE("Peak pages detach only where a snapshot is edited", "[waveform]")
+{
+    using cupuacu::gui::PeakLevel;
+    static_assert(std::random_access_iterator<PeakLevel::ConstIterator>);
+    PeakLevel original;
+    original.resize(PeakLevel::PEAKS_PER_PAGE * 3 + 7);
+    for (std::size_t i = 0; i < original.size(); ++i)
+    {
+        original.set(i, {-float(i), float(i)});
+    }
+    auto edited = original;
+    REQUIRE(&edited[0] == &original[0]);
+    REQUIRE(&edited[PeakLevel::PEAKS_PER_PAGE] == &original[PeakLevel::PEAKS_PER_PAGE]);
+    edited.set(PeakLevel::PEAKS_PER_PAGE - 1, {-9, 9});
+    REQUIRE(&edited[0] != &original[0]);
+    REQUIRE(&edited[PeakLevel::PEAKS_PER_PAGE] == &original[PeakLevel::PEAKS_PER_PAGE]);
+    REQUIRE(original[PeakLevel::PEAKS_PER_PAGE - 1].max ==
+            float(PeakLevel::PEAKS_PER_PAGE - 1));
+    auto newer = edited;
+    edited.set(PeakLevel::PEAKS_PER_PAGE, {-8, 8});
+    REQUIRE(newer[PeakLevel::PEAKS_PER_PAGE].max == float(PeakLevel::PEAKS_PER_PAGE));
+    original.resize(0);
+    REQUIRE(newer[PeakLevel::PEAKS_PER_PAGE - 1].max == 9);
+    const std::vector<cupuacu::gui::Peak> range(newer.begin() + 1020,
+                                                newer.begin() + 1030);
+    REQUIRE(range.size() == 10);
+    REQUIRE(range[3].max == 9);
+    REQUIRE(range[4].max == 1024);
+    PeakLevel moved = std::move(newer);
+    REQUIRE(newer.empty());
+    newer.resize(2);
+    REQUIRE(newer[0].min == 0);
+    REQUIRE(moved[1023].max == 9);
+}
+
+TEST_CASE("Peak page resizing matches a contiguous array across snapshots",
+          "[waveform]")
+{
+    using cupuacu::gui::Peak;
+    using cupuacu::gui::PeakLevel;
+    PeakLevel level;
+    std::vector<Peak> expected;
+    // Includes shrinking inside a shared page, growing it again, and crossing
+    // page boundaries. Truncated values must not reappear when growing.
+    for (const std::size_t size : {3079, 1025, 2048, 7, 9, 1024, 1031, 0, 2049})
+    {
+        const auto snapshot = level;
+        const auto saved = expected;
+        level.resize(size);
+        expected.resize(size);
+        for (std::size_t i = 0; i < size; ++i)
+        {
+            REQUIRE(level[i].min == expected[i].min);
+            REQUIRE(level[i].max == expected[i].max);
+            level.set(i, {-float(i + size), float(i + size)});
+            expected[i] = {-float(i + size), float(i + size)};
+        }
+        REQUIRE(snapshot.size() == saved.size());
+        for (std::size_t i = 0; i < saved.size(); ++i)
+        {
+            REQUIRE(snapshot[i].min == saved[i].min);
+            REQUIRE(snapshot[i].max == saved[i].max);
+        }
+    }
+}
+
+TEST_CASE("Concurrent cache revisions cannot overwrite shared peaks",
+          "[waveform]")
+{
+    cupuacu::gui::PeakLevel original;
+    original.resize(2051);
+    for (std::size_t i = 0; i < original.size(); ++i)
+    {
+        original.set(i, {-1, 1});
+    }
+    auto first = original;
+    auto second = original;
+    std::thread a(
+        [&]
+        {
+            for (std::size_t i = 0; i < first.size(); ++i)
+            {
+                first.set(i, {-2, 2});
+            }
+        });
+    std::thread b(
+        [&]
+        {
+            for (std::size_t i = 0; i < second.size(); ++i)
+            {
+                second.set(i, {-3, 3});
+            }
+        });
+    a.join();
+    b.join();
+    for (std::size_t i = 0; i < original.size(); ++i)
+    {
+        REQUIRE(original[i].max == 1);
+        REQUIRE(first[i].max == 2);
+        REQUIRE(second[i].max == 3);
+    }
+}
+
+TEST_CASE(
+    "Structural waveform edits preserve snapshots and rebuild dirty suffixes",
+    "[waveform]")
+{
+    std::vector<float> samples(cupuacu::gui::PeakLevel::PEAKS_PER_PAGE * 128 + 137);
+    for (std::size_t i = 0; i < samples.size(); ++i)
+    {
+        samples[i] = float(i % 31) / 32;
+    }
+    cupuacu::gui::WaveformCache cache;
+    cache.rebuildAll(samples.data(), samples.size());
+    const auto original = cache.snapshotBuildState();
+    const auto saved = samples;
+    SECTION("Insert within a block")
+    {
+        samples.insert(samples.begin() + 127, 193, -1.0f);
+        cache.applyInsert(127, 193);
+    }
+    SECTION("Erase across a page boundary")
+    {
+        samples.erase(samples.begin() + 131000, samples.begin() + 131173);
+        cache.applyErase(131000, 131173);
+    }
+    SECTION("Append to a partial last block")
+    {
+        cache.applyInsert(samples.size(), 193);
+        samples.insert(samples.end(), 193, -1.0f);
+    }
+    SECTION("Erase everything")
+    {
+        cache.applyErase(0, samples.size());
+        samples.clear();
+    }
+    cache.rebuildDirty(samples.data());
+    cupuacu::gui::WaveformCache expected;
+    expected.rebuildAll(samples.data(), samples.size());
+    const auto actual = cache.snapshotBuildState();
+    // Erasing all samples may retain empty upper levels; compare every level
+    // that the fresh rebuild uses and verify no remaining dirty work.
+    REQUIRE_FALSE(cache.hasDirtyBlocks());
+    for (int level = 0; level < expected.levelsCount(); ++level)
+    {
+        const auto &a = actual.levels[level];
+        const auto &b = expected.getLevelByIndex(level);
+        REQUIRE(a.size() == b.size());
+        for (std::size_t i = 0; i < a.size(); ++i)
+        {
+            REQUIRE(a[i].min == b[i].min);
+            REQUIRE(a[i].max == b[i].max);
+        }
+    }
+    for (std::size_t block = 0; block < original.levels[0].size(); ++block)
+    {
+        const auto begin = saved.begin() + block * 128;
+        const auto end =
+            saved.begin() + std::min(saved.size(), (block + 1) * 128);
+        REQUIRE(original.levels[0][block].min == *std::min_element(begin, end));
+        REQUIRE(original.levels[0][block].max == *std::max_element(begin, end));
+    }
+}
