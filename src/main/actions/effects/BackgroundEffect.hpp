@@ -66,6 +66,7 @@ namespace cupuacu::actions::effects
         bool hadSelection = false;
         bool removeSilenceRemovesDuration = false;
         std::optional<cupuacu::Document> preparedDocument;
+        waveform::DocumentWaveformCaches preparedWaveformCaches;
         undo::UndoStore::SampleMatrixHandle oldSamplesHandle;
         undo::UndoStore::SampleMatrixHandle newSamplesHandle;
         undo::UndoStore::SampleCubeHandle removedSamplesHandle;
@@ -85,10 +86,11 @@ namespace cupuacu::actions::effects
             std::string error;
         };
 
-        BackgroundEffectJob(std::uint64_t idToUse,
-                            BackgroundEffectRequest requestToRun,
-                            const cupuacu::Document &documentToRead,
-                            undo::UndoStore undoStoreToUse = {});
+        BackgroundEffectJob(
+            std::uint64_t idToUse, BackgroundEffectRequest requestToRun,
+            const cupuacu::Document &documentToRead,
+            undo::UndoStore undoStoreToUse = {},
+            const waveform::DocumentWaveformCaches *sourceCaches = nullptr);
         ~BackgroundEffectJob();
 
         BackgroundEffectJob(const BackgroundEffectJob &) = delete;
@@ -106,6 +108,7 @@ namespace cupuacu::actions::effects
         std::uint64_t id = 0;
         BackgroundEffectRequest request;
         cupuacu::Document document;
+        waveform::DocumentWaveformCaches waveformCaches;
         undo::UndoStore undoStore;
         mutable std::mutex mutex;
         mutable std::condition_variable completionCv;

@@ -89,15 +89,14 @@ namespace cupuacu::actions::effects
                 cupuacu::State *stateToUse, const int tabIndexToUse,
                 std::shared_ptr<cupuacu::actions::Undoable> persistenceDelegate,
                 cupuacu::Document preparedDocument,
+                waveform::DocumentWaveformCaches preparedWaveformCaches,
                 std::function<void(bool)> afterSwapToUse = {})
                 : Undoable(stateToUse), tabIndex(tabIndexToUse),
                   delegate(std::move(persistenceDelegate)),
                   redoRevision(std::move(preparedDocument)),
+                  redoWaveformCaches(std::move(preparedWaveformCaches)),
                   afterSwap(std::move(afterSwapToUse))
             {
-                redoWaveformCaches.emplace();
-                redoWaveformCaches->resetToChannelCount(
-                    redoRevision->getChannelCount());
                 updateGui = [this]
                 {
                     if (delegate)
@@ -211,12 +210,12 @@ namespace cupuacu::actions::effects
 
             cupuacu::actions::detail::ensureUndoStoreForTab(
                 state, request.targetTabIndex);
-            const auto undoStore =
+            const auto &session =
                 state->tabs[static_cast<std::size_t>(request.targetTabIndex)]
-                    .session.undoStore;
+                    .session;
             state->backgroundEffectJob.reset(new BackgroundEffectJob(
                 nextBackgroundEffectJobId(), std::move(request), *document,
-                undoStore));
+                session.undoStore, &session.waveformCaches));
             cupuacu::setLongTask(state, "Applying effect",
                                  state->backgroundEffectJob->snapshot().detail,
                                  0.0, false, true);
@@ -779,6 +778,7 @@ namespace cupuacu::actions::effects
                     std::make_shared<PreparedDocumentUndoable>(
                         state, targetTabIndex, std::move(delegate),
                         std::move(*result->preparedDocument),
+                        std::move(result->preparedWaveformCaches),
                         std::move(afterSwap)));
             };
 
@@ -919,14 +919,32 @@ namespace cupuacu::actions::effects
 
     BackgroundEffectJob::BackgroundEffectJob(
         std::uint64_t idToUse, BackgroundEffectRequest requestToRun,
-        const cupuacu::Document &documentToRead,
-        undo::UndoStore undoStoreToUse)
-        : id(idToUse),
-          request(std::move(requestToRun)),
-          document(documentToRead),
-          undoStore(std::move(undoStoreToUse)),
+        const cupuacu::Document &documentToRead, undo::UndoStore undoStoreToUse,
+        const waveform::DocumentWaveformCaches *sourceCaches)
+        : id(idToUse), request(std::move(requestToRun)),
+          document(documentToRead), undoStore(std::move(undoStoreToUse)),
           detail(request.description)
     {
+        // Freeze peaks with the same source revision as the audio. A running
+        // cache worker is not copied; its unapplied ranges remain dirty.
+        // Whole-document effects cannot reuse any peaks.
+        const bool replacesAllSamples =
+            request.startFrame == 0 &&
+            request.frameCount == document.getFrameCount() &&
+            request.targetChannels.size() ==
+                static_cast<std::size_t>(document.getChannelCount());
+        const bool mayRemoveDuration =
+            request.kind == BackgroundEffectKind::RemoveSilence &&
+            request.targetChannels.size() ==
+                static_cast<std::size_t>(document.getChannelCount());
+        if (sourceCaches && !replacesAllSamples && !mayRemoveDuration)
+        {
+            waveformCaches = sourceCaches->snapshotForDocument(document);
+        }
+        else
+        {
+            waveformCaches.resetToChannelCount(document.getChannelCount());
+        }
     }
 
     BackgroundEffectJob::~BackgroundEffectJob()
@@ -1048,6 +1066,8 @@ namespace cupuacu::actions::effects
                     prepared.removeFrames(it->startFrame, it->frameCount);
                 }
                 computedResult->preparedDocument = std::move(prepared);
+                computedResult->preparedWaveformCaches.resetToChannelCount(
+                    document.getChannelCount());
                 if (undoStore.isAttached())
                 {
                     computedResult->removedSamplesHandle =
@@ -1069,8 +1089,20 @@ namespace cupuacu::actions::effects
                         computedResult->targetChannels[index],
                         computedResult->startFrame, samples.data(),
                         static_cast<int64_t>(samples.size()), true);
+                    if (!samples.empty())
+                    {
+                        waveformCaches
+                            .getCache(static_cast<int>(
+                                computedResult->targetChannels[index]))
+                            .invalidateSamples(
+                                computedResult->startFrame,
+                                computedResult->startFrame +
+                                    static_cast<int64_t>(samples.size()) - 1);
+                    }
                 }
                 computedResult->preparedDocument = std::move(prepared);
+                computedResult->preparedWaveformCaches =
+                    std::move(waveformCaches);
                 if (undoStore.isAttached())
                 {
                     computedResult->oldSamplesHandle =

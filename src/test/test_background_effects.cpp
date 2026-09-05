@@ -176,3 +176,188 @@ TEST_CASE("Remove silence runs in the background and commits undoably",
     REQUIRE(document.getSample(0, 3) == Catch::Approx(0.4f));
     REQUIRE(document.getSample(0, 7) == Catch::Approx(0.3f));
 }
+
+namespace
+{
+    void requireMatchingPeaks(cupuacu::DocumentSession &session)
+    {
+        session.rebuildWaveformCacheSynchronously();
+        cupuacu::waveform::DocumentWaveformCaches reference;
+        reference.rebuildSynchronously(session.document);
+        for (int channel = 0; channel < session.document.getChannelCount();
+             ++channel)
+        {
+            const auto &actual = session.getWaveformCache(channel);
+            const auto &expected = reference.getCache(channel);
+            REQUIRE_FALSE(actual.hasDirtyBlocks());
+            REQUIRE(actual.levelsCount() == expected.levelsCount());
+            for (int level = 0; level < expected.levelsCount(); ++level)
+            {
+                const auto &a = actual.getLevelByIndex(level);
+                const auto &b = expected.getLevelByIndex(level);
+                REQUIRE(a.size() == b.size());
+                for (std::size_t peak = 0; peak < a.size(); ++peak)
+                {
+                    REQUIRE(a[peak].min == b[peak].min);
+                    REQUIRE(a[peak].max == b[peak].max);
+                }
+            }
+        }
+    }
+} // namespace
+
+TEST_CASE("Partial background effects reuse peaks across undo and redo",
+          "[effects][waveform]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    auto &session = state.getActiveDocumentSession();
+    auto &document = session.document;
+    document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 1031);
+    for (int64_t frame = 0; frame < 1031; ++frame)
+    {
+        document.setSample(0, frame, float(frame % 19) / 20, false);
+        document.setSample(1, frame, -float(frame % 23) / 24, false);
+    }
+    session.rebuildWaveformCacheSynchronously();
+    state.getActiveViewState().selectedChannels =
+        cupuacu::SelectedChannels::LEFT;
+    int64_t start = 127;
+    int64_t end = 257;
+    SECTION("Crossing base block boundaries") {}
+    SECTION("Partial last block")
+    {
+        start = 1025;
+        end = 1031;
+    }
+    SECTION("Whole selected channel")
+    {
+        start = 0;
+        end = 1031;
+    }
+    session.selection.setValue1(start);
+    session.selection.setValue2(end);
+    REQUIRE(cupuacu::actions::effects::queueAmplifyFade(
+        &state, cupuacu::effects::AmplifyFadeSettings{50, 50, 0, true}));
+    cupuacu::test::drainPendingEffectWork(&state);
+    session.stopWaveformCacheBuild();
+    const auto dirty = session.getWaveformCache(0).snapshotBuildState();
+    REQUIRE(dirty.dirtyFromBlock == start / 128);
+    REQUIRE(dirty.dirtyToBlock == (end - 1) / 128);
+    REQUIRE_FALSE(session.getWaveformCache(1).hasDirtyBlocks());
+
+    // Undo before any newly built peaks are applied, then redo that dirty
+    // cache.
+    state.undo();
+    REQUIRE_FALSE(session.getWaveformCache(0).hasDirtyBlocks());
+    requireMatchingPeaks(session);
+    state.redo();
+    requireMatchingPeaks(session);
+    // A fully built effect revision also survives another undo/redo cycle.
+    state.undo();
+    requireMatchingPeaks(session);
+    state.redo();
+    REQUIRE_FALSE(session.getWaveformCache(0).hasDirtyBlocks());
+    requireMatchingPeaks(session);
+}
+
+TEST_CASE("Background effects freeze source peaks and preserve pending work",
+          "[effects][waveform]")
+{
+    cupuacu::DocumentSession session;
+    session.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 2, 1024);
+    session.rebuildWaveformCacheSynchronously();
+    bool expectFullBuild = false;
+    SECTION("Clean source") {}
+    SECTION("Pending cache build")
+    {
+        session.document.setSample(1, 900, 0.75f, false);
+        session.getWaveformCache(1).invalidateSample(900);
+        session.updateWaveformCache();
+    }
+    SECTION("Stale cache")
+    {
+        session.document.setSample(1, 900, 0.75f, false);
+        expectFullBuild = true;
+    }
+    SECTION("Missing cache")
+    {
+        session.waveformCaches.resetToChannelCount(2);
+        expectFullBuild = true;
+    }
+    cupuacu::actions::effects::BackgroundEffectRequest request;
+    request.kind = cupuacu::actions::effects::BackgroundEffectKind::Reverse;
+    request.startFrame = 127;
+    request.frameCount = 130;
+    request.targetChannels = {0};
+    cupuacu::actions::effects::BackgroundEffectJob job(
+        1, request, session.document, {}, &session.waveformCaches);
+    // Changing the live revision must not affect the job's cache snapshot.
+    session.document.setSample(1, 10, -0.8f, false);
+    session.rebuildWaveformCacheSynchronously();
+    job.start();
+    REQUIRE(job.waitForCompletion(std::chrono::seconds(5)));
+    REQUIRE(job.snapshot().success);
+    auto result = job.takeResult();
+    REQUIRE(result->preparedDocument.has_value());
+    session.document = std::move(*result->preparedDocument);
+    session.waveformCaches = std::move(result->preparedWaveformCaches);
+    if (expectFullBuild)
+    {
+        REQUIRE(session.getWaveformCache(0).levelsCount() == 0);
+    }
+    else
+    {
+        const auto dirty = session.getWaveformCache(0).snapshotBuildState();
+        REQUIRE(dirty.dirtyFromBlock == 0);
+        REQUIRE(dirty.dirtyToBlock == 2);
+    }
+    requireMatchingPeaks(session);
+}
+
+TEST_CASE("Remove silence keeps waveform caches aligned with prepared audio",
+          "[effects][waveform]")
+{
+    cupuacu::test::StateWithTestPaths state{};
+    auto &session = state.getActiveDocumentSession();
+    session.document.initialize(cupuacu::SampleFormat::FLOAT32, 100, 2, 1031);
+    for (int channel = 0; channel < 2; ++channel)
+    {
+        for (int64_t frame = 0; frame < 1031; ++frame)
+        {
+            session.document.setSample(
+                channel, frame, frame >= 200 && frame < 400 ? 0.0f : 0.5f,
+                false);
+        }
+    }
+    session.rebuildWaveformCacheSynchronously();
+    bool removesDuration = true;
+    SECTION("Remove duration") {}
+    SECTION("Compact selected channel")
+    {
+        removesDuration = false;
+        state.getActiveViewState().selectedChannels =
+            cupuacu::SelectedChannels::LEFT;
+    }
+    session.selection.setValue1(128);
+    session.selection.setValue2(512);
+    cupuacu::effects::RemoveSilenceSettings settings{};
+    settings.modeIndex = 1;
+    settings.thresholdUnitIndex = 1;
+    settings.thresholdSampleValue = 0.01;
+    settings.minimumSilenceLengthMs = 10.0;
+    REQUIRE(cupuacu::actions::effects::queueRemoveSilence(&state, settings));
+    cupuacu::test::drainPendingEffectWork(&state);
+    REQUIRE(session.document.getFrameCount() == (removesDuration ? 831 : 1031));
+    if (!removesDuration)
+    {
+        REQUIRE_FALSE(session.getWaveformCache(1).hasDirtyBlocks());
+        const auto dirty = session.getWaveformCache(0).snapshotBuildState();
+        REQUIRE(dirty.dirtyFromBlock == 1);
+        REQUIRE(dirty.dirtyToBlock == 3);
+    }
+    requireMatchingPeaks(session);
+    state.undo();
+    requireMatchingPeaks(session);
+    state.redo();
+    requireMatchingPeaks(session);
+}
