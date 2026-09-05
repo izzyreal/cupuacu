@@ -1010,6 +1010,199 @@ namespace
             result["validated"] = true;
             return;
         }
+        if (name.starts_with("effect_fixed_") ||
+            name.starts_with("effect_all_"))
+        {
+            const bool owned = name.ends_with("owned");
+            const bool whole = name.starts_with("effect_all_");
+            State state;
+            auto &session = state.getActiveDocumentSession();
+            const auto root =
+                std::filesystem::path(request.at("root").get<std::string>());
+            if (owned)
+            {
+                auto imported = file::importOwnedAudio(
+                    request.at("fixture").get<std::string>(), root / "audio",
+                    std::make_shared<storage::DecodedBlockCache>(2 * 1024 *
+                                                                 1024));
+                session.document = std::move(imported.metadata.document);
+                session.bindReadRevision(
+                    storage::AudioEditRevision::from(imported.audio));
+            }
+            else
+            {
+                initialize(session, frames);
+                session.undoStore.attach(root / "undo");
+            }
+            const int64_t start = whole ? 0 : 1000;
+            const int64_t count = whole ? frames : 1000;
+            selection(state, start, count);
+            std::string error;
+            state.errorReporter =
+                [&](const std::string &, const std::string &detail)
+            {
+                error = detail;
+            };
+            for (auto iteration : measurement)
+            {
+                (void)iteration;
+                const auto started = Clock::now();
+                require(actions::effects::queueAmplifyFade(&state,
+                                                           {50, 50, 0, true}),
+                        "Effect did not queue");
+                result["effect_command"]["submission_ms"] = elapsed(started);
+                require(state.backgroundEffectJob->waitForCompletion(
+                            std::chrono::seconds(60)),
+                        "Effect timed out");
+                const auto publication = Clock::now();
+                actions::effects::processPendingEffectWork(&state);
+                result["effect_command"]["publication_ms"] =
+                    elapsed(publication);
+                result["effect_command"]["completion_ms"] = elapsed(started);
+                measurement.SetIterationTime(elapsed(started) / 1000.0);
+                require(error.empty(), error);
+                require(state.getActiveUndoables().size() == 1,
+                        "Effect did not commit");
+            }
+            captureMetrics();
+            auto reader = session.getAudioReader();
+            std::array<float, 16384> buffer;
+            for (int c = 0; c < channels; ++c)
+            {
+                for (int64_t first = 0; first < frames; first += buffer.size())
+                {
+                    auto out = std::span(buffer).first(
+                        std::min<int64_t>(buffer.size(), frames - first));
+                    reader->readChannel(c, first, out);
+                    for (std::size_t i = 0; i < out.size(); ++i)
+                    {
+                        const auto frame = first + int64_t(i);
+                        const auto gain =
+                            frame >= start && frame - start < count ? .5f : 1.f;
+                        require(out[i] == sampleAt(frame, c) * gain,
+                                "Streamed effect sample mismatch");
+                    }
+                }
+            }
+            result["validated"] = true;
+            return;
+        }
+        if (name == "edit_command_owned" || name == "edit_command_memory")
+        {
+            const bool owned = name == "edit_command_owned";
+            State state;
+            auto &session = state.getActiveDocumentSession();
+            auto cache =
+                std::make_shared<storage::DecodedBlockCache>(2 * 1024 * 1024);
+            std::shared_ptr<storage::AudioBlockStore> store;
+            if (owned)
+            {
+                auto imported = file::importOwnedAudio(
+                    request.at("fixture").get<std::string>(),
+                    std::filesystem::path(
+                        request.at("root").get<std::string>()) /
+                        "owned-audio",
+                    cache);
+                session.document = std::move(imported.metadata.document);
+                auto original =
+                    storage::AudioEditRevision::from(imported.audio);
+                auto fragmented = original;
+                for (int step = 0; step < 1024; ++step)
+                {
+                    const auto at = (frames - 1) * step / 1024;
+                    storage::AudioEditTransaction edit(*fragmented);
+                    for (int c = 0; c < channels; ++c)
+                    {
+                        edit.replaceChannel(c, at, 1, original.get(), c, at);
+                    }
+                    fragmented = edit.finish();
+                }
+                session.bindReadRevision(fragmented);
+                store = imported.audio->blockStore();
+            }
+            else
+            {
+                initialize(session, frames);
+                session.undoStore.attach(
+                    std::filesystem::path(
+                        request.at("root").get<std::string>()) /
+                    "undo");
+            }
+            std::vector<double> deletes, undos, redos;
+            const auto beforeIO =
+                store ? store->ioBytes() : std::pair<uint64_t, uint64_t>{};
+            const int repeats = owned ? 128 : 1;
+            for (auto iteration : measurement)
+            {
+                (void)iteration;
+                for (int i = 0; i < repeats; ++i)
+                {
+                    selection(state, 10001, 1);
+                    auto started = Clock::now();
+                    actions::audio::performDelete(&state);
+                    deletes.push_back(elapsed(started));
+                    require(session.document.getFrameCount() == frames - 1,
+                            "Delete command did not commit");
+                    started = Clock::now();
+                    state.undo();
+                    undos.push_back(elapsed(started));
+                    require(session.document.getFrameCount() == frames,
+                            "Undo command did not commit");
+                    started = Clock::now();
+                    state.redo();
+                    redos.push_back(elapsed(started));
+                    require(session.document.getFrameCount() == frames - 1,
+                            "Redo command did not commit");
+                    state.undo();
+                }
+                measurement.SetIterationTime(
+                    (std::accumulate(deletes.begin(), deletes.end(), 0.0) +
+                     std::accumulate(undos.begin(), undos.end(), 0.0) +
+                     std::accumulate(redos.begin(), redos.end(), 0.0)) /
+                    repeats / 1000.0);
+            }
+            if (store)
+            {
+                require(store->ioBytes() == beforeIO,
+                        "Production edit/undo performed sample I/O");
+            }
+            const auto stats = [](std::vector<double> values)
+            {
+                std::sort(values.begin(), values.end());
+                return Json{
+                    {"median_ms", values[values.size() / 2]},
+                    {"p99_ms",
+                     values[std::min(values.size() - 1,
+                                     std::size_t(values.size() * .99))]},
+                    {"max_ms", values.back()}};
+            };
+            result["production_commands"] = {
+                {"delete", stats(deletes)},
+                {"undo", stats(undos)},
+                {"redo", stats(redos)},
+                {"repetitions", repeats},
+                {"sample_io_bytes",
+                 store ? store->ioBytes().first - beforeIO.first : 0}};
+            captureMetrics();
+            auto reader = session.getAudioReader();
+            std::array<float, 16384> buffer;
+            for (int c = 0; c < channels; ++c)
+            {
+                for (int64_t first = 0; first < frames; first += buffer.size())
+                {
+                    auto out = std::span(buffer).first(
+                        std::min<int64_t>(buffer.size(), frames - first));
+                    reader->readChannel(c, first, out);
+                    for (std::size_t i = 0; i < out.size(); ++i)
+                    {
+                        require(out[i] == sampleAt(first + i, c),
+                                "Production command undo lost samples");
+                    }
+                }
+            }
+            result["validated"] = true;
+            return;
+        }
         if (name == "open_owned_edit" || name == "open_owned_waveform")
         {
             const bool waveformCase = name == "open_owned_waveform";

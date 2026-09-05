@@ -21,6 +21,12 @@ namespace cupuacu::file
             }
 
             const auto &session = state->getActiveDocumentSession();
+            if (session.hasReadRevision())
+            {
+                return {.available = false,
+                        .reason =
+                            "Revision preservation writer is not enabled yet"};
+            }
             if (session.preservationReferenceFile.empty() &&
                 session.currentFile.empty())
             {

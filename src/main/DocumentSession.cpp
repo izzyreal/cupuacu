@@ -21,6 +21,44 @@ namespace cupuacu
         return std::make_shared<storage::DocumentAudioReader>(document);
     }
 
+    std::shared_ptr<const storage::AudioEditRevision>
+    DocumentSession::getEditRevision() const
+    {
+        if (readRevision &&
+            readRevisionVersion != document.getWaveformDataVersion())
+        {
+            throw std::logic_error("Session revision is stale");
+        }
+        return readRevision;
+    }
+
+    bool DocumentSession::commitEditRevision(
+        const std::shared_ptr<const storage::AudioEditRevision> &expected,
+        std::shared_ptr<const storage::AudioEditRevision> replacement,
+        std::vector<DocumentMarker> markers)
+    {
+        if (!expected || getEditRevision() != expected || !replacement)
+        {
+            return false;
+        }
+        const auto shape = replacement->shape();
+        const auto old = expected->shape();
+        if (shape.channels != old.channels ||
+            shape.sampleRate != old.sampleRate || shape.format != old.format)
+        {
+            throw std::invalid_argument("Edit changes document audio format");
+        }
+        auto retained = concurrency::releaseOnWorker(std::move(replacement));
+        document.setExternalAudioShape(shape.format, shape.sampleRate,
+                                       shape.channels, shape.frames);
+        document.replaceMarkers(std::move(markers));
+        readRevision = std::move(retained);
+        readRevisionVersion = document.getWaveformDataVersion();
+        clearPendingPersistentWaveformCacheSave();
+        viewportSource.reset();
+        return true;
+    }
+
     void DocumentSession::clearReadRevision()
     {
         readRevision.reset();
@@ -39,8 +77,12 @@ namespace cupuacu
             throw std::invalid_argument(
                 "Read revision does not match session metadata");
         }
+        auto retained = concurrency::releaseOnWorker(std::move(revision));
+        const auto shape = retained->shape();
+        document.setExternalAudioShape(shape.format, shape.sampleRate,
+                                       shape.channels, shape.frames);
         clearPendingPersistentWaveformCacheSave();
-        readRevision = concurrency::releaseOnWorker(std::move(revision));
+        readRevision = std::move(retained);
         readRevisionVersion = document.getWaveformDataVersion();
         viewportSource.reset();
     }
@@ -52,7 +94,8 @@ namespace cupuacu
             return {};
         }
         const auto version = document.getWaveformDataVersion();
-        const auto identity = document.getAudioBuffer().get();
+        const auto identity =
+            readRevision ? nullptr : document.getAudioBuffer().get();
         if (readRevision && readRevisionVersion != version)
         {
             throw std::logic_error(

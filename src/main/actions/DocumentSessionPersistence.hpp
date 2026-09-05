@@ -159,7 +159,9 @@ namespace cupuacu::actions
 
         int openFileIndex = 0;
         const auto clipboardSnapshotPath = detail::makeClipboardSnapshotPath(state);
-        if (state->clipboard.getChannelCount() > 0 && !clipboardSnapshotPath.empty())
+        if (!state->clipboard.getAudioRevision() &&
+            state->clipboard.getChannelCount() > 0 &&
+            !clipboardSnapshotPath.empty())
         {
             cupuacu::persistence::scheduleClipboardSnapshot(
                 clipboardSnapshotPath, state->clipboard);
@@ -447,6 +449,11 @@ namespace cupuacu::actions
         auto &tab = state->tabs[static_cast<std::size_t>(tabIndex)];
         auto &session = tab.session;
         const auto &document = session.document;
+        // Reference manifests are required before enabling the disk backend.
+        if (session.hasReadRevision())
+        {
+            return;
+        }
         if (document.getChannelCount() <= 0)
         {
             return;

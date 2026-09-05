@@ -5,6 +5,7 @@
 #include "../LongTask.hpp"
 #include "actions/MutationAvailability.hpp"
 #include "actions/Undoable.hpp"
+#include "actions/audio/RevisionEdit.hpp"
 #include "actions/audio/SegmentStore.hpp"
 #include "actions/audio/TransactionalAudioEdit.hpp"
 
@@ -316,6 +317,25 @@ namespace cupuacu::effects
             return;
         }
 
+        if (state->getActiveDocumentSession().hasReadRevision())
+        {
+            auto before = actions::audio::RevisionEditState::capture(
+                state->getActiveDocumentSession());
+            auto after = before;
+            storage::AudioEditTransaction edit(*before.audio);
+            for (auto channel : getTargetChannels(state))
+            {
+                edit.replaceChannel(int(channel),
+                                    before.selection.getStartInt(),
+                                    before.selection.getLengthInt());
+            }
+            after.audio = edit.finish();
+            state->addAndDoUndoable(
+                std::make_shared<actions::audio::RevisionEdit>(
+                    state, state->activeTabIndex, "Make silent",
+                    std::move(before), std::move(after)));
+            return;
+        }
         state->addAndDoUndoable(std::make_shared<MakeSilentUndoable>(state));
     }
 } // namespace cupuacu::effects

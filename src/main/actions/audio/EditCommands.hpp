@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Copy.hpp"
+#include "RevisionEdit.hpp"
 #include "Cut.hpp"
 #include "Delete.hpp"
 #include "Paste.hpp"
@@ -53,6 +54,22 @@ namespace cupuacu::actions::audio
                 "Clipboard does not contain audio");
         }
 
+        const auto &session = state->getActiveDocumentSession();
+        const auto &clip = state->clipboard.getAudioRevision();
+        if (session.hasReadRevision() != bool(clip))
+        {
+            return cupuacu::actions::unavailableAction(
+                "Paste between storage backends is not enabled yet");
+        }
+        if (clip &&
+            (clip->shape().channels != session.document.getChannelCount() ||
+             clip->shape().sampleRate != session.document.getSampleRate() ||
+             clip->shape().format != session.document.getSampleFormat()))
+        {
+            return cupuacu::actions::unavailableAction(
+                "Clipboard audio format differs from this document");
+        }
+
         return cupuacu::actions::combineAvailability(
             cupuacu::actions::availableAction(),
             cupuacu::actions::describeDocumentMutationAvailability(state));
@@ -99,6 +116,12 @@ namespace cupuacu::actions::audio
             return;
         }
         const auto target = selectionTarget(state);
+        if (state->getActiveDocumentSession().hasReadRevision())
+        {
+            performRevisionCommand(state, RevisionCommand::Cut, target.start,
+                                   target.length);
+            return;
+        }
         const auto undoable =
             std::make_shared<cupuacu::actions::audio::Cut>(
                 state, target.start, target.length);
@@ -112,6 +135,12 @@ namespace cupuacu::actions::audio
             return;
         }
         const auto target = selectionTarget(state);
+        if (state->getActiveDocumentSession().hasReadRevision())
+        {
+            performRevisionCommand(state, RevisionCommand::Copy, target.start,
+                                   target.length);
+            return;
+        }
         const auto undoable =
             std::make_shared<cupuacu::actions::audio::Copy>(
                 state, target.start, target.length);
@@ -125,6 +154,12 @@ namespace cupuacu::actions::audio
             return;
         }
         const auto target = selectionTarget(state);
+        if (state->getActiveDocumentSession().hasReadRevision())
+        {
+            performRevisionCommand(state, RevisionCommand::Delete, target.start,
+                                   target.length);
+            return;
+        }
         const auto undoable =
             std::make_shared<cupuacu::actions::audio::Delete>(
                 state, target.start, target.length);
@@ -138,6 +173,12 @@ namespace cupuacu::actions::audio
             return;
         }
         const auto target = selectionTarget(state);
+        if (state->getActiveDocumentSession().hasReadRevision())
+        {
+            performRevisionCommand(state, RevisionCommand::Trim, target.start,
+                                   target.length);
+            return;
+        }
         const auto undoable =
             std::make_shared<cupuacu::actions::audio::Trim>(
                 state, target.start, target.length);
@@ -151,6 +192,13 @@ namespace cupuacu::actions::audio
             return;
         }
         const auto target = pasteTarget(state);
+        if (state->getActiveDocumentSession().hasReadRevision())
+        {
+            performRevisionCommand(state, RevisionCommand::Paste, target.start,
+                                   target.end < 0 ? 0
+                                                  : target.end - target.start);
+            return;
+        }
         const auto undoable =
             std::make_shared<cupuacu::actions::audio::Paste>(
                 state, target.start, target.end);
@@ -175,6 +223,14 @@ namespace cupuacu::actions::audio
             return;
         }
 
+        if (state->getActiveDocumentSession().hasReadRevision())
+        {
+            const auto target = pasteTarget(state);
+            performRevisionCommand(
+                state, RevisionCommand::InsertSilence, target.start,
+                target.end < 0 ? 0 : target.end - target.start, frameCount);
+            return;
+        }
         const auto previousClipboard = state->clipboard;
         state->clipboard.initialize(doc.getSampleFormat(), doc.getSampleRate(),
                                     doc.getChannelCount(), frameCount);

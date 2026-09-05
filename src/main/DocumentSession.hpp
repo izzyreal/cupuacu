@@ -62,6 +62,13 @@ namespace cupuacu
             return bool(readRevision);
         }
         void clearReadRevision();
+        std::shared_ptr<const storage::AudioEditRevision>
+        getEditRevision() const;
+        // Returns false when a prepared edit targets a superseded revision.
+        bool commitEditRevision(
+            const std::shared_ptr<const storage::AudioEditRevision> &expected,
+            std::shared_ptr<const storage::AudioEditRevision> replacement,
+            std::vector<DocumentMarker> markers);
 
     private:
         std::shared_ptr<const storage::AudioEditRevision> readRevision;

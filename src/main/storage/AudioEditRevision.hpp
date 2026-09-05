@@ -397,6 +397,23 @@ namespace cupuacu::storage
 
     public:
         static std::shared_ptr<const AudioEditRevision>
+        silence(AudioShape shape)
+        {
+            if (shape.frames < 0 || shape.channels <= 0 ||
+                shape.sampleRate <= 0)
+            {
+                throw std::invalid_argument("Invalid silence shape");
+            }
+            std::vector<Tree> roots;
+            uint64_t allocated = 0;
+            for (int c = 0; c < shape.channels; ++c)
+            {
+                roots.push_back(leaf({{}, c, 0, shape.frames}, allocated));
+            }
+            return std::shared_ptr<const AudioEditRevision>(
+                new AudioEditRevision(shape, std::move(roots)));
+        }
+        static std::shared_ptr<const AudioEditRevision>
         from(std::shared_ptr<const AudioRevision> source)
         {
             if (!source)

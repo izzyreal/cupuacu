@@ -42,6 +42,9 @@ namespace cupuacu
     private:
         std::shared_ptr<cupuacu::audio::AudioBuffer> buffer =
             std::make_shared<cupuacu::audio::AudioBuffer>();
+        int64_t externalFrames = -1;
+        int64_t externalChannels = 0;
+        void requireResidentUnlocked() const;
         int sampleRate = 0;
         SampleFormat format = SampleFormat::Unknown;
         uint64_t preservationSourceId = 0;
@@ -90,6 +93,7 @@ namespace cupuacu
             [[nodiscard]] std::shared_ptr<const audio::AudioBuffer>
             snapshotAudioBuffer() const
             {
+                document->requireResidentUnlocked();
                 return document->buffer;
             }
             [[nodiscard]] bool isDirty(int64_t channel, int64_t frame) const;
@@ -111,6 +115,10 @@ namespace cupuacu
                         uint32_t sampleRateToUse,
                         uint32_t channelCount, int64_t frameCount);
 
+        // Shape only: sample access must go through the session's revision.
+        // No page table or sample allocation proportional to duration.
+        void setExternalAudioShape(SampleFormat format, int sampleRate,
+                                   int channels, int64_t frames);
         [[nodiscard]] ReadLease acquireReadLease() const;
 
         SampleFormat getSampleFormat() const;

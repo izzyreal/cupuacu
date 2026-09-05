@@ -173,8 +173,8 @@ TEST_CASE("Disk revisions use the same session viewport pipeline at every zoom",
     REQUIRE_THROWS_AS(
         worker.submit({0, 0, std::numeric_limits<double>::infinity(), 100}),
         std::invalid_argument);
-    session.document.setSample(0, 0, 1);
-    REQUIRE_THROWS_AS(session.getViewportSource(), std::logic_error);
+    REQUIRE_THROWS_AS(session.document.setSample(0, 0, 1), std::logic_error);
+    REQUIRE(session.getViewportSource());
     worker.close();
     worker.waitUntilClosed();
 }
