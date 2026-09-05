@@ -1,4 +1,6 @@
 #include "BackgroundEffect.hpp"
+#include "RevisionEffect.hpp"
+#include "../audio/RevisionEdit.hpp"
 
 #include "../MutationAvailability.hpp"
 #include "../DocumentSessionPersistence.hpp"
@@ -215,7 +217,13 @@ namespace cupuacu::actions::effects
                     .session;
             state->backgroundEffectJob.reset(new BackgroundEffectJob(
                 nextBackgroundEffectJobId(), std::move(request), *document,
-                session.undoStore, &session.waveformCaches));
+                session.undoStore, &session.waveformCaches,
+                session.getEditRevision(),
+                (state->paths ? state->paths->statePath()
+                              : std::filesystem::temp_directory_path()) /
+                    ("effect-" + std::to_string(std::chrono::steady_clock::now()
+                                                    .time_since_epoch()
+                                                    .count()))));
             cupuacu::setLongTask(state, "Applying effect",
                                  state->backgroundEffectJob->snapshot().detail,
                                  0.0, false, true);
@@ -779,6 +787,51 @@ namespace cupuacu::actions::effects
                 return;
             }
 
+            if (result->afterRevision)
+            {
+                auto &session = state->tabs[targetTabIndex].session;
+                if (session.getEditRevision() != result->beforeRevision)
+                {
+                    reportEffectFailure(state, snapshot.request.description,
+                                        "The target audio changed while the "
+                                        "effect was running.");
+                    return;
+                }
+                if (result->kind == BackgroundEffectKind::RemoveSilence &&
+                    result->silenceRuns.empty())
+                {
+                    return;
+                }
+                auto before = audio::RevisionEditState::capture(session);
+                auto after = before;
+                after.audio = std::move(result->afterRevision);
+                if (result->removeSilenceRemovesDuration)
+                {
+                    for (auto it = result->silenceRuns.rbegin();
+                         it != result->silenceRuns.rend(); ++it)
+                    {
+                        audio::removeMarkerRange(after.markers, it->startFrame,
+                                                 it->frameCount);
+                    }
+                    const auto removed = before.audio->shape().frames -
+                                         after.audio->shape().frames;
+                    after.cursor = result->startFrame;
+                    after.selection = gui::Selection<double>(0);
+                    if (result->hadSelection)
+                    {
+                        after.selection.setValue1(result->startFrame);
+                        after.selection.setValue2(result->startFrame +
+                                                  result->frameCount - removed);
+                    }
+                }
+                state->addAndDoUndoableToTab(
+                    targetTabIndex,
+                    std::make_shared<audio::RevisionEdit>(
+                        state, targetTabIndex, snapshot.request.description,
+                        std::move(before), std::move(after)));
+                return;
+            }
+
             const auto addPrepared =
                 [&](std::shared_ptr<cupuacu::actions::Undoable> delegate,
                     std::function<void(bool)> afterSwap = {})
@@ -937,11 +990,18 @@ namespace cupuacu::actions::effects
     BackgroundEffectJob::BackgroundEffectJob(
         std::uint64_t idToUse, BackgroundEffectRequest requestToRun,
         const cupuacu::Document &documentToRead, undo::UndoStore undoStoreToUse,
-        const waveform::DocumentWaveformCaches *sourceCaches)
+        const waveform::DocumentWaveformCaches *sourceCaches,
+        std::shared_ptr<const storage::AudioEditRevision> revision,
+        std::filesystem::path directory)
         : id(idToUse), request(std::move(requestToRun)),
-          document(documentToRead), undoStore(std::move(undoStoreToUse)),
-          detail(request.description)
+          document(documentToRead), readRevision(std::move(revision)),
+          workingDirectory(std::move(directory)),
+          undoStore(std::move(undoStoreToUse)), detail(request.description)
     {
+        if (readRevision)
+        {
+            return;
+        }
         // Freeze peaks with the same source revision as the audio. A running
         // cache worker is not copied; its unapplied ranges remain dirty.
         // Whole-document effects cannot reuse any peaks.
@@ -1041,6 +1101,17 @@ namespace cupuacu::actions::effects
                 publishProgress(detailToUse, progressToUse);
             };
 
+            if (readRevision)
+            {
+                auto computed = computeRevisionEffect(
+                    request, readRevision, workingDirectory, progressCallback);
+                std::lock_guard lock(mutex);
+                result = std::move(computed);
+                success = true;
+                completed = true;
+                completionCv.notify_all();
+                return;
+            }
             const auto lease = document.acquireReadLease();
             std::unique_ptr<BackgroundEffectResult> computedResult;
             switch (request.kind)

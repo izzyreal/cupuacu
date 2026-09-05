@@ -9,6 +9,11 @@
 #include <optional>
 #include <utility>
 
+namespace cupuacu::storage
+{
+    class AudioEditRevision;
+}
+
 namespace cupuacu
 {
     class ClipboardAudio
@@ -72,7 +77,17 @@ namespace cupuacu
 
     private:
         std::shared_ptr<Document::AudioSegment> segment;
+        std::shared_ptr<const storage::AudioEditRevision> audioRevision;
         uint64_t revision = 0;
+
+        void requireResident() const
+        {
+            if (audioRevision)
+            {
+                throw std::logic_error(
+                    "Reference clipboard requires a revision reader");
+            }
+        }
 
         void touch() noexcept
         {
@@ -81,21 +96,21 @@ namespace cupuacu
 
         inline static std::atomic<uint64_t> nextRevision{1};
 
-        [[nodiscard]] static Document::AudioSegment
-        makeInitializedSegment(const SampleFormat format,
-                               const uint32_t sampleRate,
-                               const uint32_t channelCount,
-                               const int64_t frameCount)
+        [[nodiscard]] static Document::AudioSegment makeInitializedSegment(
+            const SampleFormat format, const uint32_t sampleRate,
+            const uint32_t channelCount, const int64_t frameCount)
         {
             Document::AudioSegment initialized{};
             initialized.format = format;
             initialized.sampleRate = static_cast<int>(sampleRate);
             initialized.channelCount = static_cast<int64_t>(channelCount);
             initialized.frameCount = std::max<int64_t>(0, frameCount);
-            initialized.samples.assign(static_cast<std::size_t>(channelCount), {});
-            initialized.dirty.assign(static_cast<std::size_t>(channelCount), {});
-            initialized.provenance.assign(static_cast<std::size_t>(channelCount),
-                                          {});
+            initialized.samples.assign(static_cast<std::size_t>(channelCount),
+                                       {});
+            initialized.dirty.assign(static_cast<std::size_t>(channelCount),
+                                     {});
+            initialized.provenance.assign(
+                static_cast<std::size_t>(channelCount), {});
 
             for (uint32_t channel = 0; channel < channelCount; ++channel)
             {
@@ -111,37 +126,34 @@ namespace cupuacu
         }
 
     public:
+        const std::shared_ptr<const storage::AudioEditRevision> &
+        getAudioRevision() const
+        {
+            return audioRevision;
+        }
+
+        void
+        assignRevision(std::shared_ptr<const storage::AudioEditRevision> value);
+
         void clear()
         {
             segment.reset();
+            audioRevision.reset();
             touch();
         }
 
         [[nodiscard]] bool hasAudio() const
         {
-            return segment && segment->channelCount > 0 &&
-                   segment->frameCount > 0;
+            return getChannelCount() > 0 && getFrameCount() > 0;
         }
 
-        [[nodiscard]] SampleFormat getSampleFormat() const
-        {
-            return segment ? segment->format : SampleFormat::Unknown;
-        }
+        [[nodiscard]] SampleFormat getSampleFormat() const;
 
-        [[nodiscard]] int getSampleRate() const
-        {
-            return segment ? segment->sampleRate : 0;
-        }
+        [[nodiscard]] int getSampleRate() const;
 
-        [[nodiscard]] int64_t getFrameCount() const
-        {
-            return segment ? segment->frameCount : 0;
-        }
+        [[nodiscard]] int64_t getFrameCount() const;
 
-        [[nodiscard]] int64_t getChannelCount() const
-        {
-            return segment ? segment->channelCount : 0;
-        }
+        [[nodiscard]] int64_t getChannelCount() const;
 
         [[nodiscard]] uint64_t getRevision() const noexcept
         {
@@ -151,6 +163,7 @@ namespace cupuacu
         [[nodiscard]] float getSample(const int64_t channel,
                                       const int64_t frame) const
         {
+            requireResident();
             return segment->samples[static_cast<std::size_t>(channel)]
                                    [static_cast<std::size_t>(frame)];
         }
@@ -158,12 +171,14 @@ namespace cupuacu
         [[nodiscard]] audio::SampleProvenance
         getSampleProvenance(const int64_t channel, const int64_t frame) const
         {
+            requireResident();
             return segment->provenance[static_cast<std::size_t>(channel)]
                                       [static_cast<std::size_t>(frame)];
         }
 
         [[nodiscard]] ReadLease acquireReadLease() const
         {
+            requireResident();
             return ReadLease(segment.get());
         }
 
@@ -181,15 +196,17 @@ namespace cupuacu
         void initialize(const SampleFormat format, const uint32_t sampleRate,
                         const uint32_t channelCount, const int64_t frameCount)
         {
-            segment = std::make_shared<Document::AudioSegment>(
-                makeInitializedSegment(format, sampleRate, channelCount,
-                                       frameCount));
+            audioRevision.reset();
+            segment =
+                std::make_shared<Document::AudioSegment>(makeInitializedSegment(
+                    format, sampleRate, channelCount, frameCount));
             touch();
         }
 
         void setSample(const int64_t channel, const int64_t frame,
                        const float value, const bool shouldMarkDirty = true)
         {
+            requireResident();
             if (!segment)
             {
                 return;
@@ -209,13 +226,14 @@ namespace cupuacu
 
         void assignSegment(const Document::AudioSegment &segmentToCopy)
         {
-            segment =
-                std::make_shared<Document::AudioSegment>(segmentToCopy);
+            audioRevision.reset();
+            segment = std::make_shared<Document::AudioSegment>(segmentToCopy);
             touch();
         }
 
         void assignSegment(Document::AudioSegment &&segmentToMove)
         {
+            audioRevision.reset();
             segment = std::make_shared<Document::AudioSegment>(
                 std::move(segmentToMove));
             touch();
@@ -225,6 +243,7 @@ namespace cupuacu
             const int64_t startFrame, const int64_t frameCount,
             const SampleOperationProgressCallback &progress = {}) const
         {
+            requireResident();
             Document::AudioSegment result{};
             if (!segment)
             {
@@ -237,7 +256,8 @@ namespace cupuacu
             result.frameCount = std::max<int64_t>(0, frameCount);
             result.samples.assign(static_cast<std::size_t>(result.channelCount),
                                   {});
-            result.dirty.assign(static_cast<std::size_t>(result.channelCount), {});
+            result.dirty.assign(static_cast<std::size_t>(result.channelCount),
+                                {});
             result.provenance.assign(
                 static_cast<std::size_t>(result.channelCount), {});
 
@@ -260,7 +280,8 @@ namespace cupuacu
                     result.provenance[static_cast<std::size_t>(channel)];
                 channelSamples.resize(static_cast<std::size_t>(boundedCount));
                 channelDirty.resize(static_cast<std::size_t>(boundedCount));
-                channelProvenance.resize(static_cast<std::size_t>(boundedCount));
+                channelProvenance.resize(
+                    static_cast<std::size_t>(boundedCount));
                 for (int64_t frame = 0; frame < boundedCount; ++frame)
                 {
                     const auto sourceIndex =
@@ -289,6 +310,7 @@ namespace cupuacu
 
         [[nodiscard]] Document toDocument() const
         {
+            requireResident();
             Document document;
             if (segment)
             {

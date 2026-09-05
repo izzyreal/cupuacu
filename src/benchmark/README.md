@@ -413,9 +413,30 @@ cold-storage, scheduler contention or GUI latency measurement. Existing audio
 tests additionally cover selection updates and effect preview; focused read-ahead
 tests cover blocked reads, source release, edited disk ranges and partial EOF.
 
-Playback and ordinary export can now consume disk revisions, but normal file
-opening still keeps decoded samples in RAM. Editor commands/history, recording,
-provenance-aware disk saves and recovery must migrate before default activation.
+Playback, ordinary export, structural commands and effect jobs can now consume
+disk revisions, but normal file opening still keeps decoded samples in RAM.
+See `src/main/storage/README.md` for the activation blockers.
+
+`edit_command_memory` and `edit_command_owned` time the actual delete command,
+undo and redo for one frame near the beginning. Import/initialization is setup.
+The owned case uses 1,024 preexisting edits to exercise a fragmented index and
+128 command cycles per child; the resident case uses one cycle because it shifts
+and processes the recording. `production_commands` reports each operation's
+median, p99 and maximum; p99 for a single resident cycle is just that observation.
+The iteration timer is the mean delete + undo + redo time. A final undo per
+cycle is outside timing. Owned commands must perform zero sample-file I/O.
+All restored samples are validated after timing. This measures command/commit
+latency, not subsequent asynchronous waveform delivery or GUI event latency.
+
+`effect_fixed_{memory,owned}` and `effect_all_{memory,owned}` submit the real gain
+job and publish its result through the production history path. Both multiply
+by 0.5, respectively across 1,000 frames and the whole document. Submission,
+publication and total completion are reported separately; decoding/import and
+initial peaks are setup. Ordinary disk undo storage is attached for the resident
+case, while owned history retains references. Autosave and GUI presentation are
+excluded. Owned effects generate source peaks during output; subsequent viewport
+preparation is excluded. Every output sample is checked outside timing. Process
+peak RSS includes setup and validation and is not a managed-allocation budget.
 
 The timing executable links the ordinary core. The diagnostic executable links
 a separately compiled core with atomic work counters and capacity observations;

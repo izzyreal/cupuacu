@@ -299,6 +299,7 @@ FetchContent_MakeAvailable(json)
 include(cmake/ThirdPartyResources.cmake)
 
 set(CUPUACU_SHARED_SOURCES
+    src/main/ClipboardAudio.cpp
     src/main/Document.cpp
     src/main/undo/UndoManifestPersistence.cpp
     src/main/undo/UndoStore.cpp
@@ -367,6 +368,8 @@ set(CUPUACU_SHARED_SOURCES
     src/main/gui/MenuBar.cpp
     src/main/gui/TooltipController.cpp
     src/main/gui/Window.cpp
+    src/main/actions/audio/RevisionEdit.cpp
+    src/main/actions/effects/RevisionEffect.cpp
     src/main/actions/effects/BackgroundEffect.cpp
     src/main/actions/io/BackgroundOpen.cpp
     src/main/actions/io/BackgroundSave.cpp
@@ -390,6 +393,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_edit_commands.cpp
     src/test/test_waveform_selection.cpp
     src/test/test_session_loading.cpp
+    src/test/test_revision_edit_commands.cpp
     src/test/test_owned_audio_storage.cpp
     src/test/test_async_audio_reader.cpp
     src/test/test_audio_edit_revision.cpp

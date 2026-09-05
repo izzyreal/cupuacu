@@ -139,21 +139,30 @@ void cupuacu::State::addAndDoUndoableToTab(
         return;
     }
 
-    addUndoableToTab(tabIndex, undoable);
-    cupuacu::actions::detail::ensureUndoStoreForTab(this, tabIndex);
+    auto &history = tabs[static_cast<std::size_t>(tabIndex)].undoables;
+    history.push_back(undoable);
+    if (!tabs[static_cast<std::size_t>(tabIndex)].session.hasReadRevision())
+    {
+        cupuacu::actions::detail::ensureUndoStoreForTab(this, tabIndex);
+    }
     tabs[static_cast<std::size_t>(tabIndex)].session.stopWaveformCacheBuild();
-    undoable->redo();
+    try
+    {
+        undoable->redo();
+    }
+    catch (...)
+    {
+        history.pop_back();
+        throw;
+    }
 
     if (!undoable->lastOperationCommitted())
     {
-        auto &undoables = tabs[static_cast<std::size_t>(tabIndex)].undoables;
-        if (!undoables.empty() && undoables.back().get() == undoable.get())
-        {
-            undoables.pop_back();
-        }
+        history.pop_back();
         return;
     }
 
+    tabs[static_cast<std::size_t>(tabIndex)].redoables.clear();
     auto &session = tabs[static_cast<std::size_t>(tabIndex)].session;
     cupuacu::file::OverwritePreservationMutationHelper::applyToSession(
         session, undoable->overwritePreservationMutation());
