@@ -2,6 +2,7 @@
 
 #include "AudioRevision.hpp"
 #include <utility>
+#include <optional>
 
 namespace cupuacu::storage
 {
@@ -19,16 +20,32 @@ namespace cupuacu::storage
             int64_t frames = 0;
         };
 
+        struct PeakWork
+        {
+            uint64_t visitedNodes = 0;
+            uint64_t preparedNodes = 0;
+            uint64_t boundarySamples = 0;
+            uint64_t sourcePeaks = 0;
+        };
+
     private:
         friend class AudioEditTransaction;
         struct Node;
         using Tree = std::shared_ptr<const Node>;
+        struct PreparedPeaks
+        {
+            waveform::Peak whole = waveform::emptyPeak();
+            waveform::Peak head = waveform::emptyPeak();
+            waveform::Peak tail = waveform::emptyPeak();
+            int64_t headFrames = 0, tailFrames = 0;
+        };
         struct Node
         {
             Tree left, right;
             SourceRange range;
             int64_t frames;
             int height;
+            mutable std::shared_ptr<const PreparedPeaks> peaks;
         };
         AudioShape dimensions;
         std::vector<Tree> channels;
@@ -58,7 +75,7 @@ namespace cupuacu::storage
             const auto frames = range.frames;
             ++allocated;
             return std::make_shared<Node>(
-                Node{{}, {}, std::move(range), frames, 1});
+                Node{{}, {}, std::move(range), frames, 1, {}});
         }
         static Tree branch(Tree left, Tree right, uint64_t &allocated)
         {
@@ -74,7 +91,7 @@ namespace cupuacu::storage
             const auto depth = 1 + std::max(left->height, right->height);
             ++allocated;
             return std::make_shared<Node>(
-                Node{std::move(left), std::move(right), {}, frames, depth});
+                Node{std::move(left), std::move(right), {}, frames, depth, {}});
         }
         static Tree balance(Tree left, Tree right, uint64_t &allocated)
         {
@@ -192,6 +209,178 @@ namespace cupuacu::storage
                 visit(tree->right, start - leftFrames, count, visitor);
             }
         }
+        static bool prepare(const Tree &tree, PeakWork &work,
+                            const std::function<bool()> &cancel)
+        {
+            if (!tree)
+            {
+                return true;
+            }
+            if (cancel && cancel())
+            {
+                return false;
+            }
+            ++work.visitedNodes;
+            if (std::atomic_load(&tree->peaks))
+            {
+                return true;
+            }
+            auto prepared = std::make_shared<PreparedPeaks>();
+            if (tree->height > 1)
+            {
+                if (!prepare(tree->left, work, cancel) ||
+                    !prepare(tree->right, work, cancel))
+                {
+                    return false;
+                }
+                prepared->whole = waveform::combine(
+                    std::atomic_load(&tree->left->peaks)->whole,
+                    std::atomic_load(&tree->right->peaks)->whole);
+            }
+            else if (!tree->range.source)
+            {
+                prepared->whole = {0, 0};
+            }
+            else
+            {
+                const auto &range = tree->range;
+                const auto &source = *range.source;
+                if (!source.sourcePeaks())
+                {
+                    return false;
+                }
+                constexpr auto block = waveform::SourcePeaks::blockFrames;
+                const auto end = range.start + range.frames;
+                prepared->headFrames = std::min(
+                    range.frames, (block - range.start % block) % block);
+                prepared->tailFrames = prepared->headFrames == range.frames ||
+                                               end == source.shape().frames
+                                           ? 0
+                                           : end % block;
+                const auto readEdge = [&](int64_t start, int64_t frames)
+                {
+                    auto result = waveform::emptyPeak();
+                    if (frames)
+                    {
+                        std::array<float, block> samples;
+                        source.readChannel(
+                            range.channel, start,
+                            std::span<float>(samples).first(frames));
+                        work.boundarySamples += frames;
+                        for (int64_t i = 0; i < frames; ++i)
+                        {
+                            result = waveform::combine(
+                                result, {samples[i], samples[i]});
+                        }
+                    }
+                    return result;
+                };
+                prepared->head = readEdge(range.start, prepared->headFrames);
+                if (cancel && cancel())
+                {
+                    return false;
+                }
+                prepared->tail =
+                    readEdge(end - prepared->tailFrames, prepared->tailFrames);
+                prepared->whole =
+                    waveform::combine(prepared->head, prepared->tail);
+                const auto first = range.start + prepared->headFrames;
+                const auto last = end - prepared->tailFrames;
+                if (last > first)
+                {
+                    prepared->whole = waveform::combine(
+                        prepared->whole, source.sourcePeaks()->queryBlocks(
+                                             range.channel, first / block,
+                                             last / block + (last % block != 0),
+                                             work.sourcePeaks));
+                }
+            }
+            if (cancel && cancel())
+            {
+                return false;
+            }
+            std::shared_ptr<const PreparedPeaks> immutable =
+                std::move(prepared);
+            std::atomic_store(&tree->peaks, std::move(immutable));
+            ++work.preparedNodes;
+            return true;
+        }
+        static std::optional<waveform::Peak>
+        overview(const Tree &tree, int64_t start, int64_t count, PeakWork &work)
+        {
+            if (!count)
+            {
+                return waveform::emptyPeak();
+            }
+            ++work.visitedNodes;
+            const auto prepared = std::atomic_load(&tree->peaks);
+            if (start == 0 && count == tree->frames)
+            {
+                return prepared ? std::optional{prepared->whole} : std::nullopt;
+            }
+            if (tree->height == 1)
+            {
+                if (!prepared)
+                {
+                    return std::nullopt; // Pending never reads disk.
+                }
+                const auto &range = tree->range;
+                if (!range.source)
+                {
+                    return waveform::Peak{0, 0};
+                }
+                const auto end = start + count;
+                auto result = waveform::emptyPeak();
+                if (start < prepared->headFrames)
+                {
+                    result = waveform::combine(result, prepared->head);
+                }
+                if (end > tree->frames - prepared->tailFrames)
+                {
+                    result = waveform::combine(result, prepared->tail);
+                }
+                const auto first =
+                    range.start + std::max(start, prepared->headFrames);
+                const auto last =
+                    range.start +
+                    std::min(end, tree->frames - prepared->tailFrames);
+                if (last > first)
+                {
+                    constexpr auto block = waveform::SourcePeaks::blockFrames;
+                    result = waveform::combine(
+                        result, range.source->sourcePeaks()->queryBlocks(
+                                    range.channel, first / block,
+                                    last / block + (last % block != 0),
+                                    work.sourcePeaks));
+                }
+                return result;
+            }
+            auto result = waveform::emptyPeak();
+            const auto leftFrames = length(tree->left);
+            if (start < leftFrames)
+            {
+                const auto take = std::min(count, leftFrames - start);
+                auto peak = overview(tree->left, start, take, work);
+                if (!peak)
+                {
+                    return std::nullopt;
+                }
+                result = *peak;
+                count -= take;
+                start += take;
+            }
+            if (count)
+            {
+                auto peak =
+                    overview(tree->right, start - leftFrames, count, work);
+                if (!peak)
+                {
+                    return std::nullopt;
+                }
+                result = waveform::combine(result, *peak);
+            }
+            return result;
+        }
         static void validateFrames(AudioShape shape, int64_t start,
                                    int64_t count)
         {
@@ -260,6 +449,35 @@ namespace cupuacu::storage
                     }
                     output = output.subspan(destination.size());
                 });
+        }
+        // Worker-only: exact summaries for cut boundaries require at most
+        // 254 samples per new leaf. Previously prepared subtrees are reused.
+        bool prepareWaveform(PeakWork &work,
+                             const std::function<bool()> &cancel = {}) const
+        {
+            for (const auto &root : channels)
+            {
+                if (!prepare(root, work, cancel))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+        // Memory-only overview query. Pixel edges may expand within a leaf to
+        // a 128-frame source bucket; never beyond an edit boundary. Whole-tree
+        // and whole-leaf summaries are exact. Fine zoom uses async sample
+        // reads.
+        std::optional<waveform::Peak>
+        queryWaveformOverview(int channel, int64_t start, int64_t count,
+                              PeakWork &work) const
+        {
+            if (count <= 0)
+            {
+                throw std::out_of_range("Empty waveform range");
+            }
+            validateRange(dimensions, channel, start, std::size_t(count));
+            return overview(channels[channel], start, count, work);
         }
         int indexHeight() const
         {

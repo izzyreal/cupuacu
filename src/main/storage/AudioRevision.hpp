@@ -1,5 +1,6 @@
 #pragma once
 #include "AudioBlockStore.hpp"
+#include "../waveform/SourcePeaks.hpp"
 #include <functional>
 
 namespace cupuacu::storage
@@ -8,6 +9,7 @@ namespace cupuacu::storage
     {
         friend class AudioRevisionBuilder;
         AudioShape dimensions;
+        std::shared_ptr<const waveform::SourcePeaks> peaks;
         std::shared_ptr<AudioBlockStore> store;
         std::shared_ptr<DecodedBlockCache> cache;
         std::vector<std::vector<AudioBlock>> channels;
@@ -24,6 +26,10 @@ namespace cupuacu::storage
         AudioShape shape() const override
         {
             return dimensions;
+        }
+        const std::shared_ptr<const waveform::SourcePeaks> &sourcePeaks() const
+        {
+            return peaks;
         }
         const std::filesystem::path &sourcePath() const
         {
@@ -169,11 +175,29 @@ namespace cupuacu::storage
                     flushBlock();
                 }
             }
+            // Publish the final partial block before consumers snapshot the
+            // import's completed summaries. finish() only exposes the revision.
+            if (received == revision->dimensions.frames && buffered)
+            {
+                flushBlock();
+            }
         }
         std::shared_ptr<const AudioRevision>
-        finish(std::filesystem::path ownedSource = {})
+        finish(std::filesystem::path ownedSource = {},
+               std::shared_ptr<const waveform::SourcePeaks> peaks = {})
         {
-            if (finished || received != revision->dimensions.frames)
+            if (finished)
+            {
+                throw std::logic_error("Audio import already finished");
+            }
+            if (peaks &&
+                (peaks->shape().frames != revision->dimensions.frames ||
+                 peaks->shape().channels != revision->dimensions.channels))
+            {
+                throw std::invalid_argument(
+                    "Source peaks do not match audio revision");
+            }
+            if (received != revision->dimensions.frames)
             {
                 throw std::runtime_error(
                     "Cannot commit incomplete audio import");
@@ -184,6 +208,7 @@ namespace cupuacu::storage
             }
             revision->store->flush();
             revision->ownedSource = std::move(ownedSource);
+            revision->peaks = std::move(peaks);
             finished = true;
             pending.clear();
             pending.shrink_to_fit();
