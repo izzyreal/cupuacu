@@ -263,11 +263,9 @@ namespace cupuacu::actions::effects
                 CUPUACU_METRIC(performance::add(
                     performance::Work::SamplesScanned, request.frameCount));
 
-                for (int64_t frame = 0; frame < request.frameCount; ++frame)
-                {
-                    oldChannel[static_cast<std::size_t>(frame)] =
-                        document.getSample(channel, request.startFrame + frame);
-                }
+                document.readChannelFloatBlock(channel, request.startFrame,
+                                               oldChannel.data(),
+                                               request.frameCount);
 
                 for (int64_t frame = 0; frame < request.frameCount; ++frame)
                 {
@@ -341,9 +339,16 @@ namespace cupuacu::actions::effects
 
                 for (int64_t frame = 0; frame < request.frameCount; ++frame)
                 {
+                    if (frame % progressStrideFrames == 0)
+                    {
+                        document.readChannelFloatBlock(
+                            channel, request.startFrame + frame,
+                            oldChannel.data() + frame,
+                            std::min(progressStrideFrames,
+                                     request.frameCount - frame));
+                    }
                     const float oldValue =
-                        document.getSample(channel, request.startFrame + frame);
-                    oldChannel[static_cast<std::size_t>(frame)] = oldValue;
+                        oldChannel[static_cast<std::size_t>(frame)];
                     newChannel[static_cast<std::size_t>(frame)] =
                         static_cast<float>(
                             oldValue *
@@ -415,9 +420,16 @@ namespace cupuacu::actions::effects
 
                 for (int64_t frame = 0; frame < request.frameCount; ++frame)
                 {
+                    if (frame % progressStrideFrames == 0)
+                    {
+                        document.readChannelFloatBlock(
+                            channel, request.startFrame + frame,
+                            oldChannel.data() + frame,
+                            std::min(progressStrideFrames,
+                                     request.frameCount - frame));
+                    }
                     const float oldValue =
-                        document.getSample(channel, request.startFrame + frame);
-                    oldChannel[static_cast<std::size_t>(frame)] = oldValue;
+                        oldChannel[static_cast<std::size_t>(frame)];
                     newChannel[static_cast<std::size_t>(frame)] =
                         cupuacu::effects::DynamicsUndoable::processSampleValue(
                             *request.dynamicsSettings, oldValue);
@@ -485,9 +497,16 @@ namespace cupuacu::actions::effects
 
                 for (int64_t frame = 0; frame < request.frameCount; ++frame)
                 {
+                    if (frame % progressStrideFrames == 0)
+                    {
+                        document.readChannelFloatBlock(
+                            channel, request.startFrame + frame,
+                            oldChannel.data() + frame,
+                            std::min(progressStrideFrames,
+                                     request.frameCount - frame));
+                    }
                     const float oldValue =
-                        document.getSample(channel, request.startFrame + frame);
-                    oldChannel[static_cast<std::size_t>(frame)] = oldValue;
+                        oldChannel[static_cast<std::size_t>(frame)];
                     newChannel[static_cast<std::size_t>(frame)] =
                         static_cast<float>(
                             oldValue *
@@ -684,11 +703,9 @@ namespace cupuacu::actions::effects
                 oldChannel.resize(static_cast<std::size_t>(request.frameCount));
                 newChannel.assign(static_cast<std::size_t>(request.frameCount), 0.0f);
 
-                for (int64_t frame = 0; frame < request.frameCount; ++frame)
-                {
-                    oldChannel[static_cast<std::size_t>(frame)] =
-                        document.getSample(channel, request.startFrame + frame);
-                }
+                document.readChannelFloatBlock(channel, request.startFrame,
+                                               oldChannel.data(),
+                                               request.frameCount);
 
                 int64_t writeFrame = 0;
                 std::size_t runIndex = 0;

@@ -692,6 +692,20 @@ namespace cupuacu::actions::io
             const auto snapshot = state->backgroundAutosaveJob->snapshot();
             if (snapshot.completed)
             {
+                // Closing/replacing a document can discard its snapshot while
+                // this worker is still writing it. Remove late output only
+                // when no live session owns the path; an older revision of a
+                // still-open document must remain available until its retry.
+                const bool snapshotStillOwned = std::any_of(
+                    state->tabs.begin(), state->tabs.end(),
+                    [&](const auto &tab)
+                    {
+                        return tab.session.autosaveSnapshotPath == snapshot.path;
+                    });
+                if (!snapshotStillOwned)
+                {
+                    persistence::removeDocumentAutosaveSnapshot(snapshot.path);
+                }
                 if (snapshot.success)
                 {
                     const int tabIndex = findTabIndexById(state, snapshot.tabId);

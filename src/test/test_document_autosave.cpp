@@ -628,6 +628,93 @@ TEST_CASE("Undo store is created for edited sessions and cleared on close",
     REQUIRE_FALSE(std::filesystem::exists(undoRoot));
 }
 
+TEST_CASE(
+    "Closing a cut and pasted tab removes recovery files and keeps clipboard",
+    "[autosave][tabs]")
+{
+    cupuacu::test::StateWithTestPaths state{
+        cupuacu::test::makeUniqueTestRoot("close-tab-autosave")};
+    initializeMonoDocument(state, {0.0f, 0.5f, 1.0f});
+    state.addAndDoUndoable(
+        std::make_shared<cupuacu::actions::audio::Cut>(&state, 1, 2));
+    drainPendingAutosave(state);
+    state.addAndDoUndoable(
+        std::make_shared<cupuacu::actions::audio::Paste>(&state, 1));
+    drainPendingAutosave(state);
+    const auto snapshotPath =
+        state.getActiveDocumentSession().autosaveSnapshotPath;
+    const auto undoRoot = state.getActiveDocumentSession().undoStore.root();
+    REQUIRE(std::filesystem::exists(snapshotPath));
+    REQUIRE(std::filesystem::exists(undoRoot));
+    REQUIRE(state.getActiveDocumentSession().undoStore.stats().fileCount > 0);
+    cupuacu::persistence::flushScheduledClipboardSnapshots();
+    const auto clipboardPath =
+        state.paths->clipboardPath() / "clipboard.cupuacu-clipboard";
+    REQUIRE(std::filesystem::exists(clipboardPath));
+
+    cupuacu::actions::appendEmptyTab(&state);
+    SECTION("Close the active tab")
+    {
+        state.activeTabIndex = 0;
+    }
+    SECTION("Close an inactive tab")
+    {
+        state.activeTabIndex = 1;
+    }
+
+    REQUIRE(cupuacu::actions::closeTabWithoutConfirmation(&state, 0));
+    REQUIRE(state.tabs.size() == 1);
+    REQUIRE_FALSE(std::filesystem::exists(snapshotPath));
+    REQUIRE_FALSE(std::filesystem::exists(undoRoot));
+    REQUIRE(std::filesystem::exists(clipboardPath));
+    REQUIRE(state.clipboard.getFrameCount() == 2);
+    REQUIRE(state.clipboard.getSample(0, 0) == 0.5f);
+    REQUIRE(state.clipboard.getSample(0, 1) == 1.0f);
+}
+
+TEST_CASE("Autosave output arriving after document close is removed",
+          "[autosave][tabs]")
+{
+    cupuacu::test::StateWithTestPaths state{
+        cupuacu::test::makeUniqueTestRoot("close-pending-autosave")};
+    initializeMonoDocument(state, {0.0f, 0.5f, 1.0f});
+    auto &session = state.getActiveDocumentSession();
+    const auto snapshotPath =
+        state.paths->autosavePath() / "late.cupuacu-autosave";
+    session.autosaveSnapshotPath = snapshotPath;
+    state.backgroundAutosaveJob.reset(
+        new cupuacu::actions::io::BackgroundAutosaveJob(
+            state.getActiveTab()->id, snapshotPath,
+            session.document.getWaveformDataVersion(),
+            session.document.getMarkerDataVersion(), session.currentFile,
+            session.document, session.waveformCaches));
+
+    SECTION("Close the only document") {}
+    SECTION("Close a tab with another remaining")
+    {
+        cupuacu::actions::appendEmptyTab(&state);
+    }
+    REQUIRE(cupuacu::actions::closeTabWithoutConfirmation(&state, 0));
+
+    // Deterministically exercise the worker writing after close discarded the
+    // path, without depending on thread scheduling or a large fixture.
+    state.backgroundAutosaveJob->start();
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    while (!state.backgroundAutosaveJob->snapshot().completed &&
+           std::chrono::steady_clock::now() < deadline)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    REQUIRE(state.backgroundAutosaveJob->snapshot().completed);
+    REQUIRE(state.backgroundAutosaveJob->snapshot().success);
+    REQUIRE(std::filesystem::exists(snapshotPath));
+
+    drainPendingAutosave(state);
+    REQUIRE_FALSE(std::filesystem::exists(snapshotPath));
+    REQUIRE(state.getActiveDocumentSession().autosaveSnapshotPath.empty());
+}
+
 TEST_CASE("Undo store stats report payload count and bytes",
           "[autosave]")
 {

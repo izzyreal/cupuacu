@@ -42,6 +42,13 @@ namespace cupuacu::storage
             {
                 return (*owner)[index];
             }
+            void read(std::size_t start, T *destination, std::size_t size) const
+            {
+                if (size)
+                {
+                    owner->read(start, destination, size);
+                }
+            }
 
         private:
             const PagedArray *owner = nullptr;
@@ -156,6 +163,49 @@ namespace cupuacu::storage
                     }
                 }
                 copied += length;
+            }
+        }
+        // Copy into caller-owned storage without allocating or detaching.
+        // Callers account for work by purpose (e.g. waveform copies or I/O).
+        void read(std::size_t start, T *destination, std::size_t size,
+                  std::size_t stride = 1) const
+        {
+            assert(start <= count && size <= count - start && stride > 0);
+            for (std::size_t done = 0; done < size;)
+            {
+                const auto index = start + done;
+                const auto offset = index % PageElements;
+                const auto length =
+                    std::min(size - done, PageElements - offset);
+                const auto &page = table->pages[index / PageElements];
+                auto *output = destination + done * stride;
+                if (stride == 1)
+                {
+                    if (page)
+                    {
+                        std::copy_n(page->values.data() + offset, length,
+                                    output);
+                    }
+                    else
+                    {
+                        std::fill_n(output, length, T{});
+                    }
+                }
+                else if (page)
+                {
+                    for (std::size_t i = 0; i < length; ++i)
+                    {
+                        output[i * stride] = page->values[offset + i];
+                    }
+                }
+                else
+                {
+                    for (std::size_t i = 0; i < length; ++i)
+                    {
+                        output[i * stride] = T{};
+                    }
+                }
+                done += length;
             }
         }
         void fill(std::size_t start, std::size_t size, T value)

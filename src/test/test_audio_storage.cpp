@@ -2,6 +2,7 @@
 #include <catch2/generators/catch_generators.hpp>
 
 #include "Document.hpp"
+#include "gui/WaveformCache.hpp"
 #include "storage/PagedArray.hpp"
 
 #include <algorithm>
@@ -9,6 +10,99 @@
 #include <random>
 #include <thread>
 #include <vector>
+
+TEST_CASE("Waveform bulk reads preserve peaks and only read dirty blocks",
+          "[audio][waveform]")
+{
+    const std::size_t count = GENERATE(0, 127, 128, 129, 16391);
+    struct BulkSource
+    {
+        std::vector<float> values;
+        mutable std::size_t framesRead = 0;
+        void read(std::size_t start, float *destination,
+                  std::size_t count) const
+        {
+            REQUIRE(start + count <= values.size());
+            std::copy_n(values.data() + start, count, destination);
+            framesRead += count;
+        }
+    } source;
+    source.values.resize(count);
+    for (std::size_t i = 0; i < count; ++i)
+    {
+        source.values[i] = float(int(i % 127) - 63) / 64;
+    }
+    cupuacu::gui::WaveformCache bulk, indexed;
+    bulk.init(count);
+    indexed.init(count);
+    bulk.rebuildDirtyFrom(source);
+    REQUIRE(source.framesRead == count);
+    if (count)
+    {
+        source.values[0] = 2.0f;
+        source.framesRead = 0;
+        bulk.invalidateSample(0);
+        bulk.rebuildDirtyFrom(source);
+        REQUIRE(source.framesRead == std::min<std::size_t>(128, count));
+    }
+    indexed.rebuildDirtyFrom(source.values);
+    REQUIRE_FALSE(bulk.hasDirtyBlocks());
+    REQUIRE(bulk.levelsCount() == indexed.levelsCount());
+    for (int level = 0; level < bulk.levelsCount(); ++level)
+    {
+        const auto &actual = bulk.getLevelByIndex(level);
+        const auto &expected = indexed.getLevelByIndex(level);
+        REQUIRE(actual.size() == expected.size());
+        for (std::size_t i = 0; i < actual.size(); ++i)
+        {
+            REQUIRE(actual[i].min == expected[i].min);
+            REQUIRE(actual[i].max == expected[i].max);
+        }
+    }
+}
+
+TEST_CASE(
+    "Bulk sample reads span materialized and zero pages without changing "
+    "revisions",
+    "[audio][document]")
+{
+    const int stride = GENERATE(1, 2, 3, 9);
+    cupuacu::Document original;
+    original.initialize(cupuacu::SampleFormat::PCM_S16, 44100, 2, 49157);
+    original.setSample(0, 16383, 0.25f, false);
+    original.setSample(0, 32768, -0.5f, false);
+    original.setSample(0, 49156, 0.75f, false);
+    auto edited = original;
+    edited.setSample(0, 16383, -1.0f);
+    const auto lease = original.acquireReadLease();
+    constexpr int64_t start = 16380;
+    const int64_t frames = lease.getFrameCount() - start;
+    std::vector<float> output((frames + 5) * stride, 2.0f);
+    REQUIRE(lease.readChannelFloatBlock(0, start, output.data(), frames + 5,
+                                        stride) == frames);
+    for (int64_t i = 0; i < frames + 5; ++i)
+    {
+        for (int channel = 0; channel < stride; ++channel)
+        {
+            REQUIRE(output[i * stride + channel] ==
+                    (i < frames && channel == 0 ? lease.getSample(0, start + i)
+                                                : 2.0f));
+        }
+    }
+    REQUIRE(edited.getSample(0, 16383) == -1.0f);
+    REQUIRE_FALSE(lease.isDirty(0, 16383));
+    float untouched = 2.0f;
+    REQUIRE(lease.readChannelFloatBlock(-1, 0, &untouched, 1) == 0);
+    REQUIRE(lease.readChannelFloatBlock(2, 0, &untouched, 1) == 0);
+    REQUIRE(lease.readChannelFloatBlock(0, -1, &untouched, 1) == 0);
+    REQUIRE(lease.readChannelFloatBlock(0, 49157, &untouched, 1) == 0);
+    REQUIRE(lease.readChannelFloatBlock(0, 0, nullptr, 1) == 0);
+    REQUIRE(lease.readChannelFloatBlock(0, 0, &untouched, 0) == 0);
+    REQUIRE(lease.readChannelFloatBlock(0, 0, &untouched, -1) == 0);
+    REQUIRE(lease.readChannelFloatBlock(0, 0, &untouched, 1, 0) == 0);
+    REQUIRE(lease.readChannelFloatBlock(0, 0, &untouched, 1, -1) == 0);
+    REQUIRE(untouched == 2.0f);
+}
 
 TEST_CASE(
     "Paged samples preserve snapshots through overlapping moves and resizing",

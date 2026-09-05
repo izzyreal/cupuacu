@@ -3,6 +3,7 @@
 #include <vector>
 #include <cstdint>
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace cupuacu::gui
@@ -465,7 +466,8 @@ namespace cupuacu::gui
         }
 
         // Read only dirty sample ranges and detach only the modified peak
-        // pages. The source supplies operator[](sampleIndex).
+        // pages. Sources may provide read(start, destination, count) for bulk
+        // access; otherwise operator[](sampleIndex) is used.
         template <typename SampleSource>
         void rebuildDirtyFrom(const SampleSource &samples)
         {
@@ -522,15 +524,34 @@ namespace cupuacu::gui
                     continue;
                 }
 
-                float minv = samples[s0];
-                float maxv = minv;
-                for (int64_t i = s0 + 1; i < s1; ++i)
+                const auto scan =
+                    [](const auto &source, int64_t first, int64_t end)
                 {
-                    const float v = samples[i];
-                    minv = std::min(minv, v);
-                    maxv = std::max(maxv, v);
+                    float minv = source[first];
+                    float maxv = minv;
+                    for (int64_t i = first + 1; i < end; ++i)
+                    {
+                        const float v = source[i];
+                        minv = std::min(minv, v);
+                        maxv = std::max(maxv, v);
+                    }
+                    return Peak{minv, maxv};
+                };
+                if constexpr (requires(float *destination) {
+                                  samples.read(s0, destination, s1 - s0);
+                              })
+                {
+                    std::array<float, BASE_BLOCK_SIZE> block;
+                    samples.read(s0, block.data(), s1 - s0);
+                    CUPUACU_METRIC(
+                        performance::add(performance::Work::SampleBytesCopied,
+                                         (s1 - s0) * sizeof(float)));
+                    levelsToUse[0].set(blk, scan(block, 0, s1 - s0));
                 }
-                levelsToUse[0].set(blk, {minv, maxv});
+                else
+                {
+                    levelsToUse[0].set(blk, scan(samples, s0, s1));
+                }
             }
 
             int64_t pFrom = from0;

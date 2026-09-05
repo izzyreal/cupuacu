@@ -81,6 +81,12 @@ namespace cupuacu
             [[nodiscard]] int64_t getFrameCount() const;
             [[nodiscard]] int64_t getChannelCount() const;
             [[nodiscard]] float getSample(int64_t channel, int64_t frame) const;
+            // Returns frames copied, clamped to the remaining channel length.
+            // Invalid arguments copy nothing. Destination must hold that many
+            // frames at the given positive stride; unwritten elements survive.
+            int64_t readChannelFloatBlock(int64_t channel, int64_t startFrame,
+                                          float *destination, int64_t frames,
+                                          int64_t destinationStride = 1) const;
             [[nodiscard]] bool isDirty(int64_t channel, int64_t frame) const;
             [[nodiscard]] audio::SampleProvenance
             getSampleProvenance(int64_t channel, int64_t frame) const;

@@ -146,6 +146,10 @@ single-sample diagnostics require zero full-buffer clones and at most 512 KiB
 of sample copying. Page-table and provenance-range metadata can still grow
 with document size or edit history. Structural sample shifting and full-file
 autosave I/O remain; this storage is not yet disk-backed or RAM-budgeted.
+Sequential consumers can copy channel blocks directly across sample pages,
+including strided output for interleaving. These reads allocate no storage.
+Sample-copy observations remain at the consuming operations; autosave packing
+is represented by autosave I/O counters, not the bounded edit-copy budget.
 Tracked capacity excludes allocator
 overhead, SDL textures, codec buffers, thread stacks, outer-vector allocations
 and transient reallocation overlap. It is not a hard memory bound. Process peak
