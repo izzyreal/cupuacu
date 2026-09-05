@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DocumentWaveformCaches.hpp"
+#include "../storage/AudioReader.hpp"
 
 namespace cupuacu::waveform
 {
@@ -28,7 +29,24 @@ namespace cupuacu::waveform
         std::optional<DecodedWaveformChunk> append(const Document &document,
                                                    int64_t availableFrames)
         {
-            const auto total = document.getFrameCount();
+            auto lease = document.acquireReadLease();
+            return appendFrom(
+                {lease.getFrameCount(), int(lease.getChannelCount()),
+                 lease.getSampleRate(), lease.getSampleFormat()},
+                availableFrames,
+                [&lease](int channel, int64_t start, std::span<float> output)
+                {
+                    lease.readChannelFloatBlock(channel, start, output.data(),
+                                                output.size());
+                });
+        }
+
+        template <typename ReadRange>
+        std::optional<DecodedWaveformChunk>
+        appendFrom(storage::AudioShape shape, int64_t availableFrames,
+                   ReadRange read)
+        {
+            const auto total = shape.frames;
             const auto end = availableFrames == total
                                  ? total
                                  : availableFrames / Cache::BASE_BLOCK_SIZE *
@@ -40,26 +58,27 @@ namespace cupuacu::waveform
             }
             if (channels.empty())
             {
-                for (int64_t c = 0; c < document.getChannelCount(); ++c)
+                for (int64_t c = 0; c < shape.channels; ++c)
                 {
                     channels.push_back(Cache::makeFullBuildState(total));
                 }
             }
             DecodedWaveformChunk chunk{
-                .format = document.getSampleFormat(),
-                .sampleRate = document.getSampleRate(),
+                .format = shape.format,
+                .sampleRate = shape.sampleRate,
                 .frameCount = total,
                 .fromBlock = builtFrames / Cache::BASE_BLOCK_SIZE,
                 .toBlock = (end - 1) / Cache::BASE_BLOCK_SIZE,
                 .channels = {},
                 .cached = std::nullopt};
             samples.resize(static_cast<std::size_t>(end - builtFrames));
-            auto lease = document.acquireReadLease();
             for (std::size_t c = 0; c < channels.size(); ++c)
             {
                 auto &state = channels[c];
-                lease.readChannelFloatBlock(c, builtFrames, samples.data(),
-                                            samples.size());
+                read(c, builtFrames, std::span<float>(samples));
+                CUPUACU_METRIC(
+                    performance::add(performance::Work::SampleBytesCopied,
+                                     samples.size() * sizeof(float)));
                 Cache::rebuildDirtyBlockRangeFromSlice(
                     state.levels, total, chunk.fromBlock, chunk.toBlock,
                     builtFrames, samples.data(), samples.size());

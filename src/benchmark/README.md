@@ -154,6 +154,49 @@ Sample-level rendering and exact non-rendering queries keep their raw fallback.
 
 ## Interpreting measurements
 
+### Staged disk-backed audio
+
+The extended core `open_owned` scenario exercises the new worker-only import
+backend. It uses the existing decoders with an external sample sink, writes
+immutable 65,536-frame channel blocks into 64 MiB segment files, and generates
+waveform peaks from the same scratch blocks. Original source bytes are retained
+independently: APFS cloning is attempted on macOS, with a cancellable 64 KiB
+copy fallback. Source size/time changes during acquisition fail the import.
+
+```sh
+python3 scripts/run-benchmarks.py --build-dir build --mode timing \
+  --profile extended --filter open_owned --sizes-mib 1 64 256 \
+  --repetitions 3 --output dist/benchmarks/owned.json
+```
+
+This case fixes the decoded cache budget at 2 MiB and validates every sample
+through bounded reads after timing import. `bounded_storage` reports cache
+residency, logical block I/O bytes and 1,024-frame range-read timings. A cold
+range means a miss in the decoded cache; the OS file cache is uncontrolled.
+Warm reads must cause no block-file I/O. `source_cloned` records acquisition
+mode. Import timing excludes validation and working-store reclamation.
+
+The `AudioReader` interface is explicitly blocking and worker-only.
+`DocumentAudioReader` pins the existing memory-backed revision during migration;
+`AudioRevision` reads disk blocks through a shared bounded cache, and `AudioSlice`
+retains a reference to a range. An import builder publishes a revision only at
+successful completion. Final store release removes its owned working directory
+and must occur on a worker. These process-local files are not a recovery format.
+
+This backend is not yet the editor default. Its cache limit bounds decoded
+payload residency, not total process memory: decoder/import scratch, the flat
+block index and resident peak pyramid are separate. The cache exposes a 10%-of-
+physical-RAM default calculation, but application-wide admission, preferences
+and pressure handling remain to be integrated. Structural edit transactions,
+paged sequence indexes, asynchronous UI/transport reads and durable revision
+manifests are subsequent slices. Existing codec frame-count limits still apply.
+The external-sink metadata is rejected by the legacy document commit path to
+prevent publishing a document without its samples.
+
+Comparisons with `open_uncached` are architectural references, not identical
+operations: the owned path retains source bytes and writes decoded sample
+storage; the legacy path retains decoded audio in RAM and persists its peaks.
+
 The timing executable links the ordinary core. The diagnostic executable links
 a separately compiled core with atomic work counters and capacity observations;
 its timing is not a substitute for uninstrumented timing. Google Benchmark

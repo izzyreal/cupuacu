@@ -20,7 +20,7 @@ import time
 SCHEMA = 1
 QUICK = ["open_uncached", "open_cached", "sample_shared", "delete", "gain_fixed",
          "gain_all", "undo", "redo", "scroll", "zoom"]
-EXTRA = ["sample", "copy", "paste", "trim", "scroll_dirty", "zoom_dirty", "zoom_unaligned", "waveform_build"]
+EXTRA = ["sample", "copy", "paste", "trim", "scroll_dirty", "zoom_dirty", "zoom_unaligned", "waveform_build", "open_owned"]
 SDL_CASES = ["open_uncached", "open_cached", "scroll", "zoom", "scroll_dirty", "zoom_dirty", "responsive_gain", "responsive_stall"]
 
 
@@ -196,7 +196,7 @@ def summarize(rows):
                     metrics.setdefault(k + "_ms", []).append(v)
             for k, v in (row.get("work") or {}).items():
                 metrics.setdefault(k, []).append(v)
-            for group in ("event_latency", "event_loop", "waveform_queries", "navigation_dispatch", "navigation_during_work"):
+            for group in ("event_latency", "event_loop", "waveform_queries", "navigation_dispatch", "navigation_during_work", "bounded_storage"):
                 for k, v in row.get(group, {}).items():
                     if v is not None:
                         metrics.setdefault(group + "_" + k, []).append(v)

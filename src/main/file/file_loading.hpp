@@ -37,6 +37,7 @@ namespace cupuacu::file
         bool persistentWaveformCacheLoaded = false;
         bool waveformCachesReady = false;
         bool requiresSaveAs = false;
+        bool externalSamples = false;
     };
 
     using LoadProgressCallback =
@@ -44,6 +45,10 @@ namespace cupuacu::file
     using LoadCancelCheck = std::function<bool()>;
     // Called on the decoder thread after a contiguous prefix has been written.
     using LoadChunkCallback = std::function<void(const Document &, int64_t)>;
+    // An external sink consumes decoded samples synchronously; the returned
+    // Document then contains metadata only and cannot be committed to the UI.
+    using LoadSampleSink =
+        std::function<void(const Document &, int64_t, const float *, int64_t)>;
 
     namespace detail
     {
@@ -249,7 +254,8 @@ namespace cupuacu::file
 
         static std::optional<LoadedAudioFile> loadNativeAlacM4aIfApplicable(
             const std::string &path, const LoadProgressCallback &progress,
-            const LoadCancelCheck &isCanceled, const LoadChunkCallback &chunk)
+            const LoadCancelCheck &isCanceled, const LoadChunkCallback &chunk,
+            const LoadSampleSink &sink)
         {
             if (!hasM4aExtension(path))
             {
@@ -264,13 +270,15 @@ namespace cupuacu::file
             int lastReadPercent = -1;
             bool decodeStarted = false;
             LoadedAudioFile result;
+            result.externalSamples = bool(sink);
             auto &doc = result.document;
             std::uint32_t totalFramesLoaded = 0;
             constexpr std::uint32_t kLoadBlockFrames = 65536u;
             std::vector<float> interleaved;
             std::uint16_t streamChannels = 0;
             auto flushInterleaved = [&doc, &interleaved, &totalFramesLoaded,
-                                     &streamChannels, &chunk, &isCanceled]()
+                                     &streamChannels, &chunk, &isCanceled,
+                                     &sink]()
             {
                 if (interleaved.empty() || streamChannels == 0)
                 {
@@ -283,9 +291,17 @@ namespace cupuacu::file
                 CUPUACU_METRIC(
                     performance::add(performance::Work::DecodedBytesRead,
                                      interleaved.size() * sizeof(float)));
-                doc.writeInterleavedFloatBlock(totalFramesLoaded,
-                                               interleaved.data(), frameCount,
-                                               streamChannels, false);
+                if (sink)
+                {
+                    sink(doc, totalFramesLoaded, interleaved.data(),
+                         frameCount);
+                }
+                else
+                {
+                    doc.writeInterleavedFloatBlock(
+                        totalFramesLoaded, interleaved.data(), frameCount,
+                        streamChannels, false);
+                }
                 totalFramesLoaded += frameCount;
                 throwIfLoadCanceled(isCanceled);
                 if (chunk)
@@ -454,7 +470,8 @@ namespace cupuacu::file
 
         static std::optional<LoadedAudioFile> loadNativeAacM4aIfApplicable(
             const std::string &path, const LoadProgressCallback &progress,
-            const LoadCancelCheck &isCanceled, const LoadChunkCallback &chunk)
+            const LoadCancelCheck &isCanceled, const LoadChunkCallback &chunk,
+            const LoadSampleSink &sink)
         {
             if (!hasM4aExtension(path) ||
                 cupuacu::file::m4a::detectM4aAudioCodecFile(path) !=
@@ -465,17 +482,26 @@ namespace cupuacu::file
 
             LoadedAudioFile result;
             result.requiresSaveAs = true;
+            result.externalSamples = bool(sink);
             auto &doc = result.document;
             std::uint32_t totalFramesLoaded = 0;
             int lastPercent = -1;
             const auto info = cupuacu::file::m4a::streamAacM4aFile(
                 path,
-                [&doc, &totalFramesLoaded,
-                 &chunk](const float *samples, const std::uint32_t frameCount,
-                         const std::uint16_t channels)
+                [&doc, &totalFramesLoaded, &chunk,
+                 &sink](const float *samples, const std::uint32_t frameCount,
+                        const std::uint16_t channels)
                 {
-                    doc.writeInterleavedFloatBlock(totalFramesLoaded, samples,
-                                                   frameCount, channels, false);
+                    if (sink)
+                    {
+                        sink(doc, totalFramesLoaded, samples, frameCount);
+                    }
+                    else
+                    {
+                        doc.writeInterleavedFloatBlock(totalFramesLoaded,
+                                                       samples, frameCount,
+                                                       channels, false);
+                    }
                     totalFramesLoaded += frameCount;
                     if (chunk)
                     {
@@ -523,19 +549,23 @@ namespace cupuacu::file
         }
     } // namespace detail
 
-    static LoadedAudioFile
-    loadAudioFile(const std::string &path,
-                  const LoadProgressCallback &progress = {},
-                  const LoadCancelCheck &isCanceled = {},
-                  const LoadChunkCallback &chunk = {})
+    static LoadedAudioFile loadAudioFile(
+        const std::string &path, const LoadProgressCallback &progress = {},
+        const LoadCancelCheck &isCanceled = {},
+        const LoadChunkCallback &chunk = {}, const LoadSampleSink &sink = {})
     {
+        if (chunk && sink)
+        {
+            throw std::invalid_argument(
+                "External sample sinks cannot publish in-memory documents");
+        }
         if (auto loaded = detail::loadNativeAacM4aIfApplicable(
-                path, progress, isCanceled, chunk))
+                path, progress, isCanceled, chunk, sink))
         {
             return std::move(*loaded);
         }
         if (auto loaded = detail::loadNativeAlacM4aIfApplicable(
-                path, progress, isCanceled, chunk))
+                path, progress, isCanceled, chunk, sink))
         {
             return std::move(*loaded);
         }
@@ -569,6 +599,7 @@ namespace cupuacu::file
         sf_count_t frames = sfinfo.frames;
 
         LoadedAudioFile result;
+        result.externalSamples = bool(sink);
         auto &doc = result.document;
         result.exportSettings =
             inferExportSettingsForFile(path, sfinfo.format, sampleFormat);
@@ -598,8 +629,16 @@ namespace cupuacu::file
             CUPUACU_METRIC(
                 performance::add(performance::Work::DecodedBytesRead,
                                  framesRead * channels * sizeof(float)));
-            doc.writeInterleavedFloatBlock(totalFramesRead, interleaved.data(),
-                                           framesRead, channels, false);
+            if (sink)
+            {
+                sink(doc, totalFramesRead, interleaved.data(), framesRead);
+            }
+            else
+            {
+                doc.writeInterleavedFloatBlock(totalFramesRead,
+                                               interleaved.data(), framesRead,
+                                               channels, false);
+            }
 
             totalFramesRead += framesRead;
             if (chunk)
@@ -644,6 +683,11 @@ namespace cupuacu::file
                                       LoadedAudioFile loaded,
                                       const cupuacu::Paths *paths = nullptr)
     {
+        if (loaded.externalSamples)
+        {
+            throw std::logic_error(
+                "External audio requires the range-reader backend");
+        }
         session.stopWaveformCacheBuild();
         session.currentFileExportSettings = loaded.exportSettings;
         session.currentFileRequiresSaveAs = loaded.requiresSaveAs;
