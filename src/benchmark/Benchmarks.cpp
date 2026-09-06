@@ -13,6 +13,7 @@
 #include "actions/Zoom.hpp"
 #include "file/file_loading.hpp"
 #include "file/OwnedAudioImport.hpp"
+#include "file/DecodedImportCache.hpp"
 #include "file/AudioFileWriter.hpp"
 #include "playback/ReadAhead.hpp"
 #include "storage/AsyncAudioReader.hpp"
@@ -267,7 +268,7 @@ namespace
 
     bool busy(State &state)
     {
-        if (waveform::hasScheduledPersistentWaveformCacheWork())
+        if (file::DecodedImportCache::hasPendingWork() || waveform::hasScheduledPersistentWaveformCacheWork())
         {
             return true;
         }
@@ -535,6 +536,7 @@ namespace
     }
 
     #include "LargeFileWorkflow.hpp"
+    #include "RestoredClipboardPaste.hpp"
 
     void scenario(benchmark::State &measurement)
     {
@@ -583,6 +585,11 @@ namespace
 #endif
         const std::string name = request.at("scenario");
         const int64_t frames = request.at("frames");
+        if (name == "paste_restored_empty")
+        {
+            restoredClipboardPaste(measurement);
+            return;
+        }
         if (name == "large_file_workflow")
         {
             largeFileWorkflow(measurement);
@@ -2192,6 +2199,34 @@ namespace
                 drain(state);
             }
         }
+        if (name == "open_decoded_cached")
+        {
+            state.importSampleCache = std::make_shared<storage::DecodedBlockCache>(64 * 1024 * 1024);
+            const auto initialStart = Clock::now();
+            actions::io::queueOpenFile(&state, request.at("fixture"));
+            do
+            {
+                require(elapsed(initialStart) < request.value("timeout_seconds", 120) * 1000., "Initial import timed out");
+                pump(state);
+                if (!state.getActiveDocumentSession().openingPreview &&
+                    state.getActiveDocumentSession().hasReadRevision() &&
+                    result["decoded_cache"]["initial_editable_ms"].is_null())
+                    result["decoded_cache"]["initial_editable_ms"] = elapsed(initialStart);
+            } while (busy(state));
+            result["decoded_cache"]["initial_cache_complete_ms"] = elapsed(initialStart);
+            require(error.empty(), error);
+            require(state.decodedImportCache && state.decodedImportCache->diskBytes() > 0,
+                    "Decoded cache priming failed");
+            actions::closeTabWithoutConfirmation(&state, 0);
+            auto previous = std::weak_ptr(state.decodedImportCache);
+            state.decodedImportCache.reset();
+            const auto waiting = Clock::now();
+            while (!previous.expired())
+            {
+                require(elapsed(waiting) < 10000, "Cache service release timed out");
+                std::this_thread::yield();
+            }
+        }
         if (opening && name == "open_cached")
         {
             DocumentSession cached;
@@ -2424,6 +2459,14 @@ namespace
                 require(result["event_latency"]["max_ms"].get<double>() >= 50,
                         "Stall probe failed");
             }
+        }
+        if (name == "open_decoded_cached")
+        {
+            require(state.decodedImportCache->diskHitCount() == 1, "Reopen did not use persisted decoded audio");
+            require(state.getActiveDocumentSession().preservationSource->blockStore()->ioBytes().second == 0,
+                    "Reopen wrote decoded sample blocks");
+            result["decoded_cache"].update({{"disk_hits", state.decodedImportCache->diskHitCount()},
+                {"disk_bytes", state.decodedImportCache->diskBytes()}, {"decoded_sample_bytes_written", 0}});
         }
         if (state.getActiveDocumentSession().hasReadRevision())
         {

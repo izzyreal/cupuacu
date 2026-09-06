@@ -36,7 +36,8 @@ namespace cupuacu::actions::io
             std::uint64_t idToUse, PendingOpenRequest requestToOpen,
             std::filesystem::path waveformCacheRootToUse = {},
             std::filesystem::path workingRootToUse = {},
-            std::shared_ptr<storage::DecodedBlockCache> sampleCache = {});
+            std::shared_ptr<storage::DecodedBlockCache> sampleCache = {},
+            std::shared_ptr<file::DecodedImportCache> decodedCache = {});
         ~BackgroundOpenJob();
 
         BackgroundOpenJob(const BackgroundOpenJob &) = delete;
@@ -58,6 +59,7 @@ namespace cupuacu::actions::io
         std::filesystem::path waveformCacheRoot;
         std::filesystem::path workingRoot;
         std::shared_ptr<storage::DecodedBlockCache> sampleCache;
+        std::shared_ptr<file::DecodedImportCache> decodedCache;
         mutable std::mutex mutex;
         bool completed = false;
         bool success = false;

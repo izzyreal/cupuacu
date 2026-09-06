@@ -656,3 +656,51 @@ Results distinguish metadata, first playable samples, first waveform, editable
 state, peak persistence, save and reopen. `workflow_slow_pumps` records application
 iterations exceeding 10 ms. See [the milestone report](../../PERFORMANCE-MILESTONE.md)
 for measured results, the retained latency outlier, and scope limits.
+
+### Decoded-cache reopening
+
+`open_decoded_cached` primes the cache through queued production opening, waits
+for optional persistence, closes the document and drops the cache service's live
+index. The measured second open must load a persisted revision and write zero
+sample blocks. Full sample validation follows timing; it uses a shared 64 MiB
+sample cache. Initial editable time and cache completion are reported separately
+under `decoded_cache`, outside the measured reopening interval.
+
+```sh
+python3 scripts/run-benchmarks.py --profile extended --mode timing \
+  --filter open_decoded_cached --sizes-mib 1 256 --repetitions 3 \
+  --output dist/benchmarks/reopen-decoded-small-large.json
+python3 scripts/run-benchmarks.py --profile large --mode timing \
+  --filter open_decoded_cached --sizes-mib 2048 --repetitions 1 \
+  --formats wav m4a --max-rss-mib 2048 --max-disk-mib 32768 \
+  --timeout-seconds 180 --output dist/benchmarks/reopen-decoded-2g.json
+```
+
+`open_cached` still primes only the waveform cache, so it measures the path that
+must decode again. Decoded-cache creation now contributes to background-complete
+time on uncached opening; use `audio_available` to compare editable availability.
+
+### Restored clipboard into a fresh tab
+
+`paste_restored_empty` imports a fixture, copies its middle half to a persistent
+revision clipboard, releases the original readers, and restores the clipboard
+before timing. It measures the production paste, undo and redo commands into a
+fresh tab, requiring no clipboard conversion, sample I/O or legacy undo store.
+Full sample validation follows timing. `clipboard_paste` reports restoration and
+each command separately; total completion covers the three commands, excluding
+restoration, validation and autosave completion. This is a headless command
+benchmark, not a GUI event-latency measurement.
+
+```sh
+python3 scripts/run-benchmarks.py --profile large --mode timing \
+  --filter paste_restored_empty --sizes-mib 1 256 2048 --repetitions 3 \
+  --formats wav --max-rss-mib 2048 --max-disk-mib 32768 \
+  --output dist/benchmarks/paste-restored-empty.json
+```
+
+For diagnosing an existing clipboard, a native benchmark request can supply
+`clipboard_snapshot` with an archive manifest path. That archive is read only;
+`root` must name a separate temporary directory for benchmark output. Validation
+then compares every pasted sample with the supplied clipboard. This diagnostic
+requires no input fixture; `frames` is still required by the request schema but
+is ignored for the supplied clipboard's size.

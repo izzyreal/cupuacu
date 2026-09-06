@@ -108,7 +108,8 @@ namespace cupuacu::gui
             {
                 cancelButton->setVisible(cancellable);
                 cancelButton->setEnabled(!cancelRequested);
-                cancelButton->setText(cancelRequested ? "Canceling..." : "Cancel");
+                cancelButton->setText(cancelRequested ? "Canceling..."
+                                                      : "Cancel");
             }
             resized();
         }
@@ -161,15 +162,9 @@ namespace cupuacu::gui
             SDL_RenderRect(renderer, &panelFrame);
 
             const int titleFont = scaleFontPointSize(
-                state,
-                documentOperation
-                    ? 16
-                    : std::max(1, static_cast<int>(state->menuFontSize)));
+                state, std::max(1, static_cast<int>(state->menuFontSize)));
             const int detailFont = scaleFontPointSize(
-                state,
-                documentOperation
-                    ? 14
-                    : std::max(1, static_cast<int>(state->menuFontSize) - 8));
+                state, std::max(1, static_cast<int>(state->menuFontSize) - 8));
             renderEllipsizedText(renderer, status.title, titleFont,
                                  layout.titleRect, true);
             renderEllipsizedText(renderer, status.detail, detailFont,
@@ -180,25 +175,22 @@ namespace cupuacu::gui
 
             if (!status.progress.has_value())
             {
-                const int fillW = std::max(scaleUi(state, 40.0f),
-                                           layout.progressTrack.w / 4);
-                const int travelW =
-                    std::max(1, layout.progressTrack.w + fillW);
-                const auto phase =
-                    static_cast<int>((SDL_GetTicks() / 8u) %
-                                     static_cast<Uint64>(travelW));
+                const int fillW =
+                    std::max(scaleUi(state, 40.0f), layout.progressTrack.w / 4);
+                const int travelW = std::max(1, layout.progressTrack.w + fillW);
+                const auto phase = static_cast<int>(
+                    (SDL_GetTicks() / 8u) % static_cast<Uint64>(travelW));
                 const int fillX = layout.progressTrack.x - fillW + phase;
                 const SDL_Rect fill{
                     std::clamp(fillX, layout.progressTrack.x,
                                layout.progressTrack.x + layout.progressTrack.w),
                     layout.progressTrack.y,
                     std::max(
-                        0,
-                        std::min(fillX + fillW,
-                                 layout.progressTrack.x + layout.progressTrack.w) -
-                            std::clamp(fillX, layout.progressTrack.x,
-                                       layout.progressTrack.x +
-                                           layout.progressTrack.w)),
+                        0, std::min(fillX + fillW, layout.progressTrack.x +
+                                                       layout.progressTrack.w) -
+                               std::clamp(fillX, layout.progressTrack.x,
+                                          layout.progressTrack.x +
+                                              layout.progressTrack.w)),
                     layout.progressTrack.h};
                 Helpers::fillRect(renderer, fill, SDL_Color{0, 185, 0, 255});
             }
@@ -208,7 +200,8 @@ namespace cupuacu::gui
                 const SDL_Rect fill{
                     layout.progressTrack.x, layout.progressTrack.y,
                     static_cast<int>(std::lround(
-                        static_cast<double>(layout.progressTrack.w) * progress)),
+                        static_cast<double>(layout.progressTrack.w) *
+                        progress)),
                     layout.progressTrack.h};
                 Helpers::fillRect(renderer, fill, SDL_Color{0, 185, 0, 255});
             }
@@ -236,21 +229,14 @@ namespace cupuacu::gui
             }
 
             const int outerMargin = scaleUi(state, 40.0f);
-            const int padding =
-                scaleUi(state, documentOperation ? 8.0f : 18.0f);
-            const int titleHeight =
-                scaleUi(state, documentOperation ? 20.0f : 38.0f);
-            const int detailHeight =
-                scaleUi(state, documentOperation ? 18.0f : 30.0f);
-            const int titleToDetailGap =
-                scaleUi(state, documentOperation ? 2.0f : 8.0f);
-            const int detailToBarGap =
-                scaleUi(state, documentOperation ? 4.0f : 18.0f);
+            const int padding = scaleUi(state, 18.0f);
+            const int titleHeight = scaleUi(state, 38.0f);
+            const int detailHeight = scaleUi(state, 30.0f);
+            const int titleToDetailGap = scaleUi(state, 8.0f);
+            const int detailToBarGap = scaleUi(state, 18.0f);
             const int buttonWidth = scaleUi(state, 120.0f);
-            const int buttonHeight =
-                scaleUi(state, documentOperation ? 22.0f : 34.0f);
-            const int buttonGap =
-                scaleUi(state, documentOperation ? 4.0f : 12.0f);
+            const int buttonHeight = scaleUi(state, 34.0f);
+            const int buttonGap = scaleUi(state, 12.0f);
             const int barHeight = scaleUi(state, 6.0f);
 
             const int panelWidth =
@@ -261,24 +247,22 @@ namespace cupuacu::gui
                 status.cancellable
                     ? detailToBarGap + barHeight + buttonGap + buttonHeight
                     : detailToBarGap + barHeight;
-            const int panelHeight = padding * 2 + textBlockHeight + footerHeight;
+            const int panelHeight =
+                padding * 2 + textBlockHeight + footerHeight;
             const int panelX = (getWidth() - panelWidth) / 2;
-            const int panelY = documentOperation
-                                   ? std::max(0, getHeight() - panelHeight -
-                                                     scaleUi(state, 8.0f))
-                                   : (getHeight() - panelHeight) / 2;
+            const int panelY = (getHeight() - panelHeight) / 2;
 
             layout.panel = {panelX, panelY, panelWidth, panelHeight};
-            layout.titleRect = {
-                static_cast<float>(panelX + padding),
-                static_cast<float>(panelY + padding),
-                static_cast<float>(panelWidth - padding * 2),
-                static_cast<float>(titleHeight)};
-            layout.detailRect = {
-                static_cast<float>(panelX + padding),
-                static_cast<float>(panelY + padding + titleHeight + titleToDetailGap),
-                static_cast<float>(panelWidth - padding * 2),
-                static_cast<float>(detailHeight)};
+            layout.titleRect = {static_cast<float>(panelX + padding),
+                                static_cast<float>(panelY + padding),
+                                static_cast<float>(panelWidth - padding * 2),
+                                static_cast<float>(titleHeight)};
+            layout.detailRect = {static_cast<float>(panelX + padding),
+                                 static_cast<float>(panelY + padding +
+                                                    titleHeight +
+                                                    titleToDetailGap),
+                                 static_cast<float>(panelWidth - padding * 2),
+                                 static_cast<float>(detailHeight)};
 
             const int progressY =
                 panelY + padding + textBlockHeight + detailToBarGap;
@@ -287,9 +271,7 @@ namespace cupuacu::gui
 
             layout.cancelButtonRect = {
                 panelX + panelWidth - padding - buttonWidth,
-                progressY + barHeight + buttonGap,
-                buttonWidth,
-                buttonHeight};
+                progressY + barHeight + buttonGap, buttonWidth, buttonHeight};
             return layout;
         }
 
@@ -307,8 +289,9 @@ namespace cupuacu::gui
                 {
                     return cupuacu::gui::measureText(value, pointSize).first;
                 });
-            renderText(renderer, renderedText, static_cast<std::uint8_t>(pointSize),
-                       rect, shouldCenterHorizontally);
+            renderText(renderer, renderedText,
+                       static_cast<std::uint8_t>(pointSize), rect,
+                       shouldCenterHorizontally);
         }
 
         std::string lastTitle;

@@ -122,3 +122,95 @@ legacy recovery conversion, new-document backend migration, larger M4A limits,
 memory mapping and further scheduler unification remain outside this milestone.
 The next step is manual verification of the delivered workflow, not another
 architecture slice.
+
+## Follow-up: decoded reopening and progress presentation
+
+The progress panel's previous centered placement, dimensions and typography are
+restored while retaining nonmodal document operations. Progress identifies the
+original filename and the preparation phase, not the internal working-copy path.
+
+Completed imports can now be reused from `state/decoded-cache`, including after
+restart. The optional cache has an 8 GiB reusable-data budget, skips active readers
+during eviction, and never changes clipboard/history ownership. Original source
+changes invalidate reuse. Cache writing is asynchronous and admits one maintenance
+job at a time; insufficient space, corruption or failed writes fall back to normal
+import. See the storage README for cache identity, leasing and admission details.
+
+Measured on the same native Release machine (sizes are decoded float audio):
+
+| Workload | Initial editable | Persisted-cache reopen |
+|---|---:|---:|
+| 256 MiB WAV, median of three | 519 ms | 46.2 ms |
+| 256 MiB ALAC, median of three | 1.48 s | 43.6 ms |
+| 256 MiB FLAC, median of three | 1.04 s | 43.6 ms |
+| 2 GiB WAV | 3.98 s | 342 ms |
+| 2 GiB ALAC | 12.39 s | 423 ms |
+
+All 18 small/large reopen runs passed. The 2 GiB runs passed full sample validation
+and wrote zero new decoded sample bytes on reopening. Their reusable disk entries
+occupied approximately 3.06 GiB (WAV) and 2.89 GiB (ALAC), including original bytes,
+float samples and peaks. First-import cache persistence completed approximately
+301/365 ms after editing became available. Filesystems without cloning may incur
+substantially more background copying; these timings are APFS observations.
+
+The first 2 GiB ALAC reopen recorded a 53.24 ms maximum event delay; a single
+confirmation reopened in 347 ms with a 4.43 ms maximum. Neither had enough events
+for p99. No fix is attributed to that non-reproduced spike. A subsequent code review
+separately removed cache-initialization lock contention on live hits and limited
+cache-fill admission, keeping one bulk slot available for user work.
+
+Reports: `reopen-decoded-small-large.json`, `reopen-decoded-2g.json`,
+`reopen-decoded-2g-confirmation.json` and `reopen-workflow-check.json`, under
+`dist/benchmarks/`. Native tests cover persistence, exact original PCM32 bytes,
+markers, bounded sample residency, eviction/pinning, competing cache ownership,
+source invalidation, truncated-cache fallback and bounded queued cache creation.
+
+Final follow-up checks: **630 native test cases / 2,739,415 assertions** and
+**16 reporting tests** passed; the native app build passed. The 256 MiB ALAC
+production workflow retained zero source-sample I/O for local edits and a
+0.246 ms warm viewport p99. Cached imports receive fresh runtime provenance IDs,
+with a test verifying distinct reopened-document identities and matching sample
+provenance, while retaining exact original container bytes.
+
+
+## Follow-up: restored clipboard paste into Untitled
+
+A fresh tab had zero channels and no read revision. Pasting a persisted revision
+clipboard therefore converted the entire selection to resident samples and
+per-sample metadata, then entered legacy paste/undo work on the main thread.
+Legacy paste used the target's zero-channel format for its replacement, leaving
+an empty document after that work.
+
+A history-free empty target now establishes an empty saved revision before
+pasting. An unconfigured tab adopts the clipboard format; a configured empty
+document retains its format. Paste shares source references and summaries, undo
+returns to an empty saved revision, and redo retains the inserted audio after
+clipboard replacement. The waveform children are refreshed when the tab gains
+channels. Existing resident documents with history still use the existing
+conversion path; this fix does not complete general legacy-document migration.
+
+The user's persisted clipboard (176,530,667 frames) passed full sample validation:
+restoration 619 ms, paste 0.135 ms, undo 0.000792 ms, redo 0.001209 ms. Paste and
+history performed zero sample I/O; process peak RSS including archive loading
+and validation was 143 MiB. The original archive was read without modification.
+These are headless command measurements, not measured GUI frame latency.
+
+The new `paste_restored_empty` benchmark passed all nine runs (three repetitions
+per size), copying the middle half of each source before persistence/restoration:
+
+| Source decoded size | Clipboard decoded size | Median paste | Median restore |
+| --- | --- | --- | --- |
+| 1 MiB | 0.5 MiB | 0.0458 ms | 0.851 ms |
+| 256 MiB | 128 MiB | 0.0493 ms | 40.6 ms |
+| 2 GiB | 1 GiB | 0.0624 ms | 325 ms |
+
+All runs required zero sample I/O for paste/undo/redo and validated every pasted
+sample after timing. Archive restoration still scales with stored metadata;
+this change removes clipboard materialization from the paste operation.
+Report: `dist/benchmarks/paste-restored-empty.json` (ignored raw artifact).
+
+Validation: 23 focused native cases / 721,955 assertions, including persisted
+clipboard boundaries, configured empty targets, clipboard replacement, dirty
+state and recovery of the pasted document's undo history; 16 reporting tests.
+Native application and benchmark builds passed. No full suite, Linux or GUI
+integration tests were run for this fix.

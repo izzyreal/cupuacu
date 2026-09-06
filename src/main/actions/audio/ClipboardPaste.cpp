@@ -6,6 +6,36 @@
 
 namespace cupuacu::actions::audio
 {
+    void prepareEmptyRevisionPaste(State *state)
+    {
+        auto &session = state->getActiveDocumentSession();
+        auto &document = session.document;
+        const auto &clipboard = state->clipboard.getAudioRevision();
+        if (!clipboard || session.hasReadRevision() ||
+            document.getFrameCount() != 0 ||
+            !state->getActiveUndoables().empty() ||
+            !state->getActiveRedoables().empty())
+        {
+            return;
+        }
+
+        // A fresh tab has no format yet. Adopt the clipboard's format; an
+        // explicitly configured empty document keeps its own. Establish an
+        // empty saved revision so paste and its history only share references.
+        storage::AudioShape shape{0, int(document.getChannelCount()),
+                                  document.getSampleRate(),
+                                  document.getSampleFormat()};
+        if (shape.channels == 0)
+        {
+            shape = clipboard->shape();
+            shape.frames = 0;
+        }
+        auto empty = storage::AudioEditRevision::silence(shape);
+        document.setExternalAudioShape(shape.format, shape.sampleRate,
+                                       shape.channels, 0);
+        session.bindReadRevision(std::move(empty));
+    }
+
     void beginClipboardPaste(State *state, int64_t start, int64_t end)
     {
         if (state->backgroundClipboardConversion)

@@ -56,7 +56,7 @@ namespace cupuacu::file
                 detail::throwIfLoadCanceled(cancel);
                 if (progress)
                 {
-                    progress("Copying source", value);
+                    progress("Copying source: " + source.filename().string(), value);
                 }
             },
             options.preferFilesystemClone);
@@ -74,7 +74,12 @@ namespace cupuacu::file
         storage::AudioShape shape;
         std::shared_ptr<storage::ImportAudioReader> progressive;
         auto metadata = loadAudioFile(
-            owned.string(), progress, cancel, {},
+            owned.string(),
+            [&](const auto &, std::optional<double> value)
+            {
+                if (progress)
+                    progress("Preparing audio: " + source.filename().string(), value);
+            }, cancel, {},
             [&](const Document &document, int64_t start, const float *samples,
                 int64_t count)
             {

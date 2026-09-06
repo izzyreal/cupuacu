@@ -25,6 +25,8 @@
 #include <deque>
 #include <chrono>
 
+namespace cupuacu::file { class DecodedImportCache; }
+
 namespace cupuacu
 {
     namespace storage
@@ -179,6 +181,8 @@ namespace cupuacu
         bool loopPlaybackEnabled = false;
         bool snapEnabled = false;
         // Shared by normal imports; benchmarks can inject a smaller budget.
+        std::shared_ptr<file::DecodedImportCache> decodedImportCache;
+        uint64_t decodedImportCacheByteBudget = 8ull * 1024 * 1024 * 1024;
         std::shared_ptr<storage::DecodedBlockCache> importSampleCache =
             std::make_shared<storage::DecodedBlockCache>(
                 storage::DecodedBlockCache::defaultByteBudget(

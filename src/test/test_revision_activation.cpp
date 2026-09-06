@@ -13,6 +13,7 @@
 #include "actions/audio/SetSampleValue.hpp"
 #include "file/OwnedSourceFile.hpp"
 #include "file/OwnedAudioImport.hpp"
+#include "file/DecodedImportCache.hpp"
 #include "persistence/DocumentAutosave.hpp"
 #include <sndfile.h>
 #include <thread>
@@ -591,4 +592,201 @@ TEST_CASE("A stalled importer leaves sealed audio and async browsing available",
     REQUIRE(playback.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
     for (auto value : playback.get()) CHECK(value == .5f);
     CHECK(import.wait_for(std::chrono::milliseconds(0)) == std::future_status::timeout);
+}
+namespace
+{
+    void seedDecodedCache(const std::shared_ptr<file::DecodedImportCache> &cache,
+                          const std::filesystem::path &path,
+                          const std::shared_ptr<concurrency::TaskScheduler> &scheduler)
+    {
+        static unsigned sequence = 0;
+        auto imported = file::importOwnedAudio(path, path.parent_path() /
+            ("working-" + std::to_string(++sequence)),
+            std::make_shared<storage::DecodedBlockCache>(0));
+        auto &metadata = imported.metadata;
+        metadata.document.addMarker(13, "cached marker");
+        metadata.ownedSource = imported.audio;
+        metadata.audioRevision = storage::AudioEditRevision::from(imported.audio);
+        cache->retain(file::DecodedImportCache::sourceIdentity(path), metadata, scheduler);
+        until([] { return !file::DecodedImportCache::hasPendingWork(); });
+    }
+}
+TEST_CASE("Decoded cache persists audio, precision and shared cache admission",
+          "[decoded-import-cache]")
+{
+    Files files;
+    auto source = files.root / "source.wav";
+    fixture(source);
+    auto scheduler = std::make_shared<concurrency::TaskScheduler>();
+    auto cache = std::make_shared<file::DecodedImportCache>(files.root / "cache");
+    seedDecodedCache(cache, source, scheduler);
+    auto weak = std::weak_ptr(cache);
+    cache.reset();
+    until([&] { return weak.expired(); });
+    cache = std::make_shared<file::DecodedImportCache>(files.root / "cache");
+    auto samples = std::make_shared<storage::DecodedBlockCache>(storage::AudioBlockBytes);
+    auto restored = cache->load(file::DecodedImportCache::sourceIdentity(source), samples);
+    REQUIRE(restored);
+    CHECK(cache->diskHitCount() == 1);
+    REQUIRE(restored->audioRevision->shape().frames == 262144);
+    auto another = cache->load(file::DecodedImportCache::sourceIdentity(source), samples);
+    REQUIRE(another);
+    CHECK(another->document.getPreservationSourceId() != restored->document.getPreservationSourceId());
+    std::array<audio::SampleProvenance, 1> provenance;
+    std::array<uint8_t, 1> dirty;
+    another->ownedSource->readLegacyMetadata(0, 0, provenance, dirty);
+    CHECK(provenance[0].sourceId == another->document.getPreservationSourceId());
+    CHECK(dirty[0] == 0);
+    CHECK(restored->decodedAudioCacheLoaded);
+    CHECK(restored->ownedSource->blockStore()->ioBytes().second == 0);
+    std::array<float, 65536> block;
+    for (int c = 0; c < 2; ++c)
+        for (int64_t first = 0; first < restored->audioRevision->shape().frames; first += block.size())
+        {
+            restored->audioRevision->readChannel(c, first, block);
+            for (auto value : block) REQUIRE(value == .5f);
+        }
+    CHECK(samples->stats().peakResidentBytes == storage::AudioBlockBytes);
+    CHECK(restored->document.getMarkers().size() == 1);
+    CHECK(restored->document.getMarkers()[0].label == "cached marker");
+    CHECK(restored->document.getMarkers()[0].frame == 13);
+    std::ifstream originalBytes(source, std::ios::binary), cachedBytes(restored->ownedSource->sourcePath(), std::ios::binary);
+    std::array<char, 4096> a, b;
+    while (originalBytes.read(a.data(), a.size()) || originalBytes.gcount())
+    {
+        const auto count = originalBytes.gcount();
+        cachedBytes.read(b.data(), count);
+        REQUIRE(cachedBytes.gcount() == count);
+        REQUIRE(std::equal(a.begin(), a.begin() + count, b.begin()));
+    }
+    CHECK(restored->exportSettings);
+    CHECK(restored->document.getSampleFormat() == SampleFormat::PCM_S32);
+    CHECK(std::filesystem::file_size(restored->ownedSource->sourcePath()) == std::filesystem::file_size(source));
+    std::filesystem::remove(source);
+    restored->audioRevision->readChannel(1, 0, std::span(block).first(1));
+    CHECK(block[0] == .5f);
+}
+TEST_CASE("Decoded cache evicts unused entries and retains live archive readers",
+          "[decoded-import-cache]")
+{
+    Files files;
+    auto first = files.root / "one.wav", second = files.root / "two.wav";
+    fixture(first); fixture(second);
+    auto scheduler = std::make_shared<concurrency::TaskScheduler>();
+    constexpr uint64_t budget = 6 * 1024 * 1024;
+    auto cache = std::make_shared<file::DecodedImportCache>(files.root / "cache", budget);
+    seedDecodedCache(cache, first, scheduler);
+    // Recreate the cache service so lookup necessarily uses the disk archive.
+    auto weak = std::weak_ptr(cache); cache.reset();
+    until([&] { return weak.expired(); });
+    cache = std::make_shared<file::DecodedImportCache>(files.root / "cache", budget);
+    auto pinned = cache->load(file::DecodedImportCache::sourceIdentity(first),
+                             std::make_shared<storage::DecodedBlockCache>(0));
+    REQUIRE(pinned);
+    REQUIRE(cache->diskHitCount() == 1);
+    seedDecodedCache(cache, second, scheduler);
+    CHECK(cache->diskBytes() <= budget);
+    REQUIRE(cache->load(file::DecodedImportCache::sourceIdentity(first),
+                        std::make_shared<storage::DecodedBlockCache>(0)));
+    std::array<float, 1> sample;
+    pinned->audioRevision->readChannel(1, 3, sample);
+    CHECK(sample[0] == .5f);
+    auto competing = std::make_shared<file::DecodedImportCache>(files.root / "cache", 1);
+    CHECK_FALSE(competing->load(file::DecodedImportCache::sourceIdentity(first),
+                               std::make_shared<storage::DecodedBlockCache>(0)));
+    pinned.reset();
+    until([&] {
+        for (const auto &entry : std::filesystem::directory_iterator(files.root / "cache"))
+            if (entry.is_directory() && storage::RevisionArchive::hasLiveReaders(entry.path() / "manifest")) return false;
+        return true;
+    });
+    seedDecodedCache(cache, second, scheduler);
+    CHECK(cache->diskBytes() <= budget);
+    CHECK_FALSE(cache->load(file::DecodedImportCache::sourceIdentity(first),
+                            std::make_shared<storage::DecodedBlockCache>(0)));
+    REQUIRE(cache->load(file::DecodedImportCache::sourceIdentity(second),
+                        std::make_shared<storage::DecodedBlockCache>(0)));
+}
+TEST_CASE("Stale, damaged and unavailable decoded caches fall back cleanly",
+          "[decoded-import-cache]")
+{
+    Files files;
+    auto path = files.root / "source.wav";
+    fixture(path);
+    auto scheduler = std::make_shared<concurrency::TaskScheduler>();
+    auto cache = std::make_shared<file::DecodedImportCache>(files.root / "cache");
+    auto original = file::DecodedImportCache::sourceIdentity(path);
+    seedDecodedCache(cache, path, scheduler);
+    auto weak = std::weak_ptr(cache); cache.reset();
+    until([&] { return weak.expired(); });
+    cache = std::make_shared<file::DecodedImportCache>(files.root / "cache");
+    std::filesystem::last_write_time(path, std::filesystem::last_write_time(path) + std::chrono::seconds(1));
+    auto changed = file::DecodedImportCache::sourceIdentity(path);
+    REQUIRE(changed != original);
+    CHECK_FALSE(cache->load(changed, std::make_shared<storage::DecodedBlockCache>(0)));
+    for (const auto &entry : std::filesystem::recursive_directory_iterator(files.root / "cache"))
+        if (entry.path().filename() == "samples-0.bin") std::filesystem::resize_file(entry.path(), 1);
+    CHECK_FALSE(cache->load(original, std::make_shared<storage::DecodedBlockCache>(0)));
+    std::ofstream(files.root / "blocked") << "not a directory";
+    auto blocked = std::make_shared<file::DecodedImportCache>(files.root / "blocked");
+    CHECK_FALSE(blocked->load(changed, std::make_shared<storage::DecodedBlockCache>(0)));
+    CHECK_NOTHROW(seedDecodedCache(blocked, path, scheduler));
+}
+TEST_CASE("Queued reopening reuses decoded audio and shows the original filename",
+          "[decoded-import-cache]")
+{
+    Files files;
+    auto path = files.root / "source.wav";
+    fixture(path);
+    test::StateWithTestPaths state{files.root / "state"};
+    open(state, path);
+    auto original = state.getActiveDocumentSession().preservationSource;
+    const auto written = original->blockStore()->ioBytes().second;
+    CHECK(written > 0);
+    REQUIRE(actions::closeTabWithoutConfirmation(&state, 0));
+    open(state, path);
+    CHECK(state.decodedImportCache->hitCount() == 1);
+    CHECK(state.getActiveDocumentSession().preservationSource->blockStore() == original->blockStore());
+    CHECK(original->blockStore()->ioBytes().second == written);
+    CHECK_FALSE(state.getActiveDocumentSession().revisionHasUnsavedChanges());
+    until([] { return !file::DecodedImportCache::hasPendingWork(); });
+    bool sawPreparing = false;
+    file::importOwnedAudio(path, files.root / "progress", std::make_shared<storage::DecodedBlockCache>(0),
+        [&](const std::string &detail, auto)
+        {
+            CHECK(detail.find("state/import-") == std::string::npos);
+            CHECK(detail.find("source.wav") != std::string::npos);
+            sawPreparing = sawPreparing || detail.starts_with("Preparing audio:");
+        });
+    CHECK(sawPreparing);
+}
+
+TEST_CASE("Pending decoded cache fills are bounded and allow live reuse",
+          "[decoded-import-cache]")
+{
+    Files files;
+    auto path = files.root / "source.wav";
+    fixture(path);
+    auto imported = file::importOwnedAudio(path, files.root / "working",
+        std::make_shared<storage::DecodedBlockCache>(0));
+    imported.metadata.ownedSource = imported.audio;
+    imported.metadata.audioRevision = storage::AudioEditRevision::from(imported.audio);
+    auto scheduler = std::make_shared<concurrency::TaskScheduler>();
+    auto entered = std::make_shared<std::latch>(2);
+    std::promise<void> release;
+    auto gate = release.get_future().share();
+    for (int i = 0; i < 2; ++i)
+        (void)scheduler->submit([entered, gate] { entered->count_down(); gate.wait(); }, {});
+    struct Release { std::promise<void> &p; ~Release() { p.set_value(); } } unblock{release};
+    entered->wait();
+    auto cache = std::make_shared<file::DecodedImportCache>(files.root / "cache");
+    const auto key = file::DecodedImportCache::sourceIdentity(path);
+    cache->retain(key, imported.metadata, scheduler);
+    cache->retain(key, imported.metadata, scheduler);
+    CHECK(scheduler->stats().queued == 1);
+    auto ready = cache->load(key, std::make_shared<storage::DecodedBlockCache>(0));
+    REQUIRE(ready);
+    CHECK(cache->hitCount() == 1);
+    CHECK(cache->diskHitCount() == 0);
+    CHECK(ready->ownedSource->blockStore() == imported.audio->blockStore());
 }

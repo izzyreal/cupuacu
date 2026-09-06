@@ -176,6 +176,7 @@ namespace cupuacu::actions::audio
         {
             return;
         }
+        prepareEmptyRevisionPaste(state);
         const auto target = pasteTarget(state);
         if (state->getActiveDocumentSession().hasReadRevision() !=
             bool(state->clipboard.getAudioRevision()))

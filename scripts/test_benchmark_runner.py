@@ -89,7 +89,7 @@ class ReportingTests(unittest.TestCase):
 
     def test_extended_alac_opening_covers_core_and_rendering(self):
         cases = list(runner.cases("extended", [1, 16], ["core", "sdl"]))
-        alac = [c for c in cases if c["format"] == "m4a" and c["scenario"].startswith("open_")]
+        alac = [c for c in cases if c["format"] == "m4a" and c["scenario"] in ("open_cached", "open_uncached")]
         self.assertEqual(len(alac), 12)
         self.assertEqual({c["scenario"] for c in alac}, {"open_cached", "open_uncached"})
         self.assertEqual({c["suite"] for c in alac}, {"core", "sdl"})

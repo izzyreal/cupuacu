@@ -1,3 +1,4 @@
+#include "../../file/DecodedImportCache.hpp"
 #include "BackgroundOpen.hpp"
 #include "../DocumentOperationAccess.hpp"
 #include "../DocumentTabs.hpp"
@@ -49,6 +50,13 @@ namespace cupuacu::actions::io
                 tab.session.setCurrentFile(request.path);
                 tab.session.openingPreview = true;
             }
+            if (!state->decodedImportCache && state->paths)
+            {
+                state->decodedImportCache =
+                    std::make_shared<file::DecodedImportCache>(
+                        state->paths->statePath() / "decoded-cache",
+                        state->decodedImportCacheByteBudget);
+            }
             const auto id = nextBackgroundOpenJobId();
             state->backgroundOpenJob.reset(new BackgroundOpenJob(
                 id, std::move(request),
@@ -56,7 +64,7 @@ namespace cupuacu::actions::io
                              : std::filesystem::path{},
                 state->paths ? state->paths->statePath()
                              : std::filesystem::temp_directory_path(),
-                state->importSampleCache));
+                state->importSampleCache, state->decodedImportCache));
             const auto detail = state->backgroundOpenJob->getPath();
             if (interactive)
             {
@@ -74,8 +82,7 @@ namespace cupuacu::actions::io
             state->backgroundOpenJob->start(state->taskScheduler);
         }
 
-        std::optional<double>
-        normalizedWaveformCacheBuildProgress(
+        std::optional<double> normalizedWaveformCacheBuildProgress(
             const cupuacu::DocumentSession &session)
         {
             const auto progress = session.getWaveformCacheBuildProgress();
@@ -87,10 +94,9 @@ namespace cupuacu::actions::io
             {
                 return 1.0;
             }
-            return std::clamp(
-                static_cast<double>(progress->completedBlocks) /
-                    static_cast<double>(progress->totalBlocks),
-                0.0, 1.0);
+            return std::clamp(static_cast<double>(progress->completedBlocks) /
+                                  static_cast<double>(progress->totalBlocks),
+                              0.0, 1.0);
         }
 
         void cancelPendingOpenWaveformBuild(cupuacu::State *state)
@@ -117,9 +123,9 @@ namespace cupuacu::actions::io
                 {
                     state->tabs.emplace_back();
                 }
-                state->activeTabIndex = std::clamp(
-                    pending.previousActiveTabIndex, 0,
-                    static_cast<int>(state->tabs.size()) - 1);
+                state->activeTabIndex =
+                    std::clamp(pending.previousActiveTabIndex, 0,
+                               static_cast<int>(state->tabs.size()) - 1);
                 bindMainWindowToActiveDocument(state);
                 refreshBoundDocumentUi(state);
                 setMainWindowTitleToActiveDocument(state);
@@ -150,12 +156,12 @@ namespace cupuacu::actions::io
             {
                 state->startupRestore.failures.push_back(
                     {.path = snapshot.path,
-                     .reason = detail::condensedRestoreReason(
-                         snapshot.path, snapshot.error)});
-                state->recentFiles.erase(
-                    std::remove(state->recentFiles.begin(),
-                                state->recentFiles.end(), snapshot.path),
-                    state->recentFiles.end());
+                     .reason = detail::condensedRestoreReason(snapshot.path,
+                                                              snapshot.error)});
+                state->recentFiles.erase(std::remove(state->recentFiles.begin(),
+                                                     state->recentFiles.end(),
+                                                     snapshot.path),
+                                         state->recentFiles.end());
                 --state->startupRestore.remaining;
             };
 
@@ -222,9 +228,8 @@ namespace cupuacu::actions::io
             state->pendingOpenWaveformBuild = {};
             auto &session = state->getActiveDocumentSession();
             session.setCurrentFile(snapshot.path);
-            cupuacu::file::commitLoadedAudioFile(session, snapshot.path,
-                                                 std::move(*loaded),
-                                                 state->paths.get());
+            cupuacu::file::commitLoadedAudioFile(
+                session, snapshot.path, std::move(*loaded), state->paths.get());
             cupuacu::file::OverwritePreservation::refreshActiveSession(state);
             refreshDocumentUi(state);
             if (isStartupRestore &&
@@ -232,7 +237,8 @@ namespace cupuacu::actions::io
             {
                 applyPersistedOpenDocumentState(
                     state, *snapshot.request.persistedDocumentState);
-                if (!snapshot.request.persistedDocumentState->undoStorePath.empty())
+                if (!snapshot.request.persistedDocumentState->undoStorePath
+                         .empty())
                 {
                     if (!cupuacu::undo::restoreUndoManifest(
                             state, static_cast<int>(state->tabs.size()) - 1,
@@ -511,8 +517,8 @@ namespace cupuacu::actions::io
         void finalizeStartupRestoreIfComplete(cupuacu::State *state)
         {
             if (!state || !state->startupRestore.active ||
-                state->startupRestore.remaining > 0 || state->backgroundOpenJob ||
-                !state->pendingOpenFiles.empty())
+                state->startupRestore.remaining > 0 ||
+                state->backgroundOpenJob || !state->pendingOpenFiles.empty())
             {
                 return;
             }
@@ -581,13 +587,15 @@ namespace cupuacu::actions::io
         std::uint64_t idToUse, PendingOpenRequest requestToOpen,
         std::filesystem::path waveformCacheRootToUse,
         std::filesystem::path workingRootToUse,
-        std::shared_ptr<storage::DecodedBlockCache> cacheToUse)
+        std::shared_ptr<storage::DecodedBlockCache> cacheToUse,
+        std::shared_ptr<file::DecodedImportCache> decodedCacheToUse)
         : id(idToUse), request(std::move(requestToOpen)),
           waveformCacheRoot(std::move(waveformCacheRootToUse)),
           workingRoot(workingRootToUse.empty()
                           ? std::filesystem::temp_directory_path()
                           : std::move(workingRootToUse)),
-          sampleCache(std::move(cacheToUse)), detail(request.path)
+          sampleCache(std::move(cacheToUse)),
+          decodedCache(std::move(decodedCacheToUse)), detail(request.path)
     {
     }
 
@@ -693,8 +701,8 @@ namespace cupuacu::actions::io
         previewCv.notify_all();
     }
 
-    void BackgroundOpenJob::publishProgress(
-        const std::string &detailToUse, std::optional<double> progressToUse)
+    void BackgroundOpenJob::publishProgress(const std::string &detailToUse,
+                                            std::optional<double> progressToUse)
     {
         std::lock_guard lock(mutex);
         detail = detailToUse;
@@ -734,50 +742,101 @@ namespace cupuacu::actions::io
                             uint64_t(std::max(1, SDL_GetSystemRAM())) * 1024 *
                             1024));
                 }
-                const auto directory =
-                    workingRoot /
-                    ("import-" +
-                     std::to_string(std::chrono::steady_clock::now()
-                                        .time_since_epoch()
-                                        .count()) +
-                     "-" + std::to_string(id));
-                auto imported = file::importOwnedAudio(
-                    request.path, directory, sampleCache,
-                    [this](const auto &text, auto value)
-                    {
-                        publishProgress(text, value);
-                    },
-                    [this]
-                    {
-                        return cancelRequested.load();
-                    },
-                    [this](auto chunk)
-                    {
-                        publishPreview(std::move(chunk));
-                    },
-                    {.preferFilesystemClone = true,
-                     .waveformCacheRoot = waveformCacheRoot,
-                     .publishMetadata = true,
-                     .publishAudio =
-                         request.kind == PendingOpenKind::UserOpen});
-                loaded = std::make_unique<file::LoadedAudioFile>(
-                    std::move(imported.metadata));
-                // Retain a peak-only snapshot for asynchronous persistence.
-                if (!waveformCacheRoot.empty() &&
-                    !loaded->persistentWaveformCacheLoaded)
+                const auto identity =
+                    file::DecodedImportCache::sourceIdentity(request.path);
+                if (decodedCache)
                 {
-                    DocumentSession cacheSession;
-                    cacheSession.currentFile = request.path;
-                    cacheSession.document = loaded->document;
-                    cacheSession.waveformCaches = loaded->waveformCaches;
-                    loaded->pendingImportedPeaks =
-                        waveform::capturePersistentWaveformCache(
-                            cacheSession, waveformCacheRoot);
+                    publishProgress("Checking decoded audio: " +
+                                        std::filesystem::path(request.path)
+                                            .filename()
+                                            .string(),
+                                    {});
+                    loaded =
+                        decodedCache->load(identity, sampleCache,
+                                           [this]
+                                           {
+                                               return cancelRequested.load();
+                                           });
+                    if (loaded && file::DecodedImportCache::sourceIdentity(
+                                      request.path) != identity)
+                    {
+                        throw std::runtime_error(
+                            "Source changed during import");
+                    }
+                    if (loaded)
+                    {
+                        publishProgress("Audio ready: " +
+                                            std::filesystem::path(request.path)
+                                                .filename()
+                                                .string(),
+                                        1.0);
+                    }
                 }
-                loaded->audioRevision =
-                    storage::AudioEditRevision::from(imported.audio);
-                loaded->ownedSource = std::move(imported.audio);
-                loaded->waveformCaches = {};
+                if (!loaded)
+                {
+                    const auto directory =
+                        workingRoot /
+                        ("import-" +
+                         std::to_string(std::chrono::steady_clock::now()
+                                            .time_since_epoch()
+                                            .count()) +
+                         "-" + std::to_string(id));
+                    auto imported = file::importOwnedAudio(
+                        request.path, directory, sampleCache,
+                        [this](const auto &text, auto value)
+                        {
+                            publishProgress(text, value);
+                        },
+                        [this]
+                        {
+                            return cancelRequested.load();
+                        },
+                        [this](auto chunk)
+                        {
+                            publishPreview(std::move(chunk));
+                        },
+                        {.preferFilesystemClone = true,
+                         .waveformCacheRoot = waveformCacheRoot,
+                         .publishMetadata = true,
+                         .publishAudio =
+                             request.kind == PendingOpenKind::UserOpen});
+                    loaded = std::make_unique<file::LoadedAudioFile>(
+                        std::move(imported.metadata));
+                    // Retain a peak-only snapshot for asynchronous persistence.
+                    if (!waveformCacheRoot.empty() &&
+                        !loaded->persistentWaveformCacheLoaded)
+                    {
+                        DocumentSession cacheSession;
+                        cacheSession.currentFile = request.path;
+                        cacheSession.document = loaded->document;
+                        cacheSession.waveformCaches = loaded->waveformCaches;
+                        loaded->pendingImportedPeaks =
+                            waveform::capturePersistentWaveformCache(
+                                cacheSession, waveformCacheRoot);
+                    }
+                    loaded->audioRevision =
+                        storage::AudioEditRevision::from(imported.audio);
+                    loaded->ownedSource = std::move(imported.audio);
+                    loaded->waveformCaches = {};
+                    if (file::DecodedImportCache::sourceIdentity(
+                            request.path) != identity)
+                    {
+                        throw std::runtime_error(
+                            "Source changed during import");
+                    }
+                    if (decodedCache)
+                    {
+                        // Optional cache persistence must never fail a valid
+                        // import.
+                        try
+                        {
+                            decodedCache->retain(identity, *loaded, scheduler);
+                        }
+                        catch (const std::exception &)
+                        {
+                        }
+                    }
+                }
             }
             if (cancelRequested.load())
             {
@@ -874,7 +933,8 @@ namespace cupuacu::actions::io
                 {
                     cancelPendingOpenWaveformBuild(state);
                     cupuacu::clearLongTask(state, false);
-                    if (snapshot.request.kind == PendingOpenKind::StartupRestore ||
+                    if (snapshot.request.kind ==
+                            PendingOpenKind::StartupRestore ||
                         state->quitRequestedAfterLongTaskCancel)
                     {
                         if (state->quitRequestedAfterLongTaskCancel)
@@ -911,7 +971,8 @@ namespace cupuacu::actions::io
                 return;
             }
             const int tabIndex = state->pendingOpenWaveformBuild.tabIndex;
-            if (tabIndex < 0 || tabIndex >= static_cast<int>(state->tabs.size()))
+            if (tabIndex < 0 ||
+                tabIndex >= static_cast<int>(state->tabs.size()))
             {
                 state->pendingOpenWaveformBuild = {};
                 cupuacu::clearLongTask(state, false);
@@ -928,7 +989,8 @@ namespace cupuacu::actions::io
                 {
                     if (cacheStateChanged && tabIndex == state->activeTabIndex)
                     {
-                        cupuacu::gui::Waveform::applyAllPendingCacheUpdates(state);
+                        cupuacu::gui::Waveform::applyAllPendingCacheUpdates(
+                            state);
                     }
                     cupuacu::updateLongTask(state, "Building waveform cache",
                                             progress, false);

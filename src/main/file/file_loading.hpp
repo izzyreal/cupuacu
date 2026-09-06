@@ -39,6 +39,7 @@ namespace cupuacu::file
         bool waveformCachesReady = false;
         bool requiresSaveAs = false;
         bool externalSamples = false;
+        bool decodedAudioCacheLoaded = false;
         std::shared_ptr<const waveform::PersistentCacheSnapshot>
             pendingImportedPeaks;
         std::shared_ptr<const storage::AudioEditRevision> audioRevision;

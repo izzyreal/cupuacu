@@ -315,6 +315,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/LongTask.cpp
     src/main/BuildInfo.cpp
     src/main/Logger.cpp
+    src/main/file/DecodedImportCache.cpp
     src/main/file/AudioExport.cpp
     src/main/file/FileIo.cpp
     src/main/file/AudioFileWriter.cpp

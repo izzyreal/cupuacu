@@ -1,5 +1,6 @@
 #include "RevisionEdit.hpp"
 #include "../ViewPolicy.hpp"
+#include "../DocumentUi.hpp"
 #include "../../concurrency/DeferredRelease.hpp"
 
 namespace cupuacu::actions::audio
@@ -31,6 +32,11 @@ namespace cupuacu::actions::audio
                 state->getActiveTab()->id != tabId)
             {
                 return;
+            }
+            if (state->waveforms.size() !=
+                std::size_t(target()->document.getChannelCount()))
+            {
+                refreshBoundDocumentUi(state);
             }
             if (trimView && (!doingRedo || haveAfterView))
             {
