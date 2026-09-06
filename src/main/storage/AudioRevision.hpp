@@ -17,17 +17,18 @@ namespace cupuacu::storage
         std::shared_ptr<const waveform::SourcePeaks> peaks;
         std::shared_ptr<AudioBlockStore> store;
         std::shared_ptr<DecodedBlockCache> cache;
-        std::vector<std::vector<AudioBlock>> channels;
+        std::vector<RecordIndex<AudioBlock>> channels;
         std::filesystem::path ownedSource;
         std::shared_ptr<const void> cacheLease;
         uint64_t preservationSourceId = 0;
+        uint64_t metadataSourceId = 0;
         struct MetadataRun
         {
             int64_t start, frames;
             audio::SampleProvenance provenance;
             uint8_t dirty;
         };
-        std::vector<std::vector<MetadataRun>> metadata;
+        std::vector<RecordIndex<MetadataRun>> metadata;
 
         AudioRevision(AudioShape shape,
                       std::shared_ptr<AudioBlockStore> storage,
@@ -49,14 +50,11 @@ namespace cupuacu::storage
             value->channels = channels;
             value->ownedSource = ownedSource;
             value->preservationSourceId = preservationSourceId;
+            value->metadataSourceId = metadataSourceId;
             value->metadata = metadata;
             if (importedSourceId)
             {
                 value->preservationSourceId = importedSourceId;
-                for (auto &channel : value->metadata)
-                    for (auto &run : channel)
-                        if (run.provenance.sourceId == preservationSourceId)
-                            run.provenance.sourceId = importedSourceId;
             }
             value->cacheLease = std::move(lease);
             return value;
@@ -104,39 +102,51 @@ namespace cupuacu::storage
                 return;
             }
             const auto &runs = metadata[channel];
-            auto it = std::upper_bound(runs.begin(), runs.end(), start,
-                                       [](int64_t frame, const MetadataRun &run)
-                                       {
-                                           return frame < run.start;
-                                       });
-            if (it == runs.begin())
+            uint64_t lo = 0, hi = runs.size();
+            while (lo < hi)
+            {
+                const auto mid = lo + (hi - lo) / 2;
+                if (runs[mid].start <= start)
+                {
+                    lo = mid + 1;
+                }
+                else
+                {
+                    hi = mid;
+                }
+            }
+            if (!lo)
             {
                 throw std::logic_error("Missing sample metadata");
             }
-            --it;
+            auto index = lo - 1;
             while (!provenance.empty())
             {
-                if (it == runs.end() || start < it->start ||
-                    start >= it->start + it->frames)
+                const auto run = runs[index];
+                if (start < run.start || start >= run.start + run.frames)
                 {
                     throw std::logic_error("Missing sample metadata");
                 }
                 const auto count = std::min<std::size_t>(
-                    provenance.size(), it->start + it->frames - start);
+                    provenance.size(), run.start + run.frames - start);
                 for (std::size_t i = 0; i < count; ++i)
                 {
-                    provenance[i] = it->provenance;
+                    provenance[i] = run.provenance;
+                    if (provenance[i].sourceId == metadataSourceId)
+                    {
+                        provenance[i].sourceId = preservationSourceId;
+                    }
                     if (provenance[i].isValid())
                     {
                         provenance[i].frameIndex +=
-                            start - it->start + int64_t(i);
+                            start - run.start + int64_t(i);
                     }
-                    dirty[i] = it->dirty;
+                    dirty[i] = run.dirty;
                 }
                 start += count;
                 provenance = provenance.subspan(count);
                 dirty = dirty.subspan(count);
-                ++it;
+                ++index;
             }
         }
         void readChannel(int channel, int64_t start,
@@ -154,6 +164,48 @@ namespace cupuacu::storage
                 output = output.subspan(count);
                 start += count;
             }
+        }
+        void readDirtyFlags(int channel, int64_t start,
+                            std::span<uint8_t> output) const override
+        {
+            validateRange(dimensions, channel, start, output.size());
+            if (metadata.empty())
+            {
+                std::fill(output.begin(), output.end(),
+                          ownedSource.empty() ? 1 : 0);
+                return;
+            }
+            std::array<audio::SampleProvenance, 1024> scratch;
+            while (!output.empty())
+            {
+                const auto count = std::min(output.size(), scratch.size());
+                readLegacyMetadata(channel, start,
+                                   std::span(scratch).first(count),
+                                   output.first(count));
+                start += count;
+                output = output.subspan(count);
+            }
+        }
+        struct IndexStats
+        {
+            uint64_t records = 0, residentBytes = 0, diskBytes = 0;
+        };
+        IndexStats indexStats() const
+        {
+            IndexStats result;
+            const auto add = [&](const auto &indexes)
+            {
+                for (const auto &index : indexes)
+                {
+                    const auto s = index.stats();
+                    result.records += s.records;
+                    result.residentBytes += s.residentBytes;
+                    result.diskBytes += s.diskBytes;
+                }
+            };
+            add(channels);
+            add(metadata);
+            return result;
         }
     };
 
@@ -189,8 +241,7 @@ namespace cupuacu::storage
     };
 
     // Import transaction: only finish() exposes an immutable revision. The
-    // initial index is a flat block directory; editable/paged sequence indexes
-    // are a subsequent migration, not hidden behind this import builder.
+    // directories are bounded working indexes shared with progressive readers.
     class AudioRevisionBuilder
     {
     public:
@@ -210,18 +261,19 @@ namespace cupuacu::storage
         {
             try
             {
+                std::vector<AudioBlock> blocks;
+                blocks.reserve(pending.size());
                 for (std::size_t c = 0; c < pending.size(); ++c)
                 {
-                    revision->channels[c].push_back(revision->store->append(
+                    blocks.push_back(revision->store->append(
                         std::span<const float>(pending[c]).first(buffered)));
+                    if (!progressive)
+                    {
+                        revision->channels[c].push_back(blocks.back());
+                    }
                 }
                 if (progressive)
                 {
-                    std::vector<AudioBlock> blocks;
-                    for (const auto &channel : revision->channels)
-                    {
-                        blocks.push_back(channel.back());
-                    }
                     progressive->publish(blocks);
                 }
                 if (onBlock)
@@ -253,9 +305,23 @@ namespace cupuacu::storage
             {
                 throw std::invalid_argument("Invalid audio revision shape");
             }
+            if (progressive &&
+                (progressive->shape().frames != shape.frames ||
+                 progressive->shape().channels != shape.channels ||
+                 progressive->shape().sampleRate != shape.sampleRate ||
+                 progressive->shape().format != shape.format ||
+                 progressive->availableFrames()))
+            {
+                throw std::invalid_argument(
+                    "Mismatched progressive audio index");
+            }
             revision.reset(
                 new AudioRevision(shape, std::move(store), std::move(cache)));
             pending.resize(shape.channels);
+            if (progressive)
+            {
+                revision->channels = progressive->blockIndexes();
+            }
         }
         void appendChannelMetadata(
             int channel, int64_t start,
@@ -279,12 +345,18 @@ namespace cupuacu::storage
             {
                 throw std::invalid_argument("Metadata must be sequential");
             }
+            if (provenance.empty())
+            {
+                return;
+            }
+            auto last =
+                runs.empty() ? AudioRevision::MetadataRun{} : runs.back();
+            bool existing = !runs.empty();
             for (std::size_t i = 0; i < provenance.size(); ++i)
             {
                 const auto p = provenance[i];
-                if (!runs.empty())
+                if (last.frames)
                 {
-                    auto &last = runs.back();
                     const bool canAdvance =
                         !last.provenance.isValid() ||
                         last.frames <= INT64_MAX - last.provenance.frameIndex;
@@ -300,7 +372,27 @@ namespace cupuacu::storage
                         continue;
                     }
                 }
-                runs.push_back({start + int64_t(i), 1, p, dirty[i]});
+                if (last.frames)
+                {
+                    if (existing)
+                    {
+                        runs.setBack(last);
+                    }
+                    else
+                    {
+                        runs.push_back(last);
+                    }
+                }
+                last = {start + int64_t(i), 1, p, dirty[i]};
+                existing = false;
+            }
+            if (existing)
+            {
+                runs.setBack(last);
+            }
+            else
+            {
+                runs.push_back(last);
             }
         }
         void appendInterleaved(std::span<const float> samples)
@@ -376,6 +468,15 @@ namespace cupuacu::storage
                 }
             }
             revision->preservationSourceId = preservationSourceId;
+            revision->metadataSourceId = preservationSourceId;
+            for (auto &channel : revision->channels)
+            {
+                channel.seal();
+            }
+            for (auto &runs : revision->metadata)
+            {
+                runs.seal();
+            }
             revision->ownedSource = std::move(ownedSource);
             revision->peaks = std::move(peaks);
             finished = true;

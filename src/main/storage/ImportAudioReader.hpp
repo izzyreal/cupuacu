@@ -1,5 +1,6 @@
 #pragma once
 #include "AudioBlockStore.hpp"
+#include "RecordIndex.hpp"
 #include <shared_mutex>
 namespace cupuacu::storage
 {
@@ -12,7 +13,7 @@ namespace cupuacu::storage
         std::shared_ptr<AudioBlockStore> store;
         std::shared_ptr<DecodedBlockCache> cache;
         mutable std::shared_mutex mutex;
-        std::vector<std::vector<AudioBlock>> channels;
+        std::vector<RecordIndex<AudioBlock>> channels;
         std::atomic<int64_t> available{0};
 
     public:
@@ -30,6 +31,12 @@ namespace cupuacu::storage
         int64_t availableFrames() const
         {
             return available.load(std::memory_order_acquire);
+        }
+        // The completed revision shares these same append-only directories.
+        // Acquire publication availability before reading a newly sealed block.
+        const std::vector<RecordIndex<AudioBlock>> &blockIndexes() const
+        {
+            return channels;
         }
         void publish(std::span<const AudioBlock> blocks)
         {

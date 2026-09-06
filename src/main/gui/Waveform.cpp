@@ -2479,6 +2479,8 @@ std::optional<float> Waveform::requestSampleValue(int64_t frame)
         uint64_t(frame - viewportData->rawStart) < viewportData->samples.size())
     {
         hoverFrame.reset();
+        requestedSampleDirty =
+            viewportData->dirty.at(frame - viewportData->rawStart) != 0;
         return viewportData->sampleAt(frame);
     }
     if (hoverRevision != revision)
@@ -2509,8 +2511,10 @@ void Waveform::timerCallback()
                 state->getActiveDocumentSession().getEditRevision())
         {
             hoverValue = result->samples.front();
+            requestedSampleDirty = result->firstSampleDirty;
             updateSampleValueUnderMouseCursor(state, *hoverValue, channelIndex,
-                                              *hoverFrame);
+                                              *hoverFrame,
+                                              requestedSampleDirty);
         }
     }
     if (state && state->getActiveDocumentSession().pumpWaveformCacheWork(

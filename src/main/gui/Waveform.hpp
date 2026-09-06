@@ -21,6 +21,7 @@ namespace cupuacu::gui
     public:
         [[nodiscard]] bool isCurrentViewTextureReady() const;
         std::optional<float> requestSampleValue(int64_t frame);
+        bool requestedSampleDirty = true;
 
         static bool shouldShowSamplePoints(const double samplesPerPixel,
                                            const uint8_t pixelScale);

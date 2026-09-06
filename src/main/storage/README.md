@@ -157,9 +157,45 @@ or GUI automation. `record_*_owned` measures fixed-work and growing-work scaling
 Bound sessions autosave immutable roots, saved-state identity, editor metadata
 and matching undo/redo together. Snapshot capture retains references; a worker
 writes newly encountered sequence nodes and source records to a checksummed,
-append-only index, then atomically replaces a small version-1 manifest. Data and
+append-only index, then atomically replaces a small version-2 manifest. Data and
 index files are flushed before manifest publication. Unchanged nodes and source
 stores are reused. Peaks use binary 64 KiB pages instead of JSON sample arrays.
+Version-1 manifests and their inline source indexes/peak reference lists remain
+readable. New source records store long block, segment-length and provenance
+directories in contiguous checksummed pages of at most 256 records. A directory
+descriptor contains a first record offset and count, not a resident page table.
+Peak levels likewise identify a contiguous stream without an array of page IDs.
+
+## Bounded source indexes
+
+`RecordIndex` stores up to 256 records in RAM, then spills sealed pages into an
+anonymous working file. It retains one write tail and one read page: at most
+12 KiB of block references, 4 KiB of segment lengths, or 20 KiB of provenance
+runs per index. These figures count record buffers, excluding object/allocator
+overhead. Small indexes allocate only their actual vector capacity. All disk
+access and last release belong to workers; working files are automatically
+removed on close and are not a recovery format.
+
+Progressive import and its completed revision share the same directory. Cache
+rebinding also shares indexes and remaps imported provenance identity on read,
+without copying or rewriting runs. Builders merge sequential metadata across
+input chunks. Archive save/recovery streams pages with bounded scratch; old
+version-1 monolithic records still incur their legacy parsing allocation.
+
+Dirty flags needed for precise hovered sample display travel with worker results
+and fine waveform samples. The status bar does not fetch provenance pages.
+Edit splices coalesce adjacent ranges from the same source and contiguous source
+positions, or identical constants, including boundaries inside balanced trees.
+This removes artificial fragmentation while preserving reference-only edits.
+
+These are per-index bounds, not an aggregate application budget. Distinct edit
+tree nodes, retained history and archive identity maps remain resident. Their
+full paging cannot be declared complete: cold edit paths need worker preparation
+before UI operations can access them. This remains an explicit dependency on the
+remaining memory/scheduling work, rather than a claim that coalescing bounds all
+history memory.
+
+## Archive ownership and recovery
 
 Each document or clipboard archive independently owns its sample segments and
 original source container. Initial acquisition attempts filesystem cloning on

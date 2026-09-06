@@ -27,6 +27,7 @@ namespace cupuacu::waveform
         ViewportRequest request;
         int64_t rawStart = 0;
         std::vector<float> samples;
+        std::vector<uint8_t> dirty;
         std::vector<Peak> peaks;
         bool pending = false;
         int64_t availableFrames = 0;
@@ -104,7 +105,8 @@ namespace cupuacu::waveform
         {
             const auto shape = source.audio->shape();
             validate(shape, request);
-            ViewportData result{request, 0, {}, {}, false};
+            ViewportData result;
+            result.request = request;
             const auto &availability =
                 request.samplesPerPixel >= 128 && source.overviewAvailableFrames
                     ? source.overviewAvailableFrames
@@ -202,6 +204,12 @@ namespace cupuacu::waveform
                     }
                     result.samples.clear();
                     result.samples.shrink_to_fit();
+                }
+                else
+                {
+                    result.dirty.resize(result.samples.size());
+                    source.audio->readDirtyFlags(request.channel,
+                                                 result.rawStart, result.dirty);
                 }
             }
             return cancel() ? std::nullopt : std::optional{std::move(result)};

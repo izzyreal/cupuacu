@@ -552,7 +552,7 @@ TEST_CASE("Damaged waveform pages rebuild without losing committed audio",
     const auto leaf = record(root.at("channels").at(0));
     const auto source = record(leaf.at("source"));
     const auto peak =
-        source.at("peaks").at(0).at(0).at("pages").at(0).get<uint64_t>();
+        source.at("peaks").at(0).at(0).at("first").get<uint64_t>();
     std::fstream damaged(index,
                          std::ios::binary | std::ios::in | std::ios::out);
     damaged.seekp(peak + 8);

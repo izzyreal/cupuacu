@@ -54,8 +54,10 @@ namespace cupuacu::storage
                 });
             auto lease = clip.acquireReadLease();
             std::vector<float> interleaved(chunk * shape.channels);
-            std::array<audio::SampleProvenance, chunk> provenance;
-            std::array<uint8_t, chunk> dirty;
+            // Peak generation has its own bounded scratch on this call stack.
+            // Keep conversion metadata off the smaller macOS worker stack.
+            std::vector<audio::SampleProvenance> provenance(chunk);
+            std::vector<uint8_t> dirty(chunk);
             for (int64_t first = 0; first < shape.frames; first += chunk)
             {
                 check();

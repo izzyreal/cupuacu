@@ -372,12 +372,14 @@ static void resetSampleValueUnderMouseCursor(cupuacu::State *state)
 static void updateSampleValueUnderMouseCursor(cupuacu::State *state,
                                               const float sampleValue,
                                               const int64_t channel,
-                                              const int64_t frame)
+                                              const int64_t frame,
+                                              const bool dirty = true)
 {
     if (state->mainDocumentSessionWindow)
     {
         state->getActiveViewState().sampleValueUnderMouseCursor.emplace(
-            cupuacu::gui::HoveredSampleInfo{sampleValue, channel, frame});
+            cupuacu::gui::HoveredSampleInfo{sampleValue, channel, frame,
+                                            dirty});
     }
 }
 

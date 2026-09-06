@@ -540,7 +540,8 @@ namespace
     #include "LargeFileWorkflow.hpp"
     #include "RestoredClipboardPaste.hpp"
     #include "AudioMemory.hpp"
-    #include "PeakPaging.hpp"
+#include "IndexPaging.hpp"
+#include "PeakPaging.hpp"
 
     void scenario(benchmark::State &measurement)
     {
@@ -589,6 +590,16 @@ namespace
 #endif
         const std::string name = request.at("scenario");
         const int64_t frames = request.at("frames");
+        if (name == "index_archive")
+        {
+            indexArchiveScenario(measurement, frames);
+            return;
+        }
+        if (name == "index_paged" || name == "index_resident")
+        {
+            indexPagingScenario(measurement, frames, name == "index_paged");
+            return;
+        }
         if (name == "peak_paged" || name == "peak_resident" ||
             name == "peak_streaming" || name == "peak_progressive")
         {

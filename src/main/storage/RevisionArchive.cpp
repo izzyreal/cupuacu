@@ -252,7 +252,7 @@ namespace cupuacu::storage
         stats.metadataBytes += bytes.size() + 8;
         return id;
     }
-    RevisionArchive::Json RevisionArchive::record(uint64_t id)
+    RevisionArchive::Json RevisionArchive::record(uint64_t id, uint64_t *next)
     {
         check();
         if (id < 4 || id > readLimit || readLimit - id < 8)
@@ -273,7 +273,76 @@ namespace cupuacu::storage
         {
             throw std::runtime_error("Corrupt revision record");
         }
+        if (next)
+        {
+            *next = id + 8 + size;
+        }
         return Json::from_cbor(bytes);
+    }
+    RevisionArchive::Json
+    RevisionArchive::saveSequence(uint64_t count,
+                                  const std::function<Json(uint64_t)> &value)
+    {
+        constexpr uint64_t pageSize = 256;
+        Json page = Json::array();
+        uint64_t first = 0;
+        for (uint64_t i = 0; i < count; ++i)
+        {
+            page.push_back(value(i));
+            if (count > pageSize && (page.size() == pageSize || i + 1 == count))
+            {
+                const auto id =
+                    append({{"kind", "sequence"}, {"values", std::move(page)}});
+                if (!first)
+                {
+                    first = id;
+                }
+                page = Json::array();
+            }
+        }
+        return first ? Json{{"first", first}, {"count", count}} : page;
+    }
+    void RevisionArchive::readSequence(
+        const Json &sequence, uint64_t before,
+        const std::function<void(const Json &)> &visitor)
+    {
+        if (sequence.is_array())
+        {
+            for (const auto &value : sequence)
+            {
+                visitor(value);
+            }
+            return; // Version 1 and small version 2 sequences.
+        }
+        auto next = sequence.at("first").get<uint64_t>();
+        auto remaining = sequence.at("count").get<uint64_t>();
+        if (!remaining)
+        {
+            throw std::runtime_error("Empty paged index");
+        }
+        while (remaining)
+        {
+            if (next >= before)
+            {
+                throw std::runtime_error("Invalid index page reference");
+            }
+            const auto page = record(next, &next);
+            if (next > before || page.at("kind") != "sequence")
+            {
+                throw std::runtime_error("Invalid index page");
+            }
+            const auto &values = page.at("values");
+            if (!values.is_array() || values.empty() || values.size() > 256 ||
+                values.size() > remaining)
+            {
+                throw std::runtime_error("Invalid index page length");
+            }
+            for (const auto &value : values)
+            {
+                visitor(value);
+            }
+            remaining -= values.size();
+        }
     }
     RevisionArchive::StoreCopy &
     RevisionArchive::copyStore(const AudioRevision &source)
@@ -287,12 +356,16 @@ namespace cupuacu::storage
         std::filesystem::create_directories(destination);
         // Snapshot the committed prefix under the lock. Appends never change
         // that prefix; copying it must not block playback cache misses.
-        std::vector<uint64_t> lengths;
+        uint64_t lengthCount = 0, lastLength = 0;
         {
             std::lock_guard lock(source.store->mutex);
             if (source.store->writer.is_open() && !source.store->failed)
                 source.store->writer.flush();
-            lengths = source.store->lengths;
+            lengthCount = source.store->lengths.size();
+            if (lengthCount)
+            {
+                lastLength = source.store->lengths.back();
+            }
         }
         auto copyFile =
             [&](const auto &from, const auto &to, uint64_t begin, uint64_t end)
@@ -333,13 +406,14 @@ namespace cupuacu::storage
                 throw std::runtime_error("Revision audio close failed");
             sync(to);
         };
-        for (std::size_t i = 0; i < lengths.size(); ++i)
+        for (uint64_t i = 0; i < lengthCount; ++i)
         {
             if (copy.lengths.size() <= i)
             {
                 copy.lengths.push_back(0);
             }
-            const auto length = lengths[i];
+            const auto length =
+                i + 1 == lengthCount ? lastLength : source.store->lengths[i];
             if (length > copy.lengths[i])
             {
                 copyFile(source.store->segmentPath(i),
@@ -347,7 +421,7 @@ namespace cupuacu::storage
                              ("samples-" + std::to_string(i) + ".bin"),
                          copy.lengths[i], length);
                 stats.sampleBytes += length - copy.lengths[i];
-                copy.lengths[i] = length;
+                copy.lengths.set(i, length);
             }
         }
         if (!source.ownedSource.empty() && copy.source.empty())
@@ -378,22 +452,25 @@ namespace cupuacu::storage
              peaks = Json::array();
         for (const auto &channel : source->channels)
         {
-            auto row = Json::array();
-            for (auto b : channel)
-            {
-                row.push_back({b.segment, b.offset, b.frames});
-            }
-            blocks.push_back(std::move(row));
+            blocks.push_back(saveSequence(channel.size(),
+                                          [&](uint64_t i) -> Json
+                                          {
+                                              const auto b = channel[i];
+                                              return {b.segment, b.offset,
+                                                      b.frames};
+                                          }));
         }
         for (const auto &channel : source->metadata)
         {
-            auto row = Json::array();
-            for (auto r : channel)
-            {
-                row.push_back({r.start, r.frames, r.provenance.sourceId,
-                               r.provenance.frameIndex, r.dirty});
-            }
-            metadata.push_back(std::move(row));
+            metadata.push_back(saveSequence(channel.size(),
+                                            [&](uint64_t i) -> Json
+                                            {
+                                                const auto r = channel[i];
+                                                return {r.start, r.frames,
+                                                        r.provenance.sourceId,
+                                                        r.provenance.frameIndex,
+                                                        r.dirty};
+                                            }));
         }
         if (source->peaks)
         {
@@ -404,7 +481,7 @@ namespace cupuacu::storage
                 for (std::size_t l = 0; l < channel.size(); ++l)
                 {
                     const auto count = source->peaks->levelSize(c, l);
-                    auto pages = Json::array();
+                    uint64_t firstPage = 0, pageCount = 0;
                     for (std::size_t first = 0; first < count; first += 8192)
                     {
                         std::vector<uint8_t> bytes;
@@ -425,22 +502,34 @@ namespace cupuacu::storage
                                 }
                             }
                         }
-                        pages.push_back(append(
-                            {{"kind", "peaks"},
-                             {"bytes", Json::binary(std::move(bytes))}}));
+                        const auto pageId =
+                            append({{"kind", "peaks"},
+                                    {"bytes", Json::binary(std::move(bytes))}});
+                        if (!firstPage)
+                        {
+                            firstPage = pageId;
+                        }
+                        ++pageCount;
                     }
-                    levels.push_back(
-                        {{"count", count}, {"pages", std::move(pages)}});
+                    levels.push_back({{"count", count},
+                                      {"first", firstPage},
+                                      {"pageCount", pageCount}});
                 }
                 peaks.push_back(std::move(levels));
             }
         }
+        auto lengths = saveSequence(copy.lengths.size(),
+                                    [&](uint64_t i) -> Json
+                                    {
+                                        return copy.lengths[i];
+                                    });
         const auto id = append({{"kind", "source"},
                                 {"shape", shapeJson(source->shape())},
                                 {"store", copy.name},
-                                {"lengths", copy.lengths},
+                                {"lengths", std::move(lengths)},
                                 {"original", copy.source},
                                 {"sourceId", source->preservationSourceId},
+                                {"metadataSourceId", source->metadataSourceId},
                                 {"blocks", std::move(blocks)},
                                 {"metadata", std::move(metadata)},
                                 {"peaks", std::move(peaks)}});
@@ -520,7 +609,12 @@ namespace cupuacu::storage
         auto shape = shapeFrom(j.at("shape"));
         const auto name = localName(j.at("store"));
         auto store = loadedStores[name].lock();
-        const auto lengths = j.at("lengths").get<std::vector<uint64_t>>();
+        RecordIndex<uint64_t> lengths;
+        readSequence(j.at("lengths"), id,
+                     [&](const Json &value)
+                     {
+                         lengths.push_back(value.get<uint64_t>());
+                     });
         if (!store)
         {
             store.reset(new AudioBlockStore);
@@ -557,7 +651,8 @@ namespace cupuacu::storage
                 }
                 else
                 {
-                    store->lengths[i] = std::max(store->lengths[i], lengths[i]);
+                    store->lengths.set(i,
+                                       std::max(store->lengths[i], lengths[i]));
                 }
             }
         }
@@ -570,28 +665,33 @@ namespace cupuacu::storage
         for (int c = 0; c < shape.channels; ++c)
         {
             int64_t total = 0;
-            for (const auto &b : j.at("blocks").at(c))
-            {
-                AudioBlock block{b.at(0).get<uint64_t>(),
-                                 b.at(1).get<uint64_t>(),
-                                 b.at(2).get<uint32_t>()};
-                if (!block.frames || block.frames > AudioBlockFrames ||
-                    block.frames > shape.frames - total ||
-                    (block.frames != AudioBlockFrames &&
-                     total + block.frames != shape.frames) ||
-                    block.segment >= lengths.size() ||
-                    block.offset > lengths[block.segment] ||
-                    block.frames * 4ull > lengths[block.segment] - block.offset)
-                {
-                    throw std::runtime_error("Invalid persisted audio block");
-                }
-                total += block.frames;
-                audio->channels[c].push_back(block);
-            }
+            readSequence(j.at("blocks").at(c), id,
+                         [&](const Json &b)
+                         {
+                             AudioBlock block{b.at(0).get<uint64_t>(),
+                                              b.at(1).get<uint64_t>(),
+                                              b.at(2).get<uint32_t>()};
+                             if (!block.frames ||
+                                 block.frames > AudioBlockFrames ||
+                                 block.frames > shape.frames - total ||
+                                 (block.frames != AudioBlockFrames &&
+                                  total + block.frames != shape.frames) ||
+                                 block.segment >= lengths.size() ||
+                                 block.offset > lengths[block.segment] ||
+                                 block.frames * 4ull >
+                                     lengths[block.segment] - block.offset)
+                             {
+                                 throw std::runtime_error(
+                                     "Invalid persisted audio block");
+                             }
+                             total += block.frames;
+                             audio->channels[c].push_back(block);
+                         });
             if (total != shape.frames)
             {
                 throw std::runtime_error("Incomplete source blocks");
             }
+            audio->channels[c].seal();
         }
         const auto original = j.at("original").get<std::string>();
         if (!original.empty())
@@ -603,7 +703,25 @@ namespace cupuacu::storage
             }
         }
         audio->preservationSourceId = j.at("sourceId");
-        stores[store->id()] = {name, store->lengths, original};
+        audio->metadataSourceId =
+            j.value("metadataSourceId", audio->preservationSourceId);
+        // Older roots can name a shorter prefix of a store already loaded by
+        // a newer root. Never regress the archived-copy watermark: a rebound
+        // source may be saved into this same archive, whose bytes are live.
+        auto &savedStore = stores[store->id()];
+        savedStore.name = name;
+        savedStore.source = original;
+        for (uint64_t i = 0; i < lengths.size(); ++i)
+        {
+            if (i == savedStore.lengths.size())
+            {
+                savedStore.lengths.push_back(lengths[i]);
+            }
+            else if (lengths[i] > savedStore.lengths[i])
+            {
+                savedStore.lengths.set(i, lengths[i]);
+            }
+        }
         if (!j.at("metadata").empty())
         {
             if (j.at("metadata").size() != std::size_t(shape.channels))
@@ -614,25 +732,29 @@ namespace cupuacu::storage
             {
                 auto &runs = audio->metadata.emplace_back();
                 int64_t total = 0;
-                for (const auto &r : channel)
-                {
-                    AudioRevision::MetadataRun run{
-                        r.at(0), r.at(1), {r.at(2), r.at(3)}, r.at(4)};
-                    if (run.start != total || run.frames <= 0 ||
-                        run.frames > shape.frames - total ||
-                        (run.provenance.isValid() &&
-                         (run.provenance.frameIndex < 0 ||
-                          run.frames > INT64_MAX - run.provenance.frameIndex)))
+                readSequence(
+                    channel, id,
+                    [&](const Json &r)
                     {
-                        throw std::runtime_error("Invalid provenance run");
-                    }
-                    total += run.frames;
-                    runs.push_back(run);
-                }
+                        AudioRevision::MetadataRun run{
+                            r.at(0), r.at(1), {r.at(2), r.at(3)}, r.at(4)};
+                        if (run.start != total || run.frames <= 0 ||
+                            run.frames > shape.frames - total ||
+                            (run.provenance.isValid() &&
+                             (run.provenance.frameIndex < 0 ||
+                              run.frames >
+                                  INT64_MAX - run.provenance.frameIndex)))
+                        {
+                            throw std::runtime_error("Invalid provenance run");
+                        }
+                        total += run.frames;
+                        runs.push_back(run);
+                    });
                 if (total != shape.frames)
                 {
                     throw std::runtime_error("Incomplete provenance");
                 }
+                runs.seal();
             }
         }
         if (!j.at("peaks").empty())
@@ -646,6 +768,7 @@ namespace cupuacu::storage
                 int previous = -1;
                 std::size_t pageIndex = 0, byteOffset = 0;
                 uint64_t consumed = 0;
+                uint64_t nextPeak = 0, peakPageCount = 0;
                 Json page;
                 audio->peaks = waveform::SourcePeaks::createStreaming(
                     shape,
@@ -659,13 +782,20 @@ namespace cupuacu::storage
                         {
                             throw std::runtime_error("Invalid base peak count");
                         }
-                        const auto &refs = level.at("pages");
+                        const bool legacyPages = level.contains("pages");
                         if (previous != c)
                         {
                             previous = c;
                             pageIndex = 0;
                             byteOffset = 0;
                             consumed = 0;
+                            peakPageCount =
+                                legacyPages
+                                    ? level.at("pages").size()
+                                    : level.at("pageCount").get<uint64_t>();
+                            nextPeak = legacyPages
+                                           ? 0
+                                           : level.at("first").get<uint64_t>();
                             page = Json();
                         }
                         if (first != consumed)
@@ -679,13 +809,28 @@ namespace cupuacu::storage
                                 byteOffset ==
                                     page.at("bytes").get_binary().size())
                             {
-                                if (pageIndex >= refs.size() ||
-                                    refs.at(pageIndex).get<uint64_t>() >= id)
+                                if (pageIndex >= peakPageCount)
                                 {
                                     throw std::runtime_error(
                                         "Invalid source peak reference");
                                 }
-                                page = record(refs.at(pageIndex++));
+                                const auto ref = legacyPages
+                                                     ? level.at("pages")
+                                                           .at(pageIndex)
+                                                           .get<uint64_t>()
+                                                     : nextPeak;
+                                if (ref >= id)
+                                {
+                                    throw std::runtime_error(
+                                        "Invalid peak page reference");
+                                }
+                                page = record(ref, &nextPeak);
+                                if (nextPeak > id)
+                                {
+                                    throw std::runtime_error(
+                                        "Invalid peak page extent");
+                                }
+                                ++pageIndex;
                                 byteOffset = 0;
                                 if (page.at("kind") != "peaks")
                                 {
@@ -722,7 +867,7 @@ namespace cupuacu::storage
                             consumed += take;
                             output = output.subspan(take);
                         }
-                        if (consumed == count && pageIndex != refs.size())
+                        if (consumed == count && pageIndex != peakPageCount)
                         {
                             throw std::runtime_error("Extra source peak pages");
                         }
@@ -1007,7 +1152,7 @@ namespace cupuacu::storage
         sync(directory, true);
         sync(directory.parent_path(), true);
         manifest["magic"] = "CUPUACU_REVISION";
-        manifest["version"] = 1;
+        manifest["version"] = 2;
         manifest["generation"] = directory.filename().string();
         manifest["logEnd"] =
             std::filesystem::file_size(directory / "index.bin");
@@ -1049,7 +1194,8 @@ namespace cupuacu::storage
         std::ifstream in(manifestPath);
         Json j;
         in >> j;
-        if (j.at("magic") != "CUPUACU_REVISION" || j.at("version") != 1)
+        if (j.at("magic") != "CUPUACU_REVISION" ||
+            (j.at("version") != 1 && j.at("version") != 2))
         {
             throw std::runtime_error("Unsupported revision archive");
         }
