@@ -525,7 +525,8 @@ void MainView::syncLivePlaybackRange(const bool selectionActive,
     {
         const auto range = cupuacu::playback::computeRangeForLiveUpdate(
             state->getActiveDocumentSession(), state->loopPlaybackEnabled,
-            state->playbackRangeStart, state->playbackRangeEnd);
+            state->playbackRangeStart, state->playbackRangeEnd,
+            state->playbackSourceFrames);
         const uint64_t start = range.start;
         const uint64_t end = range.end;
 

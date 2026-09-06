@@ -1,4 +1,6 @@
 #pragma once
+#include "concurrency/TaskScheduler.hpp"
+#include "concurrency/DeferredRelease.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -110,6 +112,8 @@ namespace cupuacu
         PendingOpenKind kind = PendingOpenKind::UserOpen;
         std::string path;
         int targetTabIndex = -1;
+        uint64_t targetTabId = 0;
+        uint64_t previousActiveTabId = 0;
         bool updateRecentFiles = true;
         std::optional<persistence::PersistedOpenDocumentState>
             persistedDocumentState;
@@ -161,6 +165,9 @@ namespace cupuacu
             int previousActiveTabIndex = 0;
         };
 
+        std::shared_ptr<concurrency::TaskScheduler> taskScheduler =
+            concurrency::releaseOnWorker(
+                std::make_shared<concurrency::TaskScheduler>());
         std::shared_ptr<audio::AudioDevices> audioDevices;
         std::unique_ptr<Paths> paths = std::make_unique<Paths>();
         uint8_t menuFontSize = 30;
@@ -171,8 +178,14 @@ namespace cupuacu
             gui::OptionsSection::Audio;
         bool loopPlaybackEnabled = false;
         bool snapEnabled = false;
+        // Shared by normal imports; benchmarks can inject a smaller budget.
+        std::shared_ptr<storage::DecodedBlockCache> importSampleCache =
+            std::make_shared<storage::DecodedBlockCache>(
+                storage::DecodedBlockCache::defaultByteBudget(
+                    uint64_t(std::max(1, SDL_GetSystemRAM())) * 1024 * 1024));
         uint64_t playbackRangeStart = 0;
         uint64_t playbackRangeEnd = 0;
+        uint64_t playbackSourceFrames = std::numeric_limits<uint64_t>::max();
         std::vector<DocumentTab> tabs{DocumentTab{}};
         int activeTabIndex = 0;
         ClipboardAudio clipboard;
@@ -240,6 +253,8 @@ namespace cupuacu
         std::unique_ptr<actions::effects::BackgroundEffectJob,
                         void (*)(actions::effects::BackgroundEffectJob *)>
             backgroundEffectJob{nullptr, destroyBackgroundEffectJob};
+        std::vector<decltype(backgroundEffectJob)> additionalEffectJobs;
+        std::vector<decltype(backgroundSaveJob)> additionalSaveJobs;
         std::shared_ptr<actions::RevisionRecording> revisionRecording;
         gui::Window *modalWindow = nullptr;
         LongTaskStatus longTask;

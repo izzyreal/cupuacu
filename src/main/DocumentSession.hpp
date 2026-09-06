@@ -1,4 +1,5 @@
 #pragma once
+#include "storage/ImportAudioReader.hpp"
 
 #include "Document.hpp"
 #include "Paths.hpp"
@@ -51,6 +52,19 @@ namespace cupuacu
         Document document;
         waveform::DocumentWaveformCaches waveformCaches;
         bool openingPreview = false;
+        std::shared_ptr<const waveform::PersistentCacheSnapshot>
+            pendingImportedPeaks;
+        void retryImportedPeakPersistence()
+        {
+            if (pendingImportedPeaks &&
+                waveform::schedulePersistentWaveformCache(
+                    pendingImportedPeaks) !=
+                    waveform::CacheSaveScheduleResult::Busy)
+            {
+                pendingImportedPeaks.reset();
+            }
+        }
+        std::shared_ptr<const storage::ImportAudioReader> openingAudio;
         gui::Selection<double> selection = gui::Selection<double>(0.0);
         int64_t cursor = 0;
         undo::UndoStore undoStore;
@@ -177,6 +191,10 @@ namespace cupuacu
             }
             if (openingPreview)
             {
+                if (document.getChannelCount() <= 0)
+                {
+                    return std::nullopt;
+                }
                 return WaveformCacheBuildProgress{
                     getWaveformCache(0).builtSamplePrefixEnd() /
                         gui::WaveformCache::BASE_BLOCK_SIZE,

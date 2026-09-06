@@ -23,6 +23,7 @@ namespace cupuacu::file
         bool preferFilesystemClone = true;
         std::filesystem::path waveformCacheRoot;
         bool publishMetadata = false;
+        bool publishAudio = false;
     };
 
     // Worker-only backend. The original bytes are retained independently
@@ -71,6 +72,7 @@ namespace cupuacu::file
         bool cacheLoaded = false;
         std::unique_ptr<storage::AudioRevisionBuilder> builder;
         storage::AudioShape shape;
+        std::shared_ptr<storage::ImportAudioReader> progressive;
         auto metadata = loadAudioFile(
             owned.string(), progress, cancel, {},
             [&](const Document &document, int64_t start, const float *samples,
@@ -83,6 +85,22 @@ namespace cupuacu::file
                              int(document.getChannelCount()),
                              document.getSampleRate(),
                              document.getSampleFormat()};
+                    if (options.publishAudio)
+                    {
+                        progressive =
+                            std::make_shared<storage::ImportAudioReader>(
+                                shape, store, cache);
+                    }
+                    if (preview && options.publishMetadata)
+                    {
+                        waveform::DecodedWaveformChunk chunk;
+                        chunk.format = shape.format;
+                        chunk.sampleRate = shape.sampleRate;
+                        chunk.frameCount = shape.frames;
+                        chunk.channels.resize(shape.channels);
+                        chunk.audio = progressive;
+                        preview(std::move(chunk));
+                    }
                     if (!options.waveformCacheRoot.empty())
                     {
                         DocumentSession cacheSession;
@@ -93,20 +111,18 @@ namespace cupuacu::file
                         if (cacheLoaded)
                         {
                             cached = std::move(cacheSession.waveformCaches);
+                            if (preview && options.publishMetadata)
+                            {
+                                waveform::DecodedWaveformChunk chunk;
+                                chunk.format = shape.format;
+                                chunk.sampleRate = shape.sampleRate;
+                                chunk.frameCount = shape.frames;
+                                chunk.channels.resize(shape.channels);
+                                chunk.audio = progressive;
+                                chunk.cached = cached;
+                                preview(std::move(chunk));
+                            }
                         }
-                    }
-                    if (preview && options.publishMetadata)
-                    {
-                        waveform::DecodedWaveformChunk chunk;
-                        chunk.format = shape.format;
-                        chunk.sampleRate = shape.sampleRate;
-                        chunk.frameCount = shape.frames;
-                        chunk.channels.resize(shape.channels);
-                        if (cacheLoaded)
-                        {
-                            chunk.cached = cached;
-                        }
-                        preview(std::move(chunk));
                     }
                     builder = std::make_unique<storage::AudioRevisionBuilder>(
                         shape, store, cache,
@@ -119,6 +135,16 @@ namespace cupuacu::file
                             detail::throwIfLoadCanceled(cancel);
                             if (cacheLoaded)
                             {
+                                if (preview && progressive)
+                                {
+                                    waveform::DecodedWaveformChunk chunk;
+                                    chunk.format = shape.format;
+                                    chunk.sampleRate = shape.sampleRate;
+                                    chunk.frameCount = shape.frames;
+                                    chunk.channels.resize(shape.channels);
+                                    chunk.audio = progressive;
+                                    preview(std::move(chunk));
+                                }
                                 return;
                             }
                             auto chunk = peaks.appendFrom(
@@ -140,9 +166,11 @@ namespace cupuacu::file
                                 });
                             if (preview && chunk)
                             {
+                                chunk->audio = progressive;
                                 preview(std::move(*chunk));
                             }
-                        });
+                        },
+                        progressive);
                 }
                 (void)start;
                 builder->appendInterleaved(std::span<const float>(

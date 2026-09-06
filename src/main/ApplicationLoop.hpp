@@ -26,7 +26,8 @@ namespace cupuacu
         cupuacu::actions::io::processPendingAutosaveWork(state);
 
         if (state->quitRequestedAfterLongTaskCancel &&
-            !state->backgroundOpenJob &&
+            !state->backgroundOpenJob && !state->backgroundSaveJob &&
+            !state->backgroundEffectJob && !state->backgroundAutosaveJob &&
             !state->pendingOpenWaveformBuild.active && !state->longTask.active)
         {
             cupuacu::gui::cleanupCursors();

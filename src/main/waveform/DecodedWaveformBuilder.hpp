@@ -2,6 +2,7 @@
 
 #include "DocumentWaveformCaches.hpp"
 #include "../storage/AudioReader.hpp"
+#include "../storage/ImportAudioReader.hpp"
 
 namespace cupuacu::waveform
 {
@@ -14,6 +15,7 @@ namespace cupuacu::waveform
         int64_t toBlock = -1;
         std::vector<std::vector<gui::WaveformCache::LevelSpanUpdate>> channels;
         std::optional<DocumentWaveformCaches> cached;
+        std::shared_ptr<const storage::ImportAudioReader> audio;
     };
 
     // The decoder owns both the audio and this builder. Only peak deltas cross

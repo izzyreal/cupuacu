@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DocumentSession.hpp"
+#include "DocumentOperation.hpp"
 #include "gui/EditorViewState.hpp"
 
 #include <deque>
@@ -28,6 +29,7 @@ namespace cupuacu
     {
         uint64_t id = detail::nextDocumentTabId();
         uint64_t historyVersion = 0;
+        std::optional<DocumentOperation> operation;
         std::string title;
         DocumentSession session;
         gui::EditorViewState viewState{};

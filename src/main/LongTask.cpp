@@ -230,6 +230,13 @@ namespace cupuacu
 
     void requestLongTaskCancel(State *state)
     {
+        if (state && !state->longTask.active && state->getActiveTab() &&
+            state->getActiveTab()->operation)
+        {
+            state->getActiveTab()->operation->cancelRequested = true;
+            refreshLongTaskUi(state, false);
+            return;
+        }
         if (!state || !state->longTask.active || !state->longTask.cancellable)
         {
             return;
@@ -242,12 +249,19 @@ namespace cupuacu
 
     bool isLongTaskCancelRequested(const State *state)
     {
-        return state && state->longTask.active && state->longTask.cancelRequested;
+        return state &&
+               ((state->longTask.active && state->longTask.cancelRequested) ||
+                (!state->longTask.active && state->getActiveTab() &&
+                 state->getActiveTab()->operation &&
+                 state->getActiveTab()->operation->cancelRequested));
     }
 
     bool isLongTaskCancellable(const State *state)
     {
-        return state && state->longTask.active && state->longTask.cancellable;
+        return state &&
+               ((state->longTask.active && state->longTask.cancellable) ||
+                (!state->longTask.active && state->getActiveTab() &&
+                 state->getActiveTab()->operation));
     }
 
     LongTaskScope::LongTaskScope(State *stateToUse, std::string title,

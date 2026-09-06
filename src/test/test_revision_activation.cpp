@@ -4,6 +4,12 @@
 #include "actions/io/BackgroundOpen.hpp"
 #include "actions/io/BackgroundSave.hpp"
 #include "actions/Save.hpp"
+#include "actions/markers/Split.hpp"
+#include "actions/MutationAvailability.hpp"
+#include "actions/DocumentTabs.hpp"
+#include "actions/effects/BackgroundEffect.hpp"
+#include "playback/PlaybackRange.hpp"
+#include <latch>
 #include "actions/audio/SetSampleValue.hpp"
 #include "file/OwnedSourceFile.hpp"
 #include "file/OwnedAudioImport.hpp"
@@ -90,6 +96,8 @@ TEST_CASE("Normal opening commits owned audio and reusable source peaks",
     REQUIRE(session.preservationSource->blockStore()->ioBytes().first == 0);
     REQUIRE_FALSE(std::filesystem::equivalent(
         path, session.preservationSource->sourcePath()));
+    session.retryImportedPeakPersistence();
+    waveform::flushScheduledPersistentWaveformCaches();
     // The production open wrote a cache under the original source key.
     int cachedPreviews = 0, generatedPreviews = 0;
     auto cached = file::importOwnedAudio(
@@ -218,4 +226,369 @@ TEST_CASE("Failure retaining a saved container leaves existing output intact",
     std::string contents;
     in >> contents;
     REQUIRE(contents == "old");
+}
+
+TEST_CASE(
+    "Queued effects leave other tabs editable and closed targets cannot "
+    "publish",
+    "[document-operations]")
+{
+    Files files;
+    auto path = files.root / "source.wav";
+    fixture(path);
+    test::StateWithTestPaths state{files.root / "state"};
+    open(state, path);
+    open(state, path);
+    REQUIRE(state.tabs.size() == 2);
+    const auto secondRoot = state.tabs[1].session.getEditRevision();
+    // Hold both bulk slots, keeping cancellation and publication deterministic.
+    std::promise<void> release;
+    auto gate = release.get_future().share();
+    struct Release
+    {
+        std::promise<void> &p;
+        ~Release()
+        {
+            p.set_value();
+        }
+    };
+    std::latch started(2);
+    auto block = [&]
+    {
+        started.count_down();
+        gate.wait();
+    };
+    auto first = state.taskScheduler->submit(block, {});
+    auto second = state.taskScheduler->submit(block, {});
+    started.wait();
+    {
+        Release onExit{release};
+        REQUIRE(actions::effects::queueReverse(&state));
+        CHECK_FALSE(state.longTask.active);
+        CHECK_FALSE(actions::isDocumentMutationAvailable(&state));
+        CHECK_FALSE(actions::effects::queueReverse(&state));
+        REQUIRE(actions::switchToTab(&state, 0));
+        CHECK(actions::isDocumentMutationAvailable(&state));
+        state.paths.reset();
+        state.addAndDoUndoable(std::make_shared<actions::audio::SetSampleValue>(
+            &state, 0, 7, .5f, -.25f));
+        REQUIRE(actions::effects::queueReverse(&state));
+        CHECK(state.additionalEffectJobs.size() == 1);
+        REQUIRE(actions::closeTabWithoutConfirmation(&state, 1));
+        actions::effects::processPendingEffectWork(&state);
+    }
+    until(
+        [&]
+        {
+            actions::effects::processPendingEffectWork(&state);
+            return !state.backgroundEffectJob;
+        });
+    REQUIRE(state.tabs.size() == 1);
+    auto &session = state.getActiveDocumentSession();
+    CHECK_FALSE(state.getActiveTab()->operation);
+    std::array<float, 1> value;
+    session.getAudioReader()->readChannel(
+        0, session.document.getFrameCount() - 8, value);
+    CHECK(value[0] == -.25f);
+    secondRoot->readChannel(0, 7, value);
+    CHECK(value[0] == .5f);
+}
+
+TEST_CASE("Canceling a queued import preserves unrelated tab edits",
+          "[document-operations]")
+{
+    Files files;
+    auto path = files.root / "source.wav";
+    fixture(path);
+    test::StateWithTestPaths state{files.root / "state"};
+    open(state, path);
+    std::promise<void> release;
+    auto gate = release.get_future().share();
+    struct Release
+    {
+        std::promise<void> &p;
+        ~Release()
+        {
+            p.set_value();
+        }
+    };
+    std::latch started(2);
+    auto block = [&]
+    {
+        started.count_down();
+        gate.wait();
+    };
+    auto first = state.taskScheduler->submit(block, {});
+    auto second = state.taskScheduler->submit(block, {});
+    started.wait();
+    {
+        Release onExit{release};
+        actions::io::queueOpenFile(&state, path.string());
+        actions::io::processPendingOpenWork(&state);
+        REQUIRE(state.tabs.size() == 2);
+        CHECK(state.getActiveDocumentSession().openingPreview);
+        CHECK_FALSE(state.longTask.active);
+        requestLongTaskCancel(&state);
+        REQUIRE(actions::switchToTab(&state, 0));
+        state.paths.reset();
+        state.addAndDoUndoable(std::make_shared<actions::audio::SetSampleValue>(
+            &state, 0, 7, .5f, -.25f));
+        actions::io::processPendingOpenWork(&state);
+        if (GENERATE(false, true))
+        {
+            REQUIRE(actions::switchToTab(&state, 1));
+        }
+    }
+    until(
+        [&]
+        {
+            actions::io::processPendingOpenWork(&state);
+            return !state.backgroundOpenJob;
+        });
+    REQUIRE(state.tabs.size() == 1);
+    CHECK(state.activeTabIndex == 0);
+    std::array<float, 1> value;
+    state.getActiveDocumentSession().getAudioReader()->readChannel(0, 7, value);
+    CHECK(value[0] == -.25f);
+}
+
+TEST_CASE(
+    "Imported sealed blocks support playback snapshots and pending raw views",
+    "[document-operations]")
+{
+    Files files;
+    auto path = files.root / "source.wav";
+    fixture(path);
+    DocumentSession preview;
+    std::shared_ptr<const storage::AudioReader> pinned;
+    int published = 0;
+    auto imported = file::importOwnedAudio(
+        path, files.root / "owned",
+        std::make_shared<storage::DecodedBlockCache>(0), {}, {},
+        [&](const auto &chunk)
+        {
+            if (!chunk.audio || !chunk.audio->availableFrames())
+            {
+                return;
+            }
+            preview.openingPreview = true;
+            preview.openingAudio = chunk.audio;
+            preview.document.setExternalAudioShape(
+                chunk.format, chunk.sampleRate, int(chunk.channels.size()),
+                chunk.frameCount);
+            const auto available = chunk.audio->availableFrames();
+            ++published;
+            if (!pinned)
+            {
+                pinned = preview.getAudioReader();
+            }
+            std::array<float, 7> values;
+            chunk.audio->readChannel(0, available - 7, values);
+            CHECK(values[0] == .5f);
+            CHECK(playback::computeRangeForPlay(preview, false).end ==
+                  available);
+            CHECK(playback::computeRangeForLiveUpdate(preview, true, 0,
+                                                      pinned->shape().frames,
+                                                      pinned->shape().frames)
+                      .end == pinned->shape().frames);
+            if (available < chunk.frameCount)
+            {
+                auto source = preview.getViewportSource();
+                REQUIRE(source);
+                auto data = waveform::WaveformViewport::compute(
+                    *source, {0, available, 1, 20},
+                    []
+                    {
+                        return false;
+                    });
+                REQUIRE(data);
+                CHECK(data->pending);
+                CHECK_THROWS(chunk.audio->readChannel(0, available, values));
+            }
+        },
+        {.publishMetadata = true, .publishAudio = true});
+    REQUIRE(pinned);
+    CHECK(published >= 4);
+    CHECK(pinned->shape().frames == storage::AudioBlockFrames);
+    std::array<float, 1> value;
+    pinned->readChannel(1, 3, value);
+    CHECK(value[0] == .5f);
+}
+
+TEST_CASE(
+    "Revision marker splitting shares source audio and preserves tab metadata",
+    "[large-workflow]")
+{
+    Files files;
+    auto path = files.root / "source.wav";
+    fixture(path);
+    test::StateWithTestPaths state{files.root / "state"};
+    open(state, path);
+    state.paths.reset();
+    auto &source = state.getActiveDocumentSession();
+    source.document.addMarker(13, "first");
+    source.document.addMarker(65539, "second");
+    source.document.addMarker(131079, "last");
+    auto store = source.preservationSource->blockStore();
+    const auto io = store->ioBytes();
+    REQUIRE(actions::markers::splitByMarkers(&state));
+    REQUIRE(state.tabs.size() == 3);
+    CHECK(state.activeTabIndex == 0);
+    CHECK(store->ioBytes() == io);
+    for (int i = 1; i < 3; ++i)
+    {
+        const auto &session = state.tabs[i].session;
+        REQUIRE(session.hasReadRevision());
+        CHECK(session.currentFile.empty());
+        CHECK(session.revisionHasUnsavedChanges());
+        const auto markers = session.document.getMarkers();
+        REQUIRE(markers.size() == 2);
+        CHECK(markers.front().frame == 0);
+        CHECK(markers.back().frame == session.document.getFrameCount());
+        CHECK(markers.front().label == (i == 1 ? "first" : "second"));
+        std::array<float, 17> samples;
+        session.getAudioReader()->readChannel(1, 3, samples);
+        CHECK(samples.front() == .5f);
+    }
+}
+
+TEST_CASE("Peak writer saturation and failure cannot delay imported edits",
+          "[large-workflow]")
+{
+    Files files;
+    auto path = files.root / "source.wav", other = files.root / "other.wav";
+    fixture(path);
+    fixture(other);
+    test::StateWithTestPaths state{files.root / "state"};
+    state.importSampleCache =
+        std::make_shared<storage::DecodedBlockCache>(storage::AudioBlockBytes);
+    open(state, path);
+    auto snapshot = std::make_shared<waveform::PersistentCacheSnapshot>(
+        *state.getActiveDocumentSession().pendingImportedPeaks);
+    std::promise<void> release;
+    auto gate = release.get_future().share();
+    std::latch started(1);
+    snapshot->beforeWrite = [&]
+    {
+        started.count_down();
+        gate.wait();
+        throw std::runtime_error("Injected peak write failure");
+    };
+    struct Release
+    {
+        std::promise<void> &p;
+        ~Release()
+        {
+            p.set_value();
+        }
+    };
+    {
+        Release onExit{release};
+        REQUIRE(waveform::schedulePersistentWaveformCache(snapshot) ==
+                waveform::CacheSaveScheduleResult::Scheduled);
+        started.wait();
+        auto queued =
+            std::make_shared<waveform::PersistentCacheSnapshot>(*snapshot);
+        queued->beforeWrite = []
+        {
+            throw std::runtime_error("Injected queued write failure");
+        };
+        for (int i = 0; i < 4; ++i)
+        {
+            REQUIRE(waveform::schedulePersistentWaveformCache(queued) ==
+                    waveform::CacheSaveScheduleResult::Scheduled);
+        }
+        open(state, other);
+        REQUIRE(state.getActiveDocumentSession().pendingImportedPeaks);
+        CHECK(actions::isDocumentMutationAvailable(&state));
+        state.paths.reset();
+        state.addAndDoUndoable(std::make_shared<actions::audio::SetSampleValue>(
+            &state, 0, 7, .5f, -.25f));
+        state.getActiveDocumentSession().retryImportedPeakPersistence();
+        CHECK(state.getActiveDocumentSession().pendingImportedPeaks);
+    }
+    waveform::flushScheduledPersistentWaveformCaches();
+    for (auto &tab : state.tabs)
+    {
+        tab.session.retryImportedPeakPersistence();
+    }
+    waveform::flushScheduledPersistentWaveformCaches();
+    CHECK_FALSE(state.getActiveDocumentSession().pendingImportedPeaks);
+    std::array<float, 1> sample;
+    state.getActiveDocumentSession().getAudioReader()->readChannel(0, 7,
+                                                                   sample);
+    CHECK(sample[0] == -.25f);
+    CHECK(state.importSampleCache->stats().peakResidentBytes <=
+          storage::AudioBlockBytes);
+    DocumentSession cacheSession;
+    cacheSession.document = state.getActiveDocumentSession().document;
+    cacheSession.currentFile = other.string();
+    cacheSession.waveformCaches.resetToChannelCount(2);
+    REQUIRE(
+        waveform::loadPersistentWaveformCache(cacheSession, snapshot->root));
+    CHECK(cacheSession.getWaveformCache(0)
+              .snapshotBuildState()
+              .levels[0][0]
+              .min == .5f);
+}
+
+TEST_CASE("A stalled importer leaves sealed audio and async browsing available",
+          "[large-workflow]")
+{
+    Files files;
+    const auto path = files.root / "source.wav";
+    fixture(path);
+    std::promise<waveform::DecodedWaveformChunk> publication;
+    auto published = publication.get_future();
+    std::promise<void> release;
+    auto gate = release.get_future().share();
+    auto import = std::async(std::launch::async, [&]
+    {
+        bool sent = false;
+        return file::importOwnedAudio(path, files.root / "owned",
+            std::make_shared<storage::DecodedBlockCache>(storage::AudioBlockBytes), {}, {},
+            [&](auto chunk)
+            {
+                if (!sent && chunk.audio && chunk.audio->availableFrames())
+                {
+                    sent = true;
+                    publication.set_value(std::move(chunk));
+                    gate.wait(); // Simulates a decoder waiting for more input.
+                }
+            }, {.publishMetadata = true, .publishAudio = true});
+    });
+    struct Release
+    {
+        std::promise<void> &promise;
+        ~Release() { promise.set_value(); }
+    } unblock{release};
+    REQUIRE(published.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
+    auto chunk = published.get();
+    DocumentSession session;
+    session.openingPreview = true;
+    session.openingAudio = chunk.audio;
+    session.document.setExternalAudioShape(chunk.format, chunk.sampleRate,
+                                          int(chunk.channels.size()), chunk.frameCount);
+    auto playable = session.getAudioReader();
+    REQUIRE(playable->shape().frames == storage::AudioBlockFrames);
+    CHECK(playback::computeRangeForPlay(session, false).end == playable->shape().frames);
+    CHECK(import.wait_for(std::chrono::milliseconds(0)) == std::future_status::timeout);
+    waveform::WaveformViewport view(*session.getViewportSource());
+    const auto generation = view.submit({0, 10, .5, 100});
+    std::optional<waveform::WaveformViewport::Result> ready;
+    until([&] { ready = view.takePublished(); return bool(ready); });
+    REQUIRE(ready->generation == generation);
+    REQUIRE_FALSE(ready->error);
+    REQUIRE(ready->value);
+    CHECK_FALSE(ready->value->pending);
+    for (auto value : ready->value->samples) CHECK(value == .5f);
+    auto playback = std::async(std::launch::async, [&]
+    {
+        std::array<float, 512> values;
+        playable->readChannel(1, 0, values);
+        return values;
+    });
+    REQUIRE(playback.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
+    for (auto value : playback.get()) CHECK(value == .5f);
+    CHECK(import.wait_for(std::chrono::milliseconds(0)) == std::future_status::timeout);
 }

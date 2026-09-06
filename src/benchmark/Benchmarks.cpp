@@ -1,3 +1,6 @@
+#include "actions/DocumentTabs.hpp"
+#include "actions/markers/Split.hpp"
+#include <latch>
 #include "ApplicationLoop.hpp"
 #include "BenchmarkBuild.hpp"
 #include "BenchmarkSourceFingerprint.hpp"
@@ -119,28 +122,22 @@ namespace
         std::filesystem::create_directories(path.parent_path());
         if (format == "m4a")
         {
-            Document document;
-            document.initialize(SampleFormat::PCM_S16, sampleRate, channels,
-                                frames);
-            std::vector<float> block(16384 * channels);
-            for (int64_t pos = 0; pos < frames; pos += 16384)
+            class FixtureReader final : public storage::AudioReader
             {
-                const auto count = std::min<int64_t>(16384, frames - pos);
-                for (int64_t i = 0; i < count; ++i)
+                int64_t frames;
+            public:
+                explicit FixtureReader(int64_t count) : frames(count) {}
+                storage::AudioShape shape() const override
+                { return {frames, channels, sampleRate, SampleFormat::PCM_S16}; }
+                void readChannel(int channel, int64_t first,
+                                 std::span<float> output) const override
                 {
-                    for (int ch = 0; ch < channels; ++ch)
-                    {
-                        // The export writer rounds normalized input against
-                        // 32767. Recover the exact same integer PCM codes that
-                        // the WAV/FLAC fixture generator writes directly.
-                        block[i * channels + ch] =
-                            sampleAt(pos + i, ch) * (32768.0f / 32767.0f);
-                    }
+                    validateRange(shape(), channel, first, output.size());
+                    for (auto &value : output)
+                        value = sampleAt(first++, channel) * (32768.0f / 32767.0f);
                 }
-                document.writeInterleavedFloatBlock(pos, block.data(), count,
-                                                    channels, false);
-            }
-            file::m4a::writeAlacM4aFile(document, path, 16);
+            } reader(frames);
+            file::m4a::writeAlacM4aFile(reader, {}, path, 16);
             return;
         }
         SF_INFO info{};
@@ -283,6 +280,10 @@ namespace
         }
         for (auto &tab : state.tabs)
         {
+            if (tab.session.pendingImportedPeaks)
+            {
+                return true;
+            }
             if (tab.session.getWaveformCacheBuildProgress())
             {
                 return true;
@@ -533,6 +534,8 @@ namespace
                                          {"blocked", blocked}};
     }
 
+    #include "LargeFileWorkflow.hpp"
+
     void scenario(benchmark::State &measurement)
     {
 #if CUPUACU_WORK_METRICS
@@ -580,6 +583,11 @@ namespace
 #endif
         const std::string name = request.at("scenario");
         const int64_t frames = request.at("frames");
+        if (name == "large_file_workflow")
+        {
+            largeFileWorkflow(measurement);
+            return;
+        }
         if (name == "playback_memory" || name == "playback_owned")
         {
             DocumentSession session;
@@ -1367,6 +1375,94 @@ namespace
                     store->ioBytes().first;
             }
             result["milestones_ms"]["background_complete"] = totalMs;
+            result["validated"] = true;
+            return;
+        }
+        if (name == "bulk_busy_edit_owned")
+        {
+            State state;
+            const auto root =
+                std::filesystem::path(request.at("root").get<std::string>());
+            state.paths = std::make_unique<BenchPaths>(root);
+            auto imported = file::importOwnedAudio(
+                request.at("fixture").get<std::string>(), root / "audio",
+                std::make_shared<storage::DecodedBlockCache>(2 * 1024 * 1024));
+            auto revision = storage::AudioEditRevision::from(imported.audio);
+            for (int i = 0; i < 2; ++i)
+            {
+                if (i)
+                {
+                    state.tabs.emplace_back();
+                }
+                auto &session = state.tabs[i].session;
+                session.document = imported.metadata.document;
+                session.bindReadRevision(revision);
+            }
+            std::promise<void> release;
+            auto gate = release.get_future().share();
+            struct Release
+            {
+                std::promise<void> &p;
+                ~Release()
+                {
+                    p.set_value();
+                }
+            };
+            std::latch started(2);
+            auto block = [&]
+            {
+                started.count_down();
+                gate.wait();
+            };
+            auto first = state.taskScheduler->submit(block, {});
+            auto second = state.taskScheduler->submit(block, {});
+            started.wait();
+            {
+                Release onExit{release};
+                for (auto iteration : measurement)
+                {
+                    (void)iteration;
+                    const auto begin = Clock::now();
+                    selection(state, 1000, 1000);
+                    require(actions::effects::queueAmplifyFade(
+                                &state, {50, 50, 0, true}),
+                            "Busy effect rejected");
+                    result["coordination"]["submission_ms"] = elapsed(begin);
+                    require(actions::switchToTab(&state, 1),
+                            "Busy work prevented tab switch");
+                    state.paths.reset();
+                    std::vector<double> times;
+                    for (int i = 0; i < 128; ++i)
+                    {
+                        const auto edit = Clock::now();
+                        state.addAndDoUndoable(
+                            std::make_shared<actions::audio::SetSampleValue>(
+                                &state, 0, i, sampleAt(i, 0), .25f));
+                        times.push_back(elapsed(edit));
+                    }
+                    std::sort(times.begin(), times.end());
+                    result["coordination"]["edit_p99_ms"] = times[126];
+                    result["coordination"]["bulk_running"] =
+                        state.taskScheduler->stats().running;
+                    require(state.taskScheduler->stats().running == 2,
+                            "Bulk jobs did not stay occupied");
+                    measurement.SetIterationTime(elapsed(begin) / 1000.0);
+                }
+            }
+            require(state.backgroundEffectJob->waitForCompletion(
+                        std::chrono::seconds(60)),
+                    "Busy effect timed out");
+            actions::effects::processPendingEffectWork(&state);
+            require(state.tabs[0].undoables.size() == 1 &&
+                        state.tabs[1].undoables.size() == 128,
+                    "Cross-tab edits lost");
+            std::array<float, 128> values;
+            state.tabs[1].session.getAudioReader()->readChannel(0, 0, values);
+            for (auto value : values)
+            {
+                require(value == .25f, "Busy edit mismatch");
+            }
+            captureMetrics();
             result["validated"] = true;
             return;
         }

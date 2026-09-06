@@ -210,6 +210,10 @@ namespace cupuacu::actions
             }
 
             cupuacu::persistence::PersistedOpenDocumentState documentState{};
+            if (tab.session.openingPreview)
+            {
+                continue;
+            }
             documentState.filePath = tab.session.currentFile;
             documentState.autosaveSnapshotPath =
                 tab.session.autosaveSnapshotPath.string();
@@ -356,7 +360,9 @@ namespace cupuacu::actions
         }
 
         const auto startedAt = std::chrono::steady_clock::now();
-        state->backgroundAutosaveJob.reset();
+        // Shutdown is the explicit draining boundary: do not race the final
+        // snapshot against an already running write to the same archive.
+        delete state->backgroundAutosaveJob.release();
         int scannedTabs = 0;
         int skippedEmptyTabs = 0;
         int skippedCleanFileTabs = 0;
@@ -369,7 +375,7 @@ namespace cupuacu::actions
             ++scannedTabs;
             auto &session = tab.session;
             const auto &document = session.document;
-            if (document.getChannelCount() <= 0)
+            if (session.openingPreview || document.getChannelCount() <= 0)
             {
                 ++skippedEmptyTabs;
                 continue;

@@ -86,6 +86,11 @@ namespace cupuacu::actions
                 ? std::filesystem::path(tab.session.currentFile).filename().string()
                 : kUntitledDocumentTitle;
 
+        if (tab.operation)
+        {
+            return baseTitle + (documentTabHasUnsavedChanges(tab) ? "*" : "") +
+                   " (" + tab.operation->title + ")";
+        }
         if (documentTabHasUnsavedChanges(tab))
         {
             return baseTitle + "*";

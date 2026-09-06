@@ -32,16 +32,17 @@ namespace cupuacu::actions::io
             std::string error;
         };
 
-        BackgroundOpenJob(std::uint64_t idToUse,
-                          PendingOpenRequest requestToOpen,
-                          std::filesystem::path waveformCacheRootToUse = {},
-                          std::filesystem::path workingRootToUse = {});
+        BackgroundOpenJob(
+            std::uint64_t idToUse, PendingOpenRequest requestToOpen,
+            std::filesystem::path waveformCacheRootToUse = {},
+            std::filesystem::path workingRootToUse = {},
+            std::shared_ptr<storage::DecodedBlockCache> sampleCache = {});
         ~BackgroundOpenJob();
 
         BackgroundOpenJob(const BackgroundOpenJob &) = delete;
         BackgroundOpenJob &operator=(const BackgroundOpenJob &) = delete;
 
-        void start();
+        void start(std::shared_ptr<concurrency::TaskScheduler> scheduler = {});
         [[nodiscard]] Snapshot snapshot() const;
         [[nodiscard]] std::unique_ptr<file::LoadedAudioFile> takeLoadedFile();
         [[nodiscard]] std::optional<waveform::DecodedWaveformChunk>
@@ -56,6 +57,7 @@ namespace cupuacu::actions::io
         PendingOpenRequest request;
         std::filesystem::path waveformCacheRoot;
         std::filesystem::path workingRoot;
+        std::shared_ptr<storage::DecodedBlockCache> sampleCache;
         mutable std::mutex mutex;
         bool completed = false;
         bool success = false;
@@ -63,7 +65,8 @@ namespace cupuacu::actions::io
         std::optional<double> progress;
         std::string error;
         std::unique_ptr<file::LoadedAudioFile> loadedFile;
-        std::thread worker;
+        std::shared_ptr<concurrency::TaskScheduler> scheduler;
+        concurrency::TaskScheduler::Ticket completion;
         std::atomic<bool> cancelRequested{false};
         std::condition_variable previewCv;
         std::deque<waveform::DecodedWaveformChunk> previews;

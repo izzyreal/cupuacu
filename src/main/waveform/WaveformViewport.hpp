@@ -11,6 +11,7 @@ namespace cupuacu::waveform
         std::shared_ptr<const storage::AudioReader> audio;
         std::function<std::optional<Peak>(int, int64_t, int64_t)> overview;
         std::function<bool(const std::function<bool()> &)> prepare;
+        std::function<int64_t()> availableFrames;
     };
     struct ViewportRequest
     {
@@ -155,6 +156,11 @@ namespace cupuacu::waveform
                     frameAt(request.width + 1) +
                         std::min<int64_t>(4, shape.frames -
                                                  frameAt(request.width + 1)));
+                if (source.availableFrames && end > source.availableFrames())
+                {
+                    result.pending = true;
+                    return result;
+                }
                 const auto count = uint64_t(end - result.rawStart);
                 if (count > maxSampleFrames)
                 {

@@ -611,3 +611,48 @@ without a second decode. On macOS, cloning normally avoids another full physical
 copy; the bounded copy fallback requires output-sized I/O. The preserved edit root
 continues to own its original sample sources. Consequently, save completion and
 logical disk storage can increase even though decoded memory remains bounded.
+
+`bulk_busy_edit_owned` (extended profile) occupies both shared bulk workers,
+queues an effect, switches tabs and performs 128 point edits. It reports
+`coordination.submission_ms`, `edit_p99_ms`, and `bulk_running`, then validates
+both histories and the edited samples. The measured operation excludes import
+and waiting for the queued effect. Compare small and large fixtures to detect
+duration-dependent command costs. It does not measure SDL event latency.
+
+## Imported large-file workflow
+
+`large_file_workflow` exercises queued production import, progressive publication,
+local edit/history commands, revision marker splitting, the session's asynchronous
+viewport worker, queued float WAV save and reopen. Full sample/marker validation
+runs after timing and import-memory capture. The sample cache is shared across
+imported tabs and capped at 64 MiB. Local command timings exclude autosave and
+clipboard persistence, as in command microbenchmarks; save/reopen uses normal paths.
+The benchmark fails for source-sample I/O during local edits, excess sample-cache
+residency, stale/pending viewport results, incorrect audio, warm viewport p99
+at or above 16.7 ms, or event latency at or above 50 ms (p99 with at least 1,000
+probes, otherwise the observed maximum). Process RSS is reported separately.
+
+Use the existing native Release build, incrementally:
+
+```sh
+cmake --build build --target cupuacu-benchmarks -j8
+python3 scripts/run-benchmarks.py --profile extended --mode timing \
+  --filter large_file_workflow --sizes-mib 1 256 --repetitions 3 \
+  --output dist/benchmarks/workflow-small-large.json
+python3 scripts/run-benchmarks.py --profile large --mode timing \
+  --filter large_file_workflow --sizes-mib 2048 --repetitions 1 \
+  --formats wav m4a --max-rss-mib 2048 --max-disk-mib 32768 \
+  --timeout-seconds 180 --output dist/benchmarks/workflow-2g.json
+python3 scripts/run-benchmarks.py --profile large --mode timing \
+  --filter large_file_workflow --sizes-mib 2048 --repetitions 1 \
+  --formats wav --workflow-tabs 4 --max-rss-mib 2048 --max-disk-mib 32768 \
+  --timeout-seconds 180 --output dist/benchmarks/workflow-four-tabs-2g.json
+```
+
+Sizes refer to decoded float audio. `workflow-tabs` participates in case identity,
+so one-tab and four-tab measurements cannot be compared accidentally. ALAC fixture
+generation streams an `AudioReader` rather than allocating the complete fixture.
+Results distinguish metadata, first playable samples, first waveform, editable
+state, peak persistence, save and reopen. `workflow_slow_pumps` records application
+iterations exceeding 10 ms. See [the milestone report](../../PERFORMANCE-MILESTONE.md)
+for measured results, the retained latency outlier, and scope limits.

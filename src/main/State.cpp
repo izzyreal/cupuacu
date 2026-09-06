@@ -96,24 +96,48 @@ void cupuacu::destroyMarkerEditorDialogWindow(
 
 void cupuacu::destroyBackgroundOpenJob(actions::io::BackgroundOpenJob *job)
 {
-    delete job;
+    if (!job)
+    {
+        return;
+    }
+    job->cancel();
+    auto retired = concurrency::releaseOnWorker(
+        std::shared_ptr<actions::io::BackgroundOpenJob>(job));
 }
 
 void cupuacu::destroyBackgroundSaveJob(actions::io::BackgroundSaveJob *job)
 {
-    delete job;
+    if (!job)
+    {
+        return;
+    }
+    job->cancel();
+    auto retired = concurrency::releaseOnWorker(
+        std::shared_ptr<actions::io::BackgroundSaveJob>(job));
 }
 
 void cupuacu::destroyBackgroundAutosaveJob(
     actions::io::BackgroundAutosaveJob *job)
 {
-    delete job;
+    if (!job)
+    {
+        return;
+    }
+    job->cancel();
+    auto retired = concurrency::releaseOnWorker(
+        std::shared_ptr<actions::io::BackgroundAutosaveJob>(job));
 }
 
 void cupuacu::destroyBackgroundEffectJob(
     actions::effects::BackgroundEffectJob *job)
 {
-    delete job;
+    if (!job)
+    {
+        return;
+    }
+    job->cancel();
+    auto retired = concurrency::releaseOnWorker(
+        std::shared_ptr<actions::effects::BackgroundEffectJob>(job));
 }
 
 cupuacu::State::~State() = default;

@@ -33,7 +33,9 @@ void cupuacu::actions::play(cupuacu::State *state)
     }
 
     uint32_t channelCount = doc.getChannelCount();
-    if (channelCount == 0)
+    if (channelCount == 0 || (session.openingPreview &&
+                              (!session.openingAudio ||
+                               session.openingAudio->availableFrames() == 0)))
     {
         return;
     }
@@ -62,10 +64,14 @@ void cupuacu::actions::play(cupuacu::State *state)
     {
         Play playMsg;
         playMsg.document = &doc;
-        if (session.hasReadRevision())
+        if (session.hasReadRevision() || session.openingAudio)
         {
             playMsg.readerSnapshot = session.getAudioReader();
         }
+        state->playbackSourceFrames =
+            playMsg.readerSnapshot
+                ? uint64_t(playMsg.readerSnapshot->shape().frames)
+                : uint64_t(doc.getFrameCount());
         playMsg.startPos = start;
         playMsg.endPos = end;
         playMsg.loopEnabled = state->loopPlaybackEnabled;

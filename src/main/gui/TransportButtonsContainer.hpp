@@ -86,7 +86,8 @@ namespace cupuacu::gui
                     const auto range =
                         cupuacu::playback::computeRangeForLiveUpdate(
                             session, state->loopPlaybackEnabled,
-                            state->playbackRangeStart, state->playbackRangeEnd);
+                            state->playbackRangeStart, state->playbackRangeEnd,
+                            state->playbackSourceFrames);
 
                     cupuacu::audio::UpdatePlayback updateMsg{};
                     updateMsg.startPos = range.start;

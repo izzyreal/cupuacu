@@ -288,12 +288,7 @@ namespace cupuacu::waveform
             }
         }
 
-        struct CacheSaveRequest
-        {
-            std::filesystem::path root;
-            PersistentCacheKey key;
-            std::vector<gui::WaveformCache::BuildState> channels;
-        };
+        using CacheSaveRequest = PersistentCacheSnapshot;
 
         CacheSaveRequest
         captureCacheSaveRequest(const DocumentSession &session,
@@ -314,6 +309,10 @@ namespace cupuacu::waveform
         {
             try
             {
+                if (request.beforeWrite)
+                {
+                    request.beforeWrite();
+                }
                 file::writeFileAtomically(
                     request.root / request.key.cacheBasename(),
                     [&](const std::filesystem::path &temporaryPath)
@@ -488,6 +487,31 @@ namespace cupuacu::waveform
         }
         return cacheSaveWorker().schedule(captureCacheSaveRequest(
                    session, paths.waveformCachePath(), *key))
+                   ? CacheSaveScheduleResult::Scheduled
+                   : CacheSaveScheduleResult::Busy;
+    }
+
+    std::shared_ptr<const PersistentCacheSnapshot>
+    capturePersistentWaveformCache(const DocumentSession &session,
+                                   const std::filesystem::path &root)
+    {
+        const auto key = session.getPersistentWaveformCacheKey();
+        if (root.empty() || !key || !sessionHasCompletePersistentCache(session))
+        {
+            return {};
+        }
+        return std::make_shared<PersistentCacheSnapshot>(
+            captureCacheSaveRequest(session, root, *key));
+    }
+
+    CacheSaveScheduleResult schedulePersistentWaveformCache(
+        const std::shared_ptr<const PersistentCacheSnapshot> &snapshot)
+    {
+        if (!snapshot)
+        {
+            return CacheSaveScheduleResult::Unavailable;
+        }
+        return cacheSaveWorker().schedule(*snapshot)
                    ? CacheSaveScheduleResult::Scheduled
                    : CacheSaveScheduleResult::Busy;
     }
