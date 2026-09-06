@@ -549,3 +549,17 @@ rebuilds; they cannot establish behavior under paging, storage saturation,
 allocator thresholds, or multi-gigabyte histories. Validate promising changes
 with the explicit large profile on target hardware. Audio-device callback
 deadlines and real GPU performance require separate measurements.
+
+`record_fixed_owned` records 65,536 stereo frames into an imported document;
+`record_long_owned` records as many frames as the document contains. Both start
+17 frames into the document, exercising overwrite and (for the long case)
+extension. They use the production recording worker, publication coordinator and
+reference history. Fixtures/import and sample validation are outside the timer.
+The producer sends at most 64 callback-sized chunks per handoff and waits for
+queue space between handoffs; completion measures unrestricted throughput, not
+wall-clock microphone recording time. `max_handoff_ms` includes fixture sample
+generation; `max_publication_ms` includes final history insertion. Both exclude
+SDL painting. Original-sample reads must be zero, output is compared sample by
+sample, and undo/redo must restore the exact retained roots. The benchmark does
+not claim a resident-path speedup or measure audio-device contention. Peak RSS
+includes import, validation and retained peak/index metadata.

@@ -36,6 +36,7 @@ namespace cupuacu
 
     namespace actions
     {
+        struct RevisionRecording;
         namespace io
         {
             class BackgroundOpenJob;
@@ -239,6 +240,7 @@ namespace cupuacu
         std::unique_ptr<actions::effects::BackgroundEffectJob,
                         void (*)(actions::effects::BackgroundEffectJob *)>
             backgroundEffectJob{nullptr, destroyBackgroundEffectJob};
+        std::shared_ptr<actions::RevisionRecording> revisionRecording;
         gui::Window *modalWindow = nullptr;
         LongTaskStatus longTask;
         std::function<void(const LongTaskStatus &)> longTaskObserver;

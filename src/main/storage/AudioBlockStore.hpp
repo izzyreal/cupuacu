@@ -136,6 +136,7 @@ namespace cupuacu::storage
             }
             if (failed || !writer)
             {
+                failed = true;
                 throw std::runtime_error("Audio store flush failed");
             }
         }
@@ -160,14 +161,17 @@ namespace cupuacu::storage
                     std::ifstream(segmentPath(block.segment), std::ios::binary);
                 readSegment = block.segment;
             }
-            if (writer.is_open())
+            // A failed append must not poison earlier revisions whose blocks
+            // were already flushed before publication. No failed transaction
+            // can expose its unflushed block references through finish().
+            if (!failed && writer.is_open())
             {
                 writer.flush();
-            }
-            if (!writer)
-            {
-                throw std::runtime_error(
-                    "Audio store flush failed before read");
+                if (!writer)
+                {
+                    throw std::runtime_error(
+                        "Audio store flush failed before read");
+                }
             }
             reader.clear();
             reader.seekg(

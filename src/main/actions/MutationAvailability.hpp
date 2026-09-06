@@ -45,7 +45,8 @@ namespace cupuacu::actions
 
     inline bool isRecordingActive(const cupuacu::State *state)
     {
-        return state && state->audioDevices && state->audioDevices->isRecording();
+        return state && (state->revisionRecording ||
+            (state->audioDevices && state->audioDevices->isRecording()));
     }
 
     inline ActionAvailability describeDocumentMutationAvailability(

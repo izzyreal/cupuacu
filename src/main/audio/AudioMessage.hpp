@@ -72,6 +72,7 @@ namespace cupuacu::audio
 
     struct Record
     {
+        uint64_t generation = 0;
         cupuacu::Document *document;
         uint8_t channelCountSnapshot = 0;
         uint64_t startPos;

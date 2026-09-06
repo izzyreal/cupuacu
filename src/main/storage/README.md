@@ -49,9 +49,9 @@ Remaining before default activation:
 
 - Reference clipboard and undo restart manifests are not implemented; no legacy
   snapshot is advertised for reference history.
-- Recording and recovery still need revision integration. Bound sessions do not
-  schedule legacy autosave snapshots. Default resident sessions retain their
-  existing persistence and clipboard behavior.
+- Recovery still needs revision integration. Bound sessions do not schedule
+  legacy autosave snapshots. Default resident sessions retain their existing
+  persistence and clipboard behavior.
 - Revision peak persistence remains independently rebuildable; revision saves
   skip the resident waveform-cache rebuild/write after export.
 - Preservation uses the independently owned import container as its metadata
@@ -82,8 +82,8 @@ runs through the background reclaimer. Existing global long-task coordination
 still restricts user interaction while saving; this does not implement the
 planned document-level scheduler.
 
-Next slice: recording and durable revision/clipboard/recovery manifests, plus
-owned-container rebinding after format conversion. Default activation follows
+Next slice: durable revision/clipboard/recovery manifests, plus owned-container
+rebinding after format conversion. Default activation follows
 coverage of those consumers; global scheduling, transport reservations, paged
 peaks/indexes and application-wide memory accounting remain in the larger plan.
 
@@ -102,3 +102,30 @@ all supported PCM widths, cross-endian/channel source ranges, opaque chunks,
 markers and frame counts, cancellation, container limits, stale save publication,
 and ownership after tab closure. `save_worker_*` compares resident and owned
 save workers without post-save waveform persistence or UI publication.
+
+Recording is integrated for bound mono/stereo sessions. The existing preallocated
+callback queue feeds a second fixed 512-chunk SPSC queue through bounded UI
+handoffs. A worker packs samples into segment files and publishes at most one
+latest revision, with peaks constructed from the captured scratch, every 8,192
+frames (about 186 ms at 44.1 kHz); Stop flushes the final partial batch. It does
+not read or copy overwritten audio. UI publication changes the root and cursor;
+one undo entry retains the original and final revisions. Save, mutation and tab
+switching remain disabled until callback acknowledgement and final draining.
+Input monitoring/playback retain the existing transport policy.
+
+Recording's sample buffers are bounded: approximately 1 MiB handoff queue,
+64 KiB interleaved scratch, at most 512 KiB builder scratch and a 1 MiB decoded
+cache, in addition to the existing callback queue. Peak and sequence metadata
+still grow with the recording; these are not paged yet. There is one owned
+store per recording, not one directory/file per publication. Source ownership
+follows document/history lifetime and final release happens on the reclaimer.
+
+Queue overflow stops capture before a gap; write failure keeps only the already
+published prefix, reports the error and supplies one undo entry for that prefix.
+Failed later appends do not prevent reading previously flushed blocks. A closed
+or replaced document cancels publication while its remaining input is drained.
+These blocks remain process-local: this slice does not provide crash recovery
+or enable the revision backend by default. `[revision-recording]` exercises the
+real callback/drain, overwrite/extension, mono/stereo, exact samples and peaks,
+undo/redo, overflow, write failure and stale publication without audio devices
+or GUI automation. `record_*_owned` measures fixed-work and growing-work scaling.

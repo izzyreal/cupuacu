@@ -125,7 +125,7 @@ namespace cupuacu::actions
 
     inline bool prepareTabForOpenedDocument(cupuacu::State *state)
     {
-        if (!state)
+        if (!state || state->revisionRecording)
         {
             return false;
         }

@@ -352,6 +352,7 @@ void AudioDevices::retirePlayback(PaData &data) noexcept
 
 void AudioDevices::enqueue(Record msg) noexcept
 {
+    msg.generation = ++requestedRecordGeneration;
     snapshotQueuedRecordMessage(msg);
     Base::enqueue(std::move(msg));
 }
@@ -524,6 +525,7 @@ int AudioDevices::processCallbackCycle(
         {
             std::fill_n(deviceOutput, framesPerBuffer, 0.0f);
             publishState();
+            completedRecordGeneration.store(paData.recordGeneration, std::memory_order_release);
             return 0;
         }
         stereoOutput = paData.stereoOutputScratch.data();
@@ -600,6 +602,7 @@ int AudioDevices::processCallbackCycle(
     }
 
     publishState();
+    completedRecordGeneration.store(paData.recordGeneration, std::memory_order_release);
     return 0;
 }
 
@@ -1243,6 +1246,7 @@ void AudioDevices::applyMessage(const AudioMessage &msg) noexcept
         },
         [&](const Record &m)
         {
+            paData.recordGeneration = m.generation;
             paData.device = this;
             activeState.recordingPosition = m.startPos;
             paData.recordingEndPos = m.endPos;
