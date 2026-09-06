@@ -1,3 +1,4 @@
+#include "waveform/StreamingPeakBuilder.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include "DocumentSession.hpp"
 #include "LongTask.hpp"
@@ -326,4 +327,199 @@ TEST_CASE("Small peak pyramids remain resident and paging checks cancellation",
                                                        }),
                     LongTaskCanceledError);
     CHECK(checks == 3);
+}
+
+TEST_CASE("Streaming pyramid matches resident levels without full input reads",
+          "[streaming-peaks]")
+{
+    constexpr uint64_t count = 9 * 65536 + 17;
+    storage::AudioShape shape{int64_t(count * 128 - 13), 2, 48000,
+                              SampleFormat::FLOAT32};
+    std::vector<std::vector<gui::PeakLevel>> levels(2);
+    auto value = [](int c, uint64_t i)
+    {
+        return waveform::Peak{-float(i % 103 + c), float(i % 107 + c)};
+    };
+    for (int c = 0; c < 2; ++c)
+    {
+        levels[c].resize(1);
+        levels[c][0].resize(count);
+        for (uint64_t i = 0; i < count; ++i)
+        {
+            levels[c][0].set(i, value(c, i));
+        }
+    }
+    waveform::SourcePeaks reference(shape, std::move(levels));
+    uint64_t read = 0, largest = 0;
+    auto cache =
+        std::make_shared<storage::DecodedBlockCache>(storage::AudioBlockBytes);
+    auto streamed = waveform::SourcePeaks::createStreaming(
+        shape,
+        [&](int c, uint64_t first, std::span<waveform::Peak> out)
+        {
+            read += out.size();
+            largest = std::max<uint64_t>(largest, out.size());
+            for (std::size_t i = 0; i < out.size(); ++i)
+            {
+                out[i] = value(c, first + i);
+            }
+        },
+        cache);
+    CHECK(read == count * 2);
+    CHECK(largest <= 16384);
+    for (int c = 0; c < 2; ++c)
+    {
+        for (std::size_t l = 0, n = count;; ++l, n = (n + 1) / 2)
+        {
+            REQUIRE(streamed->levelSize(c, l) == n);
+            const auto take = std::min<std::size_t>(n, 8193);
+            std::vector<waveform::Peak> actual(take), expected(take);
+            for (auto first : {std::size_t(0), n - take})
+            {
+                streamed->readPeaks(c, l, first, actual);
+                reference.readPeaks(c, l, first, expected);
+                for (std::size_t i = 0; i < take; ++i)
+                {
+                    REQUIRE(actual[i].min == expected[i].min);
+                    REQUIRE(actual[i].max == expected[i].max);
+                }
+            }
+            if (n <= 1)
+            {
+                break;
+            }
+        }
+    }
+    CHECK(streamed->residency().residentBytes < 128 * 1024);
+    CHECK(cache->stats().peakResidentBytes <= storage::AudioBlockBytes);
+}
+
+TEST_CASE(
+    "Streaming samples preserve bucket boundaries across arbitrary appends",
+    "[streaming-peaks]")
+{
+    for (const int64_t frames : {int64_t(197), int64_t(128 * 32771 - 13)})
+    {
+        storage::AudioShape shape{frames, 2, 48000, SampleFormat::FLOAT32};
+        waveform::StreamingPeakBuilder builder(shape);
+        auto sample = [](int c, int64_t i)
+        {
+            return float((i % 137) - 68 + c) / 128;
+        };
+        auto reader = [&](int c, int64_t first, std::span<float> out)
+        {
+            for (std::size_t i = 0; i < out.size(); ++i)
+            {
+                out[i] = sample(c, first + i);
+            }
+        };
+        for (int64_t first = 0; first < frames;)
+        {
+            first += std::min<int64_t>(first % 2 ? 65539 : 127, frames - first);
+            builder.appendFrom(shape, first, reader);
+        }
+        auto peaks = builder.finish();
+        CHECK_THROWS(builder.finish());
+        for (int c = 0; c < 2; ++c)
+        {
+            for (int64_t block : {int64_t(0), int64_t(1), (frames - 1) / 128})
+            {
+                auto expected = waveform::emptyPeak();
+                for (int64_t i = block * 128;
+                     i < std::min(frames, (block + 1) * 128); ++i)
+                {
+                    expected = waveform::combine(expected,
+                                                 {sample(c, i), sample(c, i)});
+                }
+                uint64_t visited = 0;
+                auto actual = peaks->queryBlocks(c, block, block + 1, visited);
+                CHECK(actual.min == expected.min);
+                CHECK(actual.max == expected.max);
+            }
+        }
+    }
+}
+
+TEST_CASE(
+    "Failed sample reads poison peak transactions and cancellation prevents "
+    "publication",
+    "[streaming-peaks]")
+{
+    storage::AudioShape shape{128 * 4097, 2, 48000, SampleFormat::FLOAT32};
+    waveform::StreamingPeakBuilder failed(shape);
+    CHECK_THROWS(failed.appendFrom(shape, 65536,
+                                   [](int c, int64_t, std::span<float> out)
+                                   {
+                                       if (c)
+                                       {
+                                           throw std::runtime_error(
+                                               "read failure");
+                                       }
+                                       std::fill(out.begin(), out.end(), .5f);
+                                   }));
+    CHECK_THROWS(failed.finish());
+    CHECK_THROWS(failed.appendFrom(shape, 65536, {}));
+    bool cancel = false;
+    waveform::StreamingPeakBuilder canceled(shape, {},
+                                            [&]
+                                            {
+                                                return cancel;
+                                            });
+    canceled.appendFrom(shape, shape.frames,
+                        [](int, int64_t, std::span<float> out)
+                        {
+                            std::fill(out.begin(), out.end(), 0);
+                        });
+    cancel = true;
+    CHECK_THROWS_AS(canceled.finish(), LongTaskCanceledError);
+}
+
+TEST_CASE("A cancellation in the final base-peak read prevents publication",
+          "[streaming-peaks]")
+{
+    bool cancel = false;
+    CHECK_THROWS_AS(waveform::SourcePeaks::createStreaming(
+                        {128, 1, 48000, SampleFormat::FLOAT32},
+                        [&](int, uint64_t, std::span<waveform::Peak> out)
+                        {
+                            std::fill(out.begin(), out.end(),
+                                      waveform::Peak{0, 0});
+                            cancel = true;
+                        },
+                        {},
+                        [&]
+                        {
+                            return cancel;
+                        }),
+                    LongTaskCanceledError);
+}
+
+TEST_CASE("Streaming peak reduction preserves leading NaNs and signed zeros",
+          "[streaming-peaks]")
+{
+    storage::AudioShape shape{256, 1, 48000, SampleFormat::FLOAT32};
+    waveform::StreamingPeakBuilder builder(shape);
+    std::array<float, 256> samples{};
+    samples[0] = std::numeric_limits<float>::quiet_NaN();
+    samples[1] = 1;
+    samples[128] = -0.0f;
+    builder.appendFrom(shape, 1,
+                       [&](int, int64_t at, std::span<float> out)
+                       {
+                           std::copy_n(samples.data() + at, out.size(),
+                                       out.data());
+                       });
+    builder.appendFrom(shape, 256,
+                       [&](int, int64_t at, std::span<float> out)
+                       {
+                           std::copy_n(samples.data() + at, out.size(),
+                                       out.data());
+                       });
+    auto peaks = builder.finish();
+    std::array<waveform::Peak, 2> base;
+    peaks->readPeaks(0, 0, 0, base);
+    CHECK(std::isnan(base[0].min));
+    CHECK(std::isnan(base[0].max));
+    CHECK(std::signbit(base[1].min));
+    CHECK(std::signbit(base[1].max));
 }

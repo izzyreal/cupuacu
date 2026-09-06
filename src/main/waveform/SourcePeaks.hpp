@@ -34,10 +34,20 @@ namespace cupuacu::waveform
         std::vector<std::vector<gui::PeakLevel>> channels;
         struct PagedData;
         std::shared_ptr<PagedData> paged;
+        SourcePeaks(storage::AudioShape shape, std::size_t levelCount)
+            : dimensions(shape), channels(shape.channels,
+                std::vector<gui::PeakLevel>(levelCount)) {}
 
     public:
         static constexpr int64_t blockFrames = 128;
         static constexpr std::size_t residentLevelLimit = 4096;
+        using ReadBasePeaks = std::function<void(int, uint64_t, std::span<Peak>)>;
+        // Build a pyramid one spatial tile at a time. The callback supplies
+        // consecutive level-zero summaries; no full peak array is required.
+        static std::shared_ptr<const SourcePeaks> createStreaming(
+            storage::AudioShape, const ReadBasePeaks &,
+            std::shared_ptr<storage::DecodedBlockCache> cache = {},
+            const std::function<bool()> &cancel = {});
         // Worker-only: retain the overview and move detailed levels to owned
         // temporary storage. The ordinary constructor remains memory-only.
         static std::shared_ptr<const SourcePeaks>

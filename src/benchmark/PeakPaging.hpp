@@ -1,23 +1,36 @@
 // Included inside the benchmark implementation namespace.
 void peakPagingScenario(benchmark::State &measurement, int64_t frames,
-                        bool disk)
+                        bool disk, bool streaming = false)
 {
     storage::AudioShape shape{frames, 2, 48000, SampleFormat::FLOAT32};
     const auto count = frames / 128 + (frames % 128 != 0);
     std::vector<std::vector<gui::PeakLevel>> levels(2);
-    for (auto &channel : levels)
+    if (!streaming)
     {
-        channel.resize(1);
-        channel[0].resize(count);
-        for (int64_t i = 0; i < count; ++i)
+        for (auto &channel : levels)
         {
-            channel[0].set(i, {-.5f, .75f});
+            channel.resize(1);
+            channel[0].resize(count);
+            for (int64_t i = 0; i < count; ++i)
+            {
+                channel[0].set(i, {-.5f, .75f});
+            }
         }
     }
     auto cache = std::make_shared<storage::DecodedBlockCache>(1024 * 1024);
     std::shared_ptr<const waveform::SourcePeaks> peaks;
     const auto began = Clock::now();
-    if (disk)
+    if (streaming)
+    {
+        peaks = waveform::SourcePeaks::createStreaming(
+            shape,
+            [](int, uint64_t, std::span<waveform::Peak> out)
+            {
+                std::fill(out.begin(), out.end(), waveform::Peak{-.5f, .75f});
+            },
+            cache);
+    }
+    else if (disk)
     {
         peaks =
             waveform::SourcePeaks::createPaged(shape, std::move(levels), cache);

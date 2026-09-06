@@ -1,3 +1,4 @@
+#include "waveform/StreamingPeakBuilder.hpp"
 #include "persistence/DocumentAutosave.hpp"
 #include "RevisionPersistence.hpp"
 #include "LegacyRecovery.hpp"
@@ -593,7 +594,7 @@ namespace cupuacu::persistence
             auto store = legacyRecoveryStore(path.parent_path());
             auto cache =
                 storage::defaultDecodedBlockCache();
-            waveform::DecodedWaveformBuilder peaks;
+            waveform::StreamingPeakBuilder peaks(shape, cache, isCanceled);
             storage::AudioRevisionBuilder builder(
                 shape, store, cache,
                 [&](int64_t first, auto blocks, uint32_t count)
@@ -629,17 +630,8 @@ namespace cupuacu::persistence
                     progress(double(first) / double(frames));
                 }
             }
-            auto caches = peaks.takeCaches();
-            std::vector<std::vector<gui::PeakLevel>> levels;
-            for (int c = 0; c < channels && frames; ++c)
-            {
-                levels.push_back(
-                    caches.getCache(c).snapshotBuildState().levels);
-            }
-            auto audio = storage::AudioEditRevision::from(builder.finish(
-                {}, frames ? waveform::SourcePeaks::createPaged(
-                                 shape, std::move(levels), cache, isCanceled)
-                           : nullptr));
+            auto audio = storage::AudioEditRevision::from(
+                builder.finish({}, peaks.finish()));
             cupuacu::DocumentSession restored;
             restored.document.setExternalAudioShape(format, sampleRate,
                                                     channels, frames);
@@ -649,7 +641,6 @@ namespace cupuacu::persistence
                 restored.setCurrentFile(currentFile);
             }
             restored.bindReadRevision(std::move(audio));
-            restored.waveformCaches = std::move(caches);
             restored.autosaveSnapshotPath = path;
             const bool migrated = migrateLegacyHistory(
                 restored, legacyState, path.parent_path(), isCanceled);
@@ -662,6 +653,7 @@ namespace cupuacu::persistence
                 resident.initialize(format, sampleRate, channels, frames);
                 std::vector<float> channel(kAudioBlockFrames);
                 auto reader = restored.getAudioReader();
+                waveform::DecodedWaveformBuilder compatibilityPeaks;
                 for (int64_t first = 0; first < frames;
                      first += kAudioBlockFrames)
                 {
@@ -678,7 +670,9 @@ namespace cupuacu::persistence
                         resident.writeChannelFloatBlock(
                             c, first, channel.data(), count, false);
                     }
+                    compatibilityPeaks.append(resident, first + count);
                 }
+                restored.waveformCaches = compatibilityPeaks.takeCaches();
                 resident.replaceMarkers(restored.document.getMarkers());
                 restored.clearReadRevision();
                 restored.document = std::move(resident);

@@ -1,3 +1,4 @@
+#include "waveform/StreamingPeakBuilder.hpp"
 #include "RevisionEffect.hpp"
 #include "../../effects/AmplifyFadeEffect.hpp"
 #include "../../effects/AmplifyEnvelopeEffect.hpp"
@@ -177,7 +178,15 @@ namespace cupuacu::actions::effects
             {
                 storage::AudioShape outputShape{request.frameCount, 1,
                                                 shape.sampleRate, shape.format};
-                waveform::DecodedWaveformBuilder peaks;
+                double channelProgress =
+                    double(index) / request.targetChannels.size();
+                waveform::StreamingPeakBuilder peaks(outputShape, cache,
+                                                     [&]
+                                                     {
+                                                         publish(
+                                                             channelProgress);
+                                                         return false;
+                                                     });
                 storage::AudioRevisionBuilder builder(
                     outputShape, store, cache,
                     [&](int64_t first,
@@ -200,9 +209,10 @@ namespace cupuacu::actions::effects
                 {
                     const auto count =
                         std::min(blockFrames, request.frameCount - first);
-                    publish(
+                    channelProgress =
                         (double(index) + double(first) / request.frameCount) /
-                        request.targetChannels.size());
+                        request.targetChannels.size();
+                    publish(channelProgress);
                     const auto sourceStart =
                         request.kind == BackgroundEffectKind::Reverse
                             ? request.startFrame + request.frameCount - first -
@@ -274,19 +284,10 @@ namespace cupuacu::actions::effects
                     builder.appendInterleaved(samples);
                     first += count;
                 }
-                auto caches = peaks.takeCaches();
-                std::vector<std::vector<gui::PeakLevel>> levels{
-                    caches.getCache(0).snapshotBuildState().levels};
-                auto generated =
-                    storage::AudioEditRevision::from(builder.finish(
-                        {}, waveform::SourcePeaks::createPaged(
-                                outputShape, std::move(levels), cache,
-                                [&]
-                                {
-                                    publish(double(index + 1) /
-                                            request.targetChannels.size());
-                                    return false;
-                                })));
+                channelProgress =
+                    double(index + 1) / request.targetChannels.size();
+                auto generated = storage::AudioEditRevision::from(
+                    builder.finish({}, peaks.finish()));
                 edit.replaceChannel(int(request.targetChannels[index]),
                                     request.startFrame, request.frameCount,
                                     generated.get());

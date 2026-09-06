@@ -376,6 +376,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/concurrency/TaskScheduler.cpp
     src/main/storage/MemoryResources.cpp
     src/main/waveform/SourcePeaks.cpp
+    src/main/waveform/StreamingPeakBuilder.cpp
     src/main/storage/RevisionArchive.cpp
     src/main/persistence/RevisionPersistence.cpp
     src/main/storage/RecordingWriter.cpp

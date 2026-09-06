@@ -825,3 +825,21 @@ python3 scripts/run-benchmarks.py --profile extended --suite core --mode timing 
 `open_owned` measures production import completion and initial peak publication.
 `open_owned_viewport` measures asynchronous raw sample windows after import;
 its timer excludes import and does not measure waveform overview queries.
+
+
+`peak_streaming` uses the same synthetic values and viewport queries as
+`peak_paged`, but produces base summaries on demand through
+`SourcePeaks::createStreaming`. Compare peak process RSS to verify bounded
+construction. Its preparation timer includes generated base values; the resident
+and old paged variants generate their base arrays before that timer. All variants
+include setup in peak RSS. The scenario does not decode or store full audio.
+
+```sh
+python3 scripts/run-benchmarks.py --profile extended --suite core --mode timing \
+  --filter 'peak_*' --sizes-mib 1 256 2048 --repetitions 3 \
+  --output dist/benchmarks/peak-streaming.json
+```
+
+Use `recovery_legacy` to measure the production sample reduction, migration/archive
+write, and subsequent archive reload. The streaming milestone's report records
+matched results and the remaining progressive-import memory limitation.

@@ -335,7 +335,10 @@ remain resident. `queryBlocks`/`readPeaks` on such sources may read disk and bel
 on workers; the ordinary SourcePeaks constructor remains memory-only for legacy
 UI-side cache snapshots. Durable archive format compatibility is unchanged.
 
-Paging currently happens after pyramid construction, including on archive load.
-Transient build/persistence caches, overviews across many sources, audio block
-indexes and provenance/edit metadata are still outside this bound. See the
+Recovery, effects and clipboard conversion now stream base summaries through
+`StreamingPeakBuilder`; archive loading rebuilds higher levels from streamed base
+records. These paths no longer materialize a full peak pyramid. Progressive import
+still retains its full UI/persistence peak caches before paging. Overviews across
+many sources, audio block indexes and provenance/edit metadata remain outside the
+shared bound. See the
 milestone report for the measured memory reduction and I/O/latency costs.

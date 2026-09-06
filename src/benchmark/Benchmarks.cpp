@@ -589,9 +589,9 @@ namespace
 #endif
         const std::string name = request.at("scenario");
         const int64_t frames = request.at("frames");
-        if (name == "peak_paged" || name == "peak_resident")
+        if (name == "peak_paged" || name == "peak_resident" || name == "peak_streaming")
         {
-            peakPagingScenario(measurement, frames, name == "peak_paged");
+            peakPagingScenario(measurement, frames, name == "peak_paged", name == "peak_streaming");
             return;
         }
         if (name == "audio_memory")

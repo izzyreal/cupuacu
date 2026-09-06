@@ -1,3 +1,4 @@
+#include "waveform/StreamingPeakBuilder.hpp"
 #include "LegacyRecovery.hpp"
 #include "RevisionPersistence.hpp"
 #include "../LongTask.hpp"
@@ -159,7 +160,7 @@ namespace cupuacu::persistence
                 {
                     store = legacyRecoveryStore(root);
                 }
-                waveform::DecodedWaveformBuilder peaks;
+                waveform::StreamingPeakBuilder peaks(shape, cache, cancel);
                 storage::AudioRevisionBuilder builder(
                     shape, store, cache,
                     [&](int64_t first, auto blocks, uint32_t count)
@@ -198,18 +199,7 @@ namespace cupuacu::persistence
                         std::span(samples).first(count * channels.size()));
                     first += count;
                 }
-                auto caches = peaks.takeCaches();
-                std::vector<std::vector<gui::PeakLevel>> levels;
-                for (int c = 0; c < shape.channels && shape.frames; ++c)
-                {
-                    levels.push_back(
-                        caches.getCache(c).snapshotBuildState().levels);
-                }
-                return Revision::from(builder.finish(
-                    {}, shape.frames
-                            ? waveform::SourcePeaks::createPaged(
-                                  shape, std::move(levels), cache, cancel)
-                            : nullptr));
+                return Revision::from(builder.finish({}, peaks.finish()));
             }
             std::vector<Channel> matrix(Input &in)
             {

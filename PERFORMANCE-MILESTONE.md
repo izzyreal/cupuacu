@@ -527,3 +527,77 @@ budget, and many short sources can accumulate resident overviews. Source audio
 block indexes, provenance runs and edit-tree nodes remain resident. Those need
 bounded construction, aggregate admission and/or paging before the original
 application-wide memory objective is complete. Memory mapping remains excluded.
+
+
+## Follow-up: bounded peak construction and archive recovery
+
+Recovery, generated effects and clipboard conversion now use
+`StreamingPeakBuilder`. It reduces samples in bounded blocks, spools only base
+summaries for long sources, and constructs spatial peak tiles without a full
+resident pyramid. Sources with at most 4,096 base peaks keep a small memory
+buffer. Arbitrary append boundaries and the final partial 128-frame bucket are
+preserved. A failed read/write poisons the transaction; finish cannot publish
+partially generated channels. Cancellation discards temporary working files.
+
+`SourcePeaks::createStreaming` builds each tile and its summary levels from at
+most 16,384 base peaks. Higher tile groups read already sealed lower summaries,
+so there is no growing in-memory array of tile roots. The resulting page layout
+and query behavior match the previous paging milestone. Per-source overviews
+and level descriptors remain resident and outside aggregate admission.
+
+Archive loading streams one base-peak record at a time and reconstructs derived
+levels. It no longer loads the whole peak pyramid. The durable format is unchanged;
+stored higher levels are no longer needed for loading. Invalid/truncated base
+records trigger a bounded rebuild from audio. Source/index JSON and audio block
+indexes still materialize in memory. Legacy histories that require the resident
+shape-changing recording compatibility path still use its resident waveform cache.
+
+Native Release synthetic benchmark, three repetitions per case, with a 1 MiB
+page cache and two channels:
+
+| Audio represented | Prior paged construction peak RSS | Streaming peak RSS | Prior / streaming preparation |
+| --- | --- | --- | --- |
+| 1 MiB | 2.67 MiB | 2.70 MiB | 0.027 / 0.045 ms |
+| 256 MiB | 12.13 MiB | 4.28 MiB | 11.82 / 15.44 ms |
+| 2 GiB | 68.80 MiB | 4.31 MiB | 94.67 / 77.10 ms |
+
+The old preparation timer excludes base-array generation (which is included in
+peak RSS); streaming generates its synthetic base values inside the timer.
+These timings do not represent identical timed setup work or audio decoding.
+All query results were validated. Eight-view times at 2 GiB remained approximately
+15 ms for both paged variants. The 256 MiB streaming preparation increase is
+3.62 ms; the small case increases 0.018 ms. This is bounded construction memory,
+not a claim that total application memory is now bounded.
+
+Matched production legacy-recovery results against the saved `094de56` executable:
+
+| Size | Initial migration, before / after | Archive reopen, before / after | Initial peak RSS, before / after |
+| --- | --- | --- | --- |
+| 1 MiB | 4.71 / 4.62 ms | 0.77 / 0.40 ms | 4.59 / 4.61 MiB |
+| 256 MiB | 509.76 / 518.12 ms | 49.07 / 28.03 ms | 21.36 / 13.14 MiB |
+
+The 256 MiB first migration cost is +8.36 ms (1.6%); archive reopen is about 43%
+faster. Initial peak RSS falls about 38%. These figures include archive publication
+and its cache population, so memory savings differ from the isolated construction
+benchmark. Filesystem caching is uncontrolled. A first implementation took 776 ms
+for conversion; the benchmark exposed per-sample bucket-boundary overhead. It was
+replaced with bucket-at-a-time reduction before accepting this slice. Leading NaNs,
+signed zero and partial buckets retain the existing reducer's behavior.
+
+Validation: 32 distinct focused native cases passed across targeted runs, covering
+streamed/resident peak equivalence, bounded callback sizes, partial append and tile
+boundaries, cancellation on the last input read, poisoned transactions, archive
+round trips, revision effects/persistence, clipboard preservation metadata and
+legacy history recovery. All 16 reporting checks passed. Native app and benchmark
+builds passed. No full suite, Linux build or GUI integration runs.
+
+Reports: `peak-streaming.json` (27 synthetic runs),
+`peak-streaming-recovery-before.json` and `peak-streaming-recovery-after.json`
+(six production recovery runs each), under `dist/benchmarks/`.
+`peak-streaming-recovery-initial-loop.json` records the rejected reduction loop.
+
+Remaining: progressive import still builds/retains its legacy UI and persistence
+peak caches before paging; its import peak-memory growth is unchanged. The bounded
+builder is available for the next import migration, which must preserve incremental
+drawing and persistent-cache reuse. Source audio indexes, provenance/edit metadata,
+aggregate overview accounting and the wider scheduling/resource work also remain.
