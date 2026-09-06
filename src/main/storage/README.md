@@ -1,7 +1,9 @@
 # Revision backend integration status
 
-The disk revision backend is staged; it is not the default file-opening backend.
-`DocumentSession::bindReadRevision` explicitly binds imported/edited audio.
+Normal queued file opening now uses the disk revision backend.
+`DocumentSession::bindReadRevision` binds imported/edited audio. Existing resident
+restart histories, legacy synchronous loading and new-document creation retain
+their compatibility paths until migration/removal.
 A bound `Document` contains only shape and marker metadata. Legacy sample and
 buffer access throws instead of returning placeholder silence. The session
 reader supplies audio for background viewport requests, read-ahead playback
@@ -45,18 +47,18 @@ drop excess source channels and pad missing destination channels with silence.
 Clipboard changes during conversion do not change the accepted paste or get
 overwritten by its publication. Clipboard lifetime after closing a tab is unchanged.
 
-Remaining before default activation:
+Remaining migration and resource work:
 
 - Revision autosave, clipboard and matching restart history are integrated.
   Legacy resident snapshots retain their existing reader; automatic conversion
   of legacy recovery data into revisions is not implemented.
 - Revision peaks persist with the archive and remain independently rebuildable;
   revision saves skip the resident waveform-cache rebuild/write after export.
-- Preservation uses the independently owned import container as its metadata
-  reference. Rebinding that reference after a format-changing generic Save As
-  remains work for activation; preservation explicitly rejects a target that
-  does not match the retained container. Foreign legacy clipboard provenance
-  without retained source bytes cannot restore precision already lost to float.
+- Saves independently retain the new output container before destination
+  replacement, without decoding it again. Preserving output follows that
+  container's encoding while unchanged audio/history roots retain their original
+  representation. Foreign legacy clipboard provenance without retained source
+  bytes cannot restore precision already lost to float.
 - Shared scheduling/admission, paged indexes/peaks and application-wide memory
   accounting remain outstanding. Peak/index/run storage still grows with audio
   length or edit structure. The bounded effect scratch/cache is not a total RSS
@@ -80,10 +82,11 @@ runs through the background reclaimer. Existing global long-task coordination
 still restricts user interaction while saving; this does not implement the
 planned document-level scheduler.
 
-Next slice: owned-container rebinding after format conversion, followed by a
-focused default-activation checkpoint. Global scheduling, transport reservations,
-paged peaks/indexes and application-wide memory accounting remain in the larger
-plan; durable persistence does not complete those requirements.
+Next slice: shared scheduling and document-specific operation coordination.
+Global memory admission, transport reservations, paged peaks/indexes, legacy
+recovery migration and removal of resident compatibility paths remain in the
+larger plan. The current opening overlay still blocks interaction; browsing and
+playback of an importing prefix remain work for operation coordination.
 
 Focused validation: `[revision-ui],[revision-commands],[revision-effects]` covers production
 splices against a flat sample model, history and clipboard lifetime, exact marker
@@ -123,7 +126,8 @@ published prefix, reports the error and supplies one undo entry for that prefix.
 Failed later appends do not prevent reading previously flushed blocks. A closed
 or replaced document cancels publication while its remaining input is drained.
 Completed recording revisions now participate in document autosave; capture
-in progress is not checkpointed. The revision backend remains staged.
+in progress is not checkpointed. New empty documents retain their resident
+creation path until the remaining compatibility migration.
 `[revision-recording]` exercises the
 real callback/drain, overwrite/extension, mono/stereo, exact samples and peaks,
 undo/redo, overflow, write failure and stale publication without audio devices
@@ -182,3 +186,37 @@ retention limits, injected write failure, corruption, cancellation, close during
 checkpoint preparation and clipboard reclamation with live readers.
 `checkpoint_*` and `recovery_owned` benchmarks measure persistence separately
 from import, GUI rendering and sample validation.
+
+## Normal file-opening activation
+
+Background opening owns the original container by cloning on macOS or bounded
+copying, decodes into packed sample segments and generates peaks in the same
+pass. It publishes metadata first, then bounded peak batches. The preview has
+external shape metadata only; neither the decoder sink nor the preview allocates
+resident sample-page tables. Unavailable detailed samples remain pending and
+never invoke resident sample reads while painting or hovering.
+
+Imports share one decoded-sample cache, initially budgeted to 10% of physical RAM.
+Samples enter this cache only on reads; this is not an application-wide RAM limit.
+Peak summaries, indexes, decoder scratch and other job caches remain separate.
+Cached peaks are checked against the original filename and reused during import.
+New peaks are persisted on the opening worker before its completed result is
+published. Completion binds the immutable revision directly; worker destruction
+is deferred rather than joined on the UI thread. Existing modal interaction rules
+remain until the scheduler/operation-state slice.
+
+Saved-container ownership writes a private container, then clones or copies it
+to a temporary destination before replacement. Cancellation or copy failure
+leaves the existing destination and session reference intact. Both synchronous
+compatibility saves and production background saves use this ownership rule.
+Changing WAV/AIFF encoding updates the preservation reference without rebasing
+undo roots or allocating another decoded recording. Systems without filesystem
+cloning incur a second output-sized copy; source-byte ownership has a real disk
+space and I/O cost.
+
+`[revision-activation]` checks production opening, cache reuse, source-file
+independence, reference undo, format-changing Save As, subsequent preserving
+overwrite/recovery and failed output publication. Native `open_uncached` cases
+compare WAV, ALAC and FLAC; `save_worker_*_owned` covers save overhead. Loading
+completion can be slower because decoded data is now written to disk. This
+checkpoint does not claim that large-file import throughput has improved.

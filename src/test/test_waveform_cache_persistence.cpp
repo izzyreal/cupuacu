@@ -133,7 +133,10 @@ TEST_CASE(
     cupuacu::actions::io::queueOpenFile(&state, path.string());
     const auto deadline =
         std::chrono::steady_clock::now() + std::chrono::seconds(5);
-    while (!state.getActiveDocumentSession().openingPreview &&
+    while ((!state.getActiveDocumentSession().openingPreview ||
+            state.getActiveDocumentSession()
+                    .getWaveformCache(0)
+                    .builtSamplePrefixEnd() == 0) &&
            std::chrono::steady_clock::now() < deadline)
     {
         cupuacu::actions::io::processPendingOpenWork(&state);

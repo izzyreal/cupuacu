@@ -43,6 +43,7 @@
 
 namespace
 {
+    uint64_t peakRss();
     using Json = nlohmann::json;
     using Clock = std::chrono::steady_clock;
     using namespace cupuacu;
@@ -2290,7 +2291,8 @@ namespace
                 }
                 auto &session = state.getActiveDocumentSession();
                 if (opening && session.document.getChannelCount() > 0 &&
-                    session.getWaveformCache(0).builtSamplePrefixEnd() > 0 &&
+                    (session.hasReadRevision() ||
+                     session.getWaveformCache(0).builtSamplePrefixEnd() > 0) &&
                     result["milestones_ms"]["first_waveform"].is_null())
                 {
                     result["milestones_ms"]["first_waveform"] =
@@ -2299,10 +2301,11 @@ namespace
                 if (sawAudio &&
                     !result["milestones_ms"]["committed"].is_null() &&
                     !session.getWaveformCacheBuildProgress() &&
-                    session.getWaveformCache(0).levelsCount() > 0 &&
-                    !session.getWaveformCache(0).hasDirtyBlocks() &&
-                    session.getWaveformCache(1).levelsCount() > 0 &&
-                    !session.getWaveformCache(1).hasDirtyBlocks() &&
+                    (session.hasReadRevision() ||
+                     (session.getWaveformCache(0).levelsCount() > 0 &&
+                      !session.getWaveformCache(0).hasDirtyBlocks() &&
+                      session.getWaveformCache(1).levelsCount() > 0 &&
+                      !session.getWaveformCache(1).hasDirtyBlocks())) &&
                     result["milestones_ms"]["waveform_complete"].is_null())
                 {
                     result["milestones_ms"]["waveform_complete"] =
@@ -2326,8 +2329,35 @@ namespace
                         "Stall probe failed");
             }
         }
-        validateSamples(state.getActiveDocumentSession().document,
-                        expectedFrames, expected);
+        if (state.getActiveDocumentSession().hasReadRevision())
+        {
+            result["peak_process_rss_bytes_before_validation"] = peakRss();
+            auto reader = state.getActiveDocumentSession().getAudioReader();
+            require(reader->shape().frames == expectedFrames,
+                    "Recovered frame count mismatch");
+            std::array<float, 16384> samples;
+            for (int c = 0; c < channels; ++c)
+            {
+                for (int64_t start = 0; start < expectedFrames;
+                     start += samples.size())
+                {
+                    auto block = std::span(samples).first(std::min<int64_t>(
+                        samples.size(), expectedFrames - start));
+                    reader->readChannel(c, start, block);
+                    for (std::size_t i = 0; i < block.size(); ++i)
+                    {
+                        require(std::abs(block[i] - expected(start + i, c)) <
+                                    .000002f,
+                                "Opened audio mismatch");
+                    }
+                }
+            }
+        }
+        else
+        {
+            validateSamples(state.getActiveDocumentSession().document,
+                            expectedFrames, expected);
+        }
         if (navigating || name == "waveform_build")
         {
             auto &session = state.getActiveDocumentSession();

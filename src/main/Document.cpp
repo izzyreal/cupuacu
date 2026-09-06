@@ -15,7 +15,7 @@ namespace cupuacu
     {
         uint64_t nextPreservationSourceId()
         {
-            static uint64_t nextId = 1;
+            static std::atomic<uint64_t> nextId{1};
             return nextId++;
         }
     } // namespace
@@ -718,9 +718,15 @@ namespace cupuacu
     void Document::markCurrentStateAsSavedSource()
     {
         std::unique_lock lock(dataMutex);
-        ensureUniqueBufferUnlocked();
+        if (buffer)
+        {
+            ensureUniqueBufferUnlocked();
+        }
         preservationSourceId = nextPreservationSourceId();
-        buffer->establishSequentialProvenance(preservationSourceId);
+        if (buffer)
+        {
+            buffer->establishSequentialProvenance(preservationSourceId);
+        }
     }
 
     void Document::adoptPreservationSourceId(const uint64_t sourceId)

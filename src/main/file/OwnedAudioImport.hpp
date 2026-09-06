@@ -1,6 +1,7 @@
 #pragma once
 
 #include "file_loading.hpp"
+#include "OwnedSourceFile.hpp"
 #include "../storage/AudioRevision.hpp"
 #include "../waveform/DecodedWaveformBuilder.hpp"
 #include <fstream>
@@ -20,9 +21,11 @@ namespace cupuacu::file
     struct OwnedImportOptions
     {
         bool preferFilesystemClone = true;
+        std::filesystem::path waveformCacheRoot;
+        bool publishMetadata = false;
     };
 
-    // Worker-only staged backend. The original bytes are retained independently
+    // Worker-only backend. The original bytes are retained independently
     // of the source path, including PCM32 precision not representable in float.
     inline OwnedAudioImport importOwnedAudio(
         const std::filesystem::path &source,
@@ -45,55 +48,17 @@ namespace cupuacu::file
             store->path() / ("source" + source.extension().string());
         const auto sourceBytes = std::filesystem::file_size(source);
         const auto sourceTime = std::filesystem::last_write_time(source);
-        bool cloned = false;
-#ifdef __APPLE__
-        if (options.preferFilesystemClone)
-        {
-            cloned = clonefile(source.c_str(), owned.c_str(), 0) == 0;
-        }
-#endif
-        if (cloned)
-        {
-            if (progress)
-            {
-                progress("Copying source", 1.0);
-            }
-        }
-        else
-        {
-            std::ifstream input(source, std::ios::binary);
-            std::ofstream output(owned, std::ios::binary | std::ios::trunc);
-            if (!input || !output)
-            {
-                throw std::runtime_error("Cannot copy imported source");
-            }
-            std::array<char, 65536> buffer;
-            uint64_t copied = 0;
-            while (copied < sourceBytes)
+        const bool cloned = cloneOrCopySource(
+            source, owned,
+            [&](double value)
             {
                 detail::throwIfLoadCanceled(cancel);
-                const auto count =
-                    std::min<uint64_t>(buffer.size(), sourceBytes - copied);
-                input.read(buffer.data(), std::streamsize(count));
-                output.write(buffer.data(), std::streamsize(count));
-                if (!input || !output)
-                {
-                    throw std::runtime_error("Imported source copy failed");
-                }
-                copied += count;
                 if (progress)
                 {
-                    progress("Copying source",
-                             sourceBytes ? double(copied) / sourceBytes : 1.0);
+                    progress("Copying source", value);
                 }
-            }
-            output.close();
-            if (!output)
-            {
-                throw std::runtime_error(
-                    "Imported source copy could not be completed");
-            }
-        }
+            },
+            options.preferFilesystemClone);
         detail::throwIfLoadCanceled(cancel);
         if (std::filesystem::file_size(source) != sourceBytes ||
             std::filesystem::last_write_time(source) != sourceTime)
@@ -102,6 +67,8 @@ namespace cupuacu::file
         }
 
         waveform::DecodedWaveformBuilder peaks;
+        waveform::DocumentWaveformCaches cached;
+        bool cacheLoaded = false;
         std::unique_ptr<storage::AudioRevisionBuilder> builder;
         storage::AudioShape shape;
         auto metadata = loadAudioFile(
@@ -116,6 +83,31 @@ namespace cupuacu::file
                              int(document.getChannelCount()),
                              document.getSampleRate(),
                              document.getSampleFormat()};
+                    if (!options.waveformCacheRoot.empty())
+                    {
+                        DocumentSession cacheSession;
+                        cacheSession.document = document;
+                        cacheSession.currentFile = source.string();
+                        cacheLoaded = waveform::loadPersistentWaveformCache(
+                            cacheSession, options.waveformCacheRoot);
+                        if (cacheLoaded)
+                        {
+                            cached = std::move(cacheSession.waveformCaches);
+                        }
+                    }
+                    if (preview && options.publishMetadata)
+                    {
+                        waveform::DecodedWaveformChunk chunk;
+                        chunk.format = shape.format;
+                        chunk.sampleRate = shape.sampleRate;
+                        chunk.frameCount = shape.frames;
+                        chunk.channels.resize(shape.channels);
+                        if (cacheLoaded)
+                        {
+                            chunk.cached = cached;
+                        }
+                        preview(std::move(chunk));
+                    }
                     builder = std::make_unique<storage::AudioRevisionBuilder>(
                         shape, store, cache,
                         [&](int64_t blockStart,
@@ -125,6 +117,10 @@ namespace cupuacu::file
                             uint32_t frames)
                         {
                             detail::throwIfLoadCanceled(cancel);
+                            if (cacheLoaded)
+                            {
+                                return;
+                            }
                             auto chunk = peaks.appendFrom(
                                 shape, blockStart + frames,
                                 [&](int channel, int64_t first,
@@ -162,7 +158,11 @@ namespace cupuacu::file
                 shape, store, cache);
         }
         detail::throwIfLoadCanceled(cancel);
-        metadata.waveformCaches = peaks.takeCaches();
+        metadata.waveformCaches =
+            cacheLoaded ? std::move(cached) : peaks.takeCaches();
+        metadata.persistentWaveformCacheChecked =
+            !options.waveformCacheRoot.empty();
+        metadata.persistentWaveformCacheLoaded = cacheLoaded;
         std::shared_ptr<const waveform::SourcePeaks> sourcePeaks;
         if (shape.frames)
         {

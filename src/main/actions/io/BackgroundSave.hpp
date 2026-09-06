@@ -46,6 +46,7 @@ namespace cupuacu::actions::io
         struct Snapshot
         {
             std::shared_ptr<const Identity> identity;
+            std::shared_ptr<const storage::AudioRevision> savedContainer;
             bool completed = false;
             bool success = false;
             bool canceled = false;
@@ -78,6 +79,8 @@ namespace cupuacu::actions::io
         std::shared_ptr<const Identity> identity;
         cupuacu::Document document;
         std::filesystem::path waveformCacheRoot;
+        std::filesystem::path workingRoot;
+        std::shared_ptr<const storage::AudioRevision> savedContainer;
         mutable std::mutex mutex;
         bool completed = false;
         bool success = false;

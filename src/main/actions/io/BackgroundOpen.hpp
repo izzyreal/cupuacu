@@ -34,7 +34,8 @@ namespace cupuacu::actions::io
 
         BackgroundOpenJob(std::uint64_t idToUse,
                           PendingOpenRequest requestToOpen,
-                          std::filesystem::path waveformCacheRootToUse = {});
+                          std::filesystem::path waveformCacheRootToUse = {},
+                          std::filesystem::path workingRootToUse = {});
         ~BackgroundOpenJob();
 
         BackgroundOpenJob(const BackgroundOpenJob &) = delete;
@@ -54,6 +55,7 @@ namespace cupuacu::actions::io
         std::uint64_t id = 0;
         PendingOpenRequest request;
         std::filesystem::path waveformCacheRoot;
+        std::filesystem::path workingRoot;
         mutable std::mutex mutex;
         bool completed = false;
         bool success = false;

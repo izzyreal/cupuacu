@@ -64,6 +64,10 @@ namespace cupuacu::gui
 
         std::string formatHoveredSampleValue() const
         {
+            if (state->getActiveDocumentSession().openingPreview)
+            {
+                return "";
+            }
             const auto &hovered =
                 state->getActiveViewState().sampleValueUnderMouseCursor;
             if (!hovered.has_value())
