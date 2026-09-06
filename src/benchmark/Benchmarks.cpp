@@ -585,6 +585,54 @@ namespace
 #endif
         const std::string name = request.at("scenario");
         const int64_t frames = request.at("frames");
+        if (name == "new_document_edit")
+        {
+            State state;
+            state.paths.reset(); // Measure editing separately from autosave.
+            actions::createNewDocument(&state, sampleRate, SampleFormat::FLOAT32,
+                                       channels, false);
+            auto &session = state.getActiveDocumentSession();
+            if (!session.hasReadRevision())
+                session.undoStore.attach(std::filesystem::path(
+                    request.at("root").get<std::string>()) / "undo");
+            for (auto iteration : measurement)
+            {
+                (void)iteration;
+                performance::resetWork();
+                const auto started = Clock::now();
+                actions::audio::performInsertSilence(&state, frames);
+                result["new_document"]["insert_silence_ms"] = elapsed(started);
+                auto began = Clock::now();
+                state.addAndDoUndoable(std::make_shared<actions::audio::SetSampleValue>(
+                    &state, 0, 17, 0.f, .5f));
+                result["new_document"]["point_edit_ms"] = elapsed(began);
+                began = Clock::now();
+                state.undo();
+                result["new_document"]["undo_ms"] = elapsed(began);
+                began = Clock::now();
+                state.redo();
+                result["new_document"]["redo_ms"] = elapsed(began);
+                const auto duration = elapsed(started);
+                result["milestones_ms"]["background_complete"] = duration;
+                measurement.SetIterationTime(duration / 1000.);
+            }
+            captureMetrics();
+            require(session.document.getFrameCount() == frames, "New document length mismatch");
+            require(state.getActiveUndoables().size() == 2, "New document history mismatch");
+            auto reader = session.getAudioReader();
+            std::array<float, 16384> samples;
+            for (int c = 0; c < channels; ++c)
+                for (int64_t first = 0; first < frames; first += samples.size())
+                {
+                    auto out = std::span(samples).first(std::min<int64_t>(samples.size(), frames - first));
+                    reader->readChannel(c, first, out);
+                    for (std::size_t i = 0; i < out.size(); ++i)
+                        require(out[i] == (c == 0 && first + i == 17 ? .5f : 0.f),
+                                "New document sample mismatch");
+                }
+            result["validated"] = true;
+            return;
+        }
         if (name == "paste_restored_empty")
         {
             restoredClipboardPaste(measurement);
@@ -959,16 +1007,25 @@ namespace
             State state;
             state.paths.reset();
             const auto root = std::filesystem::path(request.at("root").get<std::string>());
-            auto imported = file::importOwnedAudio(
-                request.at("fixture").get<std::string>(), root / "audio",
-                std::make_shared<storage::DecodedBlockCache>(1024 * 1024));
+            const bool fresh = name == "record_new";
             auto &session = state.getActiveDocumentSession();
-            session.document = std::move(imported.metadata.document);
-            session.bindReadRevision(storage::AudioEditRevision::from(imported.audio));
+            std::shared_ptr<storage::AudioBlockStore> sourceStore;
+            if (fresh)
+                actions::createNewDocument(&state, sampleRate, SampleFormat::FLOAT32,
+                                           channels, false);
+            else
+            {
+                auto imported = file::importOwnedAudio(
+                    request.at("fixture").get<std::string>(), root / "audio",
+                    std::make_shared<storage::DecodedBlockCache>(1024 * 1024));
+                sourceStore = imported.audio->blockStore();
+                session.document = std::move(imported.metadata.document);
+                session.bindReadRevision(storage::AudioEditRevision::from(imported.audio));
+            }
             const auto original = session.getEditRevision();
             const int64_t recordedFrames = name == "record_fixed_owned" ? 65536 : frames;
-            constexpr int64_t first = 17;
-            const auto reads = imported.audio->blockStore()->ioBytes().first;
+            const int64_t first = fresh ? 0 : 17;
+            const auto reads = sourceStore ? sourceStore->ioBytes().first : 0;
             for (auto iteration : measurement)
             {
                 (void)iteration;
@@ -1025,12 +1082,12 @@ namespace
                 result["recording"]["peak_queue_chunks"] = recording->writer.peakQueuedChunks();
                 measurement.SetIterationTime(complete / 1000.0);
             }
-            const auto sourceReads = imported.audio->blockStore()->ioBytes().first - reads;
+            const auto sourceReads = sourceStore ? sourceStore->ioBytes().first - reads : 0;
             result["recording"]["original_sample_bytes_read"] = sourceReads;
             require(sourceReads == 0, "Recording read overwritten or untouched original samples");
             require(state.getActiveTab()->undoables.size() == 1, "Recording history is not one root switch");
             const auto recorded = session.getEditRevision();
-            require(recorded->shape().frames == std::max(frames, first + recordedFrames), "Recording duration mismatch");
+            require(recorded->shape().frames == std::max(original->shape().frames, first + recordedFrames), "Recording duration mismatch");
             std::array<float, 16384> samples;
             for (int c = 0; c < channels; ++c)
                 for (int64_t f = 0; f < recorded->shape().frames; f += samples.size())

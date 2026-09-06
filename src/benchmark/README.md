@@ -704,3 +704,29 @@ For diagnosing an existing clipboard, a native benchmark request can supply
 then compares every pasted sample with the supplied clipboard. This diagnostic
 requires no input fixture; `frames` is still required by the request schema but
 is ignored for the supplied clipboard's size.
+
+
+### Newly created documents
+
+`new_document_edit` uses the production New File command, inserts silence sized
+to the workload, edits one sample, then undoes/redoes that point edit. Individual
+command times are reported under `new_document`; every sample is validated after
+timing. It supports both backends for matched before/after measurements. Autosave
+is excluded from command timing.
+
+`record_new` exercises the existing bounded recording writer and publication
+path from a production-created empty document. It reports queue occupancy,
+sample bytes written, maximum handoff/publication times and history switching
+under `recording`. Input is generated as fast as the writer can drain, not paced
+in real time. This measures storage throughput and handoff costs; it does not
+measure device latency or callback underruns. All recorded samples are checked.
+
+```sh
+python3 scripts/run-benchmarks.py --profile large --mode timing \
+  --filter new_document_edit --sizes-mib 1 16 2048 --repetitions 3 \
+  --formats wav --max-rss-mib 2048 --max-disk-mib 32768 \
+  --output dist/benchmarks/new-document-after.json
+python3 scripts/run-benchmarks.py --profile extended --mode timing \
+  --filter record_new --sizes-mib 1 256 --repetitions 3 --formats wav \
+  --output dist/benchmarks/record-new.json
+```

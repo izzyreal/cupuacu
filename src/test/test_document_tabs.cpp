@@ -113,6 +113,8 @@ TEST_CASE("Creating a new document reuses the lone blank startup tab", "[tabs]")
     REQUIRE(state.activeTabIndex == 0);
     REQUIRE(state.getActiveDocumentSession().document.getSampleRate() == 44100);
     REQUIRE(state.getActiveDocumentSession().document.getChannelCount() == 2);
+    REQUIRE(state.getActiveDocumentSession().hasReadRevision());
+    REQUIRE_FALSE(state.getActiveDocumentSession().revisionHasUnsavedChanges());
 }
 
 TEST_CASE("Creating a new document appends a tab when a document is already open",
@@ -131,6 +133,7 @@ TEST_CASE("Creating a new document appends a tab when a document is already open
     REQUIRE(state.tabs[0].session.document.getFrameCount() == 64);
     REQUIRE(state.getActiveDocumentSession().document.getSampleRate() == 48000);
     REQUIRE(state.getActiveDocumentSession().document.getChannelCount() == 1);
+    REQUIRE(state.getActiveDocumentSession().hasReadRevision());
 }
 
 TEST_CASE("Switching tabs changes the active document context", "[tabs]")
