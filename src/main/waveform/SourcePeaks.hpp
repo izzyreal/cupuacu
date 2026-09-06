@@ -3,12 +3,14 @@
 #include "../gui/PeakLevel.hpp"
 #include "../storage/AudioReader.hpp"
 #include <bit>
+#include <functional>
 #include <limits>
 
 namespace cupuacu::storage
 {
     class RevisionArchive;
-}
+    class DecodedBlockCache;
+} // namespace cupuacu::storage
 
 namespace cupuacu::waveform
 {
@@ -30,9 +32,27 @@ namespace cupuacu::waveform
         friend class storage::RevisionArchive;
         storage::AudioShape dimensions;
         std::vector<std::vector<gui::PeakLevel>> channels;
+        struct PagedData;
+        std::shared_ptr<PagedData> paged;
 
     public:
         static constexpr int64_t blockFrames = 128;
+        static constexpr std::size_t residentLevelLimit = 4096;
+        // Worker-only: retain the overview and move detailed levels to owned
+        // temporary storage. The ordinary constructor remains memory-only.
+        static std::shared_ptr<const SourcePeaks>
+        createPaged(storage::AudioShape,
+                    std::vector<std::vector<gui::PeakLevel>>,
+                    std::shared_ptr<storage::DecodedBlockCache> cache = {},
+                    const std::function<bool()> &cancel = {});
+        std::size_t levelSize(int channel, std::size_t level) const;
+        void readPeaks(int channel, std::size_t level, std::size_t first,
+                       std::span<Peak> output) const;
+        struct Residency
+        {
+            uint64_t residentBytes, pagedBytes, bytesRead;
+        };
+        Residency residency() const;
         SourcePeaks(storage::AudioShape shape,
                     std::vector<std::vector<gui::PeakLevel>> levels)
             : dimensions(shape), channels(std::move(levels))
@@ -83,7 +103,7 @@ namespace cupuacu::waveform
                          uint64_t &visited) const
         {
             if (channel < 0 || channel >= dimensions.channels || first < 0 ||
-                end < first || uint64_t(end) > channels[channel][0].size())
+                end < first || uint64_t(end) > levelSize(channel, 0))
             {
                 throw std::out_of_range("Source peak query outside revision");
             }
@@ -94,8 +114,10 @@ namespace cupuacu::waveform
                 const int level = std::min(
                     int(std::bit_width(remaining)) - 1,
                     first ? int(std::countr_zero(uint64_t(first))) : 63);
-                result = combine(
-                    result, channels[channel][level][uint64_t(first) >> level]);
+                Peak peak;
+                readPeaks(channel, level, uint64_t(first) >> level,
+                          std::span<Peak>(&peak, 1));
+                result = combine(result, peak);
                 first += int64_t(1) << level;
                 ++visited;
             }

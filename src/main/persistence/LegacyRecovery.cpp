@@ -206,9 +206,10 @@ namespace cupuacu::persistence
                         caches.getCache(c).snapshotBuildState().levels);
                 }
                 return Revision::from(builder.finish(
-                    {}, shape.frames ? std::make_shared<waveform::SourcePeaks>(
-                                           shape, std::move(levels))
-                                     : nullptr));
+                    {}, shape.frames
+                            ? waveform::SourcePeaks::createPaged(
+                                  shape, std::move(levels), cache, cancel)
+                            : nullptr));
             }
             std::vector<Channel> matrix(Input &in)
             {

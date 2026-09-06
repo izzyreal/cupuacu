@@ -277,9 +277,16 @@ namespace cupuacu::actions::effects
                 auto caches = peaks.takeCaches();
                 std::vector<std::vector<gui::PeakLevel>> levels{
                     caches.getCache(0).snapshotBuildState().levels};
-                auto generated = storage::AudioEditRevision::from(
-                    builder.finish({}, std::make_shared<waveform::SourcePeaks>(
-                                           outputShape, std::move(levels))));
+                auto generated =
+                    storage::AudioEditRevision::from(builder.finish(
+                        {}, waveform::SourcePeaks::createPaged(
+                                outputShape, std::move(levels), cache,
+                                [&]
+                                {
+                                    publish(double(index + 1) /
+                                            request.targetChannels.size());
+                                    return false;
+                                })));
                 edit.replaceChannel(int(request.targetChannels[index]),
                                     request.startFrame, request.frameCount,
                                     generated.get());

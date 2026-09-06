@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include "DocumentSession.hpp"
+#include "LongTask.hpp"
 #include "concurrency/DeferredRelease.hpp"
 #include "TestPaths.hpp"
 #include "storage/AudioEditRevision.hpp"
@@ -247,4 +248,82 @@ TEST_CASE("Session ownership releases unviewed revisions on the reclaimer",
     retained.reset();
     REQUIRE(finished.wait_for(2s) == std::future_status::ready);
     REQUIRE(finished.get() != std::this_thread::get_id());
+}
+
+TEST_CASE(
+    "Paged source peaks match resident queries across scalar block boundaries",
+    "[paged-peaks]")
+{
+    constexpr int64_t count = 9 * 65536 + 17;
+    const storage::AudioShape shape{count * 128 - 13, 2, 48000,
+                                    SampleFormat::FLOAT32};
+    std::vector<std::vector<gui::PeakLevel>> levels(2);
+    for (int c = 0; c < 2; ++c)
+    {
+        levels[c].resize(1);
+        levels[c][0].resize(count);
+        for (int64_t i = 0; i < count; ++i)
+        {
+            levels[c][0].set(i, {-float(i % 103 + c), float(i % 107 + c)});
+        }
+    }
+    waveform::SourcePeaks resident(shape, levels);
+    auto cache =
+        std::make_shared<storage::DecodedBlockCache>(storage::AudioBlockBytes);
+    auto paged =
+        waveform::SourcePeaks::createPaged(shape, std::move(levels), cache);
+    CHECK(paged->residency().pagedBytes > 8 * 1024 * 1024);
+    CHECK(paged->residency().residentBytes < 128 * 1024);
+    for (int c = 0; c < 2; ++c)
+    {
+        for (int64_t first : {0, 32767, 65535, 131071, int(count - 97)})
+        {
+            const auto end = std::min(count, first + 34567);
+            uint64_t a = 0, b = 0;
+            const auto expected = resident.queryBlocks(c, first, end, a);
+            const auto actual = paged->queryBlocks(c, first, end, b);
+            CHECK(actual.min == expected.min);
+            CHECK(actual.max == expected.max);
+            CHECK(a == b);
+        }
+        std::vector<waveform::Peak> actual(34567), expected(actual.size());
+        for (int l = 0; l < 4; ++l)
+        {
+            resident.readPeaks(c, l, 32761, expected);
+            paged->readPeaks(c, l, 32761, actual);
+            for (std::size_t i = 0; i < actual.size(); ++i)
+            {
+                REQUIRE(actual[i].min == expected[i].min);
+                REQUIRE(actual[i].max == expected[i].max);
+            }
+        }
+    }
+    CHECK(cache->stats().peakResidentBytes <= storage::AudioBlockBytes);
+    CHECK(paged->residency().bytesRead > 0);
+    cache->setByteBudget(0);
+    uint64_t a = 0, b = 0;
+    CHECK(paged->queryBlocks(1, 1, 9001, a).max ==
+          resident.queryBlocks(1, 1, 9001, b).max);
+    CHECK(cache->stats().residentBytes == 0);
+    CHECK_THROWS(paged->queryBlocks(0, 0, count + 1, a));
+}
+
+TEST_CASE("Small peak pyramids remain resident and paging checks cancellation",
+          "[paged-peaks]")
+{
+    storage::AudioShape shape{4096 * 128, 1, 48000, SampleFormat::FLOAT32};
+    gui::PeakLevel level;
+    level.resize(4096);
+    auto small = waveform::SourcePeaks::createPaged(shape, {{level}});
+    CHECK(small->residency().pagedBytes == 0);
+    shape.frames *= 16;
+    level.resize(65536);
+    int checks = 0;
+    CHECK_THROWS_AS(waveform::SourcePeaks::createPaged(shape, {{level}}, {},
+                                                       [&]
+                                                       {
+                                                           return ++checks == 3;
+                                                       }),
+                    LongTaskCanceledError);
+    CHECK(checks == 3);
 }

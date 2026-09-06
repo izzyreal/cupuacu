@@ -804,3 +804,24 @@ This is a focused resource-budget measurement, not total application memory or
 concurrent transport stress. Use `playback_owned` for the existing playback
 regression check. See `PERFORMANCE-MILESTONE.md` for measured results and remaining
 unbudgeted resource categories.
+
+
+### Detailed peak paging
+
+`peak_resident` and `peak_paged` create equivalent synthetic stereo summaries
+without generating audio files. Size means decoded audio represented, not peak
+bytes. They time pyramid preparation, eight 1,200-pixel views across zooms, and
+an identical second pass. Paging uses a 1 MiB cache and reports resident overview,
+paged bytes, cache peak, storage reads and visited summaries. Every query is
+validated. Setup creates base peaks in RAM; this is a retained-residency test,
+not a bounded-import or physical cold-disk benchmark.
+
+```sh
+python3 scripts/run-benchmarks.py --profile extended --suite core --mode timing \
+  --filter 'peak_*' --sizes-mib 1 256 2048 --repetitions 3 \
+  --output dist/benchmarks/peak-paging.json
+```
+
+`open_owned` measures production import completion and initial peak publication.
+`open_owned_viewport` measures asynchronous raw sample windows after import;
+its timer excludes import and does not measure waveform overview queries.

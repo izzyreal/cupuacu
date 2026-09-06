@@ -396,23 +396,27 @@ namespace cupuacu::storage
         }
         if (source->peaks)
         {
-            for (const auto &channel : source->peaks->channels)
+            for (int c = 0; c < source->shape().channels; ++c)
             {
+                const auto &channel = source->peaks->channels[c];
                 auto levels = Json::array();
-                for (const auto &level : channel)
+                for (std::size_t l = 0; l < channel.size(); ++l)
                 {
+                    const auto count = source->peaks->levelSize(c, l);
                     auto pages = Json::array();
-                    for (std::size_t first = 0; first < level.size();
-                         first += 8192)
+                    for (std::size_t first = 0; first < count; first += 8192)
                     {
                         std::vector<uint8_t> bytes;
-                        const auto end = std::min(level.size(), first + 8192);
+                        const auto end = std::min(count, first + 8192);
+                        std::vector<waveform::Peak> values(end - first);
+                        source->peaks->readPeaks(c, l, first, values);
                         bytes.reserve((end - first) * 8);
                         for (auto i = first; i < end; ++i)
                         {
-                            for (auto bits :
-                                 {std::bit_cast<uint32_t>(level[i].min),
-                                  std::bit_cast<uint32_t>(level[i].max)})
+                            for (auto bits : {std::bit_cast<uint32_t>(
+                                                  values[i - first].min),
+                                              std::bit_cast<uint32_t>(
+                                                  values[i - first].max)})
                             {
                                 for (int shift = 0; shift < 32; shift += 8)
                                 {
@@ -425,7 +429,7 @@ namespace cupuacu::storage
                              {"bytes", Json::binary(std::move(bytes))}}));
                     }
                     levels.push_back(
-                        {{"count", level.size()}, {"pages", std::move(pages)}});
+                        {{"count", count}, {"pages", std::move(pages)}});
                 }
                 peaks.push_back(std::move(levels));
             }
@@ -689,8 +693,8 @@ namespace cupuacu::storage
                         }
                     }
                 }
-                audio->peaks = std::make_shared<waveform::SourcePeaks>(
-                    shape, std::move(channels));
+                audio->peaks = waveform::SourcePeaks::createPaged(
+                    shape, std::move(channels), cache, canceled);
             }
             catch (const LongTaskCanceledError &)
             {
@@ -719,8 +723,8 @@ namespace cupuacu::storage
                     channels.push_back(
                         caches.getCache(c).snapshotBuildState().levels);
                 }
-                audio->peaks = std::make_shared<waveform::SourcePeaks>(
-                    shape, std::move(channels));
+                audio->peaks = waveform::SourcePeaks::createPaged(
+                    shape, std::move(channels), cache, canceled);
             }
         }
         loadedSources[id] = audio;

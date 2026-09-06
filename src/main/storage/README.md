@@ -61,7 +61,7 @@ Remaining migration and resource work:
   bytes cannot restore precision already lost to float.
 - Bulk scheduling bounds execution and outstanding results. Declared job scratch
   displaces decoded samples within one shared budget (default 10% physical RAM).
-  Paged indexes/peaks and comprehensive application memory accounting remain
+  Paged audio indexes and comprehensive application memory accounting remain
   outstanding. Peak/index/run storage still grows with audio length or edit
   structure; effect reservations are not a total RSS guarantee.
 
@@ -79,7 +79,7 @@ Cache misses release the cache mutex before disk I/O. In-flight cache arrays cou
 against the same budget, including concurrent reads and failed reads. With no cache
 slot available, reads go directly into caller buffers. Those caller buffers must
 be budgeted separately. Existing effect scratch declarations participate in the
-shared ceiling; decoder/DSP internals, transport, peak/index storage, resident
+shared ceiling; decoder/DSP internals, transport, overview/index storage, resident
 compatibility paths, cache metadata and undeclared job scratch are not covered.
 
 Background save/overwrite now pins the revision, editor metadata and original
@@ -326,3 +326,16 @@ publishes disk-backed blocks and peaks, and finishes with one history entry;
 undo returns to the empty saved revision. Unconfigured startup tabs adopt a
 revision when first receiving a revision clipboard. Most legacy recovered documents now migrate to revisions. Shape-changing
 legacy recording histories retain their compatibility backend.
+
+
+Detailed revision peak levels now use disk pages via `SourcePeaks::createPaged`.
+Each page groups a spatial subtree of summary levels to avoid cache thrashing;
+it shares the decoded-sample cache and budget. Levels with at most 4,096 values
+remain resident. `queryBlocks`/`readPeaks` on such sources may read disk and belong
+on workers; the ordinary SourcePeaks constructor remains memory-only for legacy
+UI-side cache snapshots. Durable archive format compatibility is unchanged.
+
+Paging currently happens after pyramid construction, including on archive load.
+Transient build/persistence caches, overviews across many sources, audio block
+indexes and provenance/edit metadata are still outside this bound. See the
+milestone report for the measured memory reduction and I/O/latency costs.

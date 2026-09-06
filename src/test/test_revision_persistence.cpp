@@ -566,3 +566,42 @@ TEST_CASE("Damaged waveform pages rebuild without losing committed audio",
     REQUIRE(
         restored.getEditRevision()->queryWaveformOverview(0, 0, 2048, work));
 }
+
+TEST_CASE("Paged peak summaries survive archive round trips", "[paged-peaks]")
+{
+    Files files;
+    constexpr int64_t frames = 128 * 32771;
+    storage::AudioShape shape{frames, 1, 48000, SampleFormat::FLOAT32};
+    auto cache =
+        std::make_shared<storage::DecodedBlockCache>(storage::AudioBlockBytes);
+    auto store =
+        std::make_shared<storage::AudioBlockStore>(files.root / "working");
+    storage::AudioRevisionBuilder builder(shape, store, cache);
+    std::vector<float> samples(65536, .375f);
+    for (int64_t first = 0; first < frames; first += samples.size())
+    {
+        builder.appendInterleaved(std::span<const float>(samples).first(
+            std::min<int64_t>(samples.size(), frames - first)));
+    }
+    gui::PeakLevel base;
+    base.resize(32771);
+    for (std::size_t i = 0; i < base.size(); ++i)
+    {
+        base.set(i, {.375f, .375f});
+    }
+    auto source = builder.finish(
+        {}, waveform::SourcePeaks::createPaged(shape, {{base}}, cache));
+    auto archive = storage::RevisionArchive::open(files.root / "peaks");
+    const auto id = archive->saveSource(source);
+    archive->commit({{"source", id}});
+    archive.reset();
+    archive = storage::RevisionArchive::open(files.root / "peaks");
+    archive->readManifest();
+    auto loaded = archive->loadSource(id);
+    REQUIRE(loaded->sourcePeaks()->residency().pagedBytes > 0);
+    uint64_t visited = 0;
+    const auto p = loaded->sourcePeaks()->queryBlocks(0, 16383, 32770, visited);
+    CHECK(p.min == .375f);
+    CHECK(p.max == .375f);
+    CHECK(read(*loaded, 0, frames - 1) == .375f);
+}
