@@ -62,6 +62,7 @@ void restoredClipboardPaste(benchmark::State &measurement)
         performance::resetWork();
         began = Clock::now();
         actions::audio::performPaste(&state);
+        finishRevisionCommands(&state);
         result["clipboard_paste"]["paste_ms"] = elapsed(began);
         require(!state.backgroundClipboardConversion &&
                     session.hasReadRevision() &&

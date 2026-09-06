@@ -13,6 +13,7 @@ namespace cupuacu::waveform
         std::function<bool(const std::function<bool()> &)> prepare;
         std::function<int64_t()> availableFrames;
         std::function<int64_t()> overviewAvailableFrames;
+        std::shared_ptr<storage::WorkingMemory> memory;
     };
     struct ViewportRequest
     {
@@ -24,12 +25,36 @@ namespace cupuacu::waveform
     };
     struct ViewportData
     {
+        std::shared_ptr<void> memory;
         ViewportRequest request;
         int64_t rawStart = 0;
         std::vector<float> samples;
         std::vector<uint8_t> dirty;
         std::vector<Peak> peaks;
         bool pending = false;
+        ViewportData() = default;
+        ViewportData(const ViewportData &) = delete;
+        ViewportData &operator=(const ViewportData &) = delete;
+        ViewportData(ViewportData &&) noexcept = default;
+        ViewportData &operator=(ViewportData &&other) noexcept
+        {
+            if (this != &other)
+            {
+                // Free old buffers before returning their reservation.
+                std::vector<float>().swap(samples);
+                std::vector<uint8_t>().swap(dirty);
+                std::vector<Peak>().swap(peaks);
+                memory = std::move(other.memory);
+                request = other.request;
+                rawStart = other.rawStart;
+                availableFrames = other.availableFrames;
+                pending = other.pending;
+                samples = std::move(other.samples);
+                dirty = std::move(other.dirty);
+                peaks = std::move(other.peaks);
+            }
+            return *this;
+        }
         int64_t availableFrames = 0;
         float sampleAt(int64_t frame) const
         {
@@ -137,6 +162,9 @@ namespace cupuacu::waveform
                     return cancel() ? std::nullopt
                                     : std::optional{std::move(result)};
                 }
+                result.memory = storage::reserveWorking(
+                    uint64_t(request.width) * sizeof(Peak),
+                    storage::MemoryUse::Viewport, source.memory);
                 result.peaks.resize(request.width, emptyPeak());
                 for (int x = 0; x < request.width; ++x)
                 {
@@ -178,6 +206,17 @@ namespace cupuacu::waveform
                 {
                     throw std::length_error("Viewport sample budget exceeded");
                 }
+                result.memory = storage::reserveWorking(
+                    request.samplesPerPixel >= 1
+                        ? uint64_t(request.width) * sizeof(Peak)
+                        : count * (sizeof(float) + sizeof(uint8_t)),
+                    storage::MemoryUse::Viewport, source.memory);
+                auto scratchMemory =
+                    request.samplesPerPixel >= 1
+                        ? storage::reserveWorking(count * sizeof(float),
+                                                  storage::MemoryUse::Viewport,
+                                                  source.memory)
+                        : nullptr;
                 result.samples.resize(count);
                 if (!storage::readAudioWindow(*source.audio, request.channel,
                                               result.rawStart, result.samples,

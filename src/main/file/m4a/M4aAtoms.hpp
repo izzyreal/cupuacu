@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../../storage/WorkingAllocator.hpp"
 #include <cstdint>
 #include <ostream>
 #include <string_view>
@@ -10,7 +11,8 @@
 
 namespace cupuacu::file::m4a
 {
-    using Bytes = std::vector<std::uint8_t>;
+    using Bytes =
+        storage::WorkingVector<std::uint8_t, storage::MemoryUse::Container>;
 
     struct AlacSampleEntryDescription
     {
@@ -25,10 +27,13 @@ namespace cupuacu::file::m4a
         std::uint32_t sampleRate = 0;
         std::uint64_t frameCount = 0;
         std::uint32_t framesPerPacket = 0;
-        std::vector<std::uint32_t> packetSizes;
+        storage::WorkingVector<std::uint32_t, storage::MemoryUse::Container>
+            packetSizes;
         std::uint64_t mdatPayloadOffset = 0;
-        std::vector<std::uint32_t> chapterSampleSizes;
-        std::vector<std::uint32_t> chapterSampleDurations;
+        storage::WorkingVector<std::uint32_t, storage::MemoryUse::Container>
+            chapterSampleSizes;
+        storage::WorkingVector<std::uint32_t, storage::MemoryUse::Container>
+            chapterSampleDurations;
         std::uint64_t chapterMdatPayloadOffset = 0;
         std::uint64_t chapterStartOffset = 0;
         std::uint64_t chapterMediaDuration = 0;
@@ -58,8 +63,12 @@ namespace cupuacu::file::m4a
     Bytes timeToSampleAtom(std::uint64_t frameCount,
                            std::uint32_t framesPerPacket);
     Bytes sampleToChunkAtom(std::uint32_t packetCount);
-    Bytes sampleSizeAtom(const std::vector<std::uint32_t> &packetSizes);
-    Bytes chunkOffsetAtom(const std::vector<std::uint32_t> &chunkOffsets);
+    Bytes
+    sampleSizeAtom(const storage::WorkingVector<
+                   std::uint32_t, storage::MemoryUse::Container> &packetSizes);
+    Bytes chunkOffsetAtom(
+        const storage::WorkingVector<
+            std::uint32_t, storage::MemoryUse::Container> &chunkOffsets);
     Bytes alacSampleEntry(const AlacSampleEntryDescription &description);
     Bytes sampleDescriptionAtom(const std::vector<Bytes> &sampleEntries);
     Bytes movieHeaderAtom(std::uint32_t timescale,
@@ -78,7 +87,8 @@ namespace cupuacu::file::m4a
     Bytes textMediaHeaderAtom();
     Bytes textSampleEntry();
     Bytes explicitTimeToSampleAtom(
-        const std::vector<std::uint32_t> &sampleDurations);
+        const storage::WorkingVector<
+            std::uint32_t, storage::MemoryUse::Container> &sampleDurations);
     Bytes sampleTableAtom(const AlacMovieDescription &description);
     Bytes mediaInformationAtom(const AlacMovieDescription &description);
     Bytes mediaAtom(const AlacMovieDescription &description);
@@ -97,7 +107,9 @@ namespace cupuacu::file::m4a
     void finishAlacM4a(std::ostream &output, AlacMovieDescription description,
                        std::uint64_t audioBytes,
                        const std::vector<DocumentMarker> &markers);
-    Bytes wideChunkOffsetAtom(const std::vector<std::uint64_t> &offsets);
+    Bytes wideChunkOffsetAtom(
+        const storage::WorkingVector<std::uint64_t,
+                                     storage::MemoryUse::Container> &offsets);
 
     Bytes assembleAlacM4a(
         const cupuacu::file::alac::AlacEncodedPackets &packets,

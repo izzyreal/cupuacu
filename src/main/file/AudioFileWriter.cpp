@@ -1,4 +1,5 @@
 #include "AudioFileWriter.hpp"
+#include "../storage/WorkingMemory.hpp"
 
 #include "AudioExport.hpp"
 #include "FileIo.hpp"
@@ -178,6 +179,9 @@ void cupuacu::file::AudioFileWriter::writeFile(
 
             const sf_count_t frames = audio.shape().frames;
             constexpr sf_count_t chunkFrames = 65536;
+            auto memory = storage::reserveWorking(
+                uint64_t(chunkFrames) * (channels + 1) * sizeof(float),
+                storage::MemoryUse::Export);
             std::vector<float> interleaved(
                 static_cast<std::size_t>(chunkFrames) *
                 static_cast<std::size_t>(channels));

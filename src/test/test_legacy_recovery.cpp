@@ -6,6 +6,8 @@
 #include "persistence/SessionStatePersistence.hpp"
 #include "undo/UndoManifestPersistence.hpp"
 #include "LongTask.hpp"
+#include "actions/audio/EditCommands.hpp"
+#include "TestRevisionCommands.hpp"
 #include <fstream>
 
 using namespace cupuacu;
@@ -433,14 +435,32 @@ TEST_CASE("Legacy recording into an unconfigured tab keeps compatible undo",
     auto &session = restored.getActiveDocumentSession();
     REQUIRE(persistence::loadDocumentAutosaveSnapshot(path, session, {}, {},
                                                       &info));
-    REQUIRE_FALSE(session.hasReadRevision());
-    REQUIRE_FALSE(storage::RevisionArchive::recognizes(path));
-    REQUIRE(undo::restoreUndoManifest(&restored, 0, store.root()));
+    REQUIRE(session.hasReadRevision());
+    REQUIRE(storage::RevisionArchive::recognizes(path));
+    REQUIRE(persistence::RevisionPersistence::installHistory(&restored, 0));
     restored.undo();
     REQUIRE(session.document.getChannelCount() == 0);
     REQUIRE(session.document.getFrameCount() == 0);
+    REQUIRE(session.hasReadRevision());
+    REQUIRE(session.document.getSampleRate() == 0);
+    REQUIRE(session.document.getSampleFormat() == SampleFormat::Unknown);
+    auto checkpoint =
+        persistence::RevisionPersistence::capture(session, &restored.tabs[0]);
+    const auto emptyPath = files.root / "empty-revision";
+    persistence::RevisionPersistence::save(emptyPath, *checkpoint);
+    DocumentSession reopened;
+    REQUIRE(persistence::loadDocumentAutosaveSnapshot(emptyPath, reopened));
+    REQUIRE(reopened.hasReadRevision());
+    REQUIRE(reopened.document.getChannelCount() == 0);
     restored.redo();
     REQUIRE(read(session) == read(legacy));
+    restored.undo();
+    restored.clipboard.assignRevision(checkpoint->redo.back().after.audio);
+    actions::audio::performPaste(&restored);
+    test::finishRevisionCommands(&restored);
+    REQUIRE(read(session) == read(legacy));
+    restored.undo();
+    REQUIRE(session.document.getChannelCount() == 0);
 }
 
 TEST_CASE(
@@ -530,6 +550,58 @@ TEST_CASE(
     REQUIRE(session.hasReadRevision());
     REQUIRE(session.recoveredRevisionCheckpoint->historyWarning.empty());
     REQUIRE(persistence::RevisionPersistence::installHistory(&state, 0));
+    state.undo();
+    REQUIRE(read(session) == before);
+    state.redo();
+    REQUIRE(read(session) == after);
+}
+
+TEST_CASE(
+    "Legacy recording channel expansion preserves both history directions",
+    "[legacy-recovery]")
+{
+    const bool restoredRedo = GENERATE(false, true);
+    Files files;
+    DocumentSession legacy;
+    const std::vector<std::vector<float>> before{{.125f, -.25f, .375f, -.5f}};
+    const std::vector<std::vector<float>> after{{.125f, .75f, -.75f, -.5f},
+                                                {0.f, .5f, -.5f, 0.f}};
+    initialize(legacy, restoredRedo ? before : after);
+    const auto path = files.root / "expanded.snapshot";
+    REQUIRE(persistence::saveDocumentAutosaveSnapshot(path, legacy));
+    undo::UndoStore store;
+    store.attach(files.root / "undo");
+    Json entry{
+        {"kind", "record-edit"},
+        {"startFrame", 1},
+        {"endFrame", 3},
+        {"oldFrameCount", 4},
+        {"oldChannelCount", 1},
+        {"targetChannelCount", 2},
+        {"oldSampleRate", 48000},
+        {"newSampleRate", 48000},
+        {"oldFormat", int(SampleFormat::FLOAT32)},
+        {"newFormat", int(SampleFormat::FLOAT32)},
+        {"overwrittenOldSamplesHandle",
+         store.writeSampleMatrix({{-.25f, .375f}}).path.string()},
+        {"recordedSamplesHandle",
+         store.writeSampleMatrix({{.75f, -.75f}, {.5f, -.5f}}).path.string()}};
+    std::ofstream(store.root() / "manifest.json")
+        << manifest(entry, restoredRedo);
+    persistence::PersistedOpenDocumentState info;
+    info.undoStorePath = store.root().string();
+    State state;
+    state.paths.reset();
+    auto &session = state.getActiveDocumentSession();
+    REQUIRE(persistence::loadDocumentAutosaveSnapshot(path, session, {}, {},
+                                                      &info));
+    REQUIRE(session.hasReadRevision());
+    REQUIRE(persistence::RevisionPersistence::installHistory(&state, 0));
+    if (restoredRedo)
+    {
+        state.redo();
+    }
+    REQUIRE(read(session) == after);
     state.undo();
     REQUIRE(read(session) == before);
     state.redo();

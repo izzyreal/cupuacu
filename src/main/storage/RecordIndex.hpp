@@ -1,4 +1,5 @@
 #pragma once
+#include "WorkingMemory.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -23,11 +24,38 @@ namespace cupuacu::storage
         struct Data
         {
             mutable std::mutex mutex;
+            std::shared_ptr<WorkingMemory> memory;
+            std::shared_ptr<void> tailMemory, pageMemory;
             std::FILE *file = nullptr;
             std::vector<T> tail, page;
             uint64_t stored = 0, pageStart = UINT64_MAX;
             uint64_t readBytes = 0, writtenBytes = 0;
             bool sealed = false, failed = false;
+            explicit Data(std::shared_ptr<WorkingMemory> resource)
+                : memory(std::move(resource))
+            {
+            }
+            bool allocate(std::vector<T> &buffer, std::shared_ptr<void> &lease,
+                          uint64_t capacity)
+            {
+                if (!memory)
+                {
+                    memory = defaultWorkingMemory();
+                }
+                auto next = memory->tryReserveWorking(capacity * sizeof(T),
+                                                      MemoryUse::Index);
+                if (!next)
+                {
+                    return false;
+                }
+                std::vector<T> replacement;
+                replacement.reserve(capacity);
+                replacement.assign(buffer.begin(), buffer.end());
+                buffer.swap(replacement);
+                std::vector<T>().swap(replacement);
+                lease = std::move(next);
+                return true;
+            }
             ~Data()
             {
                 if (file)
@@ -73,6 +101,19 @@ namespace cupuacu::storage
                 writtenBytes += tail.size() * sizeof(T);
                 stored += tail.size();
                 tail.clear();
+                pageStart = UINT64_MAX;
+            }
+            void writeOne(T value)
+            {
+                flushTail();
+                seek(stored);
+                if (std::fwrite(&value, sizeof(T), 1, file) != 1)
+                {
+                    failed = true;
+                    throw std::runtime_error("Working index write failed");
+                }
+                ++stored;
+                writtenBytes += sizeof(T);
             }
             T at(uint64_t index)
             {
@@ -84,7 +125,21 @@ namespace cupuacu::storage
                 if (pageStart != first)
                 {
                     pageStart = UINT64_MAX;
-                    page.resize(PageElements);
+                    if (page.capacity() < PageElements &&
+                        !allocate(page, pageMemory, PageElements))
+                    {
+                        T value;
+                        seek(index);
+                        if (std::fread(&value, sizeof(T), 1, file) != 1)
+                        {
+                            throw std::runtime_error(
+                                "Working index read failed");
+                        }
+                        readBytes += sizeof(T);
+                        return value;
+                    }
+                    page.resize(
+                        std::min<uint64_t>(PageElements, stored - first));
                     seek(first);
                     if (std::fread(page.data(), sizeof(T), page.size(), file) !=
                         page.size())
@@ -97,9 +152,13 @@ namespace cupuacu::storage
                 return page[index - first];
             }
         };
-        std::shared_ptr<Data> data = std::make_shared<Data>();
+        std::shared_ptr<Data> data;
 
     public:
+        explicit RecordIndex(std::shared_ptr<WorkingMemory> memory = {})
+            : data(std::make_shared<Data>(std::move(memory)))
+        {
+        }
         uint64_t size() const
         {
             std::lock_guard lock(data->mutex);
@@ -117,7 +176,15 @@ namespace cupuacu::storage
         T back() const
         {
             std::lock_guard lock(data->mutex);
-            return data->tail.at(data->tail.size() - 1);
+            if (!data->tail.empty())
+            {
+                return data->tail.back();
+            }
+            if (!data->stored)
+            {
+                throw std::out_of_range("Empty working index");
+            }
+            return data->at(data->stored - 1);
         }
         void push_back(T value)
         {
@@ -131,16 +198,40 @@ namespace cupuacu::storage
             {
                 data->flushTail();
             }
+            if (data->tail.size() == data->tail.capacity() &&
+                !data->allocate(
+                    data->tail, data->tailMemory,
+                    std::min<uint64_t>(
+                        PageElements,
+                        std::max<uint64_t>(1, data->tail.size() * 2))))
+            {
+                data->writeOne(value);
+                return;
+            }
             data->tail.push_back(value);
         }
         void setBack(T value)
         {
             std::lock_guard lock(data->mutex);
-            if (data->sealed || data->failed || data->tail.empty())
+            if (data->sealed || data->failed ||
+                (data->tail.empty() && !data->stored))
             {
                 throw std::logic_error("Cannot update working index tail");
             }
-            data->tail.back() = value;
+            if (!data->tail.empty())
+            {
+                data->tail.back() = value;
+            }
+            else
+            {
+                data->seek(data->stored - 1);
+                if (std::fwrite(&value, sizeof(T), 1, data->file) != 1)
+                {
+                    data->failed = true;
+                    throw std::runtime_error("Working index update failed");
+                }
+                data->pageStart = UINT64_MAX;
+            }
         }
         void set(uint64_t index, T value)
         {
@@ -160,7 +251,11 @@ namespace cupuacu::storage
                 data->failed = true;
                 throw std::runtime_error("Working index update failed");
             }
-            data->pageStart = UINT64_MAX;
+            if (data->pageStart != UINT64_MAX && index >= data->pageStart &&
+                index - data->pageStart < data->page.size())
+            {
+                data->page[index - data->pageStart] = value;
+            }
         }
         void seal()
         {

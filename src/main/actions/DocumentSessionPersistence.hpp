@@ -290,7 +290,7 @@ namespace cupuacu::actions
 
     inline void persistSessionState(cupuacu::State *state)
     {
-        if (!state || !state->paths)
+        if (!state || !state->paths || state->startupRestore.active)
         {
             return;
         }
@@ -306,7 +306,7 @@ namespace cupuacu::actions
         cupuacu::State *state,
         const cupuacu::persistence::PersistedSessionState &persisted)
     {
-        if (!state || !state->paths)
+        if (!state || !state->paths || state->startupRestore.active)
         {
             return;
         }
@@ -325,7 +325,8 @@ namespace cupuacu::actions
             return {};
         }
 
-        if (state->preserveStartupSessionStateOnShutdown)
+        if (state->preserveStartupSessionStateOnShutdown ||
+            state->startupRestore.active)
         {
             return state->startupPersistedSessionState;
         }

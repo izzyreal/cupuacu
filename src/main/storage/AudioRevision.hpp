@@ -251,6 +251,7 @@ namespace cupuacu::storage
 
     private:
         std::shared_ptr<AudioRevision> revision;
+        std::shared_ptr<void> pendingMemory;
         std::vector<std::array<float, AudioBlockFrames>> pending;
         int64_t received = 0;
         uint32_t buffered = 0;
@@ -317,6 +318,9 @@ namespace cupuacu::storage
             }
             revision.reset(
                 new AudioRevision(shape, std::move(store), std::move(cache)));
+            pendingMemory = reserveWorking(uint64_t(shape.channels) *
+                                               sizeof(PendingChannel),
+                                           MemoryUse::Import);
             pending.resize(shape.channels);
             if (progressive)
             {
@@ -480,8 +484,8 @@ namespace cupuacu::storage
             revision->ownedSource = std::move(ownedSource);
             revision->peaks = std::move(peaks);
             finished = true;
-            pending.clear();
-            pending.shrink_to_fit();
+            std::vector<PendingChannel>().swap(pending);
+            pendingMemory.reset();
             return std::move(revision);
         }
     };

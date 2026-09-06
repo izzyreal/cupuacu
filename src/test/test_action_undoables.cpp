@@ -1,3 +1,4 @@
+#include "TestRevisionCommands.hpp"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
@@ -96,6 +97,7 @@ TEST_CASE("Cut undoable updates clipboard, cursor, and undo state", "[actions]")
     session.cursor = 5;
 
     cupuacu::actions::audio::performCut(&state);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(state.getActiveUndoables().size() == 1);
     REQUIRE(session.document.getFrameCount() == 3);
@@ -132,6 +134,7 @@ TEST_CASE("Cut stores undo payload in the session undo store", "[actions]")
     session.selection.setValue2(5.0);
 
     cupuacu::actions::audio::performCut(&state);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(session.undoStore.isAttached());
     REQUIRE_FALSE(session.undoStore.root().empty());
@@ -168,6 +171,7 @@ TEST_CASE("Delete removes the selection without replacing the clipboard",
     session.cursor = 5;
 
     cupuacu::actions::audio::performDelete(&state);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(readMonoSamples(session.document) ==
             std::vector<float>({0, 1, 5}));
@@ -202,6 +206,7 @@ TEST_CASE("Cut undo publishes modal long-task progress", "[actions][long-task]")
     session.selection.setValue2(5.0);
 
     cupuacu::actions::audio::performCut(&state);
+    cupuacu::test::finishRevisionCommands(&state);
 
     std::vector<cupuacu::State::LongTaskStatus> snapshots;
     state.longTaskObserver =
@@ -272,6 +277,7 @@ TEST_CASE("Canceling cut before commit leaves document, clipboard, and undo stat
     };
 
     cupuacu::actions::audio::performCut(&state);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(cancelRequested);
     REQUIRE(state.getActiveUndoables().empty());
@@ -497,6 +503,7 @@ TEST_CASE("Trim stores undo payloads in the session undo store", "[actions]")
     session.selection.setValue2(4.0);
 
     cupuacu::actions::audio::performTrim(&state);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(session.undoStore.isAttached());
 
@@ -591,6 +598,7 @@ TEST_CASE("Make silent zeros the selected range and respects selected channels",
     state.getActiveViewState().selectedChannels = cupuacu::SelectedChannels::LEFT;
 
     cupuacu::effects::performMakeSilent(&state);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(readChannelSamples(session.document, 0) ==
             std::vector<float>({1, 0, 0, 0, 5}));
@@ -621,6 +629,7 @@ TEST_CASE("Make silent without an active selection is a no-op", "[actions]")
     session.selection.reset();
 
     cupuacu::effects::performMakeSilent(&state);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(readMonoSamples(session.document) == std::vector<float>({1, 2, 3}));
     REQUIRE(state.getActiveUndoables().empty());
@@ -651,6 +660,7 @@ TEST_CASE("Canceling make silent before commit leaves document and undo state un
     };
 
     cupuacu::effects::performMakeSilent(&state);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(cancelRequested);
     REQUIRE(state.getActiveUndoables().empty());
@@ -675,6 +685,7 @@ TEST_CASE("Cut at document tail removes trailing frames and restores on undo",
     session.cursor = 5;
 
     cupuacu::actions::audio::performCut(&state);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(readMonoSamples(session.document) ==
             std::vector<float>({0, 1, 2, 3}));
@@ -704,6 +715,7 @@ TEST_CASE("Paste insert at document end appends clipboard content", "[actions]")
     session.cursor = 3;
 
     cupuacu::actions::audio::performPaste(&state);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(readMonoSamples(session.document) ==
             std::vector<float>({0, 1, 2, 7, 8}));
@@ -726,6 +738,7 @@ TEST_CASE("Paste with empty clipboard is a no-op", "[actions]")
     auto &session = state.getActiveDocumentSession();
     session.cursor = 1;
     cupuacu::actions::audio::performPaste(&state);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(readMonoSamples(session.document) == std::vector<float>({0, 1, 2}));
     REQUIRE(state.getActiveUndoables().empty());
@@ -811,6 +824,7 @@ TEST_CASE("Trim full document keeps content and restores selection on undo",
     session.cursor = 3;
 
     cupuacu::actions::audio::performTrim(&state);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(readMonoSamples(session.document) == std::vector<float>({0, 1, 2, 3}));
     REQUIRE(session.selection.isActive());
@@ -836,8 +850,11 @@ TEST_CASE("Cut delete and trim without active selection are no-ops", "[actions]"
     session.cursor = 2;
 
     cupuacu::actions::audio::performCut(&state);
+    cupuacu::test::finishRevisionCommands(&state);
     cupuacu::actions::audio::performDelete(&state);
+    cupuacu::test::finishRevisionCommands(&state);
     cupuacu::actions::audio::performTrim(&state);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(readMonoSamples(session.document) == std::vector<float>({0, 1, 2, 3}));
     REQUIRE(state.getActiveUndoables().empty());
@@ -857,6 +874,7 @@ TEST_CASE("Copy undoable preserves zero-based selection and restores it on undo"
     session.cursor = 3;
 
     cupuacu::actions::audio::performCopy(&state);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(state.getActiveUndoables().size() == 1);
     REQUIRE(readMonoSamples(session.document) == std::vector<float>({0, 1, 2, 3}));

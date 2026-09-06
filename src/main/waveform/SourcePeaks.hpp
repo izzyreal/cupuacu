@@ -2,6 +2,7 @@
 
 #include "../gui/PeakLevel.hpp"
 #include "../storage/AudioReader.hpp"
+#include "../storage/WorkingMemory.hpp"
 #include <bit>
 #include <array>
 #include <functional>
@@ -32,6 +33,7 @@ namespace cupuacu::waveform
     {
         friend class storage::RevisionArchive;
         storage::AudioShape dimensions;
+        std::shared_ptr<void> residentMemory;
         std::vector<std::vector<gui::PeakLevel>> channels;
         struct PagedData;
         std::shared_ptr<PagedData> paged;
@@ -80,6 +82,30 @@ namespace cupuacu::waveform
             {
                 throw std::invalid_argument("Invalid source peak shape");
             }
+            uint64_t bytes = 0;
+            const auto add = [&](uint64_t count)
+            {
+                if (count > (UINT64_MAX - bytes) / sizeof(Peak))
+                {
+                    throw std::overflow_error("Peak allocation size overflow");
+                }
+                bytes += count * sizeof(Peak);
+            };
+            for (const auto &channel : channels)
+            {
+                for (const auto &level : channel)
+                {
+                    add(level.size());
+                }
+                auto count = channel.empty() ? 0 : channel.back().size();
+                while (count > 1)
+                {
+                    count = count / 2 + count % 2;
+                    add(count);
+                }
+            }
+            residentMemory =
+                storage::reserveWorking(bytes, storage::MemoryUse::Peaks);
             for (auto &channel : channels)
             {
                 std::size_t expected = shape.frames / blockFrames +

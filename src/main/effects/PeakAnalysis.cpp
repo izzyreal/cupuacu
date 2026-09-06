@@ -6,7 +6,8 @@ namespace cupuacu::effects
     PeakAnalysis::PeakAnalysis(
         std::shared_ptr<const storage::AudioReader> reader,
         std::shared_ptr<const storage::AudioEditRevision> revision,
-        std::shared_ptr<const waveform::ViewportSource> view)
+        std::shared_ptr<const waveform::ViewportSource> view,
+        std::shared_ptr<concurrency::TaskScheduler> scheduler)
         : worker(
               [reader = std::move(reader), revision = std::move(revision),
                view = std::move(view)](const PeakAnalysisRequest &request,
@@ -19,7 +20,8 @@ namespace cupuacu::effects
                   }
                   return compute(*reader, revision.get(), view.get(), request,
                                  cancel);
-              })
+              },
+              std::move(scheduler))
     {
     }
 

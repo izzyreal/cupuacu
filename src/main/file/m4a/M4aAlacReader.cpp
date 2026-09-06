@@ -2,6 +2,7 @@
 
 #include "M4aParser.hpp"
 #include "../alac/AlacCodec.hpp"
+#include "../../storage/WorkingMemory.hpp"
 
 #include <cstddef>
 #include <fstream>
@@ -96,7 +97,8 @@ namespace cupuacu::file::m4a
             const std::filesystem::path &path;
             std::uint64_t totalBytes = 0;
             M4aReadProgressCallback progressCallback;
-            std::vector<std::uint8_t> buffer;
+            storage::WorkingVector<std::uint8_t, storage::MemoryUse::Container>
+                buffer;
             std::uint64_t bufferOffset = 0;
         };
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../MutationAvailability.hpp"
+#include "../audio/RevisionEdit.hpp"
 #include "../DocumentLifecycle.hpp"
 #include "../../LongTask.hpp"
 #include "../../storage/AudioEditRevision.hpp"
@@ -56,182 +57,116 @@ namespace cupuacu::actions::markers
 
         if (auto source = activeTab->session.getEditRevision())
         {
-            // Build all destination tabs before inserting any. Audio and peaks
-            // remain shared with the source, including unaligned boundaries.
-            std::vector<DocumentTab> destinations;
-            destinations.reserve(sortedMarkers.size() - 1);
-            for (std::size_t i = 0; i + 1 < sortedMarkers.size(); ++i)
-            {
-                const auto start = std::clamp(
-                    sortedMarkers[i].frame, int64_t{0}, source->shape().frames);
-                const auto end = std::clamp(sortedMarkers[i + 1].frame, start,
-                                            source->shape().frames);
-                storage::AudioEditTransaction transaction(*source);
-                transaction.trim(start, end - start);
-                auto slice = transaction.finish();
-                DocumentTab tab;
-                const auto shape = slice->shape();
-                tab.session.document.setExternalAudioShape(
-                    shape.format, shape.sampleRate, shape.channels,
-                    shape.frames);
-                std::vector<DocumentMarker> markers;
-                for (const auto &marker : sortedMarkers)
+            audio::prepareRevisionAction(
+                state,
+                [source, sortedMarkers](const auto &)
                 {
-                    if (marker.frame >= start && marker.frame <= end)
+                    // Build all destination tabs before inserting any. Audio
+                    // and peaks remain shared with the source, including
+                    // unaligned boundaries.
+                    auto retained = concurrency::releaseOnWorker(
+                        std::make_shared<std::vector<DocumentTab>>());
+                    auto &destinations = *retained;
+                    destinations.reserve(sortedMarkers.size() - 1);
+                    for (std::size_t i = 0; i + 1 < sortedMarkers.size(); ++i)
                     {
-                        markers.push_back(
-                            {marker.id, marker.frame - start, marker.label});
+                        const auto start =
+                            std::clamp(sortedMarkers[i].frame, int64_t{0},
+                                       source->shape().frames);
+                        const auto end =
+                            std::clamp(sortedMarkers[i + 1].frame, start,
+                                       source->shape().frames);
+                        storage::AudioEditTransaction transaction(*source);
+                        transaction.trim(start, end - start);
+                        auto slice = transaction.finish();
+                        DocumentTab tab;
+                        const auto shape = slice->shape();
+                        tab.session.document.setExternalAudioShape(
+                            shape.format, shape.sampleRate, shape.channels,
+                            shape.frames);
+                        std::vector<DocumentMarker> markers;
+                        for (const auto &marker : sortedMarkers)
+                        {
+                            if (marker.frame >= start && marker.frame <= end)
+                            {
+                                markers.push_back({marker.id,
+                                                   marker.frame - start,
+                                                   marker.label});
+                            }
+                        }
+                        tab.session.document.replaceMarkers(std::move(markers));
+                        tab.session.bindReadRevision(std::move(slice));
+                        // These are new unsaved documents, not clean copies of
+                        // a file.
+                        tab.session.markRevisionSaved({}, {});
+                        tab.session.waveformCaches.resetToChannelCount(
+                            shape.channels);
+                        destinations.push_back(std::move(tab));
                     }
-                }
-                tab.session.document.replaceMarkers(std::move(markers));
-                tab.session.bindReadRevision(std::move(slice));
-                // These are new unsaved documents, not clean copies of a file.
-                tab.session.markRevisionSaved({}, {});
-                tab.session.waveformCaches.resetToChannelCount(shape.channels);
-                destinations.push_back(std::move(tab));
-            }
-            state->tabs.insert(state->tabs.begin() + state->activeTabIndex + 1,
-                               std::make_move_iterator(destinations.begin()),
-                               std::make_move_iterator(destinations.end()));
-            persistSessionState(state);
-            if (state->mainDocumentSessionWindow)
-            {
-                bindMainWindowToActiveDocument(state);
-                refreshBoundDocumentUi(state);
-            }
+                    return [retained](State *state, int targetIndex)
+                    {
+                        auto &destinations = *retained;
+                        state->tabs.insert(
+                            state->tabs.begin() + targetIndex + 1,
+                            std::make_move_iterator(destinations.begin()),
+                            std::make_move_iterator(destinations.end()));
+                        persistSessionState(state);
+                        if (state->mainDocumentSessionWindow)
+                        {
+                            bindMainWindowToActiveDocument(state);
+                            refreshBoundDocumentUi(state);
+                        }
+                    };
+                });
             return true;
         }
 
-        std::vector<MarkerSplitSegment> segments;
-        std::atomic_bool completed{false};
-        std::atomic_bool cancelRequested{false};
-        std::atomic<std::size_t> completedSegments{0};
-        std::exception_ptr workerError;
-        cupuacu::LongTaskScope longTask(
-            state, "Splitting by markers", "Preparing documents", 0.0, true,
-            true);
-        std::thread worker(
-            [&]
+        audio::prepareRevisionAction(
+            state,
+            [sourceDocument, sortedMarkers](const auto &)
             {
-                try
+                auto retained = concurrency::releaseOnWorker(
+                    std::make_shared<std::vector<DocumentTab>>());
+                for (std::size_t i = 0; i + 1 < sortedMarkers.size(); ++i)
                 {
-                    segments.reserve(sortedMarkers.size() - 1);
-                    for (std::size_t index = 0;
-                         index + 1 < sortedMarkers.size(); ++index)
+                    const auto start =
+                        std::clamp(sortedMarkers[i].frame, int64_t{0},
+                                   sourceDocument.getFrameCount());
+                    const auto end =
+                        std::clamp(sortedMarkers[i + 1].frame, start,
+                                   sourceDocument.getFrameCount());
+                    DocumentTab tab;
+                    tab.session.document.assignSegment(
+                        sourceDocument.captureSegment(start, end - start));
+                    std::vector<DocumentMarker> markers;
+                    for (const auto &marker : sortedMarkers)
                     {
-                        if (cancelRequested.load(std::memory_order_acquire))
+                        if (marker.frame >= start && marker.frame <= end)
                         {
-                            throw cupuacu::LongTaskCanceledError{};
+                            markers.push_back({marker.id, marker.frame - start,
+                                               marker.label});
                         }
-
-                        const int64_t start =
-                            std::clamp(sortedMarkers[index].frame, int64_t{0},
-                                       sourceDocument.getFrameCount());
-                        const int64_t end =
-                            std::clamp(sortedMarkers[index + 1].frame,
-                                       int64_t{0},
-                                       sourceDocument.getFrameCount());
-                        const int64_t length =
-                            std::max<int64_t>(0, end - start);
-
-                        auto audio = sourceDocument.captureSegment(
-                            start, length,
-                            [&](const int64_t, const int64_t)
-                            {
-                                if (cancelRequested.load(
-                                        std::memory_order_acquire))
-                                {
-                                    throw cupuacu::LongTaskCanceledError{};
-                                }
-                            });
-                        MarkerSplitSegment segment{};
-                        segment.document.assignSegment(audio);
-                        std::vector<DocumentMarker> segmentMarkers;
-                        for (const auto &marker : sortedMarkers)
-                        {
-                            if (marker.frame < start || marker.frame > end)
-                            {
-                                continue;
-                            }
-                            segmentMarkers.push_back(DocumentMarker{
-                                .id = marker.id,
-                                .frame = marker.frame - start,
-                                .label = marker.label,
-                            });
-                        }
-                        segment.document.replaceMarkers(
-                            std::move(segmentMarkers));
-                        segments.push_back(std::move(segment));
-                        completedSegments.store(index + 1,
-                                                std::memory_order_release);
                     }
+                    tab.session.document.replaceMarkers(std::move(markers));
+                    tab.session.waveformCaches.resetToChannelCount(
+                        sourceDocument.getChannelCount());
+                    tab.session.updateWaveformCache();
+                    retained->push_back(std::move(tab));
                 }
-                catch (...)
+                return [retained](State *state, int index)
                 {
-                    workerError = std::current_exception();
-                }
-                completed.store(true, std::memory_order_release);
+                    state->tabs.insert(
+                        state->tabs.begin() + index + 1,
+                        std::make_move_iterator(retained->begin()),
+                        std::make_move_iterator(retained->end()));
+                    persistSessionState(state);
+                    if (state->mainDocumentSessionWindow)
+                    {
+                        bindMainWindowToActiveDocument(state);
+                        refreshBoundDocumentUi(state);
+                    }
+                };
             });
-
-        auto lastRender = std::chrono::steady_clock::now();
-        while (!completed.load(std::memory_order_acquire))
-        {
-            if (cupuacu::isLongTaskCancelRequested(state))
-            {
-                cancelRequested.store(true, std::memory_order_release);
-            }
-            const auto now = std::chrono::steady_clock::now();
-            if (now - lastRender >= std::chrono::milliseconds(50))
-            {
-                const auto total = sortedMarkers.size() - 1;
-                cupuacu::updateLongTaskOverlayOnly(
-                    state, "Preparing documents",
-                    static_cast<double>(
-                        completedSegments.load(std::memory_order_acquire)) /
-                        static_cast<double>(std::max<std::size_t>(1, total)),
-                    false);
-                cupuacu::renderLongTaskOverlayNow(state);
-                lastRender = now;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-        worker.join();
-        if (workerError)
-        {
-            try
-            {
-                std::rethrow_exception(workerError);
-            }
-            catch (const cupuacu::LongTaskCanceledError &)
-            {
-                return false;
-            }
-        }
-
-        const int insertIndex = state->activeTabIndex + 1;
-        auto tabIt = state->tabs.begin() + static_cast<std::ptrdiff_t>(insertIndex);
-        for (auto &segment : segments)
-        {
-            DocumentTab tab{};
-            tab.session.clearCurrentFile();
-            tab.session.document = std::move(segment.document);
-            tab.session.waveformCaches.resetToChannelCount(
-                tab.session.document.getChannelCount());
-            tab.session.updateWaveformCache();
-            tab.session.selection.reset();
-            tab.session.cursor = 0;
-            tab.session.syncSelectionAndCursorToDocumentLength();
-            tab.viewState.selectedMarkerId.reset();
-            tabIt = state->tabs.insert(tabIt, std::move(tab));
-            ++tabIt;
-        }
-
-        persistSessionState(state);
-        if (state->mainDocumentSessionWindow)
-        {
-            bindMainWindowToActiveDocument(state);
-            refreshBoundDocumentUi(state);
-        }
         return true;
     }
 } // namespace cupuacu::actions::markers

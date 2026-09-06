@@ -12,13 +12,17 @@ namespace cupuacu::waveform
         {
             uint64_t expected, produced = 0, sealed = 0, width;
             bool resident;
+            std::shared_ptr<void> memory;
             std::vector<float> active;
             std::shared_ptr<storage::AudioBlockStore> store;
             Group(uint64_t count, uint64_t tileWidth)
                 : expected(count),
                   width(
                       std::bit_ceil(std::clamp(count, uint64_t{1}, tileWidth))),
-                  resident(count <= tileWidth), active(width * 4)
+                  resident(count <= tileWidth),
+                  memory(storage::reserveWorking(width * 4 * sizeof(float),
+                                                 storage::MemoryUse::Peaks)),
+                  active(width * 4)
             {
             }
             Peak get(uint64_t index) const
@@ -285,6 +289,7 @@ namespace cupuacu::waveform
                 {
                     g.store->flush();
                     std::vector<float>().swap(g.active);
+                    g.memory.reset();
                 }
             }
         }

@@ -2,6 +2,7 @@
 
 #include "State.hpp"
 #include "actions/audio/ClipboardPaste.hpp"
+#include "actions/audio/RevisionEdit.hpp"
 #include "actions/effects/BackgroundEffect.hpp"
 #include "actions/io/BackgroundOpen.hpp"
 #include "actions/io/BackgroundSave.hpp"
@@ -19,6 +20,7 @@ namespace cupuacu
         {
             state->audioDevices->servicePlayback();
         }
+        cupuacu::actions::audio::processPendingRevisionCommands(state);
         cupuacu::actions::audio::processPendingClipboardPaste(state);
         cupuacu::actions::effects::processPendingEffectWork(state);
         cupuacu::actions::io::processPendingOpenWork(state);
@@ -26,6 +28,9 @@ namespace cupuacu
         cupuacu::actions::io::processPendingAutosaveWork(state);
 
         if (state->quitRequestedAfterLongTaskCancel &&
+            state->revisionCommands.empty() &&
+            !state->startupClipboardRestore &&
+            !state->backgroundClipboardConversion &&
             !state->backgroundOpenJob && !state->backgroundSaveJob &&
             !state->backgroundEffectJob && !state->backgroundAutosaveJob &&
             !state->pendingOpenWaveformBuild.active && !state->longTask.active)

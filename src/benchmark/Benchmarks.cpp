@@ -17,6 +17,8 @@
 #include "file/DecodedImportCache.hpp"
 #include "file/AudioFileWriter.hpp"
 #include "playback/ReadAhead.hpp"
+#include "storage/RecordingWriter.hpp"
+#include "actions/effects/RevisionEffect.hpp"
 #include "storage/AsyncAudioReader.hpp"
 #include "storage/AudioEditRevision.hpp"
 #include "waveform/WaveformViewport.hpp"
@@ -63,6 +65,20 @@ namespace
         if (!condition)
         {
             throw std::runtime_error(message);
+        }
+    }
+
+    void finishRevisionCommands(State *state)
+    {
+        const auto deadline = Clock::now() + std::chrono::seconds(10);
+        while (!state->revisionCommands.empty())
+        {
+            actions::audio::processPendingRevisionCommands(state);
+            require(Clock::now() < deadline, "Revision command timed out");
+            if (!state->revisionCommands.empty())
+            {
+                std::this_thread::yield();
+            }
         }
     }
 
@@ -590,9 +606,26 @@ namespace
 #endif
         const std::string name = request.at("scenario");
         const int64_t frames = request.at("frames");
+        if (name == "legacy_metadata_paged" ||
+            name == "legacy_metadata_resident")
+        {
+            legacyMetadataScenario(measurement, frames,
+                                   name == "legacy_metadata_paged");
+            return;
+        }
+        if (name == "working_memory")
+        {
+            workingMemoryScenario(measurement, frames);
+            return;
+        }
         if (name == "index_archive")
         {
             indexArchiveScenario(measurement, frames);
+            return;
+        }
+        if (name == "edit_metadata")
+        {
+            editMetadataScenario(measurement, frames);
             return;
         }
         if (name == "index_paged" || name == "index_resident")
@@ -697,6 +730,7 @@ namespace
                 actions::audio::performRevisionCommand(
                     &state, actions::audio::RevisionCommand::Delete, frames / 2,
                     1);
+                finishRevisionCommands(&state);
                 const auto edit = elapsed(began);
                 const auto undoAt = Clock::now();
                 state.undo();
@@ -804,6 +838,7 @@ namespace
                 performance::resetWork();
                 const auto started = Clock::now();
                 actions::audio::performInsertSilence(&state, frames);
+                finishRevisionCommands(&state);
                 result["new_document"]["insert_silence_ms"] = elapsed(started);
                 auto began = Clock::now();
                 state.addAndDoUndoable(std::make_shared<actions::audio::SetSampleValue>(
@@ -1698,17 +1733,24 @@ namespace
                     require(actions::switchToTab(&state, 1),
                             "Busy work prevented tab switch");
                     state.paths.reset();
-                    std::vector<double> times;
-                    for (int i = 0; i < 128; ++i)
-                    {
-                        const auto edit = Clock::now();
-                        state.addAndDoUndoable(
-                            std::make_shared<actions::audio::SetSampleValue>(
-                                &state, 0, i, sampleAt(i, 0), .25f));
-                        times.push_back(elapsed(edit));
-                    }
-                    std::sort(times.begin(), times.end());
-                    result["coordination"]["edit_p99_ms"] = times[126];
+                    const auto edit = Clock::now();
+                    actions::audio::prepareRevisionEdit(
+                        &state, "Set samples",
+                        [](const actions::audio::RevisionEditState &before)
+                        {
+                            auto after = before;
+                            storage::AudioEditTransaction transaction(
+                                *before.audio);
+                            transaction.replaceChannel(0, 0, 128, nullptr, 0, 0,
+                                                       .25f);
+                            after.audio = transaction.finish();
+                            return after;
+                        });
+                    result["coordination"]["edit_submission_ms"] =
+                        elapsed(edit);
+                    require(state.revisionCommands.size() == 1 &&
+                                state.tabs[1].undoables.empty(),
+                            "Queued edit performed work before admission");
                     result["coordination"]["bulk_running"] =
                         state.taskScheduler->stats().running;
                     require(state.taskScheduler->stats().running == 2,
@@ -1720,8 +1762,9 @@ namespace
                         std::chrono::seconds(60)),
                     "Busy effect timed out");
             actions::effects::processPendingEffectWork(&state);
+            finishRevisionCommands(&state);
             require(state.tabs[0].undoables.size() == 1 &&
-                        state.tabs[1].undoables.size() == 128,
+                        state.tabs[1].undoables.size() == 1,
                     "Cross-tab edits lost");
             std::array<float, 128> values;
             state.tabs[1].session.getAudioReader()->readChannel(0, 0, values);
@@ -1948,6 +1991,7 @@ namespace
                     else
                     {
                         actions::audio::performDelete(&state);
+                        finishRevisionCommands(&state);
                     }
                     deletes.push_back(elapsed(started));
                     require(session.document.getFrameCount() ==
@@ -2444,6 +2488,7 @@ namespace
         {
             selection(state, 1000, 1000);
             actions::audio::performCopy(&state);
+            finishRevisionCommands(&state);
             drain(state);
             state.getActiveDocumentSession().selection.reset();
             state.getActiveDocumentSession().cursor = 2000;
@@ -2452,6 +2497,7 @@ namespace
         {
             selection(state, start, 1000);
             actions::audio::performDelete(&state);
+            finishRevisionCommands(&state);
             drain(state);
             if (name == "redo")
             {
@@ -2555,6 +2601,7 @@ namespace
                 {
                     selection(state, start, 1000);
                     actions::audio::performDelete(&state);
+                    finishRevisionCommands(&state);
                 }
                 else
                 {
@@ -2574,10 +2621,12 @@ namespace
             {
                 selection(state, 1000, 1000);
                 actions::audio::performCopy(&state);
+                finishRevisionCommands(&state);
             }
             else if (name == "paste")
             {
                 actions::audio::performPaste(&state);
+                finishRevisionCommands(&state);
                 expectedFrames += 1000;
                 expected = [](int64_t i, int ch)
                 {
@@ -2588,6 +2637,7 @@ namespace
             {
                 selection(state, 1000, 1000);
                 actions::audio::performTrim(&state);
+                finishRevisionCommands(&state);
                 expectedFrames = 1000;
                 expected = [](int64_t i, int ch)
                 {

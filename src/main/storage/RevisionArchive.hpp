@@ -1,5 +1,8 @@
 #pragma once
 #include "AudioEditRevision.hpp"
+#include "WorkingMap.hpp"
+#include "WeakObjectMap.hpp"
+#include "PagedCbor.hpp"
 #include <nlohmann/json.hpp>
 #include <functional>
 #include <set>
@@ -48,6 +51,18 @@ namespace cupuacu::storage
         using Tree = AudioEditRevision::Tree;
         struct StoreCopy
         {
+            std::shared_ptr<void> memory =
+                reserveWorking(sizeof(StoreCopy) + 64, MemoryUse::Index);
+            void setNames(std::string nextName, std::string nextSource)
+            {
+                auto next = reserveWorking(sizeof(StoreCopy) + 64 +
+                                               nextName.capacity() +
+                                               nextSource.capacity(),
+                                           MemoryUse::Index);
+                name = std::move(nextName);
+                source = std::move(nextSource);
+                memory = std::move(next);
+            }
             std::string name;
             RecordIndex<uint64_t> lengths;
             std::string source;
@@ -56,20 +71,29 @@ namespace cupuacu::storage
         std::atomic_bool removed{false};
         std::mutex publicationMutex;
         uint64_t readLimit = 0;
+        PagedCbor legacyMetadata;
+        bool upgradeMetadata = false;
         std::function<bool()> canceled;
         bool pruneClipboardStores = false;
-        std::set<std::string> neededStores;
+        std::map<std::string, std::shared_ptr<void>> neededStores;
+        void retainStoreName(const std::string &name)
+        {
+            if (!neededStores.contains(name))
+            {
+                neededStores.emplace(
+                    name, reserveWorking(96 + name.size(), MemoryUse::Index));
+            }
+        }
         void collectUnusedStores();
         void collectUnusedStoresLocked();
         // Stable object identities survive the deferred-release alias wrappers;
         // weak control-block identity does not, and would split restored roots.
-        std::map<uint64_t, uint64_t> roots, nodes, sources;
+        WorkingMap<uint64_t> roots, nodes, sources;
         std::map<uint64_t, StoreCopy> stores;
-        std::map<uint64_t, std::weak_ptr<const AudioEditRevision>> loadedRoots;
-        std::map<uint64_t, std::weak_ptr<const AudioEditRevision::Node>>
-            loadedNodes;
-        std::map<uint64_t, std::weak_ptr<const AudioRevision>> loadedSources;
-        std::map<std::string, std::weak_ptr<AudioBlockStore>> loadedStores;
+        WeakObjectMap<uint64_t, const AudioEditRevision> loadedRoots;
+        WorkingMap<EditTree::Weak> loadedNodes;
+        WeakObjectMap<uint64_t, const AudioRevision> loadedSources;
+        WeakObjectMap<std::string, AudioBlockStore> loadedStores;
         std::shared_ptr<DecodedBlockCache> cache =
             defaultDecodedBlockCache();
         explicit RevisionArchive(std::filesystem::path);

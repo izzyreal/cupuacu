@@ -155,6 +155,8 @@ namespace cupuacu::file
             }
             in.clear();
             in.seekg(std::streamoff(offset));
+            auto memory = storage::reserveWorking(scratchBytes,
+                                                  storage::MemoryUse::Export);
             std::array<char, scratchBytes> buffer;
             while (bytes)
             {
@@ -183,6 +185,8 @@ namespace cupuacu::file
             std::list<RawSource> sources;
             RawSource *rawOwner = nullptr;
             uint64_t rawOffset = 0, rawLength = 0;
+            std::shared_ptr<void> memory = storage::reserveWorking(
+                3 * scratchBytes, storage::MemoryUse::Export);
             std::array<char, scratchBytes> raw{}, encoded{};
             std::array<float, scratchBytes / sizeof(float)> floats{};
             const WriteProgressCallback &progress;

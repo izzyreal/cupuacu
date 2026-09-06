@@ -1,3 +1,4 @@
+#include "TestRevisionCommands.hpp"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
@@ -632,6 +633,7 @@ TEST_CASE("Overwrite after length change preserves chunk order", "[file]")
     cupuacu::file::loadSampleData(&state);
     state.getActiveDocumentSession().cursor = 2;
     cupuacu::actions::audio::performInsertSilence(&state, 2);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
@@ -656,6 +658,7 @@ TEST_CASE("Overwrite after stereo append keeps RIFF and data sizes consistent",
     auto &session = state.getActiveDocumentSession();
     session.cursor = state.getActiveDocumentSession().document.getFrameCount();
     cupuacu::actions::audio::performInsertSilence(&state, 2);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
@@ -699,6 +702,7 @@ TEST_CASE("Overwrite after length change preserves multiple non-audio chunks byt
     session.selection.setValue1(1.0);
     session.selection.setValue2(3.0);
     cupuacu::actions::audio::performCut(&state);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
@@ -1395,6 +1399,7 @@ TEST_CASE("Overwrite after cut preserves surviving PCM16 sample bytes",
     session.selection.setValue1(2.0);
     session.selection.setValue2(4.0);
     cupuacu::actions::audio::performCut(&state);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
@@ -1432,9 +1437,11 @@ TEST_CASE("Overwrite after paste of copied original material preserves source PC
     session.selection.setValue1(1.0);
     session.selection.setValue2(3.0);
     cupuacu::actions::audio::performCopy(&state);
+    cupuacu::test::finishRevisionCommands(&state);
     session.selection.reset();
     session.cursor = 5;
     cupuacu::actions::audio::performPaste(&state);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
@@ -1469,6 +1476,7 @@ TEST_CASE("Overwrite after insert silence preserves surrounding PCM16 sample byt
     auto &session = state.getActiveDocumentSession();
     session.cursor = 2;
     cupuacu::actions::audio::performInsertSilence(&state, 2);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
@@ -1552,6 +1560,7 @@ TEST_CASE("Overwrite after stereo cut preserves surviving interleaved PCM16 samp
     session.selection.setValue1(1.0);
     session.selection.setValue2(3.0);
     cupuacu::actions::audio::performCut(&state);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(cupuacu::actions::overwritePreserving(&state));
 

@@ -205,7 +205,8 @@ namespace cupuacu::storage
     // One cache can serve many revisions/stores. Copies go into caller-owned
     // buffers, so callers cannot pin evicted entries beyond the budget.
     class DecodedBlockCache
-        : public std::enable_shared_from_this<DecodedBlockCache>
+        : public WorkingMemory,
+          public std::enable_shared_from_this<DecodedBlockCache>
     {
         struct Key
         {
@@ -236,8 +237,22 @@ namespace cupuacu::storage
         std::atomic<uint64_t> budget;
         std::condition_variable scratchAvailable;
         unsigned pressure = 0;
+        bool protectTransport = false;
+        uint64_t workingTarget(MemoryUse use) const
+        {
+            const auto target = budget.load() >> pressure;
+            if (!protectTransport || use == MemoryUse::Transport)
+            {
+                return target;
+            }
+            const auto floor = std::min<uint64_t>(16 * 1024 * 1024, target / 4);
+            const auto transport = workingByUse[unsigned(MemoryUse::Transport)];
+            return target - (floor > transport ? floor - transport : 0);
+        }
         uint64_t reserved = 0, inFlight = 0, resident = 0, peakManaged = 0,
                  evictions = 0;
+        uint64_t working = 0, rejectedWorking = 0;
+        std::array<uint64_t, unsigned(MemoryUse::Count)> workingByUse{};
         uint64_t capacity() const
         {
             const auto target = budget.load() >> pressure;
@@ -263,6 +278,7 @@ namespace cupuacu::storage
         {
             std::shared_ptr<DecodedBlockCache> owner;
             uint64_t bytes = 0;
+            MemoryUse use = MemoryUse::Count;
             ~Reservation()
             {
                 if (bytes)
@@ -270,6 +286,11 @@ namespace cupuacu::storage
                     {
                         std::lock_guard lock(owner->mutex);
                         owner->reserved -= bytes;
+                        if (use != MemoryUse::Count)
+                        {
+                            owner->working -= bytes;
+                            owner->workingByUse[unsigned(use)] -= bytes;
+                        }
                     }
                     owner->scratchAvailable.notify_all();
                 }
@@ -285,9 +306,12 @@ namespace cupuacu::storage
             uint64_t residentBytes, peakResidentBytes, hits, misses;
             uint64_t reservedBytes, configuredBytes, targetBytes,
                 peakManagedBytes, evictions, inFlightBytes;
+            uint64_t workingBytes, rejectedWorkingReservations;
+            std::array<uint64_t, unsigned(MemoryUse::Count)> workingByUse;
         };
-        explicit DecodedBlockCache(uint64_t decodedByteBudget)
-            : budget(decodedByteBudget)
+        explicit DecodedBlockCache(uint64_t decodedByteBudget,
+                                   bool reserveTransport = false)
+            : budget(decodedByteBudget), protectTransport(reserveTransport)
         {
         }
         static uint64_t defaultByteBudget(uint64_t physicalRamBytes)
@@ -306,7 +330,10 @@ namespace cupuacu::storage
                     budget.load() >> pressure,
                     peakManaged,
                     evictions,
-                    inFlight};
+                    inFlight,
+                    working,
+                    rejectedWorking,
+                    workingByUse};
         }
         uint64_t byteBudget() const
         {
@@ -327,9 +354,41 @@ namespace cupuacu::storage
         // pressure sacrifices cache capacity first, never accepted edits.
         void setPressure(unsigned level)
         {
+            {
+                std::lock_guard lock(mutex);
+                pressure = std::min(level, 2u);
+                trim();
+            }
+            scratchAvailable.notify_all();
+        }
+        // No waiting for another retained buffer to disappear. Callers either
+        // use a disk fallback or fail their uncommitted operation. This avoids
+        // nested admission waits holding the very memory needed for progress.
+        std::shared_ptr<void> tryReserveWorking(uint64_t bytes,
+                                                MemoryUse use) override
+        {
+            if (use >= MemoryUse::Count)
+            {
+                throw std::invalid_argument("Invalid working memory category");
+            }
+            auto token = std::make_shared<Reservation>();
+            token->owner = shared_from_this();
             std::lock_guard lock(mutex);
-            pressure = std::min(level, 2u);
+            const auto target = workingTarget(use);
+            if (reserved > target || inFlight > target - reserved ||
+                bytes > target - reserved - inFlight)
+            {
+                ++rejectedWorking;
+                return {};
+            }
+            reserved += bytes;
+            working += bytes;
+            workingByUse[unsigned(use)] += bytes;
+            token->bytes = bytes;
+            token->use = use;
             trim();
+            observe();
+            return token;
         }
         std::shared_ptr<void> reserveScratch(uint64_t bytes)
         {
@@ -344,11 +403,15 @@ namespace cupuacu::storage
                 lock,
                 [&]
                 {
-                    return bytes > budget.load() ||
-                           (reserved + inFlight <= budget.load() &&
-                            bytes <= budget.load() - reserved - inFlight);
+                    return working > workingTarget(MemoryUse::Effect) ||
+                           bytes > workingTarget(MemoryUse::Effect) - working ||
+                           (reserved + inFlight <=
+                                workingTarget(MemoryUse::Effect) &&
+                            bytes <= workingTarget(MemoryUse::Effect) -
+                                         reserved - inFlight);
                 });
-            if (bytes > budget.load())
+            if (working > workingTarget(MemoryUse::Effect) ||
+                bytes > workingTarget(MemoryUse::Effect) - working)
             {
                 throw std::runtime_error(
                     "Job scratch exceeds the audio memory budget");

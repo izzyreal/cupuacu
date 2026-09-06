@@ -55,16 +55,20 @@ namespace cupuacu::waveform
     DocumentWaveformCaches::BuildJob::~BuildJob()
     {
         cancel();
-        if (worker.joinable())
+        if (completion.valid())
         {
-            worker.join();
+            completion.wait();
         }
     }
 
     void DocumentWaveformCaches::BuildJob::start()
     {
-        worker = std::thread([this]
-                             { run(); });
+        completion = concurrency::defaultTaskScheduler()->submit(
+            [this]
+            {
+                run();
+            },
+            {.priority = concurrency::TaskScheduler::Priority::Maintenance});
     }
 
     bool DocumentWaveformCaches::BuildJob::isCompleted() const
@@ -493,7 +497,8 @@ namespace cupuacu::waveform
             .completedBlocks = 0,
             .totalBlocks = totalDirtyBlocks(frameCount, channelCount),
         };
-        buildJob = std::make_unique<BuildJob>(document, std::move(*request));
+        buildJob = concurrency::releaseOnWorker(
+            std::make_shared<BuildJob>(document, std::move(*request)));
         buildJob->start();
     }
 

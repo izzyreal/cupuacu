@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../Document.hpp"
+#include "../../storage/WorkingAllocator.hpp"
 #include "../../State.hpp"
 #include "../../effects/EffectSettings.hpp"
 #include "../../effects/RemoveSilenceEffect.hpp"
@@ -59,7 +60,9 @@ namespace cupuacu::actions::effects
         std::vector<std::vector<float>> oldSamples;
         std::vector<std::vector<float>> newSamples;
         [[no_unique_address]] performance::Capacity observedCapacity;
-        std::vector<::cupuacu::effects::SilenceRange> silenceRuns;
+        storage::WorkingVector<::cupuacu::effects::SilenceRange,
+                               storage::MemoryUse::Effect>
+            silenceRuns;
         std::vector<std::vector<std::vector<float>>> removedSamples;
         int64_t originalRelevantLength = 0;
         int64_t originalCursor = 0;

@@ -188,7 +188,7 @@ Edit splices coalesce adjacent ranges from the same source and contiguous source
 positions, or identical constants, including boundaries inside balanced trees.
 This removes artificial fragmentation while preserving reference-only edits.
 
-These are per-index bounds, not an aggregate application budget. Distinct edit
+These per-index buffers now also use shared working-memory admission (below). Distinct edit
 tree nodes, retained history and archive identity maps remain resident. Their
 full paging cannot be declared complete: cold edit paths need worker preparation
 before UI operations can access them. This remains an explicit dependency on the
@@ -231,8 +231,8 @@ Limits: checkpoint capture and manifest serialization still scale with history
 metadata. Document archives retain unreachable records/stores until removal;
 clipboard archives prune stores but do not compact old index records. Malformed
 manifests with unidentifiable generations retain their sidecar data for recovery.
-Indexes and recovered peaks remain resident. There is no global memory admission
-policy or power-loss/platform validation claim in this slice. Existing shutdown
+Source indexes and recovered peak detail are now paged, while revision-tree
+nodes remain resident. There is no power-loss/platform validation claim. Existing shutdown
 flush and job coordination still apply.
 
 `[revision-persistence]` covers restart history/root identity, exact original
@@ -253,7 +253,7 @@ never invoke resident sample reads while painting or hovering.
 
 Imports share one decoded-sample cache, initially budgeted to 10% of physical RAM.
 Samples enter this cache only on reads; this is not an application-wide RAM limit.
-Peak summaries, indexes, decoder scratch and other job caches remain separate.
+Working buffers listed below also draw from this default application's budget.
 Cached peaks are checked against the original filename and reused during import.
 New peaks are persisted on the opening worker before its completed result is
 published. Completion binds the immutable revision directly; worker destruction
@@ -287,11 +287,10 @@ Running work is cooperative and is not preempted. Transport read-ahead and lates
 viewport services retain independent workers, so bulk jobs cannot take their
 execution slots. This does not reserve filesystem bandwidth.
 
-Effects reserve estimated channel scratch before execution against a 128 MiB
-bulk scratch allowance. Other allocations, cache residency, peak/index data and
-queued payload bytes are not yet charged to one shared budget. This scheduler
-is the admission mechanism for the next resource slice, not a completed global
-memory policy. Clipboard conversion and peak-analysis services also retain their
+Effects reserve estimated channel scratch before execution against the shared
+budget, with a 128 MiB per-scheduler ceiling. Admission failures notify the effect
+coordinator and complete its future, so a refused job cannot leave a tab busy.
+Clipboard conversion and peak-analysis services also retain their
 existing dedicated workers.
 
 Normal imports and revision effects/saves have tab-specific operation identities
@@ -401,7 +400,72 @@ may cover the whole document before sample decoding finishes; raw views/playback
 still respect available samples. Cache corruption falls back to generating peaks
 with decoding. Legacy resident-cache APIs remain for compatibility paths.
 
-Active tiles and small per-source overviews are bounded per source but are not
-charged to aggregate admission. Audio block indexes and provenance/edit metadata
-also remain outside the shared bound. See the milestone report for measured
-memory reduction and I/O/latency costs.
+Active tiles, small per-source overviews and source-index buffers now participate
+in shared admission. Edit/history tree nodes still need paging and worker-owned
+edit preparation. See the milestone report for measurements and remaining limits.
+
+### Shared working-memory admission
+
+The default application's sample/peak cache and working buffers share one ledger,
+using the existing configurable budget (initially 10% of physical RAM). Admission
+evicts cache entries before allocating a working buffer. Category counters expose
+index, peak, import, viewport, transport, conversion and export reservations.
+
+Covered buffers include source-index tails/read pages; revision-builder staging;
+active peak tiles, retained summaries and peak-builder scratch; import interleaved
+samples and ALAC packet staging; clipboard-conversion scratch; viewport and hover
+results; playback/recording queues and their worker scratch; and revision writer
+sample/preservation buffers and ALAC packet-size records. Scheduler effect scratch
+continues to reserve from the same ledger.
+
+Reservations follow ownership, including queued and displayed viewport results.
+Replacement buffers reserve their overlapping lifetimes, and destruction frees
+buffers before returning their credit. Transport reserves before queue allocation,
+outside the audio callback. Pressure preserves existing reservations and reduces
+the target for future working allocations; it cannot retroactively meet a reduced
+target below the memory already held.
+
+Index buffers fall back to direct scalar file access when admission is refused.
+Mandatory buffers fail the uncommitted operation instead of waiting while holding
+other working reservations. Scheduler scratch refusal completes the effect with
+an error; recording admission failure is reported before capture starts. This
+does not yet add priority-based working-memory reservations for transport.
+
+Explicitly injected standalone decoded caches keep their existing cache-budget
+semantics. Tests or alternate callers can inject a `WorkingMemory` resource where
+supported; the production defaults resolve to the same application resource.
+
+This is not a hard process-RSS limit. Allocator/container bookkeeping, edit/history
+nodes, archive identity maps, container parsing/assembly temporaries, third-party
+codec/DSP internals, SDL textures and remaining legacy full-buffer paths are not
+fully accounted. The legacy peak-array adapter charges retained values, but its
+caller supplied those arrays before admission. These exclusions prevent claiming
+complete application-wide memory closure.
+
+
+### Paged edit/history nodes
+
+`EditTree` stores immutable node payloads and summaries in anonymous records with
+reusable slots and disk reference counts. The default 512-record hot cache and
+64-record read/write pages are admitted under `MemoryUse::Index`; native total
+node buffers are 109 KiB. Live root handles are separately admitted. No recursively
+resident subtree is retained by a history entry. Borrowed child handles retain an
+ancestor during traversal; publication pins the actual root so a slice does not
+retain unrelated source ranges.
+
+Archive identity maps and traversal sets use `WorkingMap`, a paged AVL index.
+Weak node references include a generation identity to reject reused slots. Live
+revision/source objects retain canonical identity through admitted weak registries.
+All cold traversal, construction and reclamation belongs on workers. Document
+binding reads cached preservation metadata; accepted structural commands publish
+only after worker preparation and target validation. Sample-point gestures preview
+locally and commit one prepared revision when released.
+
+The latest four-slice status and measurements are in `PERFORMANCE-MILESTONE.md`.
+
+Legacy recording recovery now retains before/after revision shapes, including a
+zero-channel unconfigured state. No resident document is materialized to support
+that history. Large legacy CBOR arrays use immutable index-file extents and bounded
+row decoding; successful subsequent checkpoints publish paged records. Failed
+publication leaves the previous committed archive readable. See
+`PERFORMANCE-MILESTONE.md` for the completed four-slice status and measurements.

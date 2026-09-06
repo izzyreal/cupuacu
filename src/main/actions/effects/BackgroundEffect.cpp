@@ -1075,7 +1075,25 @@ namespace cupuacu::actions::effects
                 concurrency::TaskScheduler::Options{
                     .scratchBytes = uint64_t(document.getChannelCount()) *
                                     (65536 + 16384) * sizeof(float),
-                    .documentId = request.targetTabId});
+                    .documentId = request.targetTabId,
+                    .mutation = true,
+                    .admissionFailed = [this](std::exception_ptr failure)
+                    {
+                        std::string message =
+                            "Insufficient audio working memory";
+                        try
+                        {
+                            std::rethrow_exception(failure);
+                        }
+                        catch (const std::exception &e)
+                        {
+                            message = e.what();
+                        }
+                        std::lock_guard lock(mutex);
+                        error = std::move(message);
+                        completed = true;
+                        completionCv.notify_all();
+                    }});
         }
         catch (const std::exception &failure)
         {

@@ -23,12 +23,11 @@ namespace cupuacu::persistence
     }
     namespace
     {
-        struct NeedsResidentHistory
-        {
-        };
         using Json = nlohmann::json;
         using Revision = storage::AudioEditRevision;
         using Audio = std::shared_ptr<const Revision>;
+        using AudioList =
+            storage::WorkingVector<Audio, storage::MemoryUse::Index>;
         using EditState = actions::audio::RevisionEditState;
         using Transaction = storage::AudioEditTransaction;
         using Shape = storage::AudioShape;
@@ -137,7 +136,14 @@ namespace cupuacu::persistence
             std::shared_ptr<storage::DecodedBlockCache> cache =
                 storage::defaultDecodedBlockCache();
             std::function<bool()> cancel;
-            std::map<std::string, std::vector<Audio>> loaded;
+            storage::WorkingVector<std::shared_ptr<void>,
+                                   storage::MemoryUse::Index>
+                keyMemory;
+            std::map<std::string, AudioList, std::less<std::string>,
+                     storage::WorkingAllocator<
+                         std::pair<const std::string, AudioList>,
+                         storage::MemoryUse::Index>>
+                loaded;
 
             Audio import(Input &input, const std::vector<Channel> &channels,
                          Shape shape)
@@ -174,7 +180,10 @@ namespace cupuacu::persistence
                             });
                     });
                 constexpr int64_t batch = 16384;
-                std::vector<float> samples(batch * channels.size());
+                auto byteMemory = storage::reserveWorking(
+                    batch * 20, storage::MemoryUse::Conversion);
+                storage::WorkingVector<float, storage::MemoryUse::Conversion>
+                    samples(batch * channels.size());
                 std::array<unsigned char, batch * 20> bytes;
                 for (int64_t first = 0; first < shape.frames;)
                 {
@@ -221,9 +230,8 @@ namespace cupuacu::persistence
                 }
                 return out;
             }
-            std::vector<Audio> payload(const Json &entry, const char *key,
-                                       Shape shape, bool segment = false,
-                                       bool cube = false)
+            AudioList payload(const Json &entry, const char *key, Shape shape,
+                              bool segment = false, bool cube = false)
             {
                 const auto path = entry.at(key).get<std::string>();
                 const auto cacheKey = path + ":" +
@@ -235,7 +243,8 @@ namespace cupuacu::persistence
                 }
                 check();
                 Input in(path);
-                std::vector<std::vector<Channel>> matrices;
+                std::vector<Channel> segmentChannels;
+                AudioList out;
                 if (segment)
                 {
                     in.magic("CUPUACU_UNDO_SEGMENT");
@@ -255,12 +264,12 @@ namespace cupuacu::persistence
                         throw std::runtime_error(
                             "Invalid legacy segment shape");
                     }
-                    auto &out = matrices.emplace_back();
+                    auto &channelRows = segmentChannels;
                     for (int c = 0; c < channels; ++c)
                     {
-                        out.push_back(
+                        channelRows.push_back(
                             {in.position(), frames, version == 1 ? 20u : 4u});
-                        in.skip(uint64_t(frames) * out.back().stride);
+                        in.skip(uint64_t(frames) * channelRows.back().stride);
                         if (version == 1)
                         {
                             continue;
@@ -290,6 +299,7 @@ namespace cupuacu::persistence
                             }
                         }
                     }
+                    out.push_back(import(in, segmentChannels, shape));
                 }
                 else
                 {
@@ -304,14 +314,16 @@ namespace cupuacu::persistence
                     for (int64_t i = 0; i < count; ++i)
                     {
                         check();
-                        matrices.push_back(matrix(in));
+                        const auto channels = matrix(in);
+                        const auto next = in.position();
+                        out.push_back(channels.empty()
+                                          ? Audio{}
+                                          : import(in, channels, shape));
+                        in.seek(next);
                     }
                 }
-                std::vector<Audio> out;
-                for (const auto &m : matrices)
-                {
-                    out.push_back(m.empty() ? Audio{} : import(in, m, shape));
-                }
+                keyMemory.push_back(storage::reserveWorking(
+                    cacheKey.size() + 1, storage::MemoryUse::Index));
                 loaded.emplace(cacheKey, out);
                 return out;
             }
@@ -595,56 +607,60 @@ namespace cupuacu::persistence
                 {
                     const int64_t oldFrames = j.at("oldFrameCount"),
                                   end = j.at("endFrame");
-                    // Preserve the legacy recording command when undo changes
-                    // the channel count or returns to an unconfigured document.
-                    if (j.at("oldChannelCount").get<int>() != shape.channels ||
-                        j.at("targetChannelCount").get<int>() !=
-                            shape.channels ||
-                        j.value("oldSampleRate", shape.sampleRate) !=
-                            shape.sampleRate ||
-                        j.value("oldFormat", int(shape.format)) !=
-                            int(shape.format))
-                    {
-                        throw NeedsResidentHistory{};
-                    }
-                    if (oldFrames < 0 || end < start)
+                    const int oldChannels = j.at("oldChannelCount"),
+                              newChannels = j.at("targetChannelCount");
+                    if (oldFrames < 0 || start < 0 || end < start ||
+                        oldChannels < 0 || newChannels <= 0 ||
+                        oldChannels > 256 || newChannels > 256 ||
+                        (!oldChannels && oldFrames))
                     {
                         throw std::runtime_error(
-                            "Invalid legacy recording range");
+                            "Invalid legacy recording shape");
                     }
-                    if (redo && end > shape.frames)
-                    {
-                        auto silence = shape;
-                        silence.frames = end - shape.frames;
-                        replace(shape.frames, 0, Revision::silence(silence));
-                    }
-                    if (!redo && shape.frames > oldFrames)
-                    {
-                        replace(oldFrames, shape.frames - oldFrames, {});
-                    }
-                    auto source = one(j,
-                                      redo ? "recordedSamplesHandle"
-                                           : "overwrittenOldSamplesHandle",
-                                      shape);
+                    Shape target = shape;
+                    target.channels = redo ? newChannels : oldChannels;
+                    target.frames = redo ? std::max(oldFrames, end) : oldFrames;
+                    target.sampleRate =
+                        j.value(redo ? "newSampleRate" : "oldSampleRate",
+                                shape.sampleRate);
+                    target.format = SampleFormat(j.value(
+                        redo ? "newFormat" : "oldFormat", int(shape.format)));
+                    auto reshaped = s.audio->withShape(target);
+                    Transaction recording(*reshaped);
                     const auto count =
                         redo ? end - start
                              : std::max<int64_t>(0, std::min(end, oldFrames) -
                                                         start);
-                    if (count && source)
+                    if (count && target.channels)
                     {
-                        for (int c = 0; c < std::min(shape.channels,
-                                                     source->shape().channels);
-                             ++c)
+                        auto source = one(j,
+                                          redo ? "recordedSamplesHandle"
+                                               : "overwrittenOldSamplesHandle",
+                                          target);
+                        if (!source || source->shape().frames < count ||
+                            source->shape().channels < target.channels)
                         {
-                            tx.replaceChannel(c, start, count, source.get(), c);
+                            throw std::runtime_error(
+                                "Incomplete legacy recording payload");
+                        }
+                        for (int c = 0; c < target.channels; ++c)
+                        {
+                            recording.replaceChannel(c, start, count,
+                                                     source.get(), c);
                         }
                     }
-                    s.audio = tx.finish();
+                    s.audio = recording.finish();
                     selection(
-                        s, j.at(redo ? "hadNewSelection" : "hadOldSelection"),
-                        j.at(redo ? "newSelectionStart" : "oldSelectionStart"),
-                        j.at(redo ? "newSelectionEnd" : "oldSelectionEnd"));
-                    s.cursor = j.at(redo ? "newCursor" : "oldCursor");
+                        s,
+                        j.value(redo ? "hadNewSelection" : "hadOldSelection",
+                                false),
+                        j.value(redo ? "newSelectionStart"
+                                     : "oldSelectionStart",
+                                0.0),
+                        j.value(redo ? "newSelectionEnd" : "oldSelectionEnd",
+                                0.0));
+                    s.cursor =
+                        j.value(redo ? "newCursor" : "oldCursor", int64_t{0});
                 }
                 else
                 {
@@ -816,10 +832,6 @@ namespace cupuacu::persistence
                 build(manifest.value("redoEntries", Json::array()), cp->redo,
                       true);
             }
-            catch (const NeedsResidentHistory &)
-            {
-                return false;
-            }
             catch (const LongTaskCanceledError &)
             {
                 throw;
@@ -850,8 +862,13 @@ namespace cupuacu::persistence
                             }
                         });
                 };
-                copy(session.autosaveSnapshotPath,
-                     retained / "snapshot.cupuacu-autosave");
+                const auto original =
+                    session.autosaveSnapshotPath.empty()
+                        ? std::filesystem::path(session.currentFile)
+                        : session.autosaveSnapshotPath;
+                copy(original, retained / (session.autosaveSnapshotPath.empty()
+                                               ? "original-audio"
+                                               : "snapshot.cupuacu-autosave"));
                 if (std::filesystem::is_directory(state->undoStorePath))
                 {
                     for (const auto &file :
@@ -868,7 +885,7 @@ namespace cupuacu::persistence
                     }
                 }
                 std::ofstream(retained / "original-paths.txt")
-                    << session.autosaveSnapshotPath.string() << '\n'
+                    << original.string() << '\n'
                     << state->undoStorePath << '\n';
                 cp->undo.clear();
                 cp->redo.clear();

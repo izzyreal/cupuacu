@@ -10,6 +10,7 @@
 #include <mutex>
 #include <thread>
 #include <vector>
+#include <unordered_set>
 
 namespace cupuacu::storage { class DecodedBlockCache; }
 
@@ -31,7 +32,9 @@ namespace cupuacu::concurrency
             Priority priority = Priority::User;
             uint64_t scratchBytes = 0;
             uint64_t documentId = 0;
+            bool mutation = false;
             std::chrono::steady_clock::time_point deadline{};
+            std::function<void(std::exception_ptr)> admissionFailed;
         };
         struct Stats
         {
@@ -80,6 +83,7 @@ namespace cupuacu::concurrency
         uint64_t scratchBudget;
         std::shared_ptr<storage::DecodedBlockCache> memory;
         Stats counters;
+        std::unordered_set<uint64_t> mutatingDocuments;
         bool stopping = false;
         void run();
     };

@@ -1,3 +1,4 @@
+#include "TestRevisionCommands.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 #include "TestPaths.hpp"
@@ -95,6 +96,7 @@ TEST_CASE("Restored revision clipboard pastes into an empty tab by reference",
     Fixture source;
     source.select(17, 65541);
     actions::audio::performCopy(&source.state);
+    cupuacu::test::finishRevisionCommands(&source.state);
     const auto path = test::makeUniqueTestRoot("restored-paste") / "clipboard";
     REQUIRE(persistence::saveClipboardSnapshot(path, source.state.clipboard));
     test::StateWithTestPaths target{std::string_view{"empty-paste"}};
@@ -111,6 +113,7 @@ TEST_CASE("Restored revision clipboard pastes into an empty tab by reference",
     REQUIRE(store);
     const auto io = store->ioBytes();
     actions::audio::performPaste(&target);
+    cupuacu::test::finishRevisionCommands(&target);
     REQUIRE_FALSE(target.backgroundClipboardConversion);
     REQUIRE(session.hasReadRevision());
     REQUIRE(session.document.getFrameCount() == 65541);
@@ -167,6 +170,7 @@ TEST_CASE("Production reference commands share audio and restore editor state",
     session.cursor = 65560;
     const auto io = f.store->ioBytes();
     actions::audio::performCut(&f.state);
+    cupuacu::test::finishRevisionCommands(&f.state);
     REQUIRE(f.store->ioBytes() == io);
     REQUIRE(f.state.clipboard.getFrameCount() == 29);
     REQUIRE(f.state.clipboard.getAudioRevision());
@@ -190,6 +194,7 @@ TEST_CASE("Production reference commands share audio and restore editor state",
     f.state.undo();
     f.select(5, 3);
     actions::audio::performPaste(&f.state);
+    cupuacu::test::finishRevisionCommands(&f.state);
     auto pasted = session.getEditRevision();
     f.state.clipboard.clear();
     f.state.undo();
@@ -222,11 +227,13 @@ TEST_CASE("Random production splice commands agree with a flat sample model",
         {
             case 0:
                 actions::audio::performDelete(&f.state);
+                cupuacu::test::finishRevisionCommands(&f.state);
                 model.erase(model.begin() + start * 2,
                             model.begin() + (start + count) * 2);
                 break;
             case 1:
                 actions::audio::performInsertSilence(&f.state, 19);
+                cupuacu::test::finishRevisionCommands(&f.state);
                 model.erase(model.begin() + start * 2,
                             model.begin() + (start + count) * 2);
                 model.insert(model.begin() + start * 2, 38, 0.f);
@@ -234,6 +241,7 @@ TEST_CASE("Random production splice commands agree with a flat sample model",
             case 2:
                 f.state.clipboard.assignRevision(f.original);
                 actions::audio::performPaste(&f.state);
+                cupuacu::test::finishRevisionCommands(&f.state);
                 model.erase(model.begin() + start * 2,
                             model.begin() + (start + count) * 2);
                 model.insert(model.begin() + start * 2, f.samples.begin(),
@@ -243,6 +251,7 @@ TEST_CASE("Random production splice commands agree with a flat sample model",
                 f.state.getActiveViewState().selectedChannels =
                     SelectedChannels::LEFT;
                 effects::performMakeSilent(&f.state);
+                cupuacu::test::finishRevisionCommands(&f.state);
                 for (auto i = start; i < start + count; ++i)
                 {
                     model[i * 2] = 0;
@@ -265,6 +274,7 @@ TEST_CASE("Random production splice commands agree with a flat sample model",
     f.select(17, 201);
     const auto before = f.state.getActiveDocumentSession().getEditRevision();
     actions::audio::performTrim(&f.state);
+    cupuacu::test::finishRevisionCommands(&f.state);
     REQUIRE(f.read() ==
             std::vector<float>(model.begin() + 34, model.begin() + 436));
     f.state.undo();
@@ -277,6 +287,7 @@ TEST_CASE("Rejected revision commits retain redo and never change clipboard",
     Fixture f(100);
     f.select(3, 4);
     actions::audio::performCut(&f.state);
+    cupuacu::test::finishRevisionCommands(&f.state);
     f.state.undo();
     auto &session = f.state.getActiveDocumentSession();
     auto old = actions::audio::RevisionEditState::capture(session);
@@ -305,6 +316,7 @@ TEST_CASE("Reference clipboard retains owned sources after document closure",
         Fixture f(100);
         f.select(17, 13);
         actions::audio::performCopy(&f.state);
+        cupuacu::test::finishRevisionCommands(&f.state);
         clip = f.state.clipboard.getAudioRevision();
         path = f.store->path();
     }
@@ -657,6 +669,7 @@ TEST_CASE(
     f.select(17, 3);
     f.state.clipboard = incoming;
     actions::audio::performPaste(&f.state);
+    cupuacu::test::finishRevisionCommands(&f.state);
     REQUIRE(f.state.backgroundClipboardConversion);
     REQUIRE(f.state.getActiveUndoables().empty());
     f.state.clipboard.clear(); // Accepted paste retains its submitted contents.
@@ -670,6 +683,7 @@ TEST_CASE(
         std::this_thread::yield();
     }
     REQUIRE_FALSE(f.state.backgroundClipboardConversion);
+    cupuacu::test::finishRevisionCommands(&f.state);
     REQUIRE(f.state.getActiveUndoables().size() == 1);
     REQUIRE(session.document.getFrameCount() == 1002);
     REQUIRE(f.state.clipboard.getRevision() == clipboardVersion);
@@ -689,6 +703,31 @@ TEST_CASE(
 
 #include "gui/SamplePoint.hpp"
 #include "gui/Waveform.hpp"
+
+TEST_CASE("Effect admission failure completes without changing its revision",
+          "[working-memory]")
+{
+    Fixture f(1000);
+    auto memory = std::make_shared<storage::DecodedBlockCache>(1024 * 1024);
+    auto retained =
+        memory->tryReserveWorking(800 * 1024, storage::MemoryUse::Peaks);
+    auto scheduler =
+        std::make_shared<concurrency::TaskScheduler>(1, 8, 1024 * 1024, memory);
+    actions::effects::BackgroundEffectRequest request;
+    request.kind = actions::effects::BackgroundEffectKind::Reverse;
+    request.frameCount = 1000;
+    request.targetChannels = {0, 1};
+    auto &session = f.state.getActiveDocumentSession();
+    actions::effects::BackgroundEffectJob job(
+        1, request, session.document, {}, nullptr, f.original,
+        test::makeUniqueTestRoot("admission-effect") / "working");
+    job.start(scheduler);
+    REQUIRE(job.waitForCompletion(std::chrono::seconds(2)));
+    CHECK_FALSE(job.snapshot().success);
+    CHECK_FALSE(job.snapshot().error.empty());
+    CHECK(session.getEditRevision() == f.original);
+    CHECK_FALSE(job.takeResult());
+}
 
 TEST_CASE(
     "A sample point consumes published values and survives refresh during "
@@ -717,6 +756,7 @@ TEST_CASE(
     REQUIRE(waveform.getChildren().size() == 1);
     REQUIRE(
         point->mouseUp({gui::UP, 0, 0, 0, 0, 0, 0, {false, false, false}, 1}));
+    cupuacu::test::finishRevisionCommands(&f.state);
     REQUIRE(f.state.getActiveUndoables().size() == 1);
     REQUIRE(f.store->ioBytes() == io);
     f.state.undo();
@@ -740,4 +780,84 @@ TEST_CASE(
     REQUIRE(*hovered == f.samples[84]);
     waveform.clearHighlight();
     f.state.waveforms.clear();
+}
+
+TEST_CASE("Accepted structural edits prepare away from the publishing thread",
+          "[revision-commands]")
+{
+    Fixture f(1000);
+    f.select(100, 200);
+    const auto before = f.state.getActiveDocumentSession().getEditRevision();
+    const auto accesses = storage::EditTree::threadAccesses;
+    actions::audio::performCut(&f.state);
+    REQUIRE(f.state.getActiveDocumentSession().getEditRevision() == before);
+    REQUIRE(f.state.getActiveTab()->operation);
+    cupuacu::test::finishRevisionCommands(&f.state);
+    CHECK(storage::EditTree::threadAccesses == accesses);
+    CHECK(f.state.getActiveDocumentSession().document.getFrameCount() == 800);
+    CHECK(f.state.clipboard.getFrameCount() == 200);
+    f.state.undo();
+    CHECK(f.state.getActiveDocumentSession().getEditRevision() == before);
+    CHECK(storage::EditTree::threadAccesses == accesses);
+}
+
+TEST_CASE("Canceled structural edits do not change audio history or clipboard",
+          "[revision-commands]")
+{
+    Fixture f(1000);
+    f.select(100, 200);
+    actions::audio::performCut(&f.state);
+    f.state.getActiveTab()->operation->cancelRequested = true;
+    cupuacu::test::finishRevisionCommands(&f.state);
+    CHECK(f.state.getActiveDocumentSession().getEditRevision() == f.original);
+    CHECK(f.state.getActiveUndoables().empty());
+    CHECK(f.state.clipboard.getFrameCount() == 0);
+}
+
+TEST_CASE("Clipboard preparation remains attached to its tab across navigation",
+          "[revision-ui]")
+{
+    Fixture f(1000);
+    auto &state = f.state;
+    state.taskScheduler = std::make_shared<concurrency::TaskScheduler>(1, 8);
+    ClipboardAudio clip;
+    clip.initialize(SampleFormat::FLOAT32, 48000, 2, 5);
+    for (int c = 0; c < 2; ++c)
+    {
+        for (int i = 0; i < 5; ++i)
+        {
+            clip.setSample(c, i, .5f);
+        }
+    }
+    state.clipboard = std::move(clip);
+    std::promise<void> release;
+    auto gate = release.get_future().share();
+    auto blocker = state.taskScheduler->submit(
+        [gate]
+        {
+            gate.wait();
+        },
+        {});
+    actions::audio::beginClipboardPaste(&state, 17, -1);
+    const bool hasOperation = state.tabs[0].operation.has_value();
+    const bool globalBlock = state.longTask.active;
+    state.tabs.emplace_back();
+    state.activeTabIndex = 1;
+    release.set_value();
+    REQUIRE(hasOperation);
+    REQUIRE_FALSE(globalBlock);
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (state.backgroundClipboardConversion &&
+           std::chrono::steady_clock::now() < deadline)
+    {
+        actions::audio::processPendingClipboardPaste(&state);
+        std::this_thread::yield();
+    }
+    REQUIRE_FALSE(state.backgroundClipboardConversion);
+    test::finishRevisionCommands(&state);
+    REQUIRE(state.tabs[0].session.document.getFrameCount() == 1005);
+    REQUIRE(state.tabs[0].undoables.size() == 1);
+    REQUIRE(state.tabs[1].session.document.getFrameCount() == 0);
+    REQUIRE(state.activeTabIndex == 1);
 }

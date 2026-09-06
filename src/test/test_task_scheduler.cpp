@@ -108,3 +108,80 @@ TEST_CASE("Completed unpublished jobs retain bounded admission slots",
     auto survivor = scheduler.submit([] {}, {});
     CHECK_NOTHROW(survivor.get());
 }
+
+#include "concurrency/ScheduledLatestValue.hpp"
+TEST_CASE("Mutations serialize per document while other documents run",
+          "[scheduler]")
+{
+    TaskScheduler scheduler(2, 8);
+    Gate gate;
+    std::latch started(1);
+    auto first = scheduler.submit(
+        [&]
+        {
+            started.count_down();
+            gate.ready.wait();
+        },
+        {.documentId = 7, .mutation = true});
+    started.wait();
+    std::atomic_bool secondRan{false};
+    auto second = scheduler.submit(
+        [&]
+        {
+            secondRan = true;
+        },
+        {.documentId = 7, .mutation = true});
+    auto other = scheduler.submit([] {}, {.documentId = 8, .mutation = true});
+    other.get();
+    CHECK_FALSE(secondRan.load());
+    gate.release();
+    second.get();
+    CHECK(secondRan.load());
+}
+TEST_CASE(
+    "Scheduled analysis coalesces queued work and never publishes after close",
+    "[scheduler]")
+{
+    auto scheduler = std::make_shared<TaskScheduler>(1, 8);
+    Gate gate;
+    std::latch started(1);
+    auto block = scheduler->submit(
+        [&]
+        {
+            started.count_down();
+            gate.ready.wait();
+        },
+        {});
+    started.wait();
+    using Worker = cupuacu::concurrency::ScheduledLatestValue<int, int>;
+    std::atomic<int> calls{0};
+    Worker worker(
+        [&](int value, const auto &) -> std::optional<int>
+        {
+            ++calls;
+            return value;
+        },
+        scheduler);
+    for (int i = 0; i < 100; ++i)
+    {
+        worker.submit(i);
+    }
+    CHECK(scheduler->stats().queued == 1);
+    gate.release();
+    std::optional<Worker::Result> result;
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (!(result = worker.takePublished()) &&
+           std::chrono::steady_clock::now() < deadline)
+    {
+        std::this_thread::yield();
+    }
+    REQUIRE(result);
+    REQUIRE(result->value);
+    CHECK(*result->value == 99);
+    CHECK(calls == 1);
+    worker.submit(100);
+    worker.close();
+    worker.waitUntilClosed();
+    CHECK_FALSE(worker.takePublished());
+}

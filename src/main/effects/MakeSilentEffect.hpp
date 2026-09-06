@@ -319,21 +319,22 @@ namespace cupuacu::effects
 
         if (state->getActiveDocumentSession().hasReadRevision())
         {
-            auto before = actions::audio::RevisionEditState::capture(
-                state->getActiveDocumentSession());
-            auto after = before;
-            storage::AudioEditTransaction edit(*before.audio);
-            for (auto channel : getTargetChannels(state))
-            {
-                edit.replaceChannel(int(channel),
-                                    before.selection.getStartInt(),
-                                    before.selection.getLengthInt());
-            }
-            after.audio = edit.finish();
-            state->addAndDoUndoable(
-                std::make_shared<actions::audio::RevisionEdit>(
-                    state, state->activeTabIndex, "Make silent",
-                    std::move(before), std::move(after)));
+            auto channels = getTargetChannels(state);
+            actions::audio::prepareRevisionEdit(
+                state, "Make silent",
+                [channels](const auto &before)
+                {
+                    auto after = before;
+                    storage::AudioEditTransaction edit(*before.audio);
+                    for (auto channel : channels)
+                    {
+                        edit.replaceChannel(int(channel),
+                                            before.selection.getStartInt(),
+                                            before.selection.getLengthInt());
+                    }
+                    after.audio = edit.finish();
+                    return after;
+                });
             return;
         }
         state->addAndDoUndoable(std::make_shared<MakeSilentUndoable>(state));

@@ -1,3 +1,6 @@
+#include <future>
+#include <thread>
+#include "storage/WorkingMap.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include "storage/AudioEditRevision.hpp"
 #include "TestPaths.hpp"
@@ -467,4 +470,106 @@ TEST_CASE("Concurrent summary preparation safely publishes immutable results",
     }
     REQUIRE(first.get());
     REQUIRE(second.get());
+}
+
+TEST_CASE(
+    "Paged edit nodes bound residency and reclaim unrelated source leaves",
+    "[audio-edit-tree][edit-node-paging]")
+{
+    auto first = makeSource(4096), second = makeSource(4096);
+    const auto secondPath = second->blockStore()->path();
+    auto current = AudioEditRevision::from(first);
+    std::vector<std::shared_ptr<const AudioEditRevision>> history;
+    for (int i = 0; i < 1000; ++i)
+    {
+        AudioEditTransaction edit(*current);
+        edit.replaceChannel(0, (i * 17) % 4096, 1, nullptr, 0, 0, float(i));
+        current = edit.finish();
+        history.push_back(current);
+    }
+    const auto stats = current->indexStats();
+    CHECK(stats.liveNodes > 1000);
+    CHECK(stats.residentBytes <= 128 * 1024);
+    CHECK(current->indexHeight() < 32);
+    auto unrelated = AudioEditRevision::from(second);
+    {
+        AudioEditTransaction edit(*current);
+        edit.replace(0, 0, *unrelated);
+        auto combined = edit.finish();
+        AudioEditTransaction cut(*combined);
+        cut.trim(4096, 4096);
+        current = cut.finish();
+    }
+    unrelated.reset();
+    second.reset();
+    CHECK_FALSE(std::filesystem::exists(secondPath));
+    const auto beforeRelease = current->indexStats().liveNodes;
+    history.clear();
+    CHECK(current->indexStats().liveNodes < beforeRelease);
+    std::array<float, 1> sample;
+    current->readChannel(0, (999 * 17) % 4096, sample);
+    CHECK(sample[0] == 999);
+}
+
+TEST_CASE("Working identity maps preserve random and updated keys across pages",
+          "[edit-node-paging]")
+{
+    cupuacu::storage::WorkingMap<uint64_t> map;
+    for (uint64_t i = 0; i < 10000; ++i)
+    {
+        map.set(i * 17 % 10000, i);
+    }
+    for (uint64_t i = 0; i < 10000; ++i)
+    {
+        REQUIRE(map.find(i * 17 % 10000) == i);
+    }
+    map.set(9999, 42);
+    CHECK(map.find(9999) == 42);
+    CHECK_FALSE(map.find(10000));
+    CHECK(map.stats().residentBytes <= 16384);
+    map.clear();
+    CHECK_FALSE(map.find(9999));
+}
+
+TEST_CASE("History reclamation can run alongside another revision reader",
+          "[edit-node-paging]")
+{
+    auto current =
+        AudioEditRevision::silence({8192, 2, 48000, SampleFormat::FLOAT32});
+    std::vector<std::shared_ptr<const AudioEditRevision>> history;
+    for (int i = 0; i < 400; ++i)
+    {
+        AudioEditTransaction edit(*current);
+        edit.replaceChannel(1, i * 17 % 8192, 1, nullptr, 0, 0, float(i));
+        current = edit.finish();
+        history.push_back(current);
+    }
+    std::atomic_bool stop = false, ready = false, valid = true;
+    auto reader =
+        std::async(std::launch::async,
+                   [&]
+                   {
+                       std::array<float, 64> samples;
+                       while (!stop.load())
+                       {
+                           current->readChannel(0, 0, samples);
+                           if (!std::all_of(samples.begin(), samples.end(),
+                                            [](float f)
+                                            {
+                                                return f == 0;
+                                            }))
+                           {
+                               valid = false;
+                           }
+                           ready = true;
+                       }
+                   });
+    while (!ready.load())
+    {
+        std::this_thread::yield();
+    }
+    history.clear();
+    stop = true;
+    reader.get();
+    CHECK(valid.load());
 }

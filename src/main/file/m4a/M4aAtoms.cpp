@@ -280,7 +280,9 @@ namespace cupuacu::file::m4a
         return fullAtom("stsc", 0, 0, payload);
     }
 
-    Bytes sampleSizeAtom(const std::vector<std::uint32_t> &packetSizes)
+    Bytes
+    sampleSizeAtom(const storage::WorkingVector<
+                   std::uint32_t, storage::MemoryUse::Container> &packetSizes)
     {
         if (packetSizes.empty())
         {
@@ -297,7 +299,9 @@ namespace cupuacu::file::m4a
         return fullAtom("stsz", 0, 0, payload);
     }
 
-    Bytes chunkOffsetAtom(const std::vector<std::uint32_t> &chunkOffsets)
+    Bytes
+    chunkOffsetAtom(const storage::WorkingVector<
+                    std::uint32_t, storage::MemoryUse::Container> &chunkOffsets)
     {
         if (chunkOffsets.empty())
         {
@@ -313,7 +317,9 @@ namespace cupuacu::file::m4a
         return fullAtom("stco", 0, 0, payload);
     }
 
-    Bytes wideChunkOffsetAtom(const std::vector<std::uint64_t> &offsets)
+    Bytes wideChunkOffsetAtom(
+        const storage::WorkingVector<std::uint64_t,
+                                     storage::MemoryUse::Container> &offsets)
     {
         if (std::all_of(offsets.begin(), offsets.end(),
                         [](auto value)
@@ -323,7 +329,9 @@ namespace cupuacu::file::m4a
                         }))
         {
             return chunkOffsetAtom(
-                std::vector<std::uint32_t>(offsets.begin(), offsets.end()));
+                storage::WorkingVector<std::uint32_t,
+                                       storage::MemoryUse::Container>(
+                    offsets.begin(), offsets.end()));
         }
         Bytes payload;
         appendBe32(payload, static_cast<std::uint32_t>(offsets.size()));
@@ -576,7 +584,8 @@ namespace cupuacu::file::m4a
     }
 
     Bytes explicitTimeToSampleAtom(
-        const std::vector<std::uint32_t> &sampleDurations)
+        const storage::WorkingVector<
+            std::uint32_t, storage::MemoryUse::Container> &sampleDurations)
     {
         if (sampleDurations.empty())
         {
@@ -609,10 +618,13 @@ namespace cupuacu::file::m4a
              sampleToChunkAtom(
                  static_cast<std::uint32_t>(description.packetSizes.size())),
              sampleSizeAtom(description.packetSizes),
-             wideChunkOffsetAtom(description.packetSizes.empty()
-                                     ? std::vector<std::uint64_t>{}
-                                     : std::vector<std::uint64_t>{
-                                           description.mdatPayloadOffset})});
+             wideChunkOffsetAtom(
+                 description.packetSizes.empty()
+                     ? storage::WorkingVector<std::uint64_t,
+                                              storage::MemoryUse::Container>{}
+                     : storage::WorkingVector<std::uint64_t,
+                                              storage::MemoryUse::Container>{
+                           description.mdatPayloadOffset})});
     }
 
     Bytes mediaInformationAtom(const AlacMovieDescription &description)
@@ -653,8 +665,10 @@ namespace cupuacu::file::m4a
              sampleSizeAtom(description.chapterSampleSizes),
              wideChunkOffsetAtom(
                  description.chapterSampleSizes.empty()
-                     ? std::vector<std::uint64_t>{}
-                     : std::vector<std::uint64_t>{
+                     ? storage::WorkingVector<std::uint64_t,
+                                              storage::MemoryUse::Container>{}
+                     : storage::WorkingVector<std::uint64_t,
+                                              storage::MemoryUse::Container>{
                            description.chapterMdatPayloadOffset})});
     }
 
@@ -802,8 +816,10 @@ namespace cupuacu::file::m4a
         const auto chapterSamples =
             buildChapterSamples(markers, packets.frameCount);
         Bytes mdatPayload = packets.bytes;
-        std::vector<std::uint32_t> chapterSampleSizes;
-        std::vector<std::uint32_t> chapterSampleDurations;
+        storage::WorkingVector<std::uint32_t, storage::MemoryUse::Container>
+            chapterSampleSizes;
+        storage::WorkingVector<std::uint32_t, storage::MemoryUse::Container>
+            chapterSampleDurations;
         std::uint64_t chapterStartOffset = 0;
         std::uint64_t chapterMediaDuration = 0;
         chapterSampleSizes.reserve(chapterSamples.size());

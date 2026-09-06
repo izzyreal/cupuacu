@@ -867,3 +867,306 @@ no full suite, Linux build or automated GUI integration run.
 
 Reports: `dist/benchmarks/index-paging.json`, `index-open-{before,after}.json`,
 `index-recovery-{before,after}.json`, and `index-edit-{before,after}.json`.
+
+
+## Shared working-buffer admission (2026-09-06)
+
+The preceding source-index/provenance slice is committed as `784b5bc`.
+This slice extends the default application memory ledger beyond cached samples,
+paged peak entries and scheduler scratch. It now admits source-index buffers,
+revision staging, active/retained peak summaries, import staging, viewport/hover
+results, transport queues, clipboard-conversion scratch and revision-writer
+buffers. Categories expose current working bytes and refused reservations.
+Cached entries yield before covered buffers are allocated; retained results keep
+their reservations until their buffers are freed.
+
+Index access falls back to scalar disk I/O when a page cannot be admitted.
+Mandatory allocations fail the uncommitted operation rather than waiting while
+holding other reservations. In particular, effect scratch refusal now reports
+completion/error to the coordinator, and recording admission errors are handled
+before capture starts. Pressure preserves existing reservations while reducing
+the target for new working allocations.
+
+This closes accounting for those concrete buffers, **not the entire memory
+milestone**. Edit/history trees and archive identity maps remain resident;
+paging cold edit paths still depends on worker-owned edit preparation. Allocator
+and container bookkeeping, codec/DSP internals, some container parsing/assembly
+temporaries, SDL textures and remaining legacy full-buffer paths are outside
+complete admission. Priority-based transport memory admission is also outstanding.
+Memory mapping remains excluded by agreement. These are explicit dependencies
+for the remaining scheduler/metadata and legacy work, not a claim of five-stage
+closure or a hard process-RSS cap.
+
+### Measurements
+
+Native Release, macOS arm64; three fresh child processes per size/case, with no
+compilation concurrent with measurement. Filesystem caching was uncontrolled.
+The new `working_memory` case uses the **default production resource** configured
+to 8 MiB. It imports synthetic stereo float data through revision/peak builders,
+then retains sixteen fine/raw-peak viewport results. Size labels describe logical
+decoded audio, not compressed input size.
+
+| Audio | Import | Sixteen views | Peak managed | Process peak RSS |
+| --- | ---: | ---: | ---: | ---: |
+| 1 MiB | 1.90 ms | 1.89 ms | 1.30 MiB | 4.77 MiB |
+| 16 MiB | 29.20 ms | 4.22 ms | 7.87 MiB | 11.36 MiB |
+| 256 MiB | 439.75 ms | 14.90 ms | 7.89 MiB | 11.78 MiB |
+
+All nine runs stayed below the 8 MiB managed ceiling and returned working
+reservations to zero after owner destruction. The viewport time is a batch of
+worker computations, not UI frame latency. These runs do not simulate concurrent
+transport or prove bounds for excluded allocations.
+
+Matched production checks against the executable saved before this slice:
+
+| Scenario | Before | After |
+| --- | ---: | ---: |
+| 1 MiB WAV import | 2.725 ms | 2.706 ms |
+| 256 MiB WAV import | 443.800 ms | 434.197 ms |
+| 1 MiB ALAC first editable | 9.590 ms | 9.579 ms |
+| 256 MiB ALAC first editable | 1472.607 ms | 1488.488 ms |
+| 1 MiB ALAC cached reopen | 2.518 ms | 2.533 ms |
+| 256 MiB ALAC cached reopen | 34.413 ms | 33.451 ms |
+
+ALAC first-import cache completion changes from 1515.607 to 1534.941 ms at
+256 MiB (+1.3%); first-editable time increases 15.88 ms (+1.1%). Retain these
+measured increases rather than claiming accounting accelerates decoding. Small
+imports are essentially unchanged. The saved reference executable's embedded
+build stamp predates its source checkpoint, as in earlier benchmark comparisons.
+
+The isolated cache scan changes from 0.343 to 0.406 ms at 1 MiB and from
+54.815 to 55.125 ms at 256 MiB. Ten thousand warm reads change from 0.131 to
+0.151 ms and from 0.122 to 0.127 ms respectively. These are measured increases,
+including a noticeable percentage on the smallest scan but only 63 microseconds
+absolute; they do not indicate a material large-workload regression.
+
+Focused validation passed in two batches: 39 resource/index/viewport/recording
+cases, followed after final changes by 28 admission/peak/playback/save/import-cache
+cases (overlapping coverage). Checks include concurrent admission, pressure,
+reservation ownership, zero-budget scalar indexes, effect admission failure,
+queued viewport release, recording and playback correctness, and preserved saves.
+The final guaranteed staging-buffer release change passed the 14 admission and
+recording cases again; the mixed-budget benchmark was also rerun afterward.
+Native app, tests and benchmark targets build successfully. No full suite,
+Linux build or automated GUI integration run.
+
+Reports: `dist/benchmarks/working-memory.json`, `working-open-{before,after}.json`,
+`working-alac-{before,after}.json`, and `working-cache-{before,after}.json`.
+
+
+## Four agreed slices — current status
+
+1. **Index and metadata bounds: finished.** Completion evidence below.
+2. **Shared memory accounting and admission: finished.** Completion evidence below.
+3. **Scheduler consolidation: finished.** Completion evidence below.
+4. **Legacy compatibility completion: finished.** Completion evidence below.
+
+These statuses supersede the historical checkpoint descriptions above.
+
+### Slice 1 completion: paged edit trees and worker preparation
+
+Edit-tree nodes, child links, reference counts and prepared waveform summaries
+now live in a reusable anonymous record store. In-memory roots retain handles,
+not recursively resident nodes. A bounded 512-record cache plus read/write pages
+uses 111,616 bytes in the measured native build, independent of node/history count.
+The cache and live root/source handles use shared memory admission. Root admission
+may refuse new work; existing history is never evicted to admit it.
+
+Disk reference counts preserve shared subtrees and release unrelated source
+leaves even when a clipboard remains alive. Reclamation releases the tree mutex
+between nodes and unlinks sources outside it. An index-write failure disables
+reclamation based on uncertain reference counts until the arena retires; it does
+not publish the failed edit. This working format is process-local; persistent
+archive versions are unchanged.
+
+Archive root/node/source identity indexes, restored-node references and traversal
+visited sets use a paged AVL map. Canonical live object handles are admitted and
+expired weak handles are pruned. Store watermarks and retention-name bookkeeping
+also have admission. Recovered roots continue to share canonical identities.
+
+Cut/copy/paste/delete/trim/silence and marker-split preparation now run on workers.
+Publication checks operation and revision identity; canceled/closed targets receive
+nothing. Sample-point drags preview locally and submit one prepared history entry
+on release. Undo/redo only switch references. Binding a revision uses its cached
+preservation-source metadata instead of traversing the tree on the UI thread.
+
+The metadata benchmark keeps a fixed one-million-frame synthetic document and
+scales distinct edits/history entries (32 edits per size-label MiB). Its size labels
+are not physical audio file sizes. Native Release, macOS arm64, three fresh child
+processes per case; OS file caching is uncontrolled:
+
+| Retained edits | Live nodes | Node buffers | Edit batch | Warm 1,024-pixel overview |
+| --- | ---: | ---: | ---: | ---: |
+| 32 | 313 | 109 KiB | 1.762 ms | 1.011 ms |
+| 512 | 8,820 | 109 KiB | 63.055 ms | 3.181 ms |
+| 8,192 | 210,625 | 109 KiB | 1,822.694 ms | 12.429 ms |
+
+Initial paging without a decoded-node cache took 134 ms for the large warm
+overview. That implementation was rejected; bounded caching and cached child
+metadata brought it below the 16.7 ms reference frame budget. This is a worker
+query measurement, not a full GUI-render/event-latency measurement. Live revision
+handles remain admitted separately; 109 KiB is not total process memory.
+
+Validation: 39 focused cases passed across tree edits, archive persistence,
+production commands, viewport/clipboard behavior and activation. After final cache
+changes, 32 affected tree/map/persistence/command cases passed again. Reclamation
+alongside a reader, source release, canceled publication and zero UI-thread tree
+access during cut/undo have explicit checks. Native app/tests/benchmark builds
+passed; no full suite, Linux build or automated GUI integration run.
+
+Reports: `edit-metadata-final.json`, `edit-metadata-navigation.json`,
+`edit-metadata-cache512.json`, and `tree-command-{before,after,final}.json`
+under `dist/benchmarks/`.
+
+The matched command benchmark measures deletion at 0.0104 ms (1 MiB) and
+0.0106 ms (256 MiB), versus 0.0020/0.0018 ms before paging and worker publication.
+Undo/redo remain about 0.0003 ms with zero sample I/O. The extra 8–9 microseconds
+buys bounded metadata and removes cold tree access from UI-side preparation.
+
+### Slice 2 completion: shared admission and transport headroom
+
+Allocation-owned reservations now cover M4A container bytes and packet tables,
+ALAC application staging, retained effect silence runs, and revision-history marker
+arrays. Vector growth admits both overlapping allocations; refused growth leaves
+existing data intact. Recording builds summaries through the admitted streaming
+source constructor. Existing sample/peak caches, source indexes, import scratch,
+viewport publications, playback/recording queues and persistence staging share the
+same application ledger. The default pool protects up to 16 MiB (at most a quarter
+of its pressure-adjusted budget) for transport; caches may borrow and relinquish
+that space. Existing reservations survive pressure; new work can fail cleanly.
+
+This is a managed audio working budget, not an RSS ceiling. SDL/GPU resources,
+third-party codec internals, allocator overhead and general UI/JSON/string objects
+are not a claim of completely instrumented process memory. M4A packet tables are
+admitted resident buffers: files whose container metadata exceeds the budget are
+rejected, not silently allocated outside it. Recording queue headroom does not
+promise unlimited simultaneous transports or writes under exhausted storage.
+
+The expanded `working_memory` scenario imports stereo audio, retains sixteen
+waveform results, performs a short effect, plays samples and records a chunk while
+those results remain alive. At 1/16/256 MiB logical audio, peak managed bytes are
+2,960,608 / 8,340,024 / 8,361,184 under an 8,388,608-byte budget. Retained transport
+queues use 1,401,000 bytes at every size; all working reservations return to zero.
+This expanded workload is not timing-comparable to the older import/views-only case.
+
+ALAC 256 MiB first-editable time is 1,473.014 ms versus the earlier admitted-buffer
+checkpoint's 1,488.488 ms; cached reopen is 34.179 versus 33.451 ms. Small-file
+first edit is 9.571 versus 9.579 ms. Matched ALAC export against the saved pre-container
+admission executable is 10.030 versus 9.962 ms at 1 MiB and 2,498.191 versus
+2,497.580 ms at 256 MiB. No material export/decoding regression is measured.
+Three isolated repetitions, native Release; OS cache uncontrolled.
+
+Validation: 56 focused admission/effect/save/M4A cases and eight recording cases
+pass. Explicit checks cover overlapping growth, move/copy lifetime, allocation
+refusal, pressure and transport priority. Native app/test/benchmark builds pass.
+Reports: `working-memory-combined.json`, `admission-alac-final.json`, and
+`admission-export-{before,final}.json` under `dist/benchmarks/`.
+
+### Slice 3 completion: consolidated bulk services and asynchronous restore
+
+Application states, clipboard conversion, peak analysis, clipboard autosave and
+legacy cache building now use the shared bulk scheduler. Transport, viewport and
+memory-pressure services retain independent capacity. Mutation options serialize
+jobs with the same document ID; unrelated documents remain eligible. Replaceable
+analysis/conversion requests retain one pending request and one publication,
+supersede stale results, and close without joining. Accepted edits are not superseded.
+Clipboard autosave relinquishes its slot between writes and receives a five-second
+queue deadline. Completed unpublished work retains admission; exhaustion is reported.
+
+Application startup queues clipboard restoration and document opens, including
+autosave snapshots. The normal event loop publishes them. Document import and
+clipboard preparation use document operations rather than a global interaction
+lock. Clipboard results retain their accepted target across tab navigation. Startup
+persistence cannot replace the original session list while restoration is pending;
+a newer clipboard is never overwritten by late restoration. Untitled restored
+revisions are preserved at startup finalization. The explicitly synchronous restore
+utility remains for headless callers; the application startup always selects async.
+Legacy history conversion for file-backed startup also occurs on its open worker.
+Shape-changing legacy history compatibility is completed in slice 4.
+
+Legacy marker splitting prepares on the shared queue; its input adapter remains
+until compatibility closure. Cache-build cancellation releases ownership through
+the reclaimer instead of joining on the UI thread. Explicit process-shutdown drain
+helpers remain; ordinary close/cancel/publication does not use them.
+
+Focused validation passes: 21 scheduling/publication/UI cases, 35 autosave and
+large-workflow cases, the six revision-UI cases after the cross-tab paste addition,
+and nine scheduler/startup/activation cases after the final publication change.
+Restored-peak checks now compare the production revision queries, rather than
+expecting an obsolete resident cache to be filled.
+
+The updated busy-worker benchmark queues an actual worker-prepared edit while
+both bulk slots are occupied (the previous version called the old point-command
+helper directly). At 1/256 MiB, edit submission is 0.0031/0.0028 ms; effect submission
+is 0.250/0.255 ms. Both edits subsequently commit correctly. ALAC first-editable
+1/256 MiB measures 9.492/1,486.633 ms; cached reopen 2.494/35.531 ms, within the
+recent native runs' range. Reports: `scheduler-busy-final.json` and
+`scheduler-alac-final.json`, three isolated repetitions each.
+
+### Slice 4 completion: legacy recording and streaming archive compatibility
+
+Legacy recording histories now reconstruct revisions with the recorded before/after
+channel count, frame count, format and rate. Common channels share their existing
+audio; added channels/frames use synthetic silence. Undo to an unconfigured tab
+retains an empty revision, survives another restart, and supports redo or a new
+paste. Shape-changing commits refresh channel presentation and invalidate overwrite
+preservation eligibility as appropriate. Startup no longer materializes a resident
+recording to keep these histories readable. Legacy cube payloads also convert one
+matrix at a time with admitted sample and reference buffers.
+
+Large monolithic CBOR records validate their checksum with bounded reads. Large
+arrays retain byte extents in the immutable committed index; visitors decode one
+row at a time into the paged working indexes. A subsequent successful checkpoint
+rewrites legacy metadata into the current paged format. Old committed bytes remain
+readable on cancellation or publication failure. Unsupported history retains its
+original snapshot/source and undo payloads with the existing explicit warning.
+Normal application opens, new documents, restored documents and clipboard paths
+use revisions; resident helpers remain for explicit headless adapters/tests, not
+as a selected fallback for large files or shape-changing recovery. Empty initial
+tabs contain no resident sample payload.
+
+The first temporary-spool implementation used 1,526 ms versus the resident parser's
+772 ms on the large metadata case. It was rejected. Referencing committed byte
+extents avoids rebuilding an intermediate CBOR representation and yields:
+
+| Metadata rows | Encoded bytes | Resident parse/visit | Streaming parse/visit | Resident peak RSS | Streaming peak RSS |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 8,192 | 81,363 | 5.029 ms | 3.039 ms | 5.5 MiB | 2.6 MiB |
+| 131,072 | 1,572,309 | 47.720 ms | 37.556 ms | 47.0 MiB | 2.8 MiB |
+| 2,097,152 | 29,097,429 | 754.038 ms | 576.323 ms | 709.7 MiB | 2.8 MiB |
+
+Streaming staging uses 2 MiB at each size and releases all its reservations. The
+large case is 23.6% faster. This isolates the production metadata reader against
+the former DOM approach; audio import and archive checksum verification are not
+included. Size labels scale row count, not audio duration. Fixtures are generated
+without a large setup DOM so RSS is meaningful. Production retains its existing
+small-record path below 256 KiB. Three isolated native Release repetitions; OS
+cache uncontrolled. Report: `legacy-metadata-extents.json`; the rejected spool
+measurements remain in `legacy-metadata-final.json` for transparency.
+
+Focused validation: 38 legacy/index/persistence/recording cases pass, including
+channel expansion in both history directions, unconfigured undo/restart/paste,
+large provenance records, canceled migration and failed durable publication.
+
+### Final verification of the four agreed slices
+
+All four slices are complete. Native app, test and benchmark targets build.
+The final full native suite ran 690 cases (over 5.1 million assertions): 689 passed;
+one menu test still expected synchronous marker splitting. After updating that
+test to await the accepted operation's publication, its focused rerun passed all
+ten assertions. Production code did not change for that correction. No Linux
+build or automated GUI integration run was used.
+
+The final `large_file_workflow` benchmark passes all 18 runs: WAV, FLAC and ALAC,
+1/256 MiB, three fresh child processes each. Local edits perform zero sample I/O.
+Across formats at 256 MiB, cut/paste/delete complete in 0.034–0.065 ms; undo/redo
+in 0.026–0.045 ms. Warm viewport p99 worker queries are 0.246–0.249 ms and the
+largest cold query is 0.536 ms. These are benchmark-driver/query timings, not a
+claim of measured native GUI frame latency. ALAC first editable is 1,462.946 ms.
+The separately measured cached ALAC reopen is 35.531 ms; workflow reopen instead
+loads its newly saved output and measures a different operation. Report:
+`four-slices-workflow.json` under `dist/benchmarks/`.
+
+The shared-budget and transport limits documented in slice 2 still apply. Memory
+mapping remains excluded as agreed. The next user-facing step is manual verification
+of this completed checkpoint, not another implementation milestone.

@@ -806,6 +806,29 @@ regression check. See `PERFORMANCE-MILESTONE.md` for measured results and remain
 unbudgeted resource categories.
 
 
+### Working-buffer admission
+
+`working_memory` configures the default production memory resource to 8 MiB,
+imports synthetic stereo audio through the revision and progressive-peak builders,
+then retains sixteen fine and raw-peak viewport results. It measures import and
+viewport time, aggregate managed peak, retained category bytes, and final released
+working bytes. Every run checks result availability, the 8 MiB managed ceiling and
+zero working reservations after the owners are destroyed.
+
+```sh
+python3 scripts/run-benchmarks.py --profile extended --suite core --mode timing \
+  --filter working_memory --sizes-mib 1 16 256 --repetitions 3 \
+  --output dist/benchmarks/working-memory.json
+```
+
+Size labels describe logical decoded float audio; this case does not decode an
+input container. It includes sample/peak cache entries, index buffers, staging,
+peak scratch and retained viewport outputs using the same default resource.
+It does not exercise transport or all application allocations. RSS includes
+runtime/setup and may exceed the managed budget. Filesystem caching is uncontrolled.
+Use matched `open_owned` and ALAC `open_decoded_cached` runs for production import
+regressions, and `audio_memory` for the existing isolated cache-cost check.
+
 ### Detailed peak paging
 
 `peak_resident` and `peak_paged` create equivalent synthetic stereo summaries
@@ -904,3 +927,40 @@ Record buffers exclude allocator/file-object overhead and are bounded per
 index, not across all sources. Distinct edit/history nodes and archive identity
 maps remain resident; coalescing removes artificial fragmentation but does not
 establish a global history-memory limit.
+
+
+### Edit/history metadata scaling
+
+`edit_metadata` retains 32 distinct edits per size-label MiB in a fixed synthetic
+one-million-frame document. It validates every retained revision, reports live
+node count and bounded node-cache/page residency, then measures a warmed 1,024-pixel
+overview after preparing summaries. Size labels scale metadata work, not file size.
+Live revision handles and process RSS are separate from the node-buffer count.
+
+```sh
+python3 scripts/run-benchmarks.py --profile extended --suite core --mode timing \
+  --filter edit_metadata --sizes-mib 1 16 256 --repetitions 3 \
+  --output dist/benchmarks/edit-metadata-final.json
+```
+
+Production structural-command measurements now await worker preparation and UI
+publication before stopping their completion timers. Undo/redo remain synchronous
+reference switches. The matched reference executable must be saved before edits.
+
+`working_memory` now retains sixteen waveform results alongside a short effect,
+playback and recording under one 8 MiB budget. It checks transport reservations,
+correct samples and complete eventual release. Compare its allocation bounds
+across sizes; older import/views-only timings describe a different workload.
+
+`bulk_busy_edit_owned` now measures submission of the production worker-prepared
+edit path with both bulk workers occupied, then verifies its eventual commit.
+Its `edit_submission_ms` replaces the old direct point-helper `edit_p99_ms`;
+these metrics measure different paths and should not be compared as a regression.
+
+`legacy_metadata_paged` / `legacy_metadata_resident` compare bounded byte-extent
+iteration of old monolithic CBOR arrays against whole-record DOM parsing. Fixtures
+are generated incrementally outside timing, avoiding an inflated setup RSS.
+Rows = frame label / 16 (8,192 rows per MiB label), independent of audio duration.
+The timed operation includes parsing, visiting and releasing decoded metadata.
+`legacy_metadata` reports encoded bytes, rows, managed staging and process peak RSS.
+This isolates metadata parsing; it does not time audio decoding or checksum reads.

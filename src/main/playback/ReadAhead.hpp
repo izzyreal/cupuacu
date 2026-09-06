@@ -1,5 +1,6 @@
 #pragma once
 #include "../storage/AudioReader.hpp"
+#include "../storage/WorkingMemory.hpp"
 #include <array>
 #include <atomic>
 #include <memory>
@@ -54,9 +55,14 @@ namespace cupuacu::playback
         };
         struct Shared
         {
+            std::shared_ptr<void> memory;
             std::array<Slot, slotCount> slots;
             std::atomic<int64_t> wanted{0}, loop{-1};
             std::atomic<bool> closed{false}, failed{false}, finished{false};
+            explicit Shared(std::shared_ptr<void> lease)
+                : memory(std::move(lease))
+            {
+            }
         };
         static void run(std::shared_ptr<Shared> shared,
                         std::shared_ptr<const storage::AudioReader> reader);

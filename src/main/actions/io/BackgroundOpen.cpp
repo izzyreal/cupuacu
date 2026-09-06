@@ -1,4 +1,5 @@
 #include "../../file/DecodedImportCache.hpp"
+#include "../../persistence/LegacyRecovery.hpp"
 #include "BackgroundOpen.hpp"
 #include "../DocumentOperationAccess.hpp"
 #include "../DocumentTabs.hpp"
@@ -36,7 +37,7 @@ namespace cupuacu::actions::io
                 return;
             }
 
-            const bool interactive = request.kind == PendingOpenKind::UserOpen;
+            const bool interactive = true;
             if (interactive)
             {
                 request.previousActiveTabId = state->getActiveTab()->id;
@@ -484,6 +485,15 @@ namespace cupuacu::actions::io
             auto retired =
                 concurrency::releaseOnWorker(std::shared_ptr<BackgroundOpenJob>(
                     state->backgroundOpenJob.release()));
+            if (request.kind == PendingOpenKind::StartupRestore)
+            {
+                --state->startupRestore.remaining;
+                if (!snapshot.success && !snapshot.canceled)
+                {
+                    state->startupRestore.failures.push_back(
+                        {snapshot.path, snapshot.error});
+                }
+            }
             auto *tab = findOperationTab(state, request.targetTabId);
             if (!tab || !tab->operation ||
                 tab->operation->id != retired->getId() ||
@@ -491,18 +501,21 @@ namespace cupuacu::actions::io
             {
                 return;
             }
-            if (!snapshot.success)
+            if (!snapshot.success || tab->operation->cancelRequested)
             {
                 removeImportTab(state, request, retired->getId());
                 if (!snapshot.canceled)
                 {
                     detail::reportDocumentIoFailure(
-                        state, "Open", snapshot.path, snapshot.error, true);
+                        state, "Open", snapshot.path, snapshot.error,
+                        request.kind != PendingOpenKind::StartupRestore);
                 }
                 return;
             }
             auto loaded = retired->takeLoadedFile();
-            if (!loaded)
+            auto restored = retired->takeRestoredSession();
+            const bool fromSnapshot = bool(restored);
+            if (!loaded && !restored)
             {
                 removeImportTab(state, request, retired->getId());
                 return;
@@ -510,9 +523,17 @@ namespace cupuacu::actions::io
             const bool hadPreview = tab->session.document.getChannelCount() > 0;
             const auto selection = tab->session.selection;
             const auto cursor = tab->session.cursor;
-            file::commitLoadedAudioFile(tab->session, snapshot.path,
-                                        std::move(*loaded), state->paths.get());
-            if (hadPreview)
+            if (restored)
+            {
+                tab->session = std::move(*restored);
+            }
+            else
+            {
+                file::commitLoadedAudioFile(tab->session, snapshot.path,
+                                            std::move(*loaded),
+                                            state->paths.get());
+            }
+            if (hadPreview && !fromSnapshot)
             {
                 tab->session.selection = selection;
                 tab->session.cursor = cursor;
@@ -520,6 +541,37 @@ namespace cupuacu::actions::io
             finishOperation(state, request.targetTabId,
                             DocumentOperation::Kind::Import, retired->getId());
             const auto index = int(tab - state->tabs.data());
+            if (request.kind == PendingOpenKind::StartupRestore)
+            {
+                if (request.targetTabIndex ==
+                    state->startupRestore.activeOpenFileIndex)
+                {
+                    state->startupRestore.restoredActiveTabIndex = index;
+                }
+                if (fromSnapshot && tab->session.hasReadRevision())
+                {
+                    if (!persistence::RevisionPersistence::installHistory(
+                            state, index))
+                    {
+                        state->startupRestore.historyRestoreFailed = true;
+                    }
+                }
+                else if (request.persistedDocumentState)
+                {
+                    // Metadata application targets this tab even if another
+                    // tab became active while I/O ran.
+                    applyPersistedOpenDocumentState(
+                        state, *request.persistedDocumentState, index);
+                    if (!request.persistedDocumentState->undoStorePath
+                             .empty() &&
+                        !undo::restoreUndoManifest(
+                            state, index,
+                            request.persistedDocumentState->undoStorePath))
+                    {
+                        state->startupRestore.historyRestoreFailed = true;
+                    }
+                }
+            }
             file::OverwritePreservation::refreshSession(state, index);
             if (index == state->activeTabIndex)
             {
@@ -543,11 +595,13 @@ namespace cupuacu::actions::io
         {
             if (!state || !state->startupRestore.active ||
                 state->startupRestore.remaining > 0 ||
-                state->backgroundOpenJob || !state->pendingOpenFiles.empty())
+                state->startupClipboardRestore || state->backgroundOpenJob ||
+                !state->pendingOpenFiles.empty())
             {
                 return;
             }
 
+            state->startupRestore.active = false;
             if (state->startupRestore.restoredActiveTabIndex >= 0 &&
                 state->startupRestore.restoredActiveTabIndex <
                     static_cast<int>(state->tabs.size()))
@@ -573,14 +627,6 @@ namespace cupuacu::actions::io
             detail::reportStartupRestoreOutcome(
                 state, failures, state->startupRestore.clipboardRestoreFailed,
                 state->startupRestore.historyRestoreFailed);
-            if (state->getActiveDocumentSession().currentFile.empty())
-            {
-                state->getActiveDocumentSession().clearCurrentFile();
-                if (state->startupRestore.shouldPersistState)
-                {
-                    persistSessionState(state);
-                }
-            }
             state->startupRestore = {};
         }
     } // namespace
@@ -690,6 +736,12 @@ namespace cupuacu::actions::io
         return result;
     }
 
+    std::unique_ptr<DocumentSession> BackgroundOpenJob::takeRestoredSession()
+    {
+        std::lock_guard lock(mutex);
+        return std::move(restoredSession);
+    }
+
     void BackgroundOpenJob::publishPreview(waveform::DecodedWaveformChunk chunk)
     {
         std::unique_lock lock(mutex);
@@ -750,23 +802,36 @@ namespace cupuacu::actions::io
             {
                 throw LongTaskCanceledError{};
             }
-            std::unique_ptr<file::LoadedAudioFile> loaded;
             if (request.persistedDocumentState &&
-                !request.persistedDocumentState->undoStorePath.empty())
+                !request.persistedDocumentState->autosaveSnapshotPath.empty())
             {
-                loaded =
-                    std::make_unique<file::LoadedAudioFile>(file::loadAudioFile(
-                        request.path,
-                        [this](const auto &text, auto value)
+                auto restored = std::make_unique<DocumentSession>();
+                if (!persistence::loadDocumentAutosaveSnapshot(
+                        request.persistedDocumentState->autosaveSnapshotPath,
+                        *restored,
+                        [this](auto value)
                         {
-                            publishProgress(text, value);
+                            publishProgress("Restoring document", value);
                         },
                         [this]
                         {
                             return cancelRequested.load();
-                        }));
+                        },
+                        &*request.persistedDocumentState))
+                {
+                    throw std::runtime_error(
+                        "Autosave snapshot could not be read");
+                }
+                if (cancelRequested.load())
+                {
+                    throw LongTaskCanceledError{};
+                }
+                std::lock_guard lock(mutex);
+                restoredSession = std::move(restored);
+                success = completed = true;
+                return;
             }
-            else
+            std::unique_ptr<file::LoadedAudioFile> loaded;
             {
                 if (!sampleCache)
                 {
@@ -856,6 +921,27 @@ namespace cupuacu::actions::io
                     }
                 }
             }
+            if (request.persistedDocumentState &&
+                !request.persistedDocumentState->undoStorePath.empty())
+            {
+                auto restored = std::make_unique<DocumentSession>();
+                file::commitLoadedAudioFile(*restored, request.path,
+                                            std::move(*loaded));
+                if (!persistence::migrateLegacyHistory(
+                        *restored, &*request.persistedDocumentState,
+                        workingRoot,
+                        [this]
+                        {
+                            return cancelRequested.load();
+                        }))
+                {
+                    throw std::runtime_error("Legacy history migration failed");
+                }
+                restored->undoStore.attach(
+                    request.persistedDocumentState->undoStorePath);
+                restoredSession = std::move(restored);
+                loaded.reset();
+            }
             if (cancelRequested.load())
             {
                 throw LongTaskCanceledError{};
@@ -895,6 +981,7 @@ namespace cupuacu::actions::io
             return;
         }
 
+        processStartupClipboardRestore(state);
         for (auto &tab : state->tabs)
         {
             tab.session.retryImportedPeakPersistence();
@@ -911,10 +998,10 @@ namespace cupuacu::actions::io
 
         if (state->backgroundOpenJob)
         {
-            if (state->backgroundOpenJob->getRequest().kind ==
-                PendingOpenKind::UserOpen)
+            if (state->backgroundOpenJob->getRequest().targetTabId)
             {
                 processInteractiveOpen(state);
+                finalizeStartupRestoreIfComplete(state);
                 return;
             }
 

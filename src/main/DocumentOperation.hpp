@@ -10,6 +10,7 @@ namespace cupuacu
         {
             Import,
             Effect,
+            Edit,
             Save
         };
         Kind kind = Kind::Import;
