@@ -8,6 +8,7 @@
 #include "actions/audio/EditCommands.hpp"
 #include "actions/audio/RevisionRecording.hpp"
 #include "persistence/RevisionPersistence.hpp"
+#include "persistence/DocumentAutosave.hpp"
 #include "actions/audio/SetSampleValue.hpp"
 #include "effects/PeakAnalysis.hpp"
 #include "actions/Zoom.hpp"
@@ -586,6 +587,131 @@ namespace
 #endif
         const std::string name = request.at("scenario");
         const int64_t frames = request.at("frames");
+        if (name == "recovery_legacy")
+        {
+            const auto root =
+                std::filesystem::path(request.at("root").get<std::string>());
+            const auto path = root / "legacy-snapshot";
+            // Generate the real version-2 format with bounded scratch.
+            // Deliberately leave old peaks dirty: recovery must summarize the
+            // recovered samples.
+            {
+                std::ofstream out(path, std::ios::binary);
+                const char magic[] = "CUPUACU_AUTOSAVE";
+                out.write(magic, sizeof(magic));
+                auto integer = [&](uint64_t v, int width = 8)
+                {
+                    for (int i = 0; i < width; ++i)
+                    {
+                        out.put(char(v >> (8 * i)));
+                    }
+                };
+                integer(2, 4);
+                integer(uint32_t(SampleFormat::FLOAT32), 4);
+                integer(sampleRate, 4);
+                integer(channels);
+                integer(frames);
+                integer(0, 4);
+                integer(0);
+                integer(channels);
+                for (int c = 0; c < channels; ++c)
+                {
+                    integer(frames);
+                    integer(0);
+                    integer(0);
+                    integer(0, 4);
+                }
+                std::array<float, 16384 * channels> buffer;
+                for (int64_t first = 0; first < frames;)
+                {
+                    const auto count = std::min<int64_t>(16384, frames - first);
+                    for (int64_t i = 0; i < count; ++i)
+                    {
+                        for (int c = 0; c < channels; ++c)
+                        {
+                            buffer[i * channels + c] = sampleAt(first + i, c);
+                        }
+                    }
+                    out.write(reinterpret_cast<const char *>(buffer.data()),
+                              count * channels * sizeof(float));
+                    first += count;
+                }
+                require(out.good(), "Legacy fixture write failed");
+            }
+            State state;
+            state.paths.reset();
+            auto &session = state.getActiveDocumentSession();
+            for (auto iteration : measurement)
+            {
+                (void)iteration;
+                const auto began = Clock::now();
+                require(
+                    persistence::loadDocumentAutosaveSnapshot(path, session),
+                    "Legacy recovery failed");
+                const auto ms = elapsed(began);
+                result["milestones_ms"]["background_complete"] = ms;
+                measurement.SetIterationTime(ms / 1000.0);
+            }
+            // Also supports the pre-migration loader for matched reference
+            // runs.
+            result["legacy_recovery"]["revision_backed"] =
+                session.hasReadRevision() ? 1 : 0;
+            if (session.hasReadRevision())
+            {
+                uint64_t readBefore = 0, written = 0;
+                std::shared_ptr<storage::AudioBlockStore> store;
+                session.getEditRevision()->visitSourceRanges(
+                    0, 0, frames,
+                    [&](const auto &r)
+                    {
+                        store = r.source->blockStore();
+                    });
+                std::tie(readBefore, written) = store->ioBytes();
+                const auto began = Clock::now();
+                actions::audio::performRevisionCommand(
+                    &state, actions::audio::RevisionCommand::Delete, frames / 2,
+                    1);
+                const auto edit = elapsed(began);
+                const auto undoAt = Clock::now();
+                state.undo();
+                const auto undo = elapsed(undoAt);
+                require(store->ioBytes().first == readBefore,
+                        "Recovered edit read sample data");
+                require(store->ioBytes().second == written,
+                        "Recovered edit wrote sample data");
+                result["legacy_recovery"].update(
+                    {{"sample_bytes_written", written},
+                     {"sample_bytes_read", readBefore},
+                     {"edit_ms", edit},
+                     {"undo_ms", undo},
+                     {"import_peak_rss_bytes", peakRss()}});
+                require(written == uint64_t(frames) * channels * sizeof(float),
+                        "Legacy conversion copied extra audio");
+            }
+            const auto reopenAt = Clock::now();
+            require(persistence::loadDocumentAutosaveSnapshot(path, session),
+                    "Durable recovery reopen failed");
+            result["legacy_recovery"]["durable_reopen_ms"] = elapsed(reopenAt);
+            std::array<float, 16384> buffer;
+            for (int c = 0; c < channels; ++c)
+            {
+                for (int64_t first = 0; first < frames;)
+                {
+                    const auto count =
+                        std::min<int64_t>(buffer.size(), frames - first);
+                    session.getAudioReader()->readChannel(
+                        c, first, std::span(buffer).first(count));
+                    for (int64_t i = 0; i < count; ++i)
+                    {
+                        require(buffer[i] == sampleAt(first + i, c),
+                                "Legacy recovered sample mismatch");
+                    }
+                    first += count;
+                }
+            }
+            result["validated"] = true;
+            return;
+        }
         if (name == "m4a_metadata")
         {
             using namespace file::m4a;

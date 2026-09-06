@@ -118,10 +118,12 @@ Raw reports remain in ignored `dist/benchmarks/`:
 ## Explicitly deferred
 
 Paged peaks/indexes, a total application memory budget and pressure management,
-legacy recovery conversion and further scheduler unification remain outstanding.
+and further scheduler unification remain outstanding. Legacy recovery now migrates
+common snapshots/history; shape-changing recording histories retain compatibility
+recovery as described below.
 Memory mapping is outside the current scope.
-The next step is manual verification of the delivered workflow, not another
-architecture slice.
+The delivered imported workflow remains available for manual verification while
+the explicitly authorized resource work continues.
 
 ## Follow-up: decoded reopening and progress presentation
 
@@ -317,3 +319,75 @@ passed again after the duration-header compatibility adjustment. Six metadata
 and six actual-export benchmark runs passed; 16 reporting tests passed. Native
 application and benchmark builds passed. No full suite, Linux or GUI integration
 runs were added for this slice.
+
+
+## Follow-up: legacy recovery migration
+
+Version-2 document and clipboard snapshots now stream into owned revisions,
+generating peaks from the same bounded audio batches. Startup also converts
+legacy segment versions 1–3, sample matrices and sample cubes referenced by
+cut/delete/paste/trim, silence, effects, point edits, copy and recording history.
+Commands retain before/after roots, editor state and clipboard references.
+Marker history and trim views retain their existing behavior. Snapshot strings,
+counts, offsets and sample-byte arithmetic are checked before allocation/reads.
+
+Recovery publishes a revision archive atomically after conversion, so the next
+load uses the archive. Cancellation and archive-write failure leave the original
+snapshot and destination session unchanged. Recovery checks cancellation during
+archive writes as well as sample conversion. The existing restart-history size
+policy still applies. Legacy payload samples are preserved exactly as float32;
+those old formats do not contain original higher-precision container bytes.
+
+Histories containing a recording that changes format/channel count, including
+undo to an unconfigured tab, retain the resident compatibility reader and original
+commands. This preserves their undo behavior rather than silently changing the
+old document shape. Unsupported or damaged histories retain a copy of the
+snapshot and undo directory in `legacy-recovery-retained`, restore intact current
+audio, and use the existing history-warning reporting. Retained backups include
+original path information and are not automatically pruned. Successfully migrated
+legacy undo stores remain attached for normal tab-close cleanup.
+
+This is not removal of every resident compatibility path. Peak/index residency,
+the total managed memory budget, and additional scheduling work remain separate.
+
+Native Release measurements, three repetitions per size (decoded float bytes):
+
+| Size | Former resident load | One-time migration + archive | Archive reload |
+| --- | --- | --- | --- |
+| 1 MiB | 0.69 ms | 5.20 ms | 0.94 ms |
+| 16 MiB | 6.11 ms | 39.17 ms | 3.29 ms |
+| 256 MiB | 99.77 ms | 508.58 ms | 40.33 ms |
+| 2 GiB | Not run | 4.59 s | 321.81 ms |
+
+The former loader was compiled from `3dd8d30` with the same native Release flags
+and the new scenario. Both generated the same version-2 snapshot. Its dirty/missing
+peaks were left unbuilt by the former loader; migration builds them and creates an
+archive. This is a comparison of production loader return behavior, not equal
+completion work or a decoder-speed comparison. Archive reload is in the same
+process, with filesystem caching uncontrolled; it is not full restart latency.
+
+First migration has a real disk/persistence cost: +4.51 ms at 1 MiB, +33.06 ms at
+16 MiB and +408.80 ms at 256 MiB. The larger first-load costs exceed the combined
+regression-investigation threshold and are intentional one-time migration work.
+Subsequent 256 MiB archive loading is about 2.5 times faster than the old resident
+load. The 1 MiB archive load is about 0.25 ms slower. The initial 2 GiB conversion
+used about 71 MiB peak RSS; the full run, including a second revision load and
+validation, reached about 138 MiB. Former resident load at 256 MiB reached about
+260 MiB, versus about 22 MiB for the new full benchmark at that size.
+
+All 12 final benchmark runs passed sample validation. Deletion and undo stayed
+below 0.02 ms in the size medians and performed zero sample I/O. The working store
+wrote each sample once; archive persistence additionally clones or copies that
+store. These APFS results do not predict fallback-copy throughput on other disks.
+
+Validation: 51 focused native cases passed, followed by an additional case covering
+all three legacy segment versions across channel and 65,536-frame boundaries.
+The checks include all 14 migrated command kinds in undo and redo positions,
+a second archive recovery, clipboard lifetime, legacy recording compatibility,
+source retention, cancellation, and failed archive publication/retry. All 16
+reporting tests and native application/benchmark builds passed. No broad full
+suite, Linux or GUI integration runs were added.
+
+Reports: `recovery-legacy-before.json`, `recovery-legacy-durable.json` under
+`dist/benchmarks/`. `recovery-legacy.json` records the intermediate conversion-only
+implementation and must not be used as the final durable-migration result.

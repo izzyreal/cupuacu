@@ -185,7 +185,9 @@ namespace cupuacu::actions
 
         inline bool loadAutosaveSnapshotOnWorker(
             cupuacu::State *state, const std::filesystem::path &path,
-            cupuacu::DocumentSession &targetSession)
+            cupuacu::DocumentSession &targetSession,
+            const persistence::PersistedOpenDocumentState *legacyState =
+                nullptr)
         {
             std::atomic_bool completed{false};
             std::atomic_bool cancelRequested{false};
@@ -213,7 +215,8 @@ namespace cupuacu::actions
                                 {
                                     return cancelRequested.load(
                                         std::memory_order_acquire);
-                                });
+                                },
+                                legacyState);
                     }
                     catch (...)
                     {
@@ -554,7 +557,8 @@ namespace cupuacu::actions
                         {
                             loaded = detail::loadAutosaveSnapshotOnWorker(
                                 state, documentState.autosaveSnapshotPath,
-                                state->getActiveDocumentSession());
+                                state->getActiveDocumentSession(),
+                                &documentState);
                         }
                         catch (const cupuacu::LongTaskCanceledError &)
                         {

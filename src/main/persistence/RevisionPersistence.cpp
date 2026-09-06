@@ -239,11 +239,20 @@ namespace cupuacu::persistence
     void RevisionPersistence::save(const std::filesystem::path &path,
                                    const RevisionCheckpoint &cp,
                                    const std::function<void()> &beforeReplace,
-                                   uint64_t maxHistoryBytes)
+                                   uint64_t maxHistoryBytes,
+                                   const std::function<bool()> &cancel)
     {
         auto archive = storage::RevisionArchive::open(path);
         std::lock_guard lock(archive->operationMutex);
-        archive->setCancelCheck({});
+        archive->setCancelCheck(cancel);
+        struct ClearCancel
+        {
+            storage::RevisionArchive &archive;
+            ~ClearCancel()
+            {
+                archive.setCancelCheck({});
+            }
+        } clearCancel{*archive};
         auto j = cp.metadata;
         j["current"] = saveState(*archive, cp.current);
         j["saved"] = saveState(*archive, cp.saved);

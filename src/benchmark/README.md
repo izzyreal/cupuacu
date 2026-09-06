@@ -754,3 +754,30 @@ python3 scripts/run-benchmarks.py --profile extended --mode timing \
 The 32769 MiB case crosses 2^32 frames and 4 GiB encoded offsets using sparse
 storage, so it avoids generating a real 32 GiB recording. Pair it with the
 ordinary export benchmark for actual codec throughput and sample verification.
+
+### Legacy recovery migration
+
+`recovery_legacy` creates a real version-2 autosave with bounded sample scratch,
+loads it through production recovery, and validates every recovered sample.
+The fixture intentionally has missing/dirty summaries. The new loader generates
+peaks while converting audio, reconstructs a durable revision archive, then
+measures a second archive load separately. It also checks a one-frame deletion
+and undo perform zero sample I/O. History payload formats, cancellation and
+atomic publication have separate focused native coverage.
+
+```sh
+python3 scripts/run-benchmarks.py --profile large --mode timing \
+  --filter recovery_legacy --sizes-mib 1 16 256 2048 --repetitions 3 \
+  --formats wav --max-rss-mib 512 --max-disk-mib 8192 \
+  --output dist/benchmarks/recovery-legacy-durable.json
+```
+
+`background_complete` measures the first conversion and durable publication;
+`legacy_recovery.durable_reopen_ms` measures the subsequent archive load in the
+same process. Neither measures application startup or GUI latency. Working-store
+sample byte counters exclude archive cloning/copying. Peak/index allocations
+still grow with length, and process RSS includes fixture setup and validation.
+The scenario accepts the former resident loader to permit matched reference
+builds; its return did not include rebuilding the fixture's dirty peaks or
+creating a durable archive. Compare both first-load costs and subsequent archive
+loads, not just a percentage change for unlike completion work.
