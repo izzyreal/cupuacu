@@ -263,3 +263,39 @@ closed targets, unrelated edits and progressively readable audio.
 tab while both bulk slots remain occupied. It reports edit p99 and verifies both
 histories; this is headless command latency, not SDL event-loop latency. Existing
 open/effect timing scenarios track throughput separately.
+
+### Reusable decoded imports
+
+Normal queued opening consults `state/decoded-cache` before decoding. This is an
+optional, versioned cache of completed original imports, using revision archives
+for samples, peaks, metadata and original container bytes. Edits never alter its
+contents. A weak live index supports immediate reopening while persistence is
+pending; otherwise reopening reads the archived revision without decoding audio.
+Restored samples use the application's shared sample cache.
+
+The default reusable disk budget is 8 GiB (`State::decodedImportCacheByteBudget`;
+zero disables it). Admission estimates sample/source/index space, retains at least
+1 GiB free disk space, and skips oversized imports. Old unused entries are evicted
+in order of manifest access time. Archives with live readers are skipped; closing
+a tab cannot invalidate audio held by a clipboard, history or another reader.
+Writes use one maintenance job at a time on the existing bulk scheduler, avoiding
+a queue of retained recordings or two workers waiting on cache writes. If busy,
+full or unavailable, persistence is skipped and normal import remains valid.
+Working data still needed by documents is separate from this cache budget.
+
+Source identity includes canonical path, size and modification time; POSIX also
+includes device/inode and nanosecond change time. Cache keys and manifests must
+match, and archive metadata and segment lengths are validated on restoration.
+Invalid or incomplete entries fall back to decoding. A cache-directory lease
+prevents another process from evicting active files; a competing process imports
+normally. Cache-backed revisions retain that lease through their final release.
+
+Cache creation runs after audio becomes editable. APFS cloning avoids copying
+sample/source payloads where possible; other filesystems use the archive's bounded
+copy fallback. Archive copying snapshots the immutable prefix under the store
+lock, then performs file I/O outside it so read-ahead need not wait for copying.
+
+Reopening assigns a fresh process-local preservation identity to the imported
+revision and its document. Persisted numeric IDs from earlier application runs
+must not identify unrelated current documents during legacy clipboard conversion.
+The original container bytes, markers and sample values remain unchanged.

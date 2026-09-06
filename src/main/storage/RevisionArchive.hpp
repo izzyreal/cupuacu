@@ -19,6 +19,7 @@ namespace cupuacu::storage
         };
         static std::shared_ptr<RevisionArchive>
         open(const std::filesystem::path &manifest);
+        static bool hasLiveReaders(const std::filesystem::path &manifest);
         static void remove(const std::filesystem::path &manifest);
         static bool recognizes(const std::filesystem::path &manifest);
         ~RevisionArchive();

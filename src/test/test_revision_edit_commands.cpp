@@ -6,6 +6,8 @@
 #include "actions/effects/RevisionEffect.hpp"
 #include "effects/MakeSilentEffect.hpp"
 #include "waveform/DecodedWaveformBuilder.hpp"
+#include "persistence/DocumentAutosave.hpp"
+#include "persistence/RevisionPersistence.hpp"
 #include <random>
 
 using namespace cupuacu;
@@ -85,6 +87,73 @@ namespace
         }
     };
 } // namespace
+
+TEST_CASE("Restored revision clipboard pastes into an empty tab by reference",
+          "[revision-commands][clipboard-empty]")
+{
+    const bool configured = GENERATE(false, true);
+    Fixture source;
+    source.select(17, 65541);
+    actions::audio::performCopy(&source.state);
+    const auto path = test::makeUniqueTestRoot("restored-paste") / "clipboard";
+    REQUIRE(persistence::saveClipboardSnapshot(path, source.state.clipboard));
+    test::StateWithTestPaths target{std::string_view{"empty-paste"}};
+    REQUIRE(persistence::loadClipboardSnapshot(path, target.clipboard));
+    auto &session = target.getActiveDocumentSession();
+    if (configured)
+    {
+        session.document.initialize(SampleFormat::FLOAT32, 44100, 1, 0);
+    }
+    auto clip = target.clipboard.getAudioRevision();
+    std::shared_ptr<storage::AudioBlockStore> store;
+    clip->visitSourceRanges(0, 0, 1, [&](const auto &range)
+                           { store = range.source->blockStore(); });
+    REQUIRE(store);
+    const auto io = store->ioBytes();
+    actions::audio::performPaste(&target);
+    REQUIRE_FALSE(target.backgroundClipboardConversion);
+    REQUIRE(session.hasReadRevision());
+    REQUIRE(session.document.getFrameCount() == 65541);
+    REQUIRE(session.document.getChannelCount() == (configured ? 1 : 2));
+    REQUIRE(session.document.getSampleRate() == (configured ? 44100 : 48000));
+    REQUIRE(session.revisionHasUnsavedChanges());
+    REQUIRE(session.selection.getStartInt() == 0);
+    REQUIRE(session.selection.getLengthInt() == 65541);
+    REQUIRE_FALSE(session.undoStore.isAttached());
+    REQUIRE(target.getActiveUndoables().size() == 1);
+    const auto pasted = session.getEditRevision();
+    target.clipboard.clear();
+    target.undo();
+    REQUIRE(session.document.getFrameCount() == 0);
+    REQUIRE_FALSE(session.revisionHasUnsavedChanges());
+    REQUIRE_FALSE(session.selection.isActive());
+    target.redo();
+    REQUIRE(session.getEditRevision() == pasted);
+    REQUIRE(store->ioBytes() == io);
+    std::vector<float> samples(65541);
+    for (int c = 0; c < session.document.getChannelCount(); ++c)
+    {
+        session.getAudioReader()->readChannel(c, 0, samples);
+        for (int i = 0; i < 65541; ++i)
+        {
+            REQUIRE(samples[i] == source.samples[(i + 17) * 2 + c]);
+        }
+    }
+    const auto autosave = path.parent_path() / "pasted-document";
+    persistence::RevisionPersistence::save(
+        autosave, *persistence::RevisionPersistence::capture(
+                      session, target.getActiveTab()));
+    test::StateWithTestPaths recovered{std::string_view{"recovered-paste"}};
+    auto &restored = recovered.getActiveDocumentSession();
+    REQUIRE(persistence::loadDocumentAutosaveSnapshot(autosave, restored));
+    REQUIRE(persistence::RevisionPersistence::installHistory(&recovered, 0));
+    REQUIRE(restored.document.getFrameCount() == 65541);
+    recovered.undo();
+    REQUIRE(restored.document.getFrameCount() == 0);
+    REQUIRE_FALSE(restored.revisionHasUnsavedChanges());
+    recovered.redo();
+    REQUIRE(restored.document.getFrameCount() == 65541);
+}
 
 TEST_CASE("Production reference commands share audio and restore editor state",
           "[revision-commands]")

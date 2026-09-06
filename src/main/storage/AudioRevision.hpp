@@ -19,6 +19,7 @@ namespace cupuacu::storage
         std::shared_ptr<DecodedBlockCache> cache;
         std::vector<std::vector<AudioBlock>> channels;
         std::filesystem::path ownedSource;
+        std::shared_ptr<const void> cacheLease;
         uint64_t preservationSourceId = 0;
         struct MetadataRun
         {
@@ -37,6 +38,29 @@ namespace cupuacu::storage
         }
 
     public:
+        std::shared_ptr<const AudioRevision> withSampleCache(
+            std::shared_ptr<DecodedBlockCache> samples,
+            std::shared_ptr<const void> lease = {},
+            uint64_t importedSourceId = 0) const
+        {
+            auto value = std::shared_ptr<AudioRevision>(
+                new AudioRevision(dimensions, store, std::move(samples)));
+            value->peaks = peaks;
+            value->channels = channels;
+            value->ownedSource = ownedSource;
+            value->preservationSourceId = preservationSourceId;
+            value->metadata = metadata;
+            if (importedSourceId)
+            {
+                value->preservationSourceId = importedSourceId;
+                for (auto &channel : value->metadata)
+                    for (auto &run : channel)
+                        if (run.provenance.sourceId == preservationSourceId)
+                            run.provenance.sourceId = importedSourceId;
+            }
+            value->cacheLease = std::move(lease);
+            return value;
+        }
         AudioShape shape() const override
         {
             return dimensions;

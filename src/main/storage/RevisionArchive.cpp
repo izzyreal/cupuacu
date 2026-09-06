@@ -159,6 +159,17 @@ namespace cupuacu::storage
         registry.emplace(key, archive);
         return archive;
     }
+    bool RevisionArchive::hasLiveReaders(const std::filesystem::path &path)
+    {
+        const auto key = std::filesystem::absolute(path).lexically_normal();
+        std::lock_guard lock(registryMutex);
+        auto found = registry.find(key);
+        if (found == registry.end()) return false;
+        std::lock_guard operation(found->second->operationMutex);
+        for (const auto &[name, store] : found->second->loadedStores)
+            if (!store.expired()) return true;
+        return false;
+    }
     void RevisionArchive::remove(const std::filesystem::path &path)
     {
         const auto key = std::filesystem::absolute(path).lexically_normal();
@@ -273,10 +284,14 @@ namespace cupuacu::storage
         }
         const auto destination = directory / copy.name;
         std::filesystem::create_directories(destination);
-        std::lock_guard lock(source.store->mutex);
-        if (source.store->writer.is_open() && !source.store->failed)
+        // Snapshot the committed prefix under the lock. Appends never change
+        // that prefix; copying it must not block playback cache misses.
+        std::vector<uint64_t> lengths;
         {
-            source.store->writer.flush();
+            std::lock_guard lock(source.store->mutex);
+            if (source.store->writer.is_open() && !source.store->failed)
+                source.store->writer.flush();
+            lengths = source.store->lengths;
         }
         auto copyFile =
             [&](const auto &from, const auto &to, uint64_t begin, uint64_t end)
@@ -317,13 +332,13 @@ namespace cupuacu::storage
                 throw std::runtime_error("Revision audio close failed");
             sync(to);
         };
-        for (std::size_t i = 0; i < source.store->lengths.size(); ++i)
+        for (std::size_t i = 0; i < lengths.size(); ++i)
         {
             if (copy.lengths.size() <= i)
             {
                 copy.lengths.push_back(0);
             }
-            const auto length = source.store->lengths[i];
+            const auto length = lengths[i];
             if (length > copy.lengths[i])
             {
                 copyFile(source.store->segmentPath(i),
