@@ -315,3 +315,62 @@ TEST_CASE("M4A AAC reader streams decoded float samples", "[m4a][aac]")
     REQUIRE(info.frameCount == 4096);
     REQUIRE(streamedFrames == info.frameCount);
 }
+
+#include "TestPaths.hpp"
+#include "LongTask.hpp"
+
+TEST_CASE("AAC metadata and decode progress preserve totals above 32 bits",
+          "[m4a][aac][m4a-large]")
+{
+    using namespace cupuacu::file::m4a;
+    const uint64_t frames = uint64_t(UINT32_MAX) + 1025;
+    const uint32_t packets = frames / 1024;
+    const auto root = cupuacu::test::makeUniqueTestRoot("wide-aac");
+    struct Cleanup
+    {
+        std::filesystem::path path;
+        ~Cleanup() { std::error_code ec; std::filesystem::remove_all(path, ec); }
+    } cleanup{root};
+    std::filesystem::create_directories(root);
+    const auto path = root / "aac.m4a";
+    const Bytes firstPacket{0xde, 0x02, 0x00, 0x4c, 0x61, 0x76, 0x63, 0x36,
+        0x32, 0x2e, 0x31, 0x31, 0x2e, 0x31, 0x30, 0x30, 0x00, 0x02, 0x30, 0x40, 0x0e};
+    const auto ftyp = ftypAtom();
+    Bytes mdat;
+    appendBe32(mdat, 1);
+    appendFourCc(mdat, "mdat");
+    const uint64_t payloadBytes = uint64_t(packets) * firstPacket.size();
+    appendBe64(mdat, payloadBytes + 16);
+    Bytes sizes;
+    appendBe32(sizes, firstPacket.size());
+    appendBe32(sizes, packets);
+    const auto stbl = containerAtom("stbl", {
+        sampleDescriptionAtom({makeAacLcSampleEntry()}),
+        timeToSampleAtom(frames, 1024), sampleToChunkAtom(packets),
+        fullAtom("stsz", 0, 0, sizes), chunkOffsetAtom({uint32_t(ftyp.size() + 16)})});
+    const auto media = containerAtom("mdia", {mediaHeaderAtom(48000, frames),
+        handlerReferenceAtom("soun"), containerAtom("minf", {
+            soundMediaHeaderAtom(), dataInformationAtom(), stbl})});
+    const auto moov = containerAtom("moov", {movieHeaderAtom(48000, frames),
+        containerAtom("trak", {trackHeaderAtom(1, frames), media})});
+    {
+        std::ofstream output(path, std::ios::binary);
+        for (const auto &bytes : {ftyp, mdat, firstPacket})
+            output.write(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+        output.seekp(ftyp.size() + 16 + payloadBytes);
+        output.write(reinterpret_cast<const char *>(moov.data()), moov.size());
+        REQUIRE(output.good());
+    }
+    uint64_t infoFrames = 0, total = 0;
+    REQUIRE_THROWS_AS(streamAacM4aFile(path,
+        [](const float *, uint32_t count, uint16_t) { REQUIRE(count == 1024); },
+        [&](const M4aAacFileInfo &info) { infoFrames = info.frameCount; },
+        [&](uint64_t decoded, uint64_t expected)
+        {
+            REQUIRE(decoded == 1024);
+            total = expected;
+            throw cupuacu::LongTaskCanceledError{};
+        }), cupuacu::LongTaskCanceledError);
+    REQUIRE(infoFrames == frames);
+    REQUIRE(total == frames);
+}

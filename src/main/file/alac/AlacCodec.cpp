@@ -149,14 +149,8 @@ namespace cupuacu::file::alac
                 return false;
             }
 
-            const auto totalSampleCount =
-                static_cast<std::size_t>(parameters.frameCount) *
-                static_cast<std::size_t>(parameters.channels);
-            if (parameters.channels != 0 &&
-                totalSampleCount / parameters.channels != parameters.frameCount)
-            {
+            if (parameters.frameCount > std::uint64_t(INT64_MAX))
                 return false;
-            }
 
             ALACDecoder decoder;
             auto cookie = parameters.magicCookie;
@@ -177,7 +171,7 @@ namespace cupuacu::file::alac
                                                    outputBytesPerSample);
             std::vector<std::uint8_t> packetScratch;
 
-            std::uint32_t decodedFrames = 0;
+            std::uint64_t decodedFrames = 0;
             for (std::size_t packetIndex = 0; packetIndex < packetSizes.size();
                  ++packetIndex)
             {
@@ -253,8 +247,7 @@ namespace cupuacu::file::alac
                 }
             }
 
-            if (decodedFrames != parameters.frameCount ||
-                decodedFrames != parameters.frameCount)
+            if (decodedFrames != parameters.frameCount)
             {
                 return false;
             }
@@ -320,7 +313,7 @@ namespace cupuacu::file::alac
 
         const auto inputFormat = makeNativePcmInputFormat(parameters);
         if (!readPcm || !writePacket || inputFormat.mBytesPerFrame == 0 ||
-            frameCount > std::numeric_limits<std::uint32_t>::max())
+            frameCount > std::uint64_t(INT64_MAX))
         {
             return std::nullopt;
         }
@@ -407,7 +400,7 @@ namespace cupuacu::file::alac
             return std::nullopt;
         }
         return AlacEncodingSummary{std::move(*cookie),
-                                   static_cast<std::uint32_t>(frameCount),
+                                   frameCount,
                                    parameters.framesPerPacket};
     }
 
@@ -490,10 +483,13 @@ namespace cupuacu::file::alac
         decoded.bitsPerSample = parameters.bitsPerSample;
         decoded.frameCount = parameters.frameCount;
         const auto outputBytesPerSample = bytesPerSample(parameters.bitsPerSample);
+        if (!outputBytesPerSample || !parameters.channels ||
+            parameters.frameCount > decoded.interleavedPcmBytes.max_size() /
+                parameters.channels / outputBytesPerSample)
+            return std::nullopt;
         decoded.interleavedPcmBytes.reserve(
             static_cast<std::size_t>(parameters.frameCount) *
-            static_cast<std::size_t>(parameters.channels) *
-            outputBytesPerSample);
+            parameters.channels * outputBytesPerSample);
 
         const auto ok = decodePcmPacketsImpl(
             parameters, packetOffsets, packetSizes,
@@ -550,10 +546,13 @@ namespace cupuacu::file::alac
         decoded.bitsPerSample = parameters.bitsPerSample;
         decoded.frameCount = parameters.frameCount;
         const auto outputBytesPerSample = bytesPerSample(parameters.bitsPerSample);
+        if (!outputBytesPerSample || !parameters.channels ||
+            parameters.frameCount > decoded.interleavedPcmBytes.max_size() /
+                parameters.channels / outputBytesPerSample)
+            return std::nullopt;
         decoded.interleavedPcmBytes.reserve(
             static_cast<std::size_t>(parameters.frameCount) *
-            static_cast<std::size_t>(parameters.channels) *
-            outputBytesPerSample);
+            parameters.channels * outputBytesPerSample);
 
         const auto ok = decodePcmPacketsImpl(
             parameters, packetOffsets, packetSizes,

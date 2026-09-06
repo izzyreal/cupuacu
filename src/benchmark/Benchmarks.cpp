@@ -20,6 +20,7 @@
 #include "storage/AudioEditRevision.hpp"
 #include "waveform/WaveformViewport.hpp"
 #include "file/m4a/M4aAlacWriter.hpp"
+#include "file/m4a/M4aParser.hpp"
 #include "gui/WaveformOverviewPlanning.hpp"
 #include "performance/WorkMetrics.hpp"
 
@@ -585,6 +586,56 @@ namespace
 #endif
         const std::string name = request.at("scenario");
         const int64_t frames = request.at("frames");
+        if (name == "m4a_metadata")
+        {
+            using namespace file::m4a;
+            const auto path = std::filesystem::path(request.at("root").get<std::string>()) / "metadata.m4a";
+            const auto cookie = file::alac::makeEncoderCookie({sampleRate, channels, 16, 4096});
+            require(bool(cookie), "ALAC cookie unavailable");
+            AlacMovieDescription description;
+            description.sampleRate = sampleRate;
+            description.frameCount = frames;
+            description.framesPerPacket = 4096;
+            description.sampleEntry = {channels, 16, sampleRate, cookie->bytes};
+            const auto packets = (uint64_t(frames) + 4095) / 4096;
+            description.packetSizes.assign(packets, 5000);
+            const uint64_t payload = packets * 5000;
+            const std::vector<DocumentMarker> markers{{1, frames - 17, "Boundary"}};
+            {
+                std::ofstream output(path, std::ios::binary);
+                beginAlacM4a(output);
+                output.seekp(ftypAtom().size() + 16 + payload);
+                finishAlacM4a(output, std::move(description), payload, markers);
+                require(output.good(), "Sparse M4A metadata write failed");
+            }
+            M4aParsedAlacFile parsed;
+            for (auto iteration : measurement)
+            {
+                (void)iteration;
+                const auto began = Clock::now();
+                parsed = parseAlacM4aFile(path);
+                const auto duration = elapsed(began);
+                result["milestones_ms"]["background_complete"] = duration;
+                measurement.SetIterationTime(duration / 1000.);
+            }
+            require(parsed.frameCount == uint64_t(frames) && parsed.markers == markers,
+                    "M4A duration or chapters narrowed");
+            require(parsed.packetSizes.size() == packets && parsed.packetOffsets.size() == packets,
+                    "M4A packet count mismatch");
+            uint64_t totalFrames = 0;
+            for (std::size_t i = 0; i < packets; ++i)
+            {
+                require(parsed.packetOffsets[i] == ftypAtom().size() + 16 + i * 5000ull,
+                        "M4A packet offset mismatch");
+                totalFrames += parsed.packetFrameCounts[i];
+            }
+            require(totalFrames == uint64_t(frames), "M4A timing table mismatch");
+            result["m4a_metadata"] = {{"frames", frames}, {"packets", packets},
+                {"logical_file_bytes", std::filesystem::file_size(path)},
+                {"table_bytes", std::filesystem::file_size(path) - payload}};
+            result["validated"] = true;
+            return;
+        }
         if (name == "new_document_edit")
         {
             State state;

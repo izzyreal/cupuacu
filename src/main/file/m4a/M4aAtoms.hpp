@@ -23,15 +23,15 @@ namespace cupuacu::file::m4a
     struct AlacMovieDescription
     {
         std::uint32_t sampleRate = 0;
-        std::uint32_t frameCount = 0;
+        std::uint64_t frameCount = 0;
         std::uint32_t framesPerPacket = 0;
         std::vector<std::uint32_t> packetSizes;
         std::uint64_t mdatPayloadOffset = 0;
         std::vector<std::uint32_t> chapterSampleSizes;
         std::vector<std::uint32_t> chapterSampleDurations;
         std::uint64_t chapterMdatPayloadOffset = 0;
-        std::uint32_t chapterStartOffset = 0;
-        std::uint32_t chapterMediaDuration = 0;
+        std::uint64_t chapterStartOffset = 0;
+        std::uint64_t chapterMediaDuration = 0;
         AlacSampleEntryDescription sampleEntry;
     };
 
@@ -55,7 +55,7 @@ namespace cupuacu::file::m4a
     Bytes emptySampleToChunkAtom();
     Bytes emptySampleSizeAtom();
     Bytes emptyChunkOffsetAtom();
-    Bytes timeToSampleAtom(std::uint32_t frameCount,
+    Bytes timeToSampleAtom(std::uint64_t frameCount,
                            std::uint32_t framesPerPacket);
     Bytes sampleToChunkAtom(std::uint32_t packetCount);
     Bytes sampleSizeAtom(const std::vector<std::uint32_t> &packetSizes);
@@ -63,18 +63,18 @@ namespace cupuacu::file::m4a
     Bytes alacSampleEntry(const AlacSampleEntryDescription &description);
     Bytes sampleDescriptionAtom(const std::vector<Bytes> &sampleEntries);
     Bytes movieHeaderAtom(std::uint32_t timescale,
-                          std::uint32_t duration,
+                          std::uint64_t duration,
                           std::uint32_t nextTrackId = 2);
     Bytes trackHeaderAtom(std::uint32_t trackId,
-                          std::uint32_t duration,
+                          std::uint64_t duration,
                           bool enabled = true);
-    Bytes mediaHeaderAtom(std::uint32_t timescale, std::uint32_t duration);
+    Bytes mediaHeaderAtom(std::uint32_t timescale, std::uint64_t duration);
     Bytes soundMediaHeaderAtom();
     Bytes handlerReferenceAtom(std::string_view handlerType = "soun");
     Bytes dataInformationAtom();
     Bytes trackReferenceAtom(std::uint32_t chapterTrackId);
-    Bytes editListAtom(std::uint32_t emptyDuration,
-                       std::uint32_t mediaDuration);
+    Bytes editListAtom(std::uint64_t emptyDuration,
+                       std::uint64_t mediaDuration);
     Bytes textMediaHeaderAtom();
     Bytes textSampleEntry();
     Bytes explicitTimeToSampleAtom(
@@ -91,6 +91,8 @@ namespace cupuacu::file::m4a
     // Writes ftyp and a 64-bit mdat placeholder. The caller streams packet
     // payloads, then finalizes metadata and patches the size on a seekable
     // file.
+    void validateAlacM4aDuration(std::uint64_t frames, std::uint32_t packetFrames,
+                                const std::vector<DocumentMarker> &markers);
     void beginAlacM4a(std::ostream &output);
     void finishAlacM4a(std::ostream &output, AlacMovieDescription description,
                        std::uint64_t audioBytes,

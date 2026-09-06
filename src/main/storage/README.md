@@ -2,7 +2,7 @@
 
 Normal queued file opening now uses the disk revision backend.
 `DocumentSession::bindReadRevision` binds imported/edited audio. Existing resident
-restart histories, legacy synchronous loading and new-document creation retain
+restart histories and legacy synchronous loading retain
 their compatibility paths until migration/removal.
 A bound `Document` contains only shape and marker metadata. Legacy sample and
 buffer access throws instead of returning placeholder silence. The session
@@ -123,8 +123,7 @@ published prefix, reports the error and supplies one undo entry for that prefix.
 Failed later appends do not prevent reading previously flushed blocks. A closed
 or replaced document cancels publication while its remaining input is drained.
 Completed recording revisions now participate in document autosave; capture
-in progress is not checkpointed. New empty documents retain their resident
-creation path until the remaining compatibility migration.
+in progress is not checkpointed. New documents also use this recording path.
 `[revision-recording]` exercises the
 real callback/drain, overwrite/extension, mono/stereo, exact samples and peaks,
 undo/redo, overflow, write failure and stale publication without audio devices

@@ -105,8 +105,7 @@ namespace cupuacu::file::m4a
             if (progressCallback)
             {
                 progressCallback(
-                    static_cast<std::uint32_t>(std::min<std::uint64_t>(
-                        deliveredFrames, outputFrameCount)),
+                    std::min(deliveredFrames, outputFrameCount),
                     outputFrameCount);
             }
             if (readProgressCallback)

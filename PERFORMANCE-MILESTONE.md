@@ -118,8 +118,8 @@ Raw reports remain in ignored `dist/benchmarks/`:
 ## Explicitly deferred
 
 Paged peaks/indexes, a total application memory budget and pressure management,
-legacy recovery conversion, larger M4A limits,
-memory mapping and further scheduler unification remain outside this milestone.
+legacy recovery conversion and further scheduler unification remain outstanding.
+Memory mapping is outside the current scope.
 The next step is manual verification of the delivered workflow, not another
 architecture slice.
 
@@ -260,3 +260,60 @@ suite, Linux or GUI integration run was added.
 
 Reports in `dist/benchmarks/`: `new-document-before.json`,
 `new-document-after.json`, `record-new.json`.
+
+
+## Follow-up: large M4A durations and offsets
+
+M4A ALAC/AAC parsing, file information, decoding totals/progress and import frame
+counters now carry 64-bit durations. ALAC encoding results and export accept
+recordings beyond 2^32 frames while retaining bounded packet buffers. Movie,
+track and media durations, plus chapter edit lists, use version-1 wide fields
+when needed. Track-ID parsing recognizes both header layouts. Large media data
+and chunk offsets continue through the existing extended `mdat`/`co64` path.
+The conservative wide-duration threshold matches
+[FFmpeg's writer](https://github.com/FFmpeg/FFmpeg/blob/master/libavformat/movenc.c).
+
+Timing-table expansion is checked against the packet table before allocation,
+frame totals use checked arithmetic, and resident compatibility decoders check
+byte-size multiplication before reserving output. Export validates duration and
+chapter constraints before starting packet work. Cancellation still leaves an
+existing destination unchanged.
+
+Container constraints remain explicit: packet counts use 32-bit sample-table
+fields, metadata atoms use the existing 32-bit size representation, and an
+individual chapter duration cannot exceed UINT32_MAX sample ticks. The latter
+is the format's [time-to-sample field width](https://developer.apple.com/documentation/quicktime-file-format/time-to-sample_atom/time-to-sample_table),
+not the total track-duration limit. Wide chapter positions and total chapter
+track duration are supported. No chapter positions are silently truncated.
+
+Boundary tests use sparse files and synthetic timing tables: >2^32 ALAC/AAC
+frames, a real decoded ALAC packet beyond a 4 GiB prefix, chapters beyond 2^32
+frames and 4 GiB offsets, wide decode progress after a real first packet,
+preflight rejection, bounded export reads and transactional cancellation.
+The long-duration fixtures are intentionally not fully encoded/decoded; existing
+short-file codec/round-trip tests and ordinary export benchmarks cover actual
+sample processing. This closes the application-level M4A frame-limit slice,
+not unbounded codec index memory or support for every MP4 container variation.
+
+`m4a_metadata` passed six runs (three small, three beyond the frame boundary).
+The wide case describes 4,295,098,368 frames and 1,048,608 packets in a sparse
+5,247,235,524-byte file, with 4,195,524 non-audio bytes. Median parsing was 7.04 ms;
+peak RSS including setup was about 35.3 MiB. The small case parsed in 0.081 ms.
+No complete media payload is generated or scanned by this metadata benchmark.
+
+Six ordinary ALAC export runs (1/256 MiB, three repetitions) passed sample
+validation. Medians: 10.81 ms / 2512.37 ms. The historical `export-after.json`
+report recorded 9.72 ms / 2516.98 ms. The small difference is +1.10 ms / 11.3%;
+the large case is essentially unchanged. This is a historical reference, not a
+matched same-session regression attribution. The small difference is below the
+previously agreed combined investigation threshold of 10% and 5 ms.
+
+Reports: `m4a-small-metadata.json`, `m4a-wide-metadata.json`,
+`m4a-wide-export.json` in `dist/benchmarks/`.
+
+Validation completed: 57 distinct focused native codec/export cases passed across
+the initial suite and added AAC boundary check; the final five boundary cases
+passed again after the duration-header compatibility adjustment. Six metadata
+and six actual-export benchmark runs passed; 16 reporting tests passed. Native
+application and benchmark builds passed. No full suite, Linux or GUI integration
+runs were added for this slice.

@@ -22,7 +22,7 @@ namespace cupuacu::file::m4a
         std::uint32_t sampleRate = 0;
         std::uint16_t channels = 0;
         std::uint16_t bitDepth = 0;
-        std::uint32_t frameCount = 0;
+        std::uint64_t frameCount = 0;
         std::uint32_t framesPerPacket = 0;
         std::uint64_t mdatPayloadOffset = 0;
         std::uint64_t mdatPayloadSize = 0;
@@ -37,7 +37,7 @@ namespace cupuacu::file::m4a
     {
         std::uint32_t sampleRate = 0;
         std::uint16_t channels = 0;
-        std::uint32_t frameCount = 0;
+        std::uint64_t frameCount = 0;
         std::uint32_t framesPerPacket = 0;
         std::uint32_t primingFrames = 0;
         std::uint32_t paddingFrames = 0;

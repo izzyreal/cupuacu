@@ -730,3 +730,27 @@ python3 scripts/run-benchmarks.py --profile extended --mode timing \
   --filter record_new --sizes-mib 1 256 --repetitions 3 --formats wav \
   --output dist/benchmarks/record-new.json
 ```
+
+
+### M4A frame and byte boundaries
+
+`m4a_metadata` constructs a sparse M4A with synthetic packet sizes and a chapter
+near its end. Timing covers the production parser. Validation checks every
+packet offset, the summed frame count and the exact chapter position afterward.
+It does not encode or validate a complete audio payload. Workload sizes are
+logical decoded stereo float bytes, as elsewhere; the scenario creates its own
+M4A metadata regardless of the runner's fixture-format label.
+
+```sh
+python3 scripts/run-benchmarks.py --profile large --mode timing \
+  --filter m4a_metadata --sizes-mib 1 32769 --repetitions 3 \
+  --max-rss-mib 1024 --max-disk-mib 16384 \
+  --output dist/benchmarks/m4a-metadata.json
+python3 scripts/run-benchmarks.py --profile extended --mode timing \
+  --filter export_owned_alac --sizes-mib 1 256 --repetitions 3 \
+  --formats wav --output dist/benchmarks/m4a-wide-export.json
+```
+
+The 32769 MiB case crosses 2^32 frames and 4 GiB encoded offsets using sparse
+storage, so it avoids generating a real 32 GiB recording. Pair it with the
+ordinary export benchmark for actual codec throughput and sample verification.

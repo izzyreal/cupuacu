@@ -442,3 +442,34 @@ TEST_CASE("M4A assembler rejects empty ALAC packet metadata", "[m4a]")
     REQUIRE_THROWS_AS(cupuacu::file::m4a::assembleAlacM4a({}),
                       std::invalid_argument);
 }
+
+TEST_CASE("M4A duration headers select wide fields without narrowing", "[m4a][m4a-large]")
+{
+    using namespace cupuacu::file::m4a;
+    const uint64_t duration = uint64_t(UINT32_MAX) + 123;
+    const auto wideAt = [&](const Bytes &bytes, std::size_t offset)
+    { return (uint64_t(readBe32(bytes, offset)) << 32) | readBe32(bytes, offset + 4); };
+    const auto movie = movieHeaderAtom(48000, duration);
+    const auto media = mediaHeaderAtom(48000, duration);
+    const auto track = trackHeaderAtom(7, duration);
+    REQUIRE(movie[8] == 1);
+    REQUIRE(media[8] == 1);
+    REQUIRE(track[8] == 1);
+    REQUIRE(wideAt(movie, 32) == duration);
+    REQUIRE(wideAt(media, 32) == duration);
+    REQUIRE(wideAt(track, 36) == duration);
+    REQUIRE(readBe32(track, 28) == 7);
+    REQUIRE(movieHeaderAtom(48000, INT32_MAX - 1)[8] == 0);
+    REQUIRE(trackHeaderAtom(7, INT32_MAX - 1)[8] == 0);
+    REQUIRE(mediaHeaderAtom(48000, INT32_MAX - 1)[8] == 0);
+    REQUIRE(movieHeaderAtom(48000, UINT32_MAX)[8] == 1);
+    REQUIRE(mediaHeaderAtom(48000, INT32_MAX)[8] == 1);
+    const auto edits = editListAtom(duration, 4096);
+    REQUIRE(edits[16] == 1);
+    REQUIRE(wideAt(edits, 24) == duration);
+    REQUIRE(wideAt(edits, 32) == UINT64_MAX);
+    const auto timing = timeToSampleAtom(duration, 4096);
+    REQUIRE(readBe32(timing, 16) == duration / 4096);
+    REQUIRE_THROWS_AS(timeToSampleAtom((uint64_t(UINT32_MAX) + 1) * 4096, 4096),
+                      std::out_of_range);
+}
