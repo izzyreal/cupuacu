@@ -540,6 +540,7 @@ namespace
     #include "LargeFileWorkflow.hpp"
     #include "RestoredClipboardPaste.hpp"
     #include "AudioMemory.hpp"
+    #include "PeakPaging.hpp"
 
     void scenario(benchmark::State &measurement)
     {
@@ -588,6 +589,11 @@ namespace
 #endif
         const std::string name = request.at("scenario");
         const int64_t frames = request.at("frames");
+        if (name == "peak_paged" || name == "peak_resident")
+        {
+            peakPagingScenario(measurement, frames, name == "peak_paged");
+            return;
+        }
         if (name == "audio_memory")
         {
             audioMemoryScenario(measurement, frames);

@@ -449,3 +449,81 @@ Linux build or GUI integration runs. Reports under `dist/benchmarks/`:
 
 Next milestone: page detailed peaks/indexes and integrate their residency with
 resource admission. This slice does not close the original total-memory stage.
+
+
+## Follow-up: disk-backed detailed revision peaks
+
+Long-source revision summaries now retain levels of at most 4,096 peaks in RAM
+and store detailed levels in application-owned temporary segment files. A stereo
+source retains less than 128 KiB of overview values, excluding metadata. Detailed
+pages use the decoded-sample cache, including its shared budget and pressure
+trimming. Their page index is arithmetic plus a small descriptor per level;
+there is no in-memory pointer for every detailed peak page.
+
+Each 256 KiB page holds a spatial subtree: 16,384 base peaks and their next 13
+summary levels. Grouping nearby levels matters: the first level-by-level layout
+thrashed a 1 MiB cache, reading about 18 GiB for the 2 GiB-equivalent benchmark.
+That layout was rejected. The final subtree layout reads about 130 MiB over the
+two eight-view passes and avoids the measured 1.6-second stalls.
+
+Imports, generated effects, clipboard conversion, legacy conversion and archive
+recovery construct paged summaries on workers. Small sources keep their existing
+resident representation. Recording batches already have small per-source summaries.
+Revision overview queries are explicitly worker-only; legacy progressive rendering
+retains its in-memory caches. Archive serialization reads peak ranges through the
+new interface; the durable archive format is unchanged. Recovery recreates temporary
+peak pages from the archive and still rebuilds corrupt summaries from audio.
+Temporary segments live with their summaries and are removed on normal final release;
+crash leftovers remain subject to operating-system temporary-file cleanup.
+
+Native Release, three repetitions per case. The synthetic workload covers two
+channels, eight 1,200-pixel views at different zooms, and a second identical pass.
+Only 1 MiB is available for detailed pages:
+
+| Audio represented | Resident peaks, old | Resident overview + maximum cache | First eight views, resident / paged | Repeated eight views, resident / paged |
+| --- | --- | --- | --- | --- |
+| 1 MiB | 32 KiB | 32 KiB + 0 | 0.46 / 0.35 ms | 0.45 / 0.33 ms |
+| 256 MiB | 8 MiB | 128 KiB + 1 MiB | 0.51 / 2.96 ms | 0.51 / 2.58 ms |
+| 2 GiB | 64 MiB | 128 KiB + 1 MiB | 1.53 / 15.47 ms | 0.64 / 15.03 ms |
+
+The small case takes the same resident path in both variants; its timing difference
+is not a paging improvement. Large queries are slower than fully resident queries.
+This is a memory/responsiveness trade-off, not a claim of faster RAM access. Repeating
+eight views exceeds the tiny cache, so the second pass still reads files. Filesystem
+cache state is uncontrolled; these are not cold-device latency guarantees.
+
+Building the upper pyramid and writing paged details took 12.34 ms / 98.91 ms at
+256 MiB / 2 GiB equivalent, compared with 2.30 ms / 17.77 ms for the resident
+pyramid. A matched production import benchmark against the saved pre-change
+executable measured 2.53 → 2.83 ms at 1 MiB and 411.69 → 434.86 ms at 256 MiB.
+First-waveform publication at 256 MiB was 2.09 → 2.05 ms. The import increase is
+23.17 ms (5.6%), with no delayed first waveform in these runs.
+
+The existing asynchronous raw-window benchmark also passed all samples/cache
+bounds. At 256 MiB its median 64-request aggregate rose 8.80 → 31.51 ms;
+per-request median completion rose 0.129 → 0.178 ms and the median run maximum
+0.277 → 2.814 ms. One run's maximum was 5.761 ms. These are real measured costs
+following import, with unchanged sample reads/cache hit counts; they are not
+attributed conclusively to a specific system-I/O effect. Submission remained
+about 0.001 ms. The individual worker costs remain small, but the aggregate
+regression is recorded rather than dismissed.
+
+All 18 synthetic runs and 24 matched import/raw-window runs passed. Validation:
+33 focused native cases (paged boundaries/cancellation/archive round trip,
+viewport pipeline, owned audio, revision persistence/effects and legacy recovery),
+16 reporting checks, native app and benchmark builds. No broad suite, Linux build
+or GUI integration runs. Later formatting-only edits did not change behavior.
+
+Reports in `dist/benchmarks/`: `peak-paging.json`,
+`peak-paging-open-before.json`, `peak-paging-open-after.json`,
+`peak-paging-import-before.json`, `peak-paging-import-after.json`.
+`peak-paging-initial-layout.json` documents the rejected layout.
+
+Remaining: initial peak construction and archive decoding still materialize the
+peak pyramid before paging; progressive caches and pending persistence snapshots
+can retain it temporarily. This slice therefore reduces retained revision memory,
+not import peak RSS. Overview values and metadata are not charged to the shared
+budget, and many short sources can accumulate resident overviews. Source audio
+block indexes, provenance runs and edit-tree nodes remain resident. Those need
+bounded construction, aggregate admission and/or paging before the original
+application-wide memory objective is complete. Memory mapping remains excluded.

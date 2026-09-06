@@ -20,7 +20,7 @@ import time
 SCHEMA = 1
 QUICK = ["open_uncached", "open_cached", "sample_shared", "delete", "gain_fixed",
          "gain_all", "undo", "redo", "scroll", "zoom"]
-EXTRA = ["audio_memory", "recovery_legacy", "m4a_metadata", "new_document_edit", "record_new", "paste_restored_empty", "open_decoded_cached", "large_file_workflow", "bulk_busy_edit_owned", "checkpoint_initial_owned", "checkpoint_edit_owned", "checkpoint_history_owned", "recovery_owned", "record_fixed_owned", "record_long_owned", "save_worker_preserving_owned", "save_worker_preserving_memory", "save_worker_generic_owned", "save_worker_generic_memory", "sample_command_owned", "sample_command_memory", "normalize_owned", "normalize_memory", "normalize_legacy", "effect_fixed_owned", "effect_fixed_memory", "effect_all_owned", "effect_all_memory", "edit_command_owned", "edit_command_memory", "playback_memory", "playback_owned", "export_owned_alac", "export_owned_wav", "export_memory_alac", "export_memory_wav", "sample", "copy", "paste", "trim", "scroll_dirty", "zoom_dirty", "zoom_unaligned", "waveform_build", "open_owned", "open_owned_viewport", "open_owned_viewport_sync", "open_owned_edit", "open_owned_waveform", "open_owned_session", "open_memory_session"]
+EXTRA = ["peak_paged", "peak_resident", "audio_memory", "recovery_legacy", "m4a_metadata", "new_document_edit", "record_new", "paste_restored_empty", "open_decoded_cached", "large_file_workflow", "bulk_busy_edit_owned", "checkpoint_initial_owned", "checkpoint_edit_owned", "checkpoint_history_owned", "recovery_owned", "record_fixed_owned", "record_long_owned", "save_worker_preserving_owned", "save_worker_preserving_memory", "save_worker_generic_owned", "save_worker_generic_memory", "sample_command_owned", "sample_command_memory", "normalize_owned", "normalize_memory", "normalize_legacy", "effect_fixed_owned", "effect_fixed_memory", "effect_all_owned", "effect_all_memory", "edit_command_owned", "edit_command_memory", "playback_memory", "playback_owned", "export_owned_alac", "export_owned_wav", "export_memory_alac", "export_memory_wav", "sample", "copy", "paste", "trim", "scroll_dirty", "zoom_dirty", "zoom_unaligned", "waveform_build", "open_owned", "open_owned_viewport", "open_owned_viewport_sync", "open_owned_edit", "open_owned_waveform", "open_owned_session", "open_memory_session"]
 SDL_CASES = ["open_uncached", "open_cached", "scroll", "zoom", "scroll_dirty", "zoom_dirty", "responsive_gain", "responsive_stall"]
 
 
@@ -196,7 +196,7 @@ def summarize(rows):
                     metrics.setdefault(k + "_ms", []).append(v)
             for k, v in (row.get("work") or {}).items():
                 metrics.setdefault(k, []).append(v)
-            for group in ("event_latency", "event_loop", "waveform_queries", "navigation_dispatch", "navigation_during_work", "bounded_storage", "effect_command", "coordination", "workflow", "decoded_cache", "clipboard_paste", "new_document", "recording", "m4a_metadata", "legacy_recovery", "audio_memory"):
+            for group in ("event_latency", "event_loop", "waveform_queries", "navigation_dispatch", "navigation_during_work", "bounded_storage", "effect_command", "coordination", "workflow", "decoded_cache", "clipboard_paste", "new_document", "recording", "m4a_metadata", "legacy_recovery", "audio_memory", "peak_paging"):
                 for k, v in row.get(group, {}).items():
                     if v is not None:
                         metrics.setdefault(group + "_" + k, []).append(v)

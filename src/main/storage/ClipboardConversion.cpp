@@ -83,9 +83,9 @@ namespace cupuacu::storage
                     caches.getCache(c).snapshotBuildState().levels);
             }
             check();
-            result.assignRevision(AudioEditRevision::from(
-                builder.finish({}, std::make_shared<waveform::SourcePeaks>(
-                                       shape, std::move(levels)))));
+            result.assignRevision(AudioEditRevision::from(builder.finish(
+                {}, waveform::SourcePeaks::createPaged(shape, std::move(levels),
+                                                       cache, cancel))));
         }
         else
         {

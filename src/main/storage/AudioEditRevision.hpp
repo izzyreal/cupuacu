@@ -527,7 +527,8 @@ namespace cupuacu::storage
             }
             return true;
         }
-        // Memory-only overview query. Pixel edges may expand within a leaf to
+        // Worker-only overview query; detailed source peaks may read disk.
+        // Pixel edges may expand within a leaf to
         // a 128-frame source bucket; never beyond an edit boundary. Whole-tree
         // and whole-leaf summaries are exact. Fine zoom uses async sample
         // reads.

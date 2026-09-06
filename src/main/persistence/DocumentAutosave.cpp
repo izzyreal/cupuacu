@@ -637,8 +637,8 @@ namespace cupuacu::persistence
                     caches.getCache(c).snapshotBuildState().levels);
             }
             auto audio = storage::AudioEditRevision::from(builder.finish(
-                {}, frames ? std::make_shared<waveform::SourcePeaks>(
-                                 shape, std::move(levels))
+                {}, frames ? waveform::SourcePeaks::createPaged(
+                                 shape, std::move(levels), cache, isCanceled)
                            : nullptr));
             cupuacu::DocumentSession restored;
             restored.document.setExternalAudioShape(format, sampleRate,
@@ -725,6 +725,10 @@ namespace cupuacu::persistence
                 std::filesystem::is_directory(legacyState->undoStorePath))
             {
                 restored.undoStore.attach(legacyState->undoStorePath);
+            }
+            if (restored.hasReadRevision())
+            {
+                restored.waveformCaches = {};
             }
             session = std::move(restored);
             const auto appliedStateAt = std::chrono::steady_clock::now();

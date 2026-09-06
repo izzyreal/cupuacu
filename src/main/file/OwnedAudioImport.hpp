@@ -206,8 +206,8 @@ namespace cupuacu::file
                                      .snapshotBuildState()
                                      .levels);
             }
-            sourcePeaks = std::make_shared<waveform::SourcePeaks>(
-                shape, std::move(levels));
+            sourcePeaks = waveform::SourcePeaks::createPaged(
+                shape, std::move(levels), cache, cancel);
         }
         auto audio =
             builder->finish(owned, std::move(sourcePeaks),
