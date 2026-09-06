@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 
 namespace cupuacu::playback
 {
@@ -16,9 +17,10 @@ namespace cupuacu::playback
     inline Range computeRangeForPlay(const cupuacu::DocumentSession &session,
                                      const bool loopPlaybackEnabled)
     {
-        const uint64_t totalFrames =
-            static_cast<uint64_t>(std::max<int64_t>(
-                int64_t{0}, session.document.getFrameCount()));
+        const uint64_t totalFrames = static_cast<uint64_t>(std::max<int64_t>(
+            int64_t{0}, session.openingPreview && session.openingAudio
+                            ? session.openingAudio->availableFrames()
+                            : session.document.getFrameCount()));
 
         uint64_t start = 0;
         uint64_t end = totalFrames;
@@ -51,11 +53,15 @@ namespace cupuacu::playback
 
     inline Range computeRangeForLiveUpdate(
         const cupuacu::DocumentSession &session, const bool loopPlaybackEnabled,
-        const uint64_t fallbackStart, const uint64_t fallbackEnd)
+        const uint64_t fallbackStart, const uint64_t fallbackEnd,
+        const uint64_t sourceFrames = std::numeric_limits<uint64_t>::max())
     {
-        const uint64_t totalFrames =
+        const uint64_t totalFrames = std::min(
+            sourceFrames,
             static_cast<uint64_t>(std::max<int64_t>(
-                int64_t{0}, session.document.getFrameCount()));
+                int64_t{0}, session.openingPreview && session.openingAudio
+                                ? session.openingAudio->availableFrames()
+                                : session.document.getFrameCount())));
 
         uint64_t start = fallbackStart;
         uint64_t end = fallbackEnd > 0 ? fallbackEnd : totalFrames;

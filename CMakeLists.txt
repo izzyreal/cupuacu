@@ -371,6 +371,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/gui/MenuBar.cpp
     src/main/gui/TooltipController.cpp
     src/main/gui/Window.cpp
+    src/main/concurrency/TaskScheduler.cpp
     src/main/storage/RevisionArchive.cpp
     src/main/persistence/RevisionPersistence.cpp
     src/main/storage/RecordingWriter.cpp
@@ -401,6 +402,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_edit_commands.cpp
     src/test/test_waveform_selection.cpp
     src/test/test_session_loading.cpp
+    src/test/test_task_scheduler.cpp
     src/test/test_revision_activation.cpp
     src/test/test_revision_persistence.cpp
     src/test/test_revision_recording.cpp

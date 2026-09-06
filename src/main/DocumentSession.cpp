@@ -9,6 +9,11 @@ namespace cupuacu
     std::shared_ptr<const storage::AudioReader>
     DocumentSession::getAudioReader() const
     {
+        if (openingPreview && openingAudio)
+        {
+            return std::make_shared<storage::AudioSlice>(
+                openingAudio, 0, openingAudio->availableFrames());
+        }
         if (readRevision)
         {
             if (readRevisionVersion != document.getWaveformDataVersion())
@@ -73,6 +78,8 @@ namespace cupuacu
     }
     void DocumentSession::clearReadRevision()
     {
+        openingAudio.reset();
+        pendingImportedPeaks.reset();
         recoveredRevisionCheckpoint.reset();
         readRevision.reset();
         savedReadRevision.reset();
@@ -123,6 +130,23 @@ namespace cupuacu
     std::shared_ptr<const waveform::ViewportSource>
     DocumentSession::getViewportSource() const
     {
+        if (openingPreview && openingAudio)
+        {
+            if (!viewportSource || viewportBufferIdentity != openingAudio.get())
+            {
+                waveform::ViewportSource source;
+                source.audio = openingAudio;
+                source.availableFrames = [audio = openingAudio]
+                {
+                    return audio->availableFrames();
+                };
+                viewportSource = concurrency::releaseOnWorker(
+                    std::make_shared<waveform::ViewportSource>(
+                        std::move(source)));
+                viewportBufferIdentity = openingAudio.get();
+            }
+            return viewportSource;
+        }
         if (document.getFrameCount() <= 0 || openingPreview)
         {
             return {};

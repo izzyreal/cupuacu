@@ -196,6 +196,7 @@ namespace cupuacu::actions
         }
 
         detail::discardAutosaveSnapshot(state->getActiveDocumentSession());
+        state->getActiveTab()->operation.reset();
         prepareForDocumentTransition(state);
 
         auto &session = state->getActiveDocumentSession();

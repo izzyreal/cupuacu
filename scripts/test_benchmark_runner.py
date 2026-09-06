@@ -25,6 +25,20 @@ def report(value=2):
 
 
 class ReportingTests(unittest.TestCase):
+    def test_worker_metrics_and_missing_completion_are_not_failures(self):
+        row = dict(case=CASE, status="ok", effect_command={"completion_ms": 3},
+                   coordination={"edit_p99_ms": .02})
+        summaries = runner.summarize([row])
+        self.assertEqual(summaries[0]["metrics"]["effect_command_completion_ms"]["median"], 3)
+        self.assertEqual(summaries[0]["metrics"]["coordination_edit_p99_ms"]["median"], .02)
+        rendered = runner.text_report(dict(profile="extended", elapsed_seconds=1, summaries=summaries))
+        self.assertIn("1 ok, 0 failed", rendered)
+        self.assertIn("3.000", rendered)
+        row.pop("effect_command")
+        rendered = runner.text_report(dict(profile="extended", elapsed_seconds=1, summaries=runner.summarize([row])))
+        self.assertIn("1 ok, 0 failed", rendered)
+
+
     def test_timing_only_runs_without_diagnostic_executable(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -75,11 +89,22 @@ class ReportingTests(unittest.TestCase):
 
     def test_extended_alac_opening_covers_core_and_rendering(self):
         cases = list(runner.cases("extended", [1, 16], ["core", "sdl"]))
-        alac = [c for c in cases if c["format"] == "m4a"]
+        alac = [c for c in cases if c["format"] == "m4a" and c["scenario"].startswith("open_")]
         self.assertEqual(len(alac), 12)
         self.assertEqual({c["scenario"] for c in alac}, {"open_cached", "open_uncached"})
         self.assertEqual({c["suite"] for c in alac}, {"core", "sdl"})
         self.assertFalse(any(c["format"] == "m4a" for c in runner.cases("quick", [1], ["core"])))
+
+    def test_workflow_formats_and_tab_counts_are_separate(self):
+        workflows = [q for q in runner.cases("extended", [1], ["core"])
+                     if q["scenario"] == "large_file_workflow" and q["mode"] == "timing"]
+        self.assertEqual({q["format"] for q in workflows}, {"wav", "m4a", "flac"})
+        rows = [dict(case=dict(workflows[0], tab_count=n), status="ok",
+                     workflow={"viewport_warm_p99_ms": .5, "sample_cache_budget_bytes": 67108864})
+                for n in (1, 4)]
+        summaries = runner.summarize(rows)
+        self.assertEqual(len(summaries), 2)
+        self.assertEqual(summaries[0]["metrics"]["workflow_viewport_warm_p99_ms"]["median"], .5)
 
     def test_missing_measurements_and_failures_stay_visible(self):
         rows = report()["runs"] + [dict(case=CASE, status="timeout")]

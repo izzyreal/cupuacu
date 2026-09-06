@@ -1,5 +1,6 @@
 #pragma once
 #include "AudioBlockStore.hpp"
+#include "ImportAudioReader.hpp"
 #include "../waveform/SourcePeaks.hpp"
 #include <functional>
 #include "../audio/SampleProvenance.hpp"
@@ -180,6 +181,7 @@ namespace cupuacu::storage
         uint32_t buffered = 0;
         bool finished = false;
         BlockCallback onBlock;
+        std::shared_ptr<ImportAudioReader> progressive;
         void flushBlock()
         {
             try
@@ -188,6 +190,15 @@ namespace cupuacu::storage
                 {
                     revision->channels[c].push_back(revision->store->append(
                         std::span<const float>(pending[c]).first(buffered)));
+                }
+                if (progressive)
+                {
+                    std::vector<AudioBlock> blocks;
+                    for (const auto &channel : revision->channels)
+                    {
+                        blocks.push_back(channel.back());
+                    }
+                    progressive->publish(blocks);
                 }
                 if (onBlock)
                 {
@@ -203,11 +214,13 @@ namespace cupuacu::storage
         }
 
     public:
-        AudioRevisionBuilder(AudioShape shape,
-                             std::shared_ptr<AudioBlockStore> store,
-                             std::shared_ptr<DecodedBlockCache> cache,
-                             BlockCallback blockCallback = {})
-            : onBlock(std::move(blockCallback))
+        AudioRevisionBuilder(
+            AudioShape shape, std::shared_ptr<AudioBlockStore> store,
+            std::shared_ptr<DecodedBlockCache> cache,
+            BlockCallback blockCallback = {},
+            std::shared_ptr<ImportAudioReader> progressiveReader = {})
+            : onBlock(std::move(blockCallback)),
+              progressive(std::move(progressiveReader))
         {
             if (!store || !cache || shape.frames < 0 || shape.channels <= 0 ||
                 shape.sampleRate <= 0 ||

@@ -58,25 +58,38 @@ namespace cupuacu::gui
 
         void syncToState()
         {
-            const bool shouldBeVisible = state && state->longTask.active;
+            const bool previousDocumentOperation = documentOperation;
+            status = state ? state->longTask : State::LongTaskStatus{};
+            documentOperation = false;
+            if (state && !status.active && state->getActiveTab() &&
+                state->getActiveTab()->operation)
+            {
+                const auto &op = *state->getActiveTab()->operation;
+                status = {.active = true,
+                          .title = op.title,
+                          .detail = op.detail,
+                          .progress = op.progress,
+                          .cancellable = true,
+                          .cancelRequested = op.cancelRequested};
+                documentOperation = true;
+            }
+            setInterceptMouseEnabled(!documentOperation);
+            const bool shouldBeVisible = status.active;
             if (isVisible() != shouldBeVisible)
             {
                 setVisible(shouldBeVisible);
             }
 
-            const std::string title =
-                shouldBeVisible ? state->longTask.title : "";
-            const std::string detail =
-                shouldBeVisible ? state->longTask.detail : "";
+            const std::string title = shouldBeVisible ? status.title : "";
+            const std::string detail = shouldBeVisible ? status.detail : "";
             const auto progress =
-                shouldBeVisible ? state->longTask.progress : std::nullopt;
-            const bool cancellable =
-                shouldBeVisible && state->longTask.cancellable;
+                shouldBeVisible ? status.progress : std::nullopt;
+            const bool cancellable = shouldBeVisible && status.cancellable;
             const bool cancelRequested =
-                shouldBeVisible && state->longTask.cancelRequested;
-            if (title != lastTitle || detail != lastDetail ||
-                progress != lastProgress ||
-                cancellable != lastCancellable ||
+                shouldBeVisible && status.cancelRequested;
+            if (documentOperation != previousDocumentOperation ||
+                title != lastTitle || detail != lastDetail ||
+                progress != lastProgress || cancellable != lastCancellable ||
                 cancelRequested != lastCancelRequested)
             {
                 lastTitle = title;
@@ -127,14 +140,17 @@ namespace cupuacu::gui
 
         void onDraw(SDL_Renderer *renderer) override
         {
-            if (!state || !state->longTask.active)
+            if (!state || !status.active)
             {
                 return;
             }
 
             SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-            Helpers::fillRect(renderer, getLocalBounds(),
-                              SDL_Color{0, 0, 0, 110});
+            if (!documentOperation)
+            {
+                Helpers::fillRect(renderer, getLocalBounds(),
+                                  SDL_Color{0, 0, 0, 110});
+            }
 
             const auto layout = computeLayout();
 
@@ -144,22 +160,25 @@ namespace cupuacu::gui
             const SDL_FRect panelFrame = Helpers::rectToFRect(layout.panel);
             SDL_RenderRect(renderer, &panelFrame);
 
-            const int titleFont =
-                scaleFontPointSize(
-                    state, std::max(1, static_cast<int>(state->menuFontSize)));
-            const int detailFont =
-                scaleFontPointSize(
-                    state,
-                    std::max(1, static_cast<int>(state->menuFontSize) - 8));
-            renderEllipsizedText(renderer, state->longTask.title, titleFont,
+            const int titleFont = scaleFontPointSize(
+                state,
+                documentOperation
+                    ? 16
+                    : std::max(1, static_cast<int>(state->menuFontSize)));
+            const int detailFont = scaleFontPointSize(
+                state,
+                documentOperation
+                    ? 14
+                    : std::max(1, static_cast<int>(state->menuFontSize) - 8));
+            renderEllipsizedText(renderer, status.title, titleFont,
                                  layout.titleRect, true);
-            renderEllipsizedText(renderer, state->longTask.detail, detailFont,
+            renderEllipsizedText(renderer, status.detail, detailFont,
                                  layout.detailRect, true);
 
             Helpers::fillRect(renderer, layout.progressTrack,
                               SDL_Color{70, 70, 70, 255});
 
-            if (!state->longTask.progress.has_value())
+            if (!status.progress.has_value())
             {
                 const int fillW = std::max(scaleUi(state, 40.0f),
                                            layout.progressTrack.w / 4);
@@ -185,8 +204,7 @@ namespace cupuacu::gui
             }
             else
             {
-                const double progress =
-                    std::clamp(*state->longTask.progress, 0.0, 1.0);
+                const double progress = std::clamp(*status.progress, 0.0, 1.0);
                 const SDL_Rect fill{
                     layout.progressTrack.x, layout.progressTrack.y,
                     static_cast<int>(std::lround(
@@ -207,6 +225,8 @@ namespace cupuacu::gui
         }
 
     private:
+        State::LongTaskStatus status;
+        bool documentOperation = false;
         [[nodiscard]] Layout computeLayout() const
         {
             Layout layout{};
@@ -216,27 +236,37 @@ namespace cupuacu::gui
             }
 
             const int outerMargin = scaleUi(state, 40.0f);
-            const int padding = scaleUi(state, 18.0f);
-            const int titleHeight = scaleUi(state, 38.0f);
-            const int detailHeight = scaleUi(state, 30.0f);
-            const int titleToDetailGap = scaleUi(state, 8.0f);
-            const int detailToBarGap = scaleUi(state, 18.0f);
+            const int padding =
+                scaleUi(state, documentOperation ? 8.0f : 18.0f);
+            const int titleHeight =
+                scaleUi(state, documentOperation ? 20.0f : 38.0f);
+            const int detailHeight =
+                scaleUi(state, documentOperation ? 18.0f : 30.0f);
+            const int titleToDetailGap =
+                scaleUi(state, documentOperation ? 2.0f : 8.0f);
+            const int detailToBarGap =
+                scaleUi(state, documentOperation ? 4.0f : 18.0f);
             const int buttonWidth = scaleUi(state, 120.0f);
-            const int buttonHeight = scaleUi(state, 34.0f);
-            const int buttonGap = scaleUi(state, 12.0f);
+            const int buttonHeight =
+                scaleUi(state, documentOperation ? 22.0f : 34.0f);
+            const int buttonGap =
+                scaleUi(state, documentOperation ? 4.0f : 12.0f);
             const int barHeight = scaleUi(state, 6.0f);
 
             const int panelWidth =
                 std::min(getWidth() - outerMargin, scaleUi(state, 520.0f));
             const int textBlockHeight =
                 titleHeight + titleToDetailGap + detailHeight;
-            const int footerHeight = state->longTask.cancellable
-                                         ? detailToBarGap + barHeight + buttonGap +
-                                               buttonHeight
-                                         : detailToBarGap + barHeight;
+            const int footerHeight =
+                status.cancellable
+                    ? detailToBarGap + barHeight + buttonGap + buttonHeight
+                    : detailToBarGap + barHeight;
             const int panelHeight = padding * 2 + textBlockHeight + footerHeight;
             const int panelX = (getWidth() - panelWidth) / 2;
-            const int panelY = (getHeight() - panelHeight) / 2;
+            const int panelY = documentOperation
+                                   ? std::max(0, getHeight() - panelHeight -
+                                                     scaleUi(state, 8.0f))
+                                   : (getHeight() - panelHeight) / 2;
 
             layout.panel = {panelX, panelY, panelWidth, panelHeight};
             layout.titleRect = {

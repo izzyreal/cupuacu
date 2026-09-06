@@ -59,10 +59,10 @@ Remaining migration and resource work:
   container's encoding while unchanged audio/history roots retain their original
   representation. Foreign legacy clipboard provenance without retained source
   bytes cannot restore precision already lost to float.
-- Shared scheduling/admission, paged indexes/peaks and application-wide memory
-  accounting remain outstanding. Peak/index/run storage still grows with audio
-  length or edit structure. The bounded effect scratch/cache is not a total RSS
-  guarantee, and the existing effect job coordination still applies.
+- Bulk scheduling now bounds execution and outstanding results. Paged indexes/peaks
+  and application-wide memory accounting remain outstanding. Peak/index/run
+  storage still grows with audio length or edit structure; effect reservations
+  are not a total RSS guarantee.
 
 Background save/overwrite now pins the revision, editor metadata and original
 container before worker execution. Ordinary export uses the range reader;
@@ -78,15 +78,12 @@ retained; marker chunks and frame/size fields are updated.
 Save completion identifies the originating tab and document. Saving an older
 revision cannot clear newer edits or close their tab. A saved revision remains
 readable and undo/redo can return to its clean state. Completed save-job teardown
-runs through the background reclaimer. Existing global long-task coordination
-still restricts user interaction while saving; this does not implement the
-planned document-level scheduler.
+runs through the background reclaimer. Revision saves allow browsing, playback
+and local edits while writing the pinned revision; later edits remain dirty.
 
-Next slice: shared scheduling and document-specific operation coordination.
-Global memory admission, transport reservations, paged peaks/indexes, legacy
-recovery migration and removal of resident compatibility paths remain in the
-larger plan. The current opening overlay still blocks interaction; browsing and
-playback of an importing prefix remain work for operation coordination.
+Next slice: application-wide managed memory accounting and paged peaks/indexes.
+Legacy recovery migration and removal of resident compatibility paths remain
+in the larger plan.
 
 Focused validation: `[revision-ui],[revision-commands],[revision-effects]` covers production
 splices against a flat sample model, history and clipboard lifetime, exact marker
@@ -220,3 +217,49 @@ overwrite/recovery and failed output publication. Native `open_uncached` cases
 compare WAV, ALAC and FLAC; `save_worker_*_owned` covers save overhead. Loading
 completion can be slower because decoded data is now written to disk. This
 checkpoint does not claim that large-file import throughput has improved.
+
+## Shared bulk scheduling and document operations
+
+Each application State owns a lazy two-worker bulk scheduler for open, save,
+effect and autosave jobs. The pending queue is limited to 64 entries, and at most
+66 accepted jobs may remain running, queued or awaiting publication/reclamation.
+Admission failure is reported explicitly. User jobs precede maintenance; autosave
+receives a two-second queue deadline that promotes it ahead of new user work.
+Running work is cooperative and is not preempted. Transport read-ahead and latest
+viewport services retain independent workers, so bulk jobs cannot take their
+execution slots. This does not reserve filesystem bandwidth.
+
+Effects reserve estimated channel scratch before execution against a 128 MiB
+bulk scratch allowance. Other allocations, cache residency, peak/index data and
+queued payload bytes are not yet charged to one shared budget. This scheduler
+is the admission mechanism for the next resource slice, not a completed global
+memory policy. Clipboard conversion and peak-analysis services also retain their
+existing dedicated workers.
+
+Normal imports and revision effects/saves have tab-specific operation identities
+and a nonmodal progress footer. Imports/effects prevent mutation of their own
+document; another tab remains editable. Save pins the old revision and permits
+local edits. A second bulk operation on the same tab is rejected. Closing a tab
+invalidates its publication target. An accepted save still finishes its pinned
+output after tab closure, preserving the existing save contract. Completed jobs release through the reclaimer
+without joining workers during normal UI pumping. Shutdown drains writes before
+its final checkpoint. Autosaves already writing an archive finish their current
+transaction; they do not yet support cancellation inside that transaction.
+
+Opening publishes sealed sample blocks as well as peaks. Browsing can request raw
+views of the available prefix through the asynchronous viewport worker. Requests
+beyond it stay pending. Playback snapshots the available prefix at Play, retains
+that data independently and ends at that snapshot's boundary; starting playback
+again uses the newly available audio. Likewise playback begun during an effect
+retains the old revision. The existing restriction on switching tabs while playing
+or recording remains. Legacy resident operations and startup recovery retain
+their modal compatibility paths. Import cancellation removes only its own
+placeholder tab and preserves unrelated tab edits. Clipboard lifetime is unchanged.
+
+Focused checks: `[scheduler],[document-operations]` cover concurrency, scratch and
+result admission, priority/deadlines, exception isolation, queued cancellation,
+closed targets, unrelated edits and progressively readable audio.
+`bulk_busy_edit_owned` measures effect submission and 128 point edits in another
+tab while both bulk slots remain occupied. It reports edit p99 and verifies both
+histories; this is headless command latency, not SDL event-loop latency. Existing
+open/effect timing scenarios track throughput separately.

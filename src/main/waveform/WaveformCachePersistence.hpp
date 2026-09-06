@@ -7,6 +7,8 @@
 #include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <memory>
+#include <functional>
 #include <string>
 
 namespace cupuacu
@@ -51,6 +53,21 @@ namespace cupuacu::waveform
         Unavailable,
         Busy,
     };
+
+    struct PersistentCacheSnapshot
+    {
+        std::filesystem::path root;
+        PersistentCacheKey key;
+        std::vector<gui::WaveformCache::BuildState> channels;
+        // Optional worker-side preparation, also used for deterministic I/O
+        // delay/failure tests. Never called by capture or admission.
+        std::function<void()> beforeWrite;
+    };
+    std::shared_ptr<const PersistentCacheSnapshot>
+    capturePersistentWaveformCache(const cupuacu::DocumentSession &,
+                                   const std::filesystem::path &root);
+    CacheSaveScheduleResult schedulePersistentWaveformCache(
+        const std::shared_ptr<const PersistentCacheSnapshot> &);
 
     // Retains shared peak pages only, never the document's audio. A full queue
     // returns Busy so the caller can retry without blocking the event loop.

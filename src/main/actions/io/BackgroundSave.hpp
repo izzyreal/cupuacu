@@ -68,7 +68,7 @@ namespace cupuacu::actions::io
         BackgroundSaveJob(const BackgroundSaveJob &) = delete;
         BackgroundSaveJob &operator=(const BackgroundSaveJob &) = delete;
 
-        void start();
+        void start(std::shared_ptr<concurrency::TaskScheduler> scheduler = {});
         [[nodiscard]] Snapshot snapshot() const;
         [[nodiscard]] std::uint64_t getId() const;
         void cancel();
@@ -88,7 +88,8 @@ namespace cupuacu::actions::io
         std::string detail;
         std::optional<double> progress;
         std::string error;
-        std::thread worker;
+        std::shared_ptr<concurrency::TaskScheduler> scheduler;
+        concurrency::TaskScheduler::Ticket completion;
         std::atomic<bool> cancelRequested{false};
 
         void run();
@@ -127,7 +128,11 @@ namespace cupuacu::actions::io
         BackgroundAutosaveJob &
         operator=(const BackgroundAutosaveJob &) = delete;
 
-        void start();
+        void start(std::shared_ptr<concurrency::TaskScheduler> scheduler = {});
+        void cancel()
+        {
+            cancelRequested.store(true);
+        }
         [[nodiscard]] Snapshot snapshot() const;
 
     private:
@@ -143,8 +148,10 @@ namespace cupuacu::actions::io
         bool completed = false;
         bool success = false;
         std::string error;
-        std::thread worker;
+        std::shared_ptr<concurrency::TaskScheduler> scheduler;
+        concurrency::TaskScheduler::Ticket completion;
 
+        std::atomic<bool> cancelRequested{false};
         void run();
     };
 

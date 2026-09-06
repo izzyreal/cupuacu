@@ -39,6 +39,8 @@ namespace cupuacu::file
         bool waveformCachesReady = false;
         bool requiresSaveAs = false;
         bool externalSamples = false;
+        std::shared_ptr<const waveform::PersistentCacheSnapshot>
+            pendingImportedPeaks;
         std::shared_ptr<const storage::AudioEditRevision> audioRevision;
         std::shared_ptr<const storage::AudioRevision> ownedSource;
     };
@@ -735,6 +737,8 @@ namespace cupuacu::file
         session.clearReadRevision();
         session.document = std::move(loaded.document);
         session.openingPreview = false;
+        session.pendingImportedPeaks = concurrency::releaseOnWorker(
+            std::move(loaded.pendingImportedPeaks));
         if (loaded.audioRevision)
         {
             session.bindReadRevision(std::move(loaded.audioRevision));

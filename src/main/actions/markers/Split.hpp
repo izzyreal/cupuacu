@@ -3,6 +3,7 @@
 #include "../MutationAvailability.hpp"
 #include "../DocumentLifecycle.hpp"
 #include "../../LongTask.hpp"
+#include "../../storage/AudioEditRevision.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -52,6 +53,54 @@ namespace cupuacu::actions::markers
                              }
                              return lhs.id < rhs.id;
                          });
+
+        if (auto source = activeTab->session.getEditRevision())
+        {
+            // Build all destination tabs before inserting any. Audio and peaks
+            // remain shared with the source, including unaligned boundaries.
+            std::vector<DocumentTab> destinations;
+            destinations.reserve(sortedMarkers.size() - 1);
+            for (std::size_t i = 0; i + 1 < sortedMarkers.size(); ++i)
+            {
+                const auto start = std::clamp(
+                    sortedMarkers[i].frame, int64_t{0}, source->shape().frames);
+                const auto end = std::clamp(sortedMarkers[i + 1].frame, start,
+                                            source->shape().frames);
+                storage::AudioEditTransaction transaction(*source);
+                transaction.trim(start, end - start);
+                auto slice = transaction.finish();
+                DocumentTab tab;
+                const auto shape = slice->shape();
+                tab.session.document.setExternalAudioShape(
+                    shape.format, shape.sampleRate, shape.channels,
+                    shape.frames);
+                std::vector<DocumentMarker> markers;
+                for (const auto &marker : sortedMarkers)
+                {
+                    if (marker.frame >= start && marker.frame <= end)
+                    {
+                        markers.push_back(
+                            {marker.id, marker.frame - start, marker.label});
+                    }
+                }
+                tab.session.document.replaceMarkers(std::move(markers));
+                tab.session.bindReadRevision(std::move(slice));
+                // These are new unsaved documents, not clean copies of a file.
+                tab.session.markRevisionSaved({}, {});
+                tab.session.waveformCaches.resetToChannelCount(shape.channels);
+                destinations.push_back(std::move(tab));
+            }
+            state->tabs.insert(state->tabs.begin() + state->activeTabIndex + 1,
+                               std::make_move_iterator(destinations.begin()),
+                               std::make_move_iterator(destinations.end()));
+            persistSessionState(state);
+            if (state->mainDocumentSessionWindow)
+            {
+                bindMainWindowToActiveDocument(state);
+                refreshBoundDocumentUi(state);
+            }
+            return true;
+        }
 
         std::vector<MarkerSplitSegment> segments;
         std::atomic_bool completed{false};

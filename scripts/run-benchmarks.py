@@ -20,7 +20,7 @@ import time
 SCHEMA = 1
 QUICK = ["open_uncached", "open_cached", "sample_shared", "delete", "gain_fixed",
          "gain_all", "undo", "redo", "scroll", "zoom"]
-EXTRA = ["checkpoint_initial_owned", "checkpoint_edit_owned", "checkpoint_history_owned", "recovery_owned", "record_fixed_owned", "record_long_owned", "save_worker_preserving_owned", "save_worker_preserving_memory", "save_worker_generic_owned", "save_worker_generic_memory", "sample_command_owned", "sample_command_memory", "normalize_owned", "normalize_memory", "normalize_legacy", "effect_fixed_owned", "effect_fixed_memory", "effect_all_owned", "effect_all_memory", "edit_command_owned", "edit_command_memory", "playback_memory", "playback_owned", "export_owned_alac", "export_owned_wav", "export_memory_alac", "export_memory_wav", "sample", "copy", "paste", "trim", "scroll_dirty", "zoom_dirty", "zoom_unaligned", "waveform_build", "open_owned", "open_owned_viewport", "open_owned_viewport_sync", "open_owned_edit", "open_owned_waveform", "open_owned_session", "open_memory_session"]
+EXTRA = ["large_file_workflow", "bulk_busy_edit_owned", "checkpoint_initial_owned", "checkpoint_edit_owned", "checkpoint_history_owned", "recovery_owned", "record_fixed_owned", "record_long_owned", "save_worker_preserving_owned", "save_worker_preserving_memory", "save_worker_generic_owned", "save_worker_generic_memory", "sample_command_owned", "sample_command_memory", "normalize_owned", "normalize_memory", "normalize_legacy", "effect_fixed_owned", "effect_fixed_memory", "effect_all_owned", "effect_all_memory", "edit_command_owned", "edit_command_memory", "playback_memory", "playback_owned", "export_owned_alac", "export_owned_wav", "export_memory_alac", "export_memory_wav", "sample", "copy", "paste", "trim", "scroll_dirty", "zoom_dirty", "zoom_unaligned", "waveform_build", "open_owned", "open_owned_viewport", "open_owned_viewport_sync", "open_owned_edit", "open_owned_waveform", "open_owned_session", "open_memory_session"]
 SDL_CASES = ["open_uncached", "open_cached", "scroll", "zoom", "scroll_dirty", "zoom_dirty", "responsive_gain", "responsive_stall"]
 
 
@@ -177,7 +177,7 @@ def run_child(binary, request, workspace, timeout, max_rss, max_disk):
 
 def identity(row):
     q = row["case"]
-    return tuple(q.get(k) for k in ("suite", "mode", "scenario", "frames", "format", "position", "history_depth"))
+    return tuple(q.get(k) for k in ("suite", "mode", "scenario", "frames", "format", "position", "history_depth", "tab_count"))
 
 
 def summarize(rows):
@@ -196,7 +196,7 @@ def summarize(rows):
                     metrics.setdefault(k + "_ms", []).append(v)
             for k, v in (row.get("work") or {}).items():
                 metrics.setdefault(k, []).append(v)
-            for group in ("event_latency", "event_loop", "waveform_queries", "navigation_dispatch", "navigation_during_work", "bounded_storage"):
+            for group in ("event_latency", "event_loop", "waveform_queries", "navigation_dispatch", "navigation_during_work", "bounded_storage", "effect_command", "coordination", "workflow"):
                 for k, v in row.get(group, {}).items():
                     if v is not None:
                         metrics.setdefault(group + "_" + k, []).append(v)
@@ -281,7 +281,7 @@ def cases(profile, sizes, suites):
                            "format": "wav" if mib < 4096 else "caf", "position": "begin", "history_depth": 1}
         if profile != "quick":
             for mib in sizes:
-                for scenario in ("open_uncached", "open_cached"):
+                for scenario in (("open_uncached", "open_cached", "large_file_workflow") if suite == "core" else ("open_uncached", "open_cached")):
                     for mode in (["timing", "diagnostic"] if suite == "core" else ["timing"]):
                         yield {"suite": suite, "mode": mode, "scenario": scenario, "frames": int(mib * 1048576 / 8),
                                "format": "m4a", "position": "begin", "history_depth": 1}
@@ -301,7 +301,7 @@ def cases(profile, sizes, suites):
                         for mode in ("timing", "diagnostic"):
                             yield {"suite": suite, "mode": mode, "scenario": "delete", "frames": int(mib * 1048576 / 8),
                                    "format": "wav", "position": position, "history_depth": 1}
-                    for scenario in ("open_uncached", "open_cached"):
+                    for scenario in (("open_uncached", "open_cached", "large_file_workflow") if suite == "core" else ("open_uncached", "open_cached")):
                         yield {"suite": suite, "mode": "timing", "scenario": scenario, "frames": int(mib * 1048576 / 8),
                                "format": "flac", "position": "begin", "history_depth": 1}
 
@@ -313,12 +313,13 @@ def text_report(report):
              "|---|---|---:|---:|---:|---|"]
     for row in report["summaries"]:
         q, m = row["case"], row["metrics"]
-        value = m.get("background_complete_ms", {}).get("median")
+        value = m.get("background_complete_ms", m.get("effect_command_completion_ms", {})).get("median")
         rss = m.get("peak_process_rss_bytes_including_setup", {}).get("median")
+        timing = f"{value:.3f}" if value is not None else "—"
+        memory = f"{rss / 1048576:.1f}" if rss is not None else "—"
         lines.append(f"| {q['suite']}/{q['mode']} | {q['scenario']} ({q['position']}, history {q['history_depth']}, {q['format']}) | "
-                     f"{q['frames'] * 8 / 1048576:g} | {value:.3f} | {rss / 1048576:.1f} | "
-                     f"{row['successful_repetitions']} ok, {row['failed_repetitions']} failed |" if value is not None and rss is not None else
-                     f"| {q['suite']}/{q['mode']} | {q['scenario']} | {q['frames'] * 8 / 1048576:g} | — | — | failed |")
+                     f"{q['frames'] * 8 / 1048576:g} | {timing} | {memory} | "
+                     f"{row['successful_repetitions']} ok, {row['failed_repetitions']} failed |")
     return "\n".join(lines) + "\n"
 
 
@@ -332,6 +333,8 @@ def main(argv=None):
     parser.add_argument("--filter", default="*", help="Scenario glob, e.g. '*gain*'")
     parser.add_argument("--sizes-mib", type=float, nargs="+")
     parser.add_argument("--repetitions", type=int)
+    parser.add_argument("--workflow-tabs", type=int, choices=(1, 4), default=1)
+    parser.add_argument("--formats", nargs="+", choices=("wav", "caf", "m4a", "flac"))
     parser.add_argument("--output", type=Path, default=Path("dist/benchmarks/latest.json"))
     parser.add_argument("--fixtures", type=Path, default=Path("build/benchmark-fixtures"))
     parser.add_argument("--compare", type=Path)
@@ -354,7 +357,11 @@ def main(argv=None):
     binaries = {("core", "timing"): "cupuacu-benchmarks", ("core", "diagnostic"): "cupuacu-benchmarks-metrics", ("sdl", "timing"): "cupuacu-benchmarks-sdl"}
     selected = [case for case in cases(args.profile, sizes, suites)
                 if fnmatch.fnmatch(case["scenario"], args.filter)
-                and (args.mode == "all" or case["mode"] == args.mode)]
+                and (args.mode == "all" or case["mode"] == args.mode)
+                and (not args.formats or case["format"] in args.formats)]
+    for case in selected:
+        if case["scenario"] == "large_file_workflow":
+            case["tab_count"] = args.workflow_tabs
     if not selected:
         parser.error("No scenarios selected")
     for key in {(case["suite"], case["mode"]) for case in selected} | {("core", "timing")}:
@@ -365,7 +372,7 @@ def main(argv=None):
     args.fixtures.mkdir(parents=True, exist_ok=True)
     fixture_started = time.monotonic()
     fixture_failures = []
-    for frames, fmt in sorted({(q["frames"], q["format"]) for q in selected if q["scenario"].startswith("open_")}):
+    for frames, fmt in sorted({(q["frames"], q["format"]) for q in selected if q["scenario"].startswith("open_") or q["scenario"] == "large_file_workflow"}):
         path = args.fixtures.resolve() / f"v2-{frames}.{fmt}"
         marker = path.with_suffix(path.suffix + ".json")
         if path.exists() and marker.exists():

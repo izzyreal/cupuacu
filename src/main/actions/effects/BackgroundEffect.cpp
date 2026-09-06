@@ -1,4 +1,6 @@
 #include "BackgroundEffect.hpp"
+#include "../DocumentOperationAccess.hpp"
+#include "../../concurrency/DeferredRelease.hpp"
 #include "RevisionEffect.hpp"
 #include "../audio/RevisionEdit.hpp"
 
@@ -60,8 +62,8 @@ namespace cupuacu::actions::effects
 
         bool canStartEffect(cupuacu::State *state)
         {
-            return state != nullptr && !state->backgroundOpenJob &&
-                   !state->backgroundSaveJob && !state->backgroundEffectJob &&
+            return state && state->getActiveTab() &&
+                   !state->getActiveTab()->operation &&
                    !state->longTask.active &&
                    cupuacu::actions::isDocumentMutationAvailable(state);
         }
@@ -205,7 +207,7 @@ namespace cupuacu::actions::effects
                                    const cupuacu::Document *document)
         {
             if (!state || !document || request.frameCount <= 0 ||
-                request.targetChannels.empty() || state->backgroundEffectJob)
+                request.targetChannels.empty())
             {
                 return;
             }
@@ -215,19 +217,41 @@ namespace cupuacu::actions::effects
             const auto &session =
                 state->tabs[static_cast<std::size_t>(request.targetTabIndex)]
                     .session;
-            state->backgroundEffectJob.reset(new BackgroundEffectJob(
-                nextBackgroundEffectJobId(), std::move(request), *document,
-                session.undoStore, &session.waveformCaches,
-                session.getEditRevision(),
-                (state->paths ? state->paths->statePath()
-                              : std::filesystem::temp_directory_path()) /
-                    ("effect-" + std::to_string(std::chrono::steady_clock::now()
-                                                    .time_since_epoch()
-                                                    .count()))));
-            cupuacu::setLongTask(state, "Applying effect",
-                                 state->backgroundEffectJob->snapshot().detail,
-                                 0.0, false, true);
-            state->backgroundEffectJob->start();
+            decltype(state->backgroundEffectJob) job{
+                new BackgroundEffectJob(
+                    nextBackgroundEffectJobId(), std::move(request), *document,
+                    session.undoStore, &session.waveformCaches,
+                    session.getEditRevision(),
+                    (state->paths ? state->paths->statePath()
+                                  : std::filesystem::temp_directory_path()) /
+                        ("effect-" +
+                         std::to_string(std::chrono::steady_clock::now()
+                                            .time_since_epoch()
+                                            .count()))),
+                destroyBackgroundEffectJob};
+            if (session.hasReadRevision())
+            {
+                state->getActiveTab()->operation =
+                    DocumentOperation{.kind = DocumentOperation::Kind::Effect,
+                                      .id = job->getId(),
+                                      .title = "Applying effect",
+                                      .detail = job->snapshot().detail,
+                                      .progress = 0.0};
+            }
+            else
+            {
+                setLongTask(state, "Applying effect", job->snapshot().detail,
+                            0.0, false, true);
+            }
+            job->start(state->taskScheduler);
+            if (state->backgroundEffectJob)
+            {
+                state->additionalEffectJobs.push_back(std::move(job));
+            }
+            else
+            {
+                state->backgroundEffectJob = std::move(job);
+            }
         }
 
         std::unique_ptr<BackgroundEffectResult>
@@ -757,7 +781,10 @@ namespace cupuacu::actions::effects
                                              BackgroundEffectJob &job)
         {
             const auto snapshot = job.snapshot();
-            cupuacu::clearLongTask(state, false);
+            if (!job.isRevisionJob())
+            {
+                cupuacu::clearLongTask(state, false);
+            }
 
             if (snapshot.canceled)
             {
@@ -1026,16 +1053,37 @@ namespace cupuacu::actions::effects
 
     BackgroundEffectJob::~BackgroundEffectJob()
     {
-        if (worker.joinable())
+        cancel();
+        if (completion.valid())
         {
-            worker.join();
+            completion.wait();
         }
     }
 
-    void BackgroundEffectJob::start()
+    void BackgroundEffectJob::start(
+        std::shared_ptr<concurrency::TaskScheduler> executor)
     {
-        worker = std::thread([this]
-                             { run(); });
+        scheduler = executor ? std::move(executor)
+                             : concurrency::defaultTaskScheduler();
+        try
+        {
+            completion = scheduler->submit(
+                [this]
+                {
+                    run();
+                },
+                concurrency::TaskScheduler::Options{
+                    .scratchBytes = uint64_t(document.getChannelCount()) *
+                                    (65536 + 16384) * sizeof(float),
+                    .documentId = request.targetTabId});
+        }
+        catch (const std::exception &failure)
+        {
+            std::lock_guard lock(mutex);
+            error = failure.what();
+            completed = true;
+            completionCv.notify_all();
+        }
     }
 
     BackgroundEffectJob::Snapshot BackgroundEffectJob::snapshot() const
@@ -1090,6 +1138,10 @@ namespace cupuacu::actions::effects
     {
         try
         {
+            if (cancelRequested.load())
+            {
+                throw LongTaskCanceledError{};
+            }
             const auto progressCallback =
                 [this](const std::string &detailToUse,
                        std::optional<double> progressToUse)
@@ -1474,25 +1526,72 @@ namespace cupuacu::actions::effects
 
     void processPendingEffectWork(cupuacu::State *state)
     {
-        if (!state || !state->backgroundEffectJob)
+        if (!state)
         {
             return;
         }
-
-        if (cupuacu::isLongTaskCancelRequested(state))
+        auto pump = [&](auto &owned)
         {
-            state->backgroundEffectJob->cancel();
-        }
-
-        const auto snapshot = state->backgroundEffectJob->snapshot();
-        if (snapshot.completed)
+            if (!owned)
+            {
+                return;
+            }
+            auto snapshot = owned->snapshot();
+            auto *tab = findOperationTab(state, snapshot.request.targetTabId);
+            const bool targeted =
+                tab &&
+                (!owned->isRevisionJob() ||
+                 (tab->operation &&
+                  tab->operation->kind == DocumentOperation::Kind::Effect &&
+                  tab->operation->id == owned->getId()));
+            if (state->quitRequestedAfterLongTaskCancel ||
+                (owned->isRevisionJob() &&
+                 operationCanceled(state, snapshot.request.targetTabId,
+                                   DocumentOperation::Kind::Effect,
+                                   owned->getId())) ||
+                (!owned->isRevisionJob() && isLongTaskCancelRequested(state)))
+            {
+                owned->cancel();
+            }
+            if (snapshot.completed)
+            {
+                finishOperation(state, snapshot.request.targetTabId,
+                                DocumentOperation::Kind::Effect,
+                                owned->getId());
+                auto job = concurrency::releaseOnWorker(
+                    std::shared_ptr<BackgroundEffectJob>(owned.release()));
+                if (targeted)
+                {
+                    commitCompletedBackgroundEffect(state, *job);
+                }
+            }
+            else if (owned->isRevisionJob())
+            {
+                updateOperation(state, snapshot.request.targetTabId,
+                                DocumentOperation::Kind::Effect, owned->getId(),
+                                snapshot.detail, snapshot.progress);
+            }
+            else
+            {
+                updateLongTask(state, snapshot.detail, snapshot.progress,
+                               false);
+            }
+        };
+        pump(state->backgroundEffectJob);
+        for (auto &job : state->additionalEffectJobs)
         {
-            auto job = std::move(state->backgroundEffectJob);
-            commitCompletedBackgroundEffect(state, *job);
-            return;
+            pump(job);
         }
-
-        cupuacu::updateLongTask(state, snapshot.detail, snapshot.progress,
-                                false);
+        std::erase_if(state->additionalEffectJobs,
+                      [](const auto &job)
+                      {
+                          return !job;
+                      });
+        if (!state->backgroundEffectJob && !state->additionalEffectJobs.empty())
+        {
+            state->backgroundEffectJob =
+                std::move(state->additionalEffectJobs.back());
+            state->additionalEffectJobs.pop_back();
+        }
     }
 } // namespace cupuacu::actions::effects

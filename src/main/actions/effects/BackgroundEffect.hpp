@@ -100,13 +100,17 @@ namespace cupuacu::actions::effects
         BackgroundEffectJob(const BackgroundEffectJob &) = delete;
         BackgroundEffectJob &operator=(const BackgroundEffectJob &) = delete;
 
-        void start();
+        void start(std::shared_ptr<concurrency::TaskScheduler> scheduler = {});
         [[nodiscard]] Snapshot snapshot() const;
         [[nodiscard]] bool waitForCompletion(
             std::chrono::milliseconds timeout) const;
         [[nodiscard]] std::unique_ptr<BackgroundEffectResult> takeResult();
         [[nodiscard]] std::uint64_t getId() const;
         void cancel();
+        bool isRevisionJob() const
+        {
+            return bool(readRevision);
+        }
 
     private:
         std::uint64_t id = 0;
@@ -124,7 +128,8 @@ namespace cupuacu::actions::effects
         std::optional<double> progress;
         std::string error;
         std::unique_ptr<BackgroundEffectResult> result;
-        std::thread worker;
+        std::shared_ptr<concurrency::TaskScheduler> scheduler;
+        concurrency::TaskScheduler::Ticket completion;
         std::atomic<bool> cancelRequested{false};
 
         void run();

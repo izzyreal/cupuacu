@@ -1746,8 +1746,7 @@ void Waveform::drawLinearSelection(SDL_Renderer *renderer,
 
 void Waveform::renderSmoothWaveform(SDL_Renderer *renderer) const
 {
-    if (!hasRenderableChannel() ||
-        state->getActiveDocumentSession().openingPreview)
+    if (!hasRenderableChannel())
     {
         return;
     }
@@ -1766,8 +1765,9 @@ void Waveform::renderSmoothWaveform(SDL_Renderer *renderer) const
         {
             return viewportData->sampleAt(frame);
         }
-        return session.hasReadRevision() ? 0.0f
-                                         : doc.getSample(channelIndex, frame);
+        return (session.hasReadRevision() || session.openingPreview)
+                   ? 0.0f
+                   : doc.getSample(channelIndex, frame);
     };
     const auto frameCount = doc.getFrameCount();
     const auto verticalZoom = viewState.verticalZoom;
@@ -2122,6 +2122,11 @@ bool Waveform::drawAsyncViewport(SDL_Renderer *renderer) const
     {
         return false;
     }
+    if (state->getActiveDocumentSession().openingPreview &&
+        state->getActiveViewState().samplesPerPixel >= 128)
+    {
+        return false;
+    }
     const auto source = state->getActiveDocumentSession().getViewportSource();
     if (!source)
     {
@@ -2158,6 +2163,11 @@ bool Waveform::drawAsyncViewport(SDL_Renderer *renderer) const
     const waveform::ViewportRequest desired{channelIndex, target.sampleOffset,
                                             target.samplesPerPixel,
                                             target.width};
+    if (state->getActiveDocumentSession().openingPreview && viewportData &&
+        viewportData->pending)
+    {
+        viewportRequest.reset();
+    }
     const auto requestView = [&]
     {
         if (!viewportRequest || *viewportRequest != desired)

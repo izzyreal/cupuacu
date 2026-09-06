@@ -1,4 +1,5 @@
 #include "BackgroundSave.hpp"
+#include "../DocumentOperationAccess.hpp"
 #include "../../file/OwnedSourceFile.hpp"
 #include "../../persistence/RevisionPersistence.hpp"
 #include "../../concurrency/DeferredRelease.hpp"
@@ -61,35 +62,56 @@ namespace cupuacu::actions::io
                                  BackgroundSaveRequest request,
                                  const cupuacu::Document *document)
         {
-            if (!state || !document || request.path.empty() ||
-                state->backgroundSaveJob)
+            if (!state || !document || request.path.empty())
             {
                 return;
             }
 
             const auto id = nextBackgroundSaveJobId();
             const auto detail = request.path.string();
-            state->backgroundSaveJob.reset(new BackgroundSaveJob(
-                id, std::move(request), state, *document,
-                state->paths ? state->paths->waveformCachePath()
-                             : std::filesystem::path{},
-                state->getActiveDocumentSession().getEditRevision()));
-            cupuacu::setLongTask(state, "Saving file", detail, 0.0, false,
-                                 true);
-            state->backgroundSaveJob->start();
+            decltype(state->backgroundSaveJob) job{
+                new BackgroundSaveJob(
+                    id, std::move(request), state, *document,
+                    state->paths ? state->paths->waveformCachePath()
+                                 : std::filesystem::path{},
+                    state->getActiveDocumentSession().getEditRevision()),
+                destroyBackgroundSaveJob};
+            if (state->getActiveDocumentSession().hasReadRevision())
+            {
+                state->getActiveTab()->operation =
+                    DocumentOperation{.kind = DocumentOperation::Kind::Save,
+                                      .id = id,
+                                      .title = "Saving file",
+                                      .detail = detail,
+                                      .progress = 0.0};
+            }
+            else
+            {
+                setLongTask(state, "Saving file", detail, 0.0, false, true);
+            }
+            job->start(state->taskScheduler);
+            if (state->backgroundSaveJob)
+            {
+                state->additionalSaveJobs.push_back(std::move(job));
+            }
+            else
+            {
+                state->backgroundSaveJob = std::move(job);
+            }
         }
 
         bool canStartSave(cupuacu::State *state)
         {
-            return state != nullptr && !state->revisionRecording && !state->backgroundSaveJob &&
-                   !state->backgroundOpenJob && !state->longTask.active;
+            return state && !state->revisionRecording &&
+                   !state->longTask.active && state->getActiveTab() &&
+                   !state->getActiveTab()->operation;
         }
 
         bool canRunAutosavePump(const cupuacu::State *state)
         {
-            return state != nullptr && !state->revisionRecording &&
-                   !state->backgroundOpenJob && !state->backgroundSaveJob &&
-                   !state->backgroundEffectJob && !state->longTask.active;
+            return state && !state->revisionRecording &&
+                   !state->quitRequestedAfterLongTaskCancel &&
+                   !state->longTask.active;
         }
 
         bool shouldDeferAutosaveForInteraction(const cupuacu::State *state)
@@ -156,7 +178,7 @@ namespace cupuacu::actions::io
         {
             const auto &session = tab.session;
             const auto &document = session.document;
-            return document.getChannelCount() > 0 &&
+            return !session.openingPreview && document.getChannelCount() > 0 &&
                    std::chrono::steady_clock::now() >=
                        session.autosaveRetryAfter &&
                    !session.autosaveSnapshotPath.empty() &&
@@ -171,12 +193,20 @@ namespace cupuacu::actions::io
         void commitCompletedBackgroundSave(cupuacu::State *state,
                                            const BackgroundSaveJob::Snapshot &snapshot)
         {
-            cupuacu::clearLongTask(state, false);
+            if (!snapshot.identity || !snapshot.identity->revision)
+            {
+                cupuacu::clearLongTask(state, false);
+            }
             if (snapshot.canceled)
             {
                 if (state)
                 {
-                    state->pendingCloseTabAfterSaveId.reset();
+                    if (snapshot.identity &&
+                        state->pendingCloseTabAfterSaveId ==
+                            snapshot.identity->tabId)
+                    {
+                        state->pendingCloseTabAfterSaveId.reset();
+                    }
                 }
                 return;
             }
@@ -184,7 +214,12 @@ namespace cupuacu::actions::io
             {
                 if (state)
                 {
-                    state->pendingCloseTabAfterSaveId.reset();
+                    if (snapshot.identity &&
+                        state->pendingCloseTabAfterSaveId ==
+                            snapshot.identity->tabId)
+                    {
+                        state->pendingCloseTabAfterSaveId.reset();
+                    }
                 }
                 detail::reportSaveFailure(
                     state, operationForKind(snapshot.request.kind),
@@ -198,7 +233,11 @@ namespace cupuacu::actions::io
                     : -1;
             if (target < 0)
             {
-                state->pendingCloseTabAfterSaveId.reset();
+                if (snapshot.identity && state->pendingCloseTabAfterSaveId ==
+                                             snapshot.identity->tabId)
+                {
+                    state->pendingCloseTabAfterSaveId.reset();
+                }
                 return; // The pinned revision was saved; its tab no longer
                         // exists.
             }
@@ -207,7 +246,11 @@ namespace cupuacu::actions::io
             if (session.document.getPreservationSourceId() != saved.sourceId ||
                 session.hasReadRevision() != bool(saved.revision))
             {
-                state->pendingCloseTabAfterSaveId.reset();
+                if (snapshot.identity && state->pendingCloseTabAfterSaveId ==
+                                             snapshot.identity->tabId)
+                {
+                    state->pendingCloseTabAfterSaveId.reset();
+                }
                 return; // The tab has been reused for another document.
             }
             const bool matches =
@@ -222,7 +265,11 @@ namespace cupuacu::actions::io
             {
                 // Resident mutations retain their current filename/autosave.
                 // Never clear newer work when an older snapshot completes.
-                state->pendingCloseTabAfterSaveId.reset();
+                if (snapshot.identity && state->pendingCloseTabAfterSaveId ==
+                                             snapshot.identity->tabId)
+                {
+                    state->pendingCloseTabAfterSaveId.reset();
+                }
                 return;
             }
             if (saved.revision && session.hasReadRevision())
@@ -245,18 +292,27 @@ namespace cupuacu::actions::io
             }
             if (!matches)
             {
-                state->pendingCloseTabAfterSaveId.reset();
+                if (snapshot.identity && state->pendingCloseTabAfterSaveId ==
+                                             snapshot.identity->tabId)
+                {
+                    state->pendingCloseTabAfterSaveId.reset();
+                }
                 return;
             }
 
-            if (!state || !state->pendingCloseTabAfterSaveId.has_value())
+            if (!state || !state->pendingCloseTabAfterSaveId.has_value() ||
+                state->pendingCloseTabAfterSaveId != saved.tabId)
             {
                 return;
             }
 
             const auto tabIndex =
                 findTabIndexById(state, *state->pendingCloseTabAfterSaveId);
-            state->pendingCloseTabAfterSaveId.reset();
+            if (snapshot.identity &&
+                state->pendingCloseTabAfterSaveId == snapshot.identity->tabId)
+            {
+                state->pendingCloseTabAfterSaveId.reset();
+            }
             if (tabIndex == target)
             {
                 (void)closeTab(state, tabIndex);
@@ -289,9 +345,10 @@ namespace cupuacu::actions::io
 
     BackgroundSaveJob::~BackgroundSaveJob()
     {
-        if (worker.joinable())
+        cancel();
+        if (completion.valid())
         {
-            worker.join();
+            completion.wait();
         }
     }
 
@@ -315,16 +372,37 @@ namespace cupuacu::actions::io
 
     BackgroundAutosaveJob::~BackgroundAutosaveJob()
     {
-        if (worker.joinable())
+        cancel();
+        if (completion.valid())
         {
-            worker.join();
+            completion.wait();
         }
     }
 
-    void BackgroundAutosaveJob::start()
+    void BackgroundAutosaveJob::start(
+        std::shared_ptr<concurrency::TaskScheduler> executor)
     {
-        worker = std::thread([this]
-                             { run(); });
+        scheduler = executor ? std::move(executor)
+                             : concurrency::defaultTaskScheduler();
+        try
+        {
+            completion = scheduler->submit(
+                [this]
+                {
+                    run();
+                },
+                concurrency::TaskScheduler::Options{
+                    .priority = concurrency::TaskScheduler::Priority::Autosave,
+                    .documentId = tabId,
+                    .deadline = std::chrono::steady_clock::now() +
+                                std::chrono::seconds(2)});
+        }
+        catch (const std::exception &failure)
+        {
+            std::lock_guard lock(mutex);
+            error = failure.what();
+            completed = true;
+        }
     }
 
     auto BackgroundAutosaveJob::snapshot() const -> Snapshot
@@ -350,6 +428,10 @@ namespace cupuacu::actions::io
     {
         try
         {
+            if (cancelRequested.load())
+            {
+                throw LongTaskCanceledError{};
+            }
             if (revision)
             {
                 persistence::RevisionPersistence::save(path, *revision);
@@ -391,10 +473,26 @@ namespace cupuacu::actions::io
         }
     }
 
-    void BackgroundSaveJob::start()
+    void BackgroundSaveJob::start(
+        std::shared_ptr<concurrency::TaskScheduler> executor)
     {
-        worker = std::thread([this]
-                             { run(); });
+        scheduler = executor ? std::move(executor)
+                             : concurrency::defaultTaskScheduler();
+        try
+        {
+            completion = scheduler->submit(
+                [this]
+                {
+                    run();
+                },
+                concurrency::TaskScheduler::Options{});
+        }
+        catch (const std::exception &failure)
+        {
+            std::lock_guard lock(mutex);
+            error = failure.what();
+            completed = true;
+        }
     }
 
     BackgroundSaveJob::Snapshot BackgroundSaveJob::snapshot() const
@@ -436,6 +534,10 @@ namespace cupuacu::actions::io
     {
         try
         {
+            if (cancelRequested.load())
+            {
+                throw LongTaskCanceledError{};
+            }
             const auto progressCallback =
                 [this](const std::string &detailToUse,
                        std::optional<double> progressToUse)
@@ -738,28 +840,70 @@ namespace cupuacu::actions::io
 
     void processPendingSaveWork(cupuacu::State *state)
     {
-        if (!state || !state->backgroundSaveJob)
+        if (!state)
         {
             return;
         }
-
-        if (cupuacu::isLongTaskCancelRequested(state))
+        auto pump = [&](auto &owned)
         {
-            state->backgroundSaveJob->cancel();
-        }
-
-        const auto snapshot = state->backgroundSaveJob->snapshot();
-        if (snapshot.completed)
+            if (!owned)
+            {
+                return;
+            }
+            auto snapshot = owned->snapshot();
+            const auto tabId = snapshot.identity->tabId;
+            const bool revision = bool(snapshot.identity->revision);
+            const auto *tab = findOperationTab(state, tabId);
+            const bool targeted =
+                !revision ||
+                (tab && tab->operation &&
+                 tab->operation->kind == DocumentOperation::Kind::Save &&
+                 tab->operation->id == owned->getId());
+            if (state->quitRequestedAfterLongTaskCancel ||
+                (revision && targeted && tab->operation->cancelRequested) ||
+                (!revision && isLongTaskCancelRequested(state)))
+            {
+                owned->cancel();
+            }
+            if (snapshot.completed)
+            {
+                finishOperation(state, tabId, DocumentOperation::Kind::Save,
+                                owned->getId());
+                auto retired = concurrency::releaseOnWorker(
+                    std::shared_ptr<BackgroundSaveJob>(owned.release()));
+                if (targeted)
+                {
+                    commitCompletedBackgroundSave(state, snapshot);
+                }
+            }
+            else if (revision)
+            {
+                updateOperation(state, tabId, DocumentOperation::Kind::Save,
+                                owned->getId(), snapshot.detail,
+                                snapshot.progress);
+            }
+            else
+            {
+                updateLongTask(state, snapshot.detail, snapshot.progress,
+                               false);
+            }
+        };
+        pump(state->backgroundSaveJob);
+        for (auto &job : state->additionalSaveJobs)
         {
-            auto retired =
-                concurrency::releaseOnWorker(std::shared_ptr<BackgroundSaveJob>(
-                    state->backgroundSaveJob.release()));
-            commitCompletedBackgroundSave(state, snapshot);
-            return;
+            pump(job);
         }
-
-        cupuacu::updateLongTask(state, snapshot.detail, snapshot.progress,
-                                false);
+        std::erase_if(state->additionalSaveJobs,
+                      [](const auto &job)
+                      {
+                          return !job;
+                      });
+        if (!state->backgroundSaveJob && !state->additionalSaveJobs.empty())
+        {
+            state->backgroundSaveJob =
+                std::move(state->additionalSaveJobs.back());
+            state->additionalSaveJobs.pop_back();
+        }
     }
 
     void queueAutosaveForTab(cupuacu::State *state, const int tabIndex)
@@ -771,7 +915,7 @@ namespace cupuacu::actions::io
 
         auto &tab = state->tabs[static_cast<std::size_t>(tabIndex)];
         auto &session = tab.session;
-        if (session.document.getChannelCount() <= 0 ||
+        if (session.openingPreview || session.document.getChannelCount() <= 0 ||
             std::chrono::steady_clock::now() < session.autosaveRetryAfter)
         {
             return;
@@ -799,7 +943,7 @@ namespace cupuacu::actions::io
                                                                     &tab)
                         : nullptr),
                 cupuacu::destroyBackgroundAutosaveJob};
-            state->backgroundAutosaveJob->start();
+            state->backgroundAutosaveJob->start(state->taskScheduler);
         }
     }
 
@@ -923,7 +1067,7 @@ namespace cupuacu::actions::io
                                   tab.session, &tab)
                             : nullptr),
                     cupuacu::destroyBackgroundAutosaveJob};
-                state->backgroundAutosaveJob->start();
+                state->backgroundAutosaveJob->start(state->taskScheduler);
                 break;
             }
         }
