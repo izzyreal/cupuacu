@@ -86,8 +86,7 @@ namespace cupuacu::gui
             {
                 preserveLoadedCode =
                     session.hasReadRevision()
-                        ? !session.getEditRevision()->isDirty(
-                              int(hovered->channel), hovered->frame)
+                        ? !hovered->dirty
                         : !session.document.getAudioBuffer()->isDirty(
                               hovered->channel, hovered->frame);
             }

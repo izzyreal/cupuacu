@@ -14,6 +14,7 @@ namespace cupuacu::storage
             int64_t start = 0;
             std::vector<float> samples;
             std::exception_ptr error;
+            bool firstSampleDirty = true;
         };
 
     private:
@@ -58,6 +59,13 @@ namespace cupuacu::storage
                                                cancel))
                           {
                               return {};
+                          }
+                          if (request.frames == 1)
+                          {
+                              uint8_t dirty = 1;
+                              reader->readDirtyFlags(
+                                  request.channel, request.start, {&dirty, 1});
+                              result.firstSampleDirty = dirty != 0;
                           }
                       }
                       catch (...)

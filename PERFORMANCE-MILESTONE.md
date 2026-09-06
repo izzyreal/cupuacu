@@ -784,3 +784,86 @@ baseline uses the preceding checkpoint's `peak-progressive.json` and
 
 Outstanding: audio/source index paging, provenance metadata scaling, aggregate
 memory admission and remaining scheduler/compatibility consolidation.
+
+## Follow-up: bounded source indexes and provenance
+
+Source block directories, segment-length directories and explicit provenance
+runs now use shared working indexes. Up to 256 records stay resident; larger
+indexes spool to anonymous files and retain only a write tail and one read page.
+Per-index record-buffer bounds are 12 KiB, 4 KiB and 20 KiB respectively. File
+objects, allocator metadata and the number of live indexes are outside these
+per-index bounds; application-wide admission remains subsequent work.
+
+Progressive and completed import share the same index. Cache rebinding shares
+the immutable directories and remaps source identity when reading metadata,
+without cloning or rewriting the runs. Source archive records now stream
+checksummed directory pages and identify each stream by offset/count. Peak
+levels no longer retain a list of every persistent page ID. New manifests use
+version 2; version 1 remains readable. Legacy monolithic records retain their
+old parsing allocation until rewritten in the new format.
+
+Dirty flags for hovered samples now arrive with asynchronous sample/viewport
+results, so paging does not introduce status-bar disk I/O. Focused validation
+also exposed combined clipboard/peak scratch exceeding the macOS worker stack;
+clipboard metadata scratch is now a bounded heap allocation.
+
+Splices coalesce adjacent compatible source ranges and identical constants,
+including boundaries inside balanced trees. Repeated cut/paste restoration
+therefore removes artificial index fragmentation. Distinct edit/history nodes
+and archive identity maps are still resident. **The first plan area's full
+bounded-history criterion is not closed.** Paging cold edit paths depends on
+worker-owned edit preparation; that dependency must be handled with the remaining
+memory/scheduling work, not silently treated as solved by coalescing.
+
+Measurements: native Release, macOS arm64, three fresh child processes per case.
+The resident-index reference and paged-index case generate identical 40-byte
+records without sample audio. Their size labels scale record count, not physical
+input files. Filesystem caches were uncontrolled.
+
+| Metadata records | Resident-vector buffers | Paged buffers | Paged append / scan | 1,024 random lookups |
+| --- | ---: | ---: | ---: | ---: |
+| 16,384 | 640 KiB | 20 KiB | 0.84 / 0.26 ms | 1.18 ms |
+| 262,144 | 10 MiB | 20 KiB | 8.54 / 3.61 ms | 1.10 ms |
+| 4,194,304 | 160 MiB | 20 KiB | 131.43 / 61.19 ms | 1.83 ms |
+
+The corresponding resident-vector append/scan times at 4,194,304 records are
+31.10/6.08 ms and its random lookup batch is 0.032 ms. Paging trades additional
+worker I/O and CPU for bounded residency; it is not a faster in-memory array.
+Small indexes of at most 256 records do not open a working file.
+
+The production archive scenario generates one provenance run per sample using
+bounded scratch. At 4,194,304 runs it saves in 1,477 ms and restores in 1,806 ms,
+retaining 22,016 bytes of combined source-index buffers; peak process RSS through
+validation is 4.23 MiB. At 16,384 runs RSS is 3.91 MiB. Archive size grows to
+56.27 MiB while transient working provenance uses approximately 160 MiB of disk.
+These are adversarial metadata measurements, not representative ALAC import
+times and not a baseline comparison for archive throughput.
+
+Matched production checks, using the native executable saved before this edit
+as the reference (its embedded git/build stamp predates the previous commit):
+
+| Scenario | Before | After |
+| --- | ---: | ---: |
+| 1 MiB WAV import | 2.802 ms | 2.570 ms |
+| 256 MiB WAV import | 429.753 ms | 447.099 ms |
+| 1 MiB legacy recovery | 4.811 ms | 4.754 ms |
+| 256 MiB legacy recovery | 522.668 ms | 523.254 ms |
+| 1 MiB document delete | 0.00525 ms | 0.00200 ms |
+| 256 MiB document delete | 0.00325 ms | 0.001917 ms |
+
+Delete/undo/redo retain zero source-sample I/O. Undo/redo medians stay below
+0.0003 ms. Import's 17.35 ms increase at 256 MiB (+4.0%) is retained as a measured
+regression; the small case improves and recovery is essentially unchanged. No
+claim is made that paging speeds up import. The initial reference run overlapped
+compilation and was replaced by an uncontended run before comparison.
+
+Validation: 53 distinct focused native cases passed, including concurrent index
+publication, million-record bounds, shared cache rebinding, provenance and block
+page boundaries, old archives, damaged pages, retained clipboard readers,
+shared-store prefix protection, randomized edits, cache behavior and worker
+viewport/hover requests. The 25 affected index/archive cases passed again after
+the final shared-store prefix fix. Native app, tests and benchmark builds passed;
+no full suite, Linux build or automated GUI integration run.
+
+Reports: `dist/benchmarks/index-paging.json`, `index-open-{before,after}.json`,
+`index-recovery-{before,after}.json`, and `index-edit-{before,after}.json`.

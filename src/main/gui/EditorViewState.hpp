@@ -12,11 +12,12 @@ namespace cupuacu::gui
         float value = 0.0f;
         int64_t channel = 0;
         int64_t frame = 0;
+        bool dirty = true;
 
         bool operator==(const HoveredSampleInfo &other) const
         {
             return value == other.value && channel == other.channel &&
-                   frame == other.frame;
+                   frame == other.frame && dirty == other.dirty;
         }
 
         bool operator!=(const HoveredSampleInfo &other) const

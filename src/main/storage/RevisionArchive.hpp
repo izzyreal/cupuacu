@@ -49,7 +49,7 @@ namespace cupuacu::storage
         struct StoreCopy
         {
             std::string name;
-            std::vector<uint64_t> lengths;
+            RecordIndex<uint64_t> lengths;
             std::string source;
         };
         std::filesystem::path manifestPath, directory;
@@ -75,7 +75,11 @@ namespace cupuacu::storage
         explicit RevisionArchive(std::filesystem::path);
         void check() const;
         uint64_t append(const Json &);
-        Json record(uint64_t);
+        Json record(uint64_t, uint64_t *next = nullptr);
+        Json saveSequence(uint64_t count,
+                          const std::function<Json(uint64_t)> &);
+        void readSequence(const Json &, uint64_t before,
+                          const std::function<void(const Json &)> &);
         uint64_t saveNode(const Tree &);
         Tree loadNode(uint64_t, int depth = 0);
         StoreCopy &copyStore(const AudioRevision &);

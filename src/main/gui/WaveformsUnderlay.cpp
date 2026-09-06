@@ -170,7 +170,9 @@ bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
             : std::nullopt;
     if (value)
     {
-        updateSampleValueUnderMouseCursor(state, *value, channel, sampleIndex);
+        updateSampleValueUnderMouseCursor(
+            state, *value, channel, sampleIndex,
+            state->waveforms[channel]->requestedSampleDirty);
     }
     else
     {

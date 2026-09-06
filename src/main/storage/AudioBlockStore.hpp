@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AudioReader.hpp"
+#include "RecordIndex.hpp"
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -41,7 +42,7 @@ namespace cupuacu::storage
         std::filesystem::path directory;
         uint64_t segmentLimit;
         mutable std::mutex mutex;
-        std::vector<uint64_t> lengths;
+        RecordIndex<uint64_t> lengths;
         mutable std::ofstream writer;
         mutable std::ifstream reader;
         mutable uint64_t readSegment = UINT64_MAX;
@@ -133,7 +134,7 @@ namespace cupuacu::storage
                 failed = true;
                 throw std::runtime_error("Audio block write failed");
             }
-            lengths.back() += bytes;
+            lengths.setBack(lengths.back() + bytes);
             bytesWritten += bytes;
             return result;
         }

@@ -872,3 +872,35 @@ queries. First and repeated passes are reported separately; OS caching is
 uncontrolled, and neither is a controlled cold-device test. Omit `--formats wav`
 for the 8 GiB synthetic case: its size-based case label is CAF despite requiring
 no audio fixture. See `PERFORMANCE-MILESTONE.md` for results and report paths.
+
+### Source index and provenance scaling
+
+`index_paged` exercises the production `RecordIndex`; `index_resident` keeps an
+equivalent vector as a reference. Both generate `frames / 8` fixed 40-byte records
+and measure append, sequential scan and 1,024 deterministic random reads.
+They validate contents and report record-buffer residency and logical index I/O.
+The `--sizes-mib 1 16 256` labels correspond to 16,384, 262,144 and 4,194,304
+records. They are scaling parameters, not physical audio fixtures. Small indexes
+up to 256 records stay resident; focused tests cover that path and the spill
+boundary. The paged cases assert a two-page buffer bound independently of size.
+
+`index_archive` uses those same record counts as mono sample counts and generates
+one provenance run per sample with bounded scratch. It measures production
+archive save/restore, then validates all recovered provenance and dirty flags.
+Source construction is setup; archive times exclude final metadata validation.
+Peak RSS includes setup and validation. This deliberately adversarial metadata
+case omits waveform generation to isolate source-index persistence.
+
+```sh
+python3 scripts/run-benchmarks.py --build-dir build --profile extended \
+  --suite core --mode timing --filter 'index_*' --sizes-mib 1 16 256 \
+  --repetitions 3 --output dist/benchmarks/index-paging.json
+```
+
+Use `open_owned`, `recovery_legacy`, and `edit_command_owned` with a saved native
+reference executable for production regression checks. The last reports retain
+their delete/undo/redo timings under each run's `production_commands` object.
+Record buffers exclude allocator/file-object overhead and are bounded per
+index, not across all sources. Distinct edit/history nodes and archive identity
+maps remain resident; coalescing removes artificial fragmentation but does not
+establish a global history-memory limit.

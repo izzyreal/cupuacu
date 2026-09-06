@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <span>
 #include <stdexcept>
+#include <algorithm>
 
 namespace cupuacu::storage
 {
@@ -24,6 +25,12 @@ namespace cupuacu::storage
         virtual AudioShape shape() const = 0;
         virtual void readChannel(int channel, int64_t start,
                                  std::span<float> destination) const = 0;
+        virtual void readDirtyFlags(int channel, int64_t start,
+                                    std::span<uint8_t> destination) const
+        {
+            validateRange(shape(), channel, start, destination.size());
+            std::fill(destination.begin(), destination.end(), 1);
+        }
 
         static void validateRange(AudioShape shape, int channel, int64_t start,
                                   std::size_t count)

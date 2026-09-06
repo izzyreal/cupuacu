@@ -418,6 +418,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_owned_audio_storage.cpp
     src/test/test_async_audio_reader.cpp
     src/test/test_audio_edit_revision.cpp
+    src/test/test_record_index.cpp
     src/test/test_playback_read_ahead.cpp
     src/test/test_streaming_export.cpp
     src/test/test_waveform_viewport.cpp

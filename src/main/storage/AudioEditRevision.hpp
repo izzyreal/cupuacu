@@ -150,6 +150,44 @@ namespace cupuacu::storage
             }
             return branch(std::move(left), std::move(right), allocated);
         }
+        // Coalesce the splice boundary, including boundaries hidden inside
+        // balanced subtrees. Repeated cut/paste restoration must not leave a
+        // growing directory of artificial fragments behind.
+        static Tree concatenate(Tree left, Tree right, uint64_t &allocated)
+        {
+            if (!left || !right)
+            {
+                return join(std::move(left), std::move(right), allocated);
+            }
+            auto last = left, first = right;
+            while (last->height > 1)
+            {
+                last = last->right;
+            }
+            while (first->height > 1)
+            {
+                first = first->left;
+            }
+            const auto &a = last->range;
+            const auto &b = first->range;
+            const bool contiguous =
+                a.source == b.source &&
+                (a.source
+                     ? a.channel == b.channel && a.start + a.frames == b.start
+                     : std::bit_cast<uint32_t>(a.constantValue) ==
+                           std::bit_cast<uint32_t>(b.constantValue));
+            if (!contiguous)
+            {
+                return join(std::move(left), std::move(right), allocated);
+            }
+            auto before = split(left, left->frames - a.frames, allocated).first;
+            auto after = split(right, b.frames, allocated).second;
+            auto merged = a;
+            merged.frames = sum(a.frames, b.frames);
+            return join(join(std::move(before),
+                             leaf(std::move(merged), allocated), allocated),
+                        std::move(after), allocated);
+        }
         static std::pair<Tree, Tree> split(const Tree &tree, int64_t at,
                                            uint64_t &allocated)
         {
@@ -456,7 +494,7 @@ namespace cupuacu::storage
             return std::shared_ptr<const AudioEditRevision>(
                 new AudioEditRevision(target, std::move(roots)));
         }
-        // Memory-only metadata lookup; does not read sample files.
+        // Worker-only metadata lookup; provenance pages may read disk.
         bool isDirty(int channel, int64_t frame) const
         {
             bool dirty = true;
@@ -478,6 +516,26 @@ namespace cupuacu::storage
         AudioShape shape() const override
         {
             return dimensions;
+        }
+        void readDirtyFlags(int channel, int64_t start,
+                            std::span<uint8_t> output) const override
+        {
+            visitSourceRanges(channel, start, int64_t(output.size()),
+                              [&](const SourceRange &range)
+                              {
+                                  auto part =
+                                      output.first(std::size_t(range.frames));
+                                  if (range.source)
+                                  {
+                                      range.source->readDirtyFlags(
+                                          range.channel, range.start, part);
+                                  }
+                                  else
+                                  {
+                                      std::fill(part.begin(), part.end(), 1);
+                                  }
+                                  output = output.subspan(part.size());
+                              });
         }
         template <typename Visitor>
         void visitSourceRanges(int channel, int64_t start, int64_t count,
@@ -594,9 +652,9 @@ namespace cupuacu::storage
                 auto [left, tail] = Revision::split(channels[c], at, allocated);
                 auto [discard, right] =
                     Revision::split(tail, remove, allocated);
-                next[c] = Revision::join(
-                    Revision::join(left, insert ? insert->channels[c] : Tree{},
-                                   allocated),
+                next[c] = Revision::concatenate(
+                    Revision::concatenate(
+                        left, insert ? insert->channels[c] : Tree{}, allocated),
                     right, allocated);
             }
             channels = std::move(next);
@@ -675,8 +733,9 @@ namespace cupuacu::storage
             auto [left, tail] =
                 Revision::split(channels[channel], at, allocated);
             auto right = Revision::split(tail, count, allocated).second;
-            auto next = Revision::join(
-                Revision::join(left, replacement, allocated), right, allocated);
+            auto next = Revision::concatenate(
+                Revision::concatenate(left, replacement, allocated), right,
+                allocated);
             channels[channel] = std::move(next);
         }
         std::shared_ptr<const Revision> finish() const
