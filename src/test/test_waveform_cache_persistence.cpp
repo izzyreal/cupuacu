@@ -5,6 +5,7 @@
 #include "TestResourceUtil.hpp"
 #include "concurrency/BoundedBackgroundWorker.hpp"
 #include "file/file_loading.hpp"
+#include "file/OwnedAudioImport.hpp"
 #include "actions/io/BackgroundOpen.hpp"
 #include "gui/WaveformOverviewPlanning.hpp"
 #include "waveform/WaveformCachePersistence.hpp"
@@ -104,6 +105,111 @@ TEST_CASE(
                             expected.snapshotBuildState());
 }
 
+TEST_CASE("Imported peak pages persist and reopen without full peak snapshots",
+          "[progressive-peaks][peak-persistence]")
+{
+    using namespace cupuacu;
+    const auto root = test::makeUniqueTestRoot("paged-import-cache");
+    std::filesystem::create_directories(root);
+    const auto path = root / "audio.wav";
+    SF_INFO info{};
+    info.channels = 2;
+    info.samplerate = 48000;
+    info.format = SF_FORMAT_WAV | SF_FORMAT_FLOAT;
+    auto *file = sf_open(path.string().c_str(), SFM_WRITE, &info);
+    REQUIRE(file);
+    std::vector<float> samples(65536 * 2);
+    for (std::size_t i = 0; i < samples.size(); ++i)
+    {
+        samples[i] = float(int(i % 199) - 99) / 128;
+    }
+    for (int i = 0; i < 35; ++i)
+    {
+        REQUIRE(sf_writef_float(file, samples.data(), 65536) == 65536);
+    }
+    REQUIRE(sf_writef_float(file, samples.data(), 17) == 17);
+    REQUIRE(sf_close(file) == 0);
+    auto cache =
+        std::make_shared<storage::DecodedBlockCache>(storage::AudioBlockBytes);
+    file::OwnedImportOptions options;
+    options.waveformCacheRoot = root / "cache";
+    options.publishMetadata = options.publishAudio = true;
+    auto first = file::importOwnedAudio(path, root / "first", cache, {}, {}, {},
+                                        options);
+    REQUIRE_FALSE(first.metadata.persistentWaveformCacheLoaded);
+    REQUIRE(first.metadata.pendingImportedPeaks);
+    REQUIRE(first.metadata.pendingImportedPeaks->channels.empty());
+    REQUIRE(waveform::schedulePersistentWaveformCache(
+                first.metadata.pendingImportedPeaks) ==
+            waveform::CacheSaveScheduleResult::Scheduled);
+    waveform::flushScheduledPersistentWaveformCaches();
+    bool cachedPreview = false;
+    auto reopened = file::importOwnedAudio(
+        path, root / "second", cache, {}, {},
+        [&](waveform::DecodedWaveformChunk chunk)
+        {
+            if (!chunk.sourcePeaks)
+            {
+                return;
+            }
+            cachedPreview = true;
+            REQUIRE_FALSE(chunk.cached);
+            uint64_t visited = 0;
+            CHECK(chunk.sourcePeaks->queryBlocks(1, 0, 513, visited).max > 0);
+        },
+        options);
+    REQUIRE(cachedPreview);
+    REQUIRE(reopened.metadata.persistentWaveformCacheLoaded);
+    REQUIRE_FALSE(reopened.metadata.pendingImportedPeaks);
+    const auto baseCount = first.audio->sourcePeaks()->levelSize(0, 0);
+    for (int c = 0; c < 2; ++c)
+    {
+        for (std::size_t l = 0, n = baseCount;; ++l, n = (n + 1) / 2)
+        {
+            std::vector<waveform::Peak> expected(n), actual(n);
+            first.audio->sourcePeaks()->readPeaks(c, l, 0, expected);
+            reopened.audio->sourcePeaks()->readPeaks(c, l, 0, actual);
+            for (std::size_t i = 0; i < n; ++i)
+            {
+                REQUIRE(actual[i].min == expected[i].min);
+                REQUIRE(actual[i].max == expected[i].max);
+            }
+            if (n == 1)
+            {
+                break;
+            }
+        }
+    }
+    DocumentSession legacy;
+    legacy.document = first.metadata.document;
+    legacy.currentFile = path.string();
+    REQUIRE(waveform::loadPersistentWaveformCache(legacy,
+                                                  options.waveformCacheRoot));
+    // The streamed loader also accepts existing v1 files, and rejects a
+    // truncated tail before exposing any cached preview.
+    REQUIRE(waveform::savePersistentWaveformCache(legacy,
+                                                  options.waveformCacheRoot));
+    REQUIRE(waveform::loadPersistentSourcePeaks(
+        path.string(), legacy.document, options.waveformCacheRoot, cache));
+    const auto cachePath =
+        options.waveformCacheRoot /
+        first.metadata.pendingImportedPeaks->key.cacheBasename();
+    std::filesystem::resize_file(cachePath,
+                                 std::filesystem::file_size(cachePath) - 1);
+    REQUIRE_FALSE(waveform::loadPersistentSourcePeaks(
+        path.string(), legacy.document, options.waveformCacheRoot, cache));
+    REQUIRE_FALSE(waveform::loadPersistentSourcePeaks(
+        path.string(), legacy.document, options.waveformCacheRoot, cache,
+        []
+        {
+            return true;
+        }));
+    auto fallback = file::importOwnedAudio(path, root / "fallback", cache, {},
+                                           {}, {}, options);
+    REQUIRE_FALSE(fallback.metadata.persistentWaveformCacheLoaded);
+    REQUIRE(fallback.audio->sourcePeaks());
+}
+
 TEST_CASE(
     "Progressive open publishes early and cancellation restores the previous "
     "document",
@@ -134,18 +240,18 @@ TEST_CASE(
     const auto deadline =
         std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while ((!state.getActiveDocumentSession().openingPreview ||
-            state.getActiveDocumentSession()
-                    .getWaveformCache(0)
-                    .builtSamplePrefixEnd() == 0) &&
+            !state.getActiveDocumentSession().openingPeaks ||
+            state.getActiveDocumentSession().openingPeaks->availableFrames() ==
+                0) &&
            std::chrono::steady_clock::now() < deadline)
     {
         cupuacu::actions::io::processPendingOpenWork(&state);
         std::this_thread::yield();
     }
     REQUIRE(state.getActiveDocumentSession().openingPreview);
-    REQUIRE(state.getActiveDocumentSession()
-                .getWaveformCache(0)
-                .builtSamplePrefixEnd() > 0);
+    REQUIRE(state.getActiveDocumentSession().openingPeaks);
+    REQUIRE(state.getActiveDocumentSession().openingPeaks->availableFrames() >
+            0);
     REQUIRE(state.backgroundOpenJob);
     cupuacu::requestLongTaskCancel(&state);
     while (state.backgroundOpenJob &&

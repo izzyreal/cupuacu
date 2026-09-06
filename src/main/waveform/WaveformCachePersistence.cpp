@@ -168,6 +168,10 @@ namespace cupuacu::waveform
         std::string readString(std::istream &input)
         {
             const uint32_t size = readU32(input);
+            if (size > 1024 * 1024)
+            {
+                throw std::runtime_error("Invalid waveform cache path length");
+            }
             std::string value(size, '\0');
             input.read(value.data(), static_cast<std::streamsize>(value.size()));
             if (!input)
@@ -249,7 +253,8 @@ namespace cupuacu::waveform
         void writeCacheFile(
             const std::filesystem::path &path,
             const std::vector<gui::WaveformCache::BuildState> &channels,
-            const PersistentCacheKey &key)
+            const PersistentCacheKey &key,
+            const SourcePeaks *sourcePeaks = nullptr)
         {
             std::ofstream output(path, std::ios::binary);
             CUPUACU_METRIC(
@@ -265,19 +270,62 @@ namespace cupuacu::waveform
             writePersistentCacheKey(output, key);
             writeI64(output, key.channelCount);
 
-            for (const auto &state : channels)
+            if (sourcePeaks)
             {
-                writeI64(output, state.numSamples);
-                writeI64(output, state.dirtyFromBlock);
-                writeI64(output, state.dirtyToBlock);
-                writeU32(output, static_cast<uint32_t>(state.levels.size()));
-                for (const auto &level : state.levels)
+                std::array<Peak, 4096> buffer;
+                // Preserve the v1 pyramid shape for existing cache readers.
+                for (int c = 0; c < key.channelCount; ++c)
                 {
-                    writeI64(output, static_cast<int64_t>(level.size()));
-                    for (const auto &peak : level)
+                    writeI64(output, key.frameCount);
+                    writeI64(output, 0);
+                    writeI64(output, -1);
+                    writeU32(output, gui::WaveformCache::MAX_LEVEL_COUNT);
+                    uint64_t count =
+                        key.frameCount / 128 + (key.frameCount % 128 != 0);
+                    std::size_t sourceLevel = 0;
+                    for (int level = 0;
+                         level < gui::WaveformCache::MAX_LEVEL_COUNT; ++level)
                     {
-                        writeFloat(output, peak.min);
-                        writeFloat(output, peak.max);
+                        writeI64(output, count);
+                        for (uint64_t first = 0; first < count;)
+                        {
+                            auto chunk =
+                                std::span(buffer).first(std::min<uint64_t>(
+                                    buffer.size(), count - first));
+                            sourcePeaks->readPeaks(c, sourceLevel, first,
+                                                   chunk);
+                            for (auto peak : chunk)
+                            {
+                                writeFloat(output, peak.min);
+                                writeFloat(output, peak.max);
+                            }
+                            first += chunk.size();
+                        }
+                        if (count > 1)
+                        {
+                            ++sourceLevel;
+                        }
+                        count = count / 2 + count % 2;
+                    }
+                }
+            }
+            else
+            {
+                for (const auto &state : channels)
+                {
+                    writeI64(output, state.numSamples);
+                    writeI64(output, state.dirtyFromBlock);
+                    writeI64(output, state.dirtyToBlock);
+                    writeU32(output,
+                             static_cast<uint32_t>(state.levels.size()));
+                    for (const auto &level : state.levels)
+                    {
+                        writeI64(output, static_cast<int64_t>(level.size()));
+                        for (const auto &peak : level)
+                        {
+                            writeFloat(output, peak.min);
+                            writeFloat(output, peak.max);
+                        }
                     }
                 }
             }
@@ -318,7 +366,7 @@ namespace cupuacu::waveform
                     [&](const std::filesystem::path &temporaryPath)
                     {
                         writeCacheFile(temporaryPath, request.channels,
-                                       request.key);
+                                       request.key, request.sourcePeaks.get());
                     });
                 return true;
             }
@@ -524,6 +572,120 @@ namespace cupuacu::waveform
     void flushScheduledPersistentWaveformCaches()
     {
         cacheSaveWorker().flush();
+    }
+
+    std::shared_ptr<const PersistentCacheSnapshot>
+    capturePersistentSourcePeaks(const std::string &source,
+                                 const Document &document,
+                                 const std::filesystem::path &root,
+                                 std::shared_ptr<const SourcePeaks> peaks)
+    {
+        const auto key = makePersistentCacheKey(source, document);
+        if (!key || root.empty() || !peaks || key->frameCount <= 0)
+        {
+            return {};
+        }
+        auto snapshot = std::make_shared<PersistentCacheSnapshot>();
+        snapshot->root = root;
+        snapshot->key = *key;
+        snapshot->sourcePeaks = std::move(peaks);
+        return snapshot;
+    }
+
+    std::shared_ptr<const SourcePeaks>
+    loadPersistentSourcePeaks(const std::string &source,
+                              const Document &document,
+                              const std::filesystem::path &root,
+                              std::shared_ptr<storage::DecodedBlockCache> cache,
+                              const std::function<bool()> &cancel)
+    {
+        const auto key = makePersistentCacheKey(source, document);
+        if (!key || key->frameCount <= 0 || root.empty())
+        {
+            return {};
+        }
+        try
+        {
+            std::ifstream input(root / key->cacheBasename(), std::ios::binary);
+            CUPUACU_METRIC(auto observation = performance::observeRead(
+                               input, performance::Work::PeakFileBytesRead));
+            if (!input)
+            {
+                return {};
+            }
+            input.seekg(0, std::ios::end);
+            const auto fileSize = input.tellg();
+            input.seekg(0);
+            char magic[sizeof(kMagic)]{};
+            input.read(magic, sizeof(magic));
+            if (!input || std::memcmp(magic, kMagic, sizeof(kMagic)) ||
+                readU32(input) != kStorageVersion ||
+                readPersistentCacheKey(input) != *key ||
+                readI64(input) != key->channelCount)
+            {
+                return {};
+            }
+            std::vector<std::streamoff> offsets;
+            for (int c = 0; c < key->channelCount; ++c)
+            {
+                if (cancel && cancel())
+                {
+                    return {};
+                }
+                const auto frames = readI64(input), dirtyFrom = readI64(input),
+                           dirtyTo = readI64(input);
+                const auto levels = readU32(input);
+                if (frames != key->frameCount || dirtyTo >= dirtyFrom ||
+                    !levels || levels > 64)
+                {
+                    return {};
+                }
+                uint64_t count = frames / 128 + (frames % 128 != 0);
+                for (uint32_t level = 0; level < levels; ++level)
+                {
+                    if (readI64(input) != int64_t(count))
+                    {
+                        return {};
+                    }
+                    const auto at = input.tellg();
+                    if (!input || at < 0 || at > fileSize ||
+                        count > uint64_t(fileSize - at) / 8)
+                    {
+                        return {};
+                    }
+                    if (!level)
+                    {
+                        offsets.push_back(at);
+                    }
+                    input.seekg(std::streamoff(count * 8), std::ios::cur);
+                    count = count / 2 + count % 2;
+                }
+            }
+            if (!input || input.tellg() != fileSize)
+            {
+                return {};
+            }
+            return SourcePeaks::createStreaming(
+                {key->frameCount, int(key->channelCount), key->sampleRate,
+                 key->sampleFormat},
+                [&](int c, uint64_t first, std::span<Peak> out)
+                {
+                    input.seekg(offsets[c] + std::streamoff(first * 8));
+                    for (auto &peak : out)
+                    {
+                        peak = {readFloat(input), readFloat(input)};
+                    }
+                    if (!input)
+                    {
+                        throw std::runtime_error("Truncated peak cache");
+                    }
+                },
+                std::move(cache), cancel);
+        }
+        catch (...)
+        {
+            return {};
+        } // Disposable cache; decoding supplies peaks.
     }
 
     bool loadPersistentWaveformCache(

@@ -273,6 +273,8 @@ namespace cupuacu::gui
         mutable std::optional<waveform::ViewportData> viewportData;
         mutable uint64_t viewportGeneration = 0;
         mutable bool viewportFailed = false;
+        mutable bool viewportRequestPending = false;
+        mutable int64_t viewportRequestAvailability = -1;
         bool drawAsyncViewport(SDL_Renderer *renderer) const;
         bool consumeViewport() const;
 

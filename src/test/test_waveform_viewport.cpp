@@ -1,5 +1,6 @@
 #include "waveform/StreamingPeakBuilder.hpp"
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include "DocumentSession.hpp"
 #include "LongTask.hpp"
 #include "concurrency/DeferredRelease.hpp"
@@ -12,6 +13,213 @@
 
 using namespace cupuacu;
 using namespace std::chrono_literals;
+
+TEST_CASE("Progressive peak tiles preserve every level and published prefix",
+          "[progressive-peaks]")
+{
+    for (uint64_t count : {1, 4096, 4097, 8192, 16384, 16385, 65539})
+    {
+        const storage::AudioShape shape{int64_t(count * 128 - 13), 2, 48000,
+                                        SampleFormat::FLOAT32};
+        auto cache = std::make_shared<storage::DecodedBlockCache>(
+            storage::AudioBlockBytes);
+        auto live = std::make_shared<waveform::ProgressivePeaks>(shape, cache);
+        std::vector<std::vector<gui::PeakLevel>> levels(2);
+        auto value = [](int c, uint64_t i)
+        {
+            return waveform::Peak{-float(i % 103 + c), float(i % 107 + c)};
+        };
+        for (int c = 0; c < 2; ++c)
+        {
+            levels[c].resize(1);
+            levels[c][0].resize(count);
+            for (uint64_t i = 0; i < count; ++i)
+            {
+                levels[c][0].set(i, value(c, i));
+            }
+        }
+        waveform::SourcePeaks reference(shape, std::move(levels));
+        REQUIRE_THROWS(live->queryBlocks(0, 0, 1));
+        std::array<waveform::Peak, 509> chunk;
+        for (uint64_t first = 0; first < count;)
+        {
+            const auto n = std::min<uint64_t>(chunk.size(), count - first);
+            for (int c = 0; c < 2; ++c)
+            {
+                for (uint64_t i = 0; i < n; ++i)
+                {
+                    chunk[i] = value(c, first + i);
+                }
+                live->append(c, std::span(chunk).first(n));
+            }
+            first += n;
+            live->publish(first == count ? shape.frames : int64_t(first * 128));
+            for (int c = 0; c < 2; ++c)
+            {
+                for (uint64_t start : {uint64_t(0), first / 3, first - 1})
+                {
+                    uint64_t visited = 0;
+                    const auto expected =
+                        reference.queryBlocks(c, start, first, visited);
+                    const auto actual = live->queryBlocks(c, start, first);
+                    REQUIRE(actual.min == expected.min);
+                    REQUIRE(actual.max == expected.max);
+                }
+            }
+        }
+        CHECK(live->residency()[0] <= 2 * (storage::AudioBlockBytes + 128));
+        auto result = live->finish();
+        REQUIRE_THROWS(live->finish());
+        for (int c = 0; c < 2; ++c)
+        {
+            for (std::size_t l = 0, n = count;; ++l, n = (n + 1) / 2)
+            {
+                std::vector<waveform::Peak> actual(n), expected(n);
+                result->readPeaks(c, l, 0, actual);
+                reference.readPeaks(c, l, 0, expected);
+                for (std::size_t i = 0; i < n; ++i)
+                {
+                    REQUIRE(actual[i].min == expected[i].min);
+                    REQUIRE(actual[i].max == expected[i].max);
+                }
+                if (n == 1)
+                {
+                    break;
+                }
+            }
+        }
+        CHECK(result->residency().residentBytes <= 2 * 4096 * 16);
+        CHECK(cache->stats().peakResidentBytes <= storage::AudioBlockBytes);
+    }
+}
+
+TEST_CASE(
+    "Viewport queries can overlap progressive peak publication and sealing",
+    "[progressive-peaks]")
+{
+    storage::AudioShape shape{128 * 65539, 2, 48000, SampleFormat::FLOAT32};
+    auto live = std::make_shared<waveform::ProgressivePeaks>(
+        shape,
+        std::make_shared<storage::DecodedBlockCache>(storage::AudioBlockBytes));
+    std::promise<void> started;
+    auto ready = started.get_future();
+    std::atomic<bool> stop{false};
+    auto reader = std::async(
+        std::launch::async,
+        [&]
+        {
+            started.set_value();
+            do
+            {
+                const auto end = live->availableFrames() / 128;
+                if (!end)
+                {
+                    continue;
+                }
+                for (int c = 0; c < 2; ++c)
+                {
+                    const auto peak = live->queryBlocks(c, end / 3, end);
+                    if (peak.min != -float(c + 1) || peak.max != float(c + 2))
+                    {
+                        return false;
+                    }
+                }
+            } while (!stop.load());
+            return true;
+        });
+    ready.wait();
+    // Always release the reader before propagating a failed writer assertion.
+    std::exception_ptr error;
+    try
+    {
+        std::array<waveform::Peak, 509> batch;
+        for (int64_t first = 0; first < shape.frames / 128;)
+        {
+            const auto n =
+                std::min<int64_t>(batch.size(), shape.frames / 128 - first);
+            for (int c = 0; c < 2; ++c)
+            {
+                batch.fill({-float(c + 1), float(c + 2)});
+                live->append(c, std::span(batch).first(n));
+            }
+            first += n;
+            live->publish(first * 128);
+        }
+        live->finish();
+    }
+    catch (...)
+    {
+        error = std::current_exception();
+    }
+    stop = true;
+    REQUIRE(reader.get());
+    if (error)
+    {
+        std::rethrow_exception(error);
+    }
+}
+
+TEST_CASE(
+    "Import viewport draws available peaks without reading unavailable audio",
+    "[progressive-peaks][waveform-viewport]")
+{
+    struct NoReads : storage::AudioReader
+    {
+        storage::AudioShape shape() const override
+        {
+            return {65536, 1, 48000, SampleFormat::FLOAT32};
+        }
+        void readChannel(int, int64_t, std::span<float>) const override
+        {
+            FAIL("Overview read raw audio");
+        }
+    };
+    auto audio = std::make_shared<NoReads>();
+    auto live = std::make_shared<waveform::ProgressivePeaks>(
+        audio->shape(),
+        std::make_shared<storage::DecodedBlockCache>(storage::AudioBlockBytes));
+    std::array<waveform::Peak, 64> peaks;
+    peaks.fill({-.25f, .75f});
+    waveform::ViewportSource source;
+    source.audio = audio;
+    source.availableFrames = []
+    {
+        return 0;
+    };
+    source.overviewAvailableFrames = [live]
+    {
+        return live->availableFrames();
+    };
+    source.overview = [live](int c, int64_t first, int64_t n)
+    {
+        return live->queryBlocks(c, first / 128, (first + n + 127) / 128);
+    };
+    for (int step = 1; step <= 2; ++step)
+    {
+        live->append(0, peaks);
+        live->publish(step * 8192);
+        const auto result =
+            waveform::WaveformViewport::compute(source, {0, 0, 1024, 64},
+                                                []
+                                                {
+                                                    return false;
+                                                });
+        REQUIRE(result);
+        REQUIRE_FALSE(result->pending);
+        REQUIRE(result->availableFrames == step * 8192);
+        for (int x = 0; x < 64; ++x)
+        {
+            if (x < step * 8)
+            {
+                CHECK(result->peaks[x].max == .75f);
+            }
+            else
+            {
+                CHECK(result->peaks[x].min > result->peaks[x].max);
+            }
+        }
+    }
+}
 namespace
 {
     std::optional<waveform::WaveformViewport::Result>
@@ -401,7 +609,14 @@ TEST_CASE(
     for (const int64_t frames : {int64_t(197), int64_t(128 * 32771 - 13)})
     {
         storage::AudioShape shape{frames, 2, 48000, SampleFormat::FLOAT32};
-        waveform::StreamingPeakBuilder builder(shape);
+        const bool progressive = GENERATE(false, true);
+        auto cache = std::make_shared<storage::DecodedBlockCache>(
+            storage::AudioBlockBytes);
+        auto live =
+            progressive
+                ? std::make_shared<waveform::ProgressivePeaks>(shape, cache)
+                : nullptr;
+        waveform::StreamingPeakBuilder builder(shape, cache, {}, live);
         auto sample = [](int c, int64_t i)
         {
             return float((i % 137) - 68 + c) / 128;

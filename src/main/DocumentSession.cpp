@@ -1,4 +1,5 @@
 #include "DocumentSession.hpp"
+#include "waveform/ProgressivePeaks.hpp"
 #include "concurrency/DeferredRelease.hpp"
 #include "storage/AudioEditRevision.hpp"
 #include "storage/DocumentAudioReader.hpp"
@@ -79,6 +80,8 @@ namespace cupuacu
     void DocumentSession::clearReadRevision()
     {
         openingAudio.reset();
+        openingPeaks.reset();
+        openingCachedPeaks.reset();
         pendingImportedPeaks.reset();
         recoveredRevisionCheckpoint.reset();
         readRevision.reset();
@@ -140,6 +143,29 @@ namespace cupuacu
                 {
                     return audio->availableFrames();
                 };
+                if (openingPeaks || openingCachedPeaks)
+                {
+                    source.overviewAvailableFrames =
+                        [peaks = openingPeaks, cached = openingCachedPeaks]
+                    {
+                        return cached ? cached->shape().frames
+                                      : peaks->availableFrames();
+                    };
+                    source.overview =
+                        [peaks = openingPeaks, cached = openingCachedPeaks](
+                            int channel, int64_t first,
+                            int64_t count) -> std::optional<waveform::Peak>
+                    {
+                        const auto end = first + count;
+                        const auto firstBlock = first / 128;
+                        const auto endBlock = end / 128 + (end % 128 != 0);
+                        uint64_t visited = 0;
+                        return cached ? cached->queryBlocks(channel, firstBlock,
+                                                            endBlock, visited)
+                                      : peaks->queryBlocks(channel, firstBlock,
+                                                           endBlock);
+                    };
+                }
                 viewportSource = concurrency::releaseOnWorker(
                     std::make_shared<waveform::ViewportSource>(
                         std::move(source)));

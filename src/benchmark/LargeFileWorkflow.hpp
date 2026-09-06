@@ -70,11 +70,13 @@ void largeFileWorkflow(benchmark::State &measurement)
                     mark("first_playable",
                          session.openingAudio &&
                              session.openingAudio->availableFrames() > 0);
-                    mark(
-                        "first_waveform",
-                        session.document.getChannelCount() &&
-                            session.getWaveformCache(0).builtSamplePrefixEnd() >
-                                0);
+                    mark("first_waveform",
+                         session.openingCachedPeaks ||
+                             (session.openingPeaks &&
+                              session.openingPeaks->availableFrames() > 0) ||
+                             (session.document.getChannelCount() &&
+                              session.getWaveformCache(0)
+                                      .builtSamplePrefixEnd() > 0));
                 }
                 committed = !session.openingPreview &&
                             session.hasReadRevision() &&

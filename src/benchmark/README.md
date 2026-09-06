@@ -843,3 +843,21 @@ python3 scripts/run-benchmarks.py --profile extended --suite core --mode timing 
 Use `recovery_legacy` to measure the production sample reduction, migration/archive
 write, and subsequent archive reload. The streaming milestone's report records
 matched results and the remaining progressive-import memory limitation.
+
+
+`peak_progressive` feeds 512 base peaks per channel into the production online
+peak store, publishes each prefix, then runs the same eight-view queries as
+`peak_streaming`. It allocates no full input peak array or audio file. Preparation
+includes incremental reduction/publication and final sealing. Sizes mean stereo
+decoded audio represented. At 8 GiB this also crosses peak segment-file boundaries.
+
+```sh
+python3 scripts/run-benchmarks.py --profile extended --suite core --mode timing \
+  --filter peak_progressive --sizes-mib 1 256 2048 8192 --repetitions 3 \
+  --output dist/benchmarks/peak-progressive.json
+```
+
+Use `open_owned` for matched production import completion/RSS and
+`large_file_workflow` for the application event-loop/viewport path. First waveform
+availability now observes the shared progressive reader. These headless scenarios
+do not measure SDL texture upload or actual on-screen frame presentation.

@@ -3,6 +3,7 @@
 #include "../Document.hpp"
 #include "../Paths.hpp"
 #include "../gui/WaveformCache.hpp"
+#include "SourcePeaks.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -62,10 +63,20 @@ namespace cupuacu::waveform
         // Optional worker-side preparation, also used for deterministic I/O
         // delay/failure tests. Never called by capture or admission.
         std::function<void()> beforeWrite;
+        std::shared_ptr<const SourcePeaks> sourcePeaks;
     };
     std::shared_ptr<const PersistentCacheSnapshot>
     capturePersistentWaveformCache(const cupuacu::DocumentSession &,
                                    const std::filesystem::path &root);
+    std::shared_ptr<const PersistentCacheSnapshot>
+    capturePersistentSourcePeaks(const std::string &source, const Document &,
+                                 const std::filesystem::path &root,
+                                 std::shared_ptr<const SourcePeaks>);
+    std::shared_ptr<const SourcePeaks>
+    loadPersistentSourcePeaks(const std::string &source, const Document &,
+                              const std::filesystem::path &root,
+                              std::shared_ptr<storage::DecodedBlockCache>,
+                              const std::function<bool()> &cancel = {});
     CacheSaveScheduleResult schedulePersistentWaveformCache(
         const std::shared_ptr<const PersistentCacheSnapshot> &);
 

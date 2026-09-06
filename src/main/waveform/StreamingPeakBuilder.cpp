@@ -1,4 +1,5 @@
 #include "StreamingPeakBuilder.hpp"
+#include "ProgressivePeaks.hpp"
 #include "../storage/AudioBlockStore.hpp"
 #include "../LongTask.hpp"
 #include <chrono>
@@ -10,6 +11,7 @@ namespace cupuacu::waveform
         storage::AudioShape shape;
         std::shared_ptr<storage::DecodedBlockCache> cache;
         std::function<bool()> cancel;
+        std::shared_ptr<ProgressivePeaks> progressive;
         int64_t built = 0;
         bool finished = false, failed = false;
         std::shared_ptr<storage::AudioBlockStore> spool;
@@ -29,8 +31,10 @@ namespace cupuacu::waveform
         }
         Impl(storage::AudioShape shape,
              std::shared_ptr<storage::DecodedBlockCache> cache,
-             std::function<bool()> cancel)
-            : shape(shape), cache(std::move(cache)), cancel(std::move(cancel))
+             std::function<bool()> cancel,
+             std::shared_ptr<ProgressivePeaks> progressive)
+            : shape(shape), cache(std::move(cache)), cancel(std::move(cancel)),
+              progressive(std::move(progressive))
         {
             if (shape.frames < 0 || shape.channels <= 0)
             {
@@ -38,6 +42,10 @@ namespace cupuacu::waveform
             }
             check();
             partial.resize(shape.channels, emptyPeak());
+            if (this->progressive)
+            {
+                return;
+            }
             const auto count = shape.frames / 128 + (shape.frames % 128 != 0);
             if (count <= int64_t(SourcePeaks::residentLevelLimit))
             {
@@ -69,9 +77,11 @@ namespace cupuacu::waveform
     StreamingPeakBuilder::StreamingPeakBuilder(
         storage::AudioShape shape,
         std::shared_ptr<storage::DecodedBlockCache> cache,
-        std::function<bool()> cancel)
+        std::function<bool()> cancel,
+        std::shared_ptr<ProgressivePeaks> progressive)
         : impl(std::make_unique<Impl>(shape, std::move(cache),
-                                      std::move(cancel)))
+                                      std::move(cancel),
+                                      std::move(progressive)))
     {
     }
     StreamingPeakBuilder::~StreamingPeakBuilder() = default;
@@ -125,7 +135,11 @@ namespace cupuacu::waveform
                         peaks[emitted++] = peak;
                     }
                 }
-                if (s.spool)
+                if (s.progressive)
+                {
+                    s.progressive->append(c, std::span(peaks).first(emitted));
+                }
+                else if (s.spool)
                 {
                     static_assert(sizeof(Peak) == 8);
                     s.writers[c].write(
@@ -145,6 +159,10 @@ namespace cupuacu::waveform
             }
         }
         s.built = available;
+        if (s.progressive)
+        {
+            s.progressive->publish(available);
+        }
         s.failed = false;
     }
     std::shared_ptr<const SourcePeaks> StreamingPeakBuilder::finish()
@@ -156,6 +174,10 @@ namespace cupuacu::waveform
         }
         s.finished = true;
         s.check();
+        if (s.progressive)
+        {
+            return s.progressive->finish();
+        }
         for (auto &writer : s.writers)
         {
             writer.close();

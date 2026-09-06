@@ -9,6 +9,7 @@
 #include "undo/UndoStore.hpp"
 #include "waveform/WaveformCachePersistence.hpp"
 #include "waveform/DocumentWaveformCaches.hpp"
+#include "waveform/ProgressivePeaks.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -65,6 +66,12 @@ namespace cupuacu
             }
         }
         std::shared_ptr<const storage::ImportAudioReader> openingAudio;
+        std::shared_ptr<const waveform::ProgressivePeaks> openingPeaks;
+        std::shared_ptr<const waveform::SourcePeaks> openingCachedPeaks;
+        void invalidateViewportSource() const
+        {
+            viewportSource.reset();
+        }
         gui::Selection<double> selection = gui::Selection<double>(0.0);
         int64_t cursor = 0;
         undo::UndoStore undoStore;

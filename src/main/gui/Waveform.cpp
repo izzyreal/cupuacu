@@ -2107,11 +2107,14 @@ bool Waveform::consumeViewport() const
                 }
             }
         }
+        viewportRequestPending = false;
         viewportFailed = true;
         return true;
     }
     viewportFailed = false;
+    viewportRequestPending = false;
     viewportData = std::move(result->value);
+    invalidateBaseTexture();
     samplePointsNeedRefresh = true;
     return true;
 }
@@ -2123,7 +2126,9 @@ bool Waveform::drawAsyncViewport(SDL_Renderer *renderer) const
         return false;
     }
     if (state->getActiveDocumentSession().openingPreview &&
-        state->getActiveViewState().samplesPerPixel >= 128)
+        state->getActiveViewState().samplesPerPixel >= 128 &&
+        !state->getActiveDocumentSession().openingPeaks &&
+        !state->getActiveDocumentSession().openingCachedPeaks)
     {
         return false;
     }
@@ -2144,6 +2149,8 @@ bool Waveform::drawAsyncViewport(SDL_Renderer *renderer) const
         viewportRequest.reset();
         viewportData.reset();
         viewportFailed = false;
+        viewportRequestPending = false;
+        viewportRequestAvailability = -1;
         invalidateBaseTexture();
     }
     if (channelIndex >= source->audio->shape().channels)
@@ -2163,19 +2170,28 @@ bool Waveform::drawAsyncViewport(SDL_Renderer *renderer) const
     const waveform::ViewportRequest desired{channelIndex, target.sampleOffset,
                                             target.samplesPerPixel,
                                             target.width};
-    if (state->getActiveDocumentSession().openingPreview && viewportData &&
-        viewportData->pending)
-    {
-        viewportRequest.reset();
-    }
+    const auto &availability =
+        desired.samplesPerPixel >= 128 && source->overviewAvailableFrames
+            ? source->overviewAvailableFrames
+            : source->availableFrames;
+    const auto available =
+        availability ? availability() : source->audio->shape().frames;
+    const bool advanced =
+        available > viewportRequestAvailability && !viewportRequestPending;
     const auto requestView = [&]
     {
-        if (!viewportRequest || *viewportRequest != desired)
+        if (!viewportRequest || *viewportRequest != desired || advanced)
         {
             viewportGeneration = viewportWorker->submit(desired);
             viewportRequest = desired;
+            viewportRequestAvailability = available;
+            viewportRequestPending = true;
         }
     };
+    if (advanced)
+    {
+        requestView();
+    }
     std::optional<BaseTextureCacheKey> readyTarget;
     if (viewportData && !viewportData->pending && !viewportFailed &&
         viewportData->request.samplesPerPixel == key.samplesPerPixel)

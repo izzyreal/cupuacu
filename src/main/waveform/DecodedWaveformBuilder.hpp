@@ -16,6 +16,8 @@ namespace cupuacu::waveform
         std::vector<std::vector<gui::WaveformCache::LevelSpanUpdate>> channels;
         std::optional<DocumentWaveformCaches> cached;
         std::shared_ptr<const storage::ImportAudioReader> audio;
+        std::shared_ptr<const class ProgressivePeaks> progressivePeaks;
+        std::shared_ptr<const class SourcePeaks> sourcePeaks;
     };
 
     // The decoder owns both the audio and this builder. Only peak deltas cross

@@ -596,8 +596,100 @@ Reports: `peak-streaming.json` (27 synthetic runs),
 (six production recovery runs each), under `dist/benchmarks/`.
 `peak-streaming-recovery-initial-loop.json` records the rejected reduction loop.
 
-Remaining: progressive import still builds/retains its legacy UI and persistence
-peak caches before paging; its import peak-memory growth is unchanged. The bounded
+At that checkpoint, progressive import still built/retained its legacy UI and
+persistence peak caches before paging; import peak-memory growth was unchanged. The bounded
 builder is available for the next import migration, which must preserve incremental
 drawing and persistent-cache reuse. Source audio indexes, provenance/edit metadata,
 aggregate overview accounting and the wider scheduling/resource work also remain.
+
+
+## Progressive import peak storage
+
+Progressive imports now build a bounded online pyramid. The decoder and viewport
+share published peak pages instead of retaining separate full-length arrays.
+Completed spatial tiles spill into packed temporary segments through the shared
+sample/peak cache. Import completion seals the tail and hands the same storage to
+the immutable revision reader; there is no final full pyramid copy or repaging.
+Active tile buffers grow with channel count and the logarithmic number of summary
+groups, not with every peak. Finalized sources retain only their small top group.
+These buffers/overviews are not yet charged to aggregate memory admission.
+
+The existing progressive appearance is retained through worker viewport queries.
+Only available regions are queried; missing regions stay pending, and the UI
+never reads sample/peak files. Completed results invalidate their waveform texture.
+Further availability requests wait for the current request to publish; navigation
+still supersedes obsolete requests. Shared-reader notifications coalesce instead
+of making the decoder wait for the UI to consume every decoded block.
+
+Persistent v1 caches remain compatible. Loading reads base summaries in bounded
+chunks, and asynchronous persistence streams the finalized reader. Cache preview
+can cover the full waveform while audio is still decoding. Invalid/truncated cache
+files fall back to peak generation during decode. No clipboard lifetime, opening
+window layout, or source-ownership behavior changes are included.
+
+Matched native Release WAV imports, three repetitions per size, no concurrent
+compilation, filesystem caches uncontrolled:
+
+| Decoded audio | Import completion before / after | Peak process RSS before / after |
+| --- | --- | --- |
+| 1 MiB | 2.88 / 2.70 ms | 4.55 / 4.77 MiB |
+| 256 MiB | 452.69 / 440.54 ms | 14.22 / 5.95 MiB |
+
+The large case reduces RSS about 58%, with no measured completion penalty. Small
+RSS increases 0.22 MiB. Timings include owned import; full sample validation occurs
+after timing and remains included in process RSS. The preserved baseline executable
+was copied before this slice; its embedded build identity describes the preceding
+uncommitted source fingerprint (the changes subsequently committed as `5c7abae`).
+
+Synthetic progressive peak construction, three repetitions, 1 MiB shared cache:
+
+| Audio represented | Peak RSS | Online preparation | Eight views / repeat |
+| --- | --- | --- | --- |
+| 1 MiB | 2.63 MiB | 0.019 ms | 0.48 / 0.48 ms |
+| 256 MiB | 3.77 MiB | 11.42 ms | 3.95 / 3.57 ms |
+| 2 GiB | 3.77 MiB | 86.94 ms | 17.01 / 16.75 ms |
+| 8 GiB | 3.81 MiB | 377.59 ms | 59.96 / 58.98 ms |
+
+Compared with the bounded offline streaming builder, online preparation costs
+13.90 ms more at 2 GiB and 69.19 ms more at 8 GiB. It maintains queryable prefixes
+throughout construction; the offline builder does not. Query overhead is below
+0.25 ms per view in these measurements. Total query cost still rises with working
+set and cache misses: eight views at 8 GiB read 256 MiB per pass with this deliberately
+small cache. This is not a claim of disk-I/O independence from document length or
+completion of the original viewport scaling goal. Every query is validated, and
+the 8 GiB case crosses segment-file boundaries without a resident page index.
+
+The 256 MiB production ALAC workflow passed: first waveform/playable data about
+12.7 ms, editable in 1.50 s, warm viewport p99 0.257 ms, and zero source-sample I/O
+for local edits/history. Its 752 event observations are insufficient for p99;
+maximum observed event delay was 5.32 ms.
+
+One 2 GiB ALAC workflow also passed: first waveform/playable data 14.1 ms,
+editable in 12.14 s, event p99 3.22 ms across 6,068 observations, warm viewport
+p99 0.257 ms, and import peak RSS 75.6 MiB with a 64 MiB shared cache. Local
+edits/history again performed zero source-sample I/O. Save and reopen validation
+passed. This is a single large workflow run, not a matched decoder-speed comparison.
+These headless probes do not measure SDL painting or display presentation.
+
+The first 2 GiB attempt hit the benchmark's 16 GiB logical-file quota during
+save/reopen and was terminated by the runner. The successful rerun allowed 32 GiB;
+this quota includes cloned files' logical sizes. Both reports are retained as
+`progressive-peaks-alac-large-workflow.json` (quota failure) and
+`progressive-peaks-alac-large-workflow-32g.json` (pass).
+
+Validation: 27 focused native cases passed, including every summary level at
+partial/exact tile boundaries, concurrent append/query/final sealing, arbitrary
+sample append boundaries, partial viewport availability, import precision,
+cancellation, persisted cache compatibility and corruption fallback. Native app
+and benchmark builds passed. No full suite, Linux build or GUI integration run.
+
+Reports in `dist/benchmarks/`: `progressive-peaks-before-idle.json`,
+`progressive-peaks-after-idle.json`, `peak-progressive.json`,
+`peak-progressive-streaming-reference.json`, and the ALAC workflow reports.
+Earlier `progressive-peaks-before.json`/`after.json` timings overlapped compilation
+and are superseded by the idle comparison.
+
+Remaining resource work: page audio/source indexes and provenance metadata;
+account for active peak tiles and aggregate overviews across many sources; finish
+scheduler/resource admission consolidation and resident compatibility migrations.
+Memory mapping remains excluded by agreement.

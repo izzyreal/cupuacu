@@ -312,9 +312,33 @@ namespace cupuacu::waveform
         return result;
     }
 
+    std::shared_ptr<const SourcePeaks> SourcePeaks::fromReader(
+        storage::AudioShape shape,
+        std::function<void(int, std::size_t, uint64_t, std::span<Peak>)> read,
+        std::function<std::array<uint64_t, 3>()> stats)
+    {
+        if (shape.frames < 0 || shape.channels <= 0 || !read || !stats)
+        {
+            throw std::invalid_argument("Invalid external peak reader");
+        }
+        const uint64_t count = shape.frames / 128 + (shape.frames % 128 != 0);
+        auto result = std::shared_ptr<SourcePeaks>(new SourcePeaks(
+            shape, count > 1 ? std::bit_width(count - 1) + 1 : 1));
+        result->externalRead = std::move(read);
+        result->externalStats = std::move(stats);
+        return result;
+    }
+
     std::size_t SourcePeaks::levelSize(int channel, std::size_t level) const
     {
         const auto size = channels.at(channel).at(level).size();
+        if (externalRead)
+        {
+            const uint64_t count =
+                dimensions.frames / 128 + (dimensions.frames % 128 != 0);
+            const uint64_t width = uint64_t{1} << level;
+            return count / width + (count % width != 0);
+        }
         return paged && paged->levels[channel][level].count
                    ? paged->levels[channel][level].count
                    : size;
@@ -327,6 +351,11 @@ namespace cupuacu::waveform
         if (first > size || output.size() > size - first)
         {
             throw std::out_of_range("Read outside source peaks");
+        }
+        if (externalRead)
+        {
+            externalRead(channel, level, first, output);
+            return;
         }
         if (!paged || !paged->levels[channel][level].count)
         {
@@ -364,6 +393,11 @@ namespace cupuacu::waveform
 
     SourcePeaks::Residency SourcePeaks::residency() const
     {
+        if (externalStats)
+        {
+            const auto values = externalStats();
+            return {values[0], values[1], values[2]};
+        }
         uint64_t resident = 0;
         for (const auto &channel : channels)
         {

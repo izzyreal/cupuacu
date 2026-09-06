@@ -12,6 +12,7 @@ namespace cupuacu::waveform
         std::function<std::optional<Peak>(int, int64_t, int64_t)> overview;
         std::function<bool(const std::function<bool()> &)> prepare;
         std::function<int64_t()> availableFrames;
+        std::function<int64_t()> overviewAvailableFrames;
     };
     struct ViewportRequest
     {
@@ -28,6 +29,7 @@ namespace cupuacu::waveform
         std::vector<float> samples;
         std::vector<Peak> peaks;
         bool pending = false;
+        int64_t availableFrames = 0;
         float sampleAt(int64_t frame) const
         {
             const auto local = frame - rawStart;
@@ -103,6 +105,12 @@ namespace cupuacu::waveform
             const auto shape = source.audio->shape();
             validate(shape, request);
             ViewportData result{request, 0, {}, {}, false};
+            const auto &availability =
+                request.samplesPerPixel >= 128 && source.overviewAvailableFrames
+                    ? source.overviewAvailableFrames
+                    : source.availableFrames;
+            result.availableFrames =
+                availability ? availability() : shape.frames;
             if (cancel())
             {
                 return {};
@@ -134,7 +142,9 @@ namespace cupuacu::waveform
                     {
                         return {};
                     }
-                    const auto first = frameAt(x), end = frameAt(x + 1);
+                    const auto first = frameAt(x),
+                               end = std::min(frameAt(x + 1),
+                                              result.availableFrames);
                     if (end > first)
                     {
                         auto peak = source.overview(request.channel, first,
