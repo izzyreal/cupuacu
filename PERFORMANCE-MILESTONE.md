@@ -693,3 +693,94 @@ Remaining resource work: page audio/source indexes and provenance metadata;
 account for active peak tiles and aggregate overviews across many sources; finish
 scheduler/resource admission consolidation and resident compatibility migrations.
 Memory mapping remains excluded by agreement.
+
+
+## Smaller waveform pages and byte-sized shared cache
+
+Delivered after `ca157ec`. This addresses the measured peak-read amplification
+left by the import migration, rather than claiming audio-index paging is complete.
+
+Large sources now use 4 KiB spatial peak tiles instead of 256 KiB tiles. Each
+contains 256 base values and neighboring summary levels. Small recordings with
+at most 4,096 base values remain fully resident. Imports, archive loads, effects,
+and clipboard conversion share the online hierarchy builder; streaming keeps
+large sequential input reads and propagates parent summaries during append.
+There is no second disk pass to construct higher groups. Durable formats and
+waveform values are unchanged.
+
+The shared cache allocates 4–256 KiB buffers according to block size. Resident
+and in-flight allocations plus declared scratch obey the existing byte budget;
+pressure evicts by bytes. Same-size buffers can be reused after eviction. The
+minimum allocation bounds the number of entries, and hash lookup avoids the
+extra tree-search cost when many small pages fit. Entry/bucket bookkeeping remains
+outside buffer accounting, as do active peak tiles and aggregate overviews.
+
+Native Release, three repetitions per synthetic case, 1 MiB shared cache. Sizes
+mean stereo float audio represented; fixtures contain only synthetic peaks:
+
+| Audio represented | First eight views, before / after | Repeated eight views, before / after | Peak reads per pass, before / after |
+| --- | --- | --- | --- |
+| 1 MiB | 0.480 / 0.545 ms | 0.477 / 0.514 ms | 0 / 0 |
+| 256 MiB | 3.95 / 5.16 ms | 3.57 / 4.85 ms | 8.25 / 7.76 MiB |
+| 2 GiB | 17.01 / 13.19 ms | 16.75 / 12.41 ms | 64.75 / 21.93 MiB |
+| 8 GiB | 64.69 / 41.32 ms | 58.72 / 19.12 ms | 256 / 31.24 MiB |
+
+At 8 GiB, repeated queries are about 3.1 times faster and peak reads fall 88%.
+First-pass timing varies more: an earlier final-layout run measured 18.7 ms; the
+standalone final run measured 41.3 ms. Both are retained. These are application
+storage-byte counts and headless worker timings, with uncontrolled filesystem
+caching, not physical cold-device or SDL presentation measurements. Peak RSS
+remains below 4 MiB in the large synthetic cases. Cost still depends on viewport
+width, summary traversal and misses; this does not close every original rendering
+or resource-policy requirement.
+
+Trade-offs remain explicit. The 256 MiB query increase is about 0.15 ms per view;
+the 1 MiB increase is under 0.01 ms per view. Progressive 8 GiB peak construction
+increases from 368.9 to 400.6 ms (+31.7 ms, 8.6%). Offline streamed construction
+increases from the prior checkpoint's 308.4 to 356.9 ms at 8 GiB, while its repeated
+eight-view time falls from 57.0 to 19.1 ms. These synthetic preparation timers do
+not include audio decoding.
+
+Matched production checks against `/tmp/cupuacu-before-peak-tiles/cupuacu-benchmarks`,
+with the same Release flags and no concurrent compilation:
+
+| Workload | Before / after |
+| --- | --- |
+| 1 MiB WAV import | 2.646 / 2.758 ms |
+| 256 MiB WAV import | 417.80 / 425.45 ms (+1.8%) |
+| 1 MiB legacy recovery | 4.837 / 4.695 ms |
+| 256 MiB legacy recovery | 508.58 / 498.73 ms |
+| 256 MiB durable recovery reopen | 27.45 / 28.41 ms |
+| 256 MiB sample-cache scan | 55.55 / 58.29 ms |
+| 10,000 warm reads after that scan | 0.220 / 0.132 ms |
+
+All sample/peak validations and memory bounds passed. Import and recovery timings
+exclude their subsequent full sample validation. Cache scan increases 2.74 ms
+(4.9%); warm reads improve. The small absolute costs and larger-navigation gains
+fit the agreed trade-off criterion; total application memory is still not bounded.
+
+The benchmark caught two intermediate issues before acceptance: variable-size
+entries made the tree lookup slower, addressed with hashing; smaller streaming
+tiles caused a second summary read pass, addressed by sharing the online builder.
+The intermediate reports remain available rather than being presented as final.
+
+Validation: 41 distinct focused native cases passed across targeted runs, including
+mixed-size cache admission, concurrency, pressure, failed-read release, small-tile
+I/O and reuse, all summary levels, import/persistence compatibility, recovery and
+playback read-ahead. After the final builder/arithmetic changes, the 20 affected
+peak/recovery cases passed again. Native app and benchmark builds passed. No full
+suite, Linux build or GUI integration run.
+
+Final reports under `dist/benchmarks/`: `peak-pages-final-peak_progressive.json`,
+`peak-pages-final-peak_streaming.json`, their `-large.json` counterparts,
+`peak-pages-reference-large.json`, `peak-pages-final-open_owned.json`,
+`peak-pages-final-recovery_legacy.json`, and the `peak-pages-*-before.json` /
+`peak-pages-audio_memory-after.json` regression references. The smaller synthetic
+baseline uses the preceding checkpoint's `peak-progressive.json` and
+`peak-progressive-streaming-reference.json`. Intermediate reports are
+`peak-small-tiles-progressive.json`, `peak-sized-cache-progressive.json`,
+`peak-small-pages-final.json`, `peak-small-pages-streaming.json`, and
+`peak-one-pass-streaming.json`.
+
+Outstanding: audio/source index paging, provenance metadata scaling, aggregate
+memory admission and remaining scheduler/compatibility consolidation.

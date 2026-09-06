@@ -7,19 +7,18 @@ namespace cupuacu::waveform
 {
     struct ProgressivePeaks::Impl
     {
-        static constexpr uint64_t tileWidth = 16384;
+        const uint64_t tileWidth;
         struct Group
         {
             uint64_t expected, produced = 0, sealed = 0, width;
             bool resident;
             std::vector<float> active;
             std::shared_ptr<storage::AudioBlockStore> store;
-            explicit Group(uint64_t count)
+            Group(uint64_t count, uint64_t tileWidth)
                 : expected(count),
                   width(
                       std::bit_ceil(std::clamp(count, uint64_t{1}, tileWidth))),
-                  resident(count <= SourcePeaks::residentLevelLimit),
-                  active(width * 4)
+                  resident(count <= tileWidth), active(width * 4)
             {
             }
             Peak get(uint64_t index) const
@@ -58,9 +57,20 @@ namespace cupuacu::waveform
         std::vector<std::vector<Group>> channels;
         std::atomic<int64_t> available{0};
         bool finished = false, failed = false;
+        static uint64_t widthForFrames(int64_t frames)
+        {
+            const auto count =
+                std::max<int64_t>(1, frames / 128 + (frames % 128 != 0));
+            // Keep ordinary small recordings entirely resident. Large sources
+            // use 4 KiB spatial subtrees at every summary scale.
+            return count > int64_t(SourcePeaks::residentLevelLimit)
+                       ? 256
+                       : std::bit_ceil(uint64_t(count));
+        }
         Impl(storage::AudioShape shape,
              std::shared_ptr<storage::DecodedBlockCache> cache)
-            : shape(shape), cache(std::move(cache))
+            : tileWidth(widthForFrames(shape.frames)), shape(shape),
+              cache(std::move(cache))
         {
             if (shape.frames < 0 || shape.channels <= 0 || !this->cache)
             {
@@ -73,7 +83,7 @@ namespace cupuacu::waveform
                 uint64_t count = shape.frames / 128 + (shape.frames % 128 != 0);
                 for (;;)
                 {
-                    channel.emplace_back(count);
+                    channel.emplace_back(count, tileWidth);
                     if (count <= tileWidth)
                     {
                         break;
@@ -89,7 +99,7 @@ namespace cupuacu::waveform
             {
                 throw std::logic_error("Too many progressive peaks");
             }
-            auto index = g.produced % g.width;
+            auto index = (g.produced & (g.width - 1));
             g.put(index, peak);
             unsigned level = 0;
             while (index & 1)
@@ -99,7 +109,7 @@ namespace cupuacu::waveform
                 g.put(g.offset(++level) + index, peak);
             }
             ++g.produced;
-            if (g.produced % g.width == 0 && !g.resident)
+            if ((g.produced & (g.width - 1)) == 0 && !g.resident)
             {
                 peak = g.get(2 * g.width - 2);
                 g.seal();
@@ -113,9 +123,9 @@ namespace cupuacu::waveform
                   std::span<Peak> output) const
         {
             const auto &channel = channels.at(c);
-            const auto group = std::min(level / 14, channel.size() - 1);
+            const auto group = std::min(level / 8, channel.size() - 1);
             const auto &g = channel[group];
-            const auto local = unsigned(level - group * 14);
+            const auto local = unsigned(level - group * 8);
             const auto width = g.width >> local;
             if (!width)
             {
@@ -124,7 +134,9 @@ namespace cupuacu::waveform
             std::array<float, 256> scratch;
             while (!output.empty())
             {
-                const auto tile = first / width, at = first % width;
+                // Every tile width is a power of two, including short tails.
+                const auto tile = first >> std::countr_zero(width),
+                           at = first & (width - 1);
                 const auto count =
                     std::min({output.size(), std::size_t(width - at),
                               scratch.size() / 2});
@@ -245,7 +257,7 @@ namespace cupuacu::waveform
                 {
                     throw std::logic_error("Incomplete peak group");
                 }
-                const auto count = g.produced % g.width;
+                const auto count = (g.produced & (g.width - 1));
                 if (count)
                 {
                     auto index = count - 1;
