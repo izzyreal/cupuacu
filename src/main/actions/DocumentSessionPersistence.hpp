@@ -4,6 +4,7 @@
 #include "../SampleFormat.hpp"
 #include "../State.hpp"
 #include "../persistence/DocumentAutosave.hpp"
+#include "../persistence/RevisionPersistence.hpp"
 #include "../persistence/RecentFilesPersistence.hpp"
 #include "../persistence/SessionStatePersistence.hpp"
 #include "../undo/UndoManifestPersistence.hpp"
@@ -159,8 +160,7 @@ namespace cupuacu::actions
 
         int openFileIndex = 0;
         const auto clipboardSnapshotPath = detail::makeClipboardSnapshotPath(state);
-        if (!state->clipboard.getAudioRevision() &&
-            state->clipboard.getChannelCount() > 0 &&
+        if (state->clipboard.getChannelCount() > 0 &&
             !clipboardSnapshotPath.empty())
         {
             cupuacu::persistence::scheduleClipboardSnapshot(
@@ -213,7 +213,8 @@ namespace cupuacu::actions
             documentState.filePath = tab.session.currentFile;
             documentState.autosaveSnapshotPath =
                 tab.session.autosaveSnapshotPath.string();
-            if (!tab.session.undoStore.root().empty())
+            if (!tab.session.hasReadRevision() &&
+                !tab.session.undoStore.root().empty())
             {
                 const auto stats = tab.session.undoStore.stats();
                 const auto manifestPath =
@@ -374,8 +375,9 @@ namespace cupuacu::actions
                 continue;
             }
 
-            const bool cleanFileBackedDocument =
-                !session.currentFile.empty() && tab.undoables.empty();
+            const bool cleanFileBackedDocument = !session.hasReadRevision() &&
+                                                 !session.currentFile.empty() &&
+                                                 tab.undoables.empty();
             if (cleanFileBackedDocument)
             {
                 ++skippedCleanFileTabs;
@@ -398,6 +400,8 @@ namespace cupuacu::actions
                     document.getWaveformDataVersion() &&
                 session.autosavedMarkerDataVersion ==
                     document.getMarkerDataVersion() &&
+                (!session.hasReadRevision() ||
+                 session.autosavedHistoryVersion == tab.historyVersion) &&
                 std::filesystem::exists(session.autosaveSnapshotPath);
             if (autosaveAlreadyCurrent)
             {
@@ -405,14 +409,35 @@ namespace cupuacu::actions
                 continue;
             }
 
-            if (cupuacu::persistence::saveDocumentAutosaveSnapshot(
-                    session.autosaveSnapshotPath, session))
+            bool saved = false;
+            if (session.hasReadRevision())
+            {
+                try
+                {
+                    persistence::RevisionPersistence::save(
+                        session.autosaveSnapshotPath,
+                        *persistence::RevisionPersistence::capture(session,
+                                                                   &tab));
+                    saved = true;
+                }
+                catch (const std::exception &e)
+                {
+                    logging::warn(e.what());
+                }
+            }
+            else
+            {
+                saved = persistence::saveDocumentAutosaveSnapshot(
+                    session.autosaveSnapshotPath, session);
+            }
+            if (saved)
             {
                 ++savedAutosaves;
                 session.autosavedWaveformDataVersion =
                     document.getWaveformDataVersion();
                 session.autosavedMarkerDataVersion =
                     document.getMarkerDataVersion();
+                session.autosavedHistoryVersion = tab.historyVersion;
             }
             else
             {
@@ -449,16 +474,12 @@ namespace cupuacu::actions
         auto &tab = state->tabs[static_cast<std::size_t>(tabIndex)];
         auto &session = tab.session;
         const auto &document = session.document;
-        // Reference manifests are required before enabling the disk backend.
-        if (session.hasReadRevision())
-        {
-            return;
-        }
         if (document.getChannelCount() <= 0)
         {
             return;
         }
-        if (!session.currentFile.empty() && tab.undoables.empty())
+        if (!session.hasReadRevision() && !session.currentFile.empty() &&
+            tab.undoables.empty())
         {
             if (!session.autosaveSnapshotPath.empty())
             {
@@ -469,7 +490,10 @@ namespace cupuacu::actions
         }
         if (session.autosavedWaveformDataVersion ==
                 document.getWaveformDataVersion() &&
-            session.autosavedMarkerDataVersion == document.getMarkerDataVersion() &&
+            session.autosavedMarkerDataVersion ==
+                document.getMarkerDataVersion() &&
+            (!session.hasReadRevision() ||
+             session.autosavedHistoryVersion == tab.historyVersion) &&
             !session.autosaveSnapshotPath.empty())
         {
             return;

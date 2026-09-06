@@ -15,6 +15,12 @@
 #include <optional>
 #include <string>
 
+namespace cupuacu::persistence
+{
+    struct RevisionCheckpoint;
+    class RevisionPersistence;
+} // namespace cupuacu::persistence
+
 namespace cupuacu::storage
 {
     class AudioEditRevision;
@@ -30,6 +36,9 @@ namespace cupuacu
 {
     struct DocumentSession
     {
+        friend class persistence::RevisionPersistence;
+        std::shared_ptr<const persistence::RevisionCheckpoint>
+            recoveredRevisionCheckpoint;
         std::string currentFile;
         std::optional<file::AudioExportSettings> currentFileExportSettings;
         bool currentFileRequiresSaveAs = false;
@@ -49,6 +58,9 @@ namespace cupuacu
         std::filesystem::path autosaveSnapshotPath;
         uint64_t autosavedWaveformDataVersion = 0;
         uint64_t autosavedMarkerDataVersion = 0;
+        uint64_t autosavedHistoryVersion = 0;
+        std::chrono::steady_clock::time_point autosaveRetryAfter{};
+        std::string lastAutosaveError;
         std::optional<uint64_t> pendingPersistentWaveformCacheVersion;
 
         // Shared reader/summary snapshots for the viewport. Legacy consumers
@@ -273,6 +285,7 @@ namespace cupuacu
             autosaveSnapshotPath.clear();
             autosavedWaveformDataVersion = 0;
             autosavedMarkerDataVersion = 0;
+            autosavedHistoryVersion = 0;
         }
     };
 } // namespace cupuacu

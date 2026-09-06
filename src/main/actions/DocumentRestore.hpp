@@ -634,8 +634,23 @@ namespace cupuacu::actions
                 }
 
                 restoredAnyDocument = true;
-                applyPersistedOpenDocumentState(state, documentState);
-                if (!documentState.undoStorePath.empty())
+                if (state->getActiveDocumentSession().hasReadRevision())
+                {
+                    // Audio, markers and history come from one atomic
+                    // checkpoint. The session list may have been saved at a
+                    // different time.
+                    if (!persistence::RevisionPersistence::installHistory(
+                            state, state->activeTabIndex))
+                    {
+                        state->startupRestore.historyRestoreFailed = true;
+                    }
+                }
+                else
+                {
+                    applyPersistedOpenDocumentState(state, documentState);
+                }
+                if (!state->getActiveDocumentSession().hasReadRevision() &&
+                    !documentState.undoStorePath.empty())
                 {
                     if (!cupuacu::undo::restoreUndoManifest(
                             state, static_cast<int>(state->tabs.size()) - 1,

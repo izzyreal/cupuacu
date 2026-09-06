@@ -29,6 +29,10 @@ namespace cupuacu::storage
     // release belong to workers. This is not a recovery/persistence format.
     class AudioBlockStore
     {
+        friend class RevisionArchive;
+        bool removeOnDestroy = true;
+        std::shared_ptr<const void> archiveOwner;
+        AudioBlockStore() : segmentLimit(64 * 1024 * 1024) {}
         static inline std::atomic<uint64_t> nextId{1};
         const uint64_t identity = nextId.fetch_add(1);
         std::filesystem::path directory;
@@ -69,7 +73,10 @@ namespace cupuacu::storage
             writer.close();
             reader.close();
             std::error_code ignored;
-            std::filesystem::remove_all(directory, ignored);
+            if (removeOnDestroy)
+            {
+                std::filesystem::remove_all(directory, ignored);
+            }
         }
         uint64_t id() const
         {

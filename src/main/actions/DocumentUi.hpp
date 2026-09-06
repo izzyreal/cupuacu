@@ -27,7 +27,8 @@ namespace cupuacu::actions
         const cupuacu::DocumentSession &session)
     {
         if (session.revisionHasUnsavedChanges() ||
-            !session.autosaveSnapshotPath.empty())
+            (!session.hasReadRevision() &&
+             !session.autosaveSnapshotPath.empty()))
         {
             return true;
         }

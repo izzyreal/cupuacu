@@ -104,6 +104,7 @@ namespace cupuacu::actions::io
             std::filesystem::path path;
             uint64_t waveformDataVersion = 0;
             uint64_t markerDataVersion = 0;
+            uint64_t historyVersion = 0;
             std::string currentFile;
             std::optional<double> progress;
             std::string error;
@@ -114,7 +115,9 @@ namespace cupuacu::actions::io
             uint64_t waveformDataVersionToUse, uint64_t markerDataVersionToUse,
             std::string currentFileToUse,
             const cupuacu::Document &documentToSave,
-            const waveform::DocumentWaveformCaches &cachesToSave);
+            const waveform::DocumentWaveformCaches &cachesToSave,
+            std::shared_ptr<const persistence::RevisionCheckpoint>
+                revisionToSave = {});
         ~BackgroundAutosaveJob();
 
         BackgroundAutosaveJob(const BackgroundAutosaveJob &) = delete;
@@ -132,6 +135,7 @@ namespace cupuacu::actions::io
         std::string currentFile;
         cupuacu::Document document;
         waveform::DocumentWaveformCaches waveformCaches;
+        std::shared_ptr<const persistence::RevisionCheckpoint> revision;
         mutable std::mutex mutex;
         bool completed = false;
         bool success = false;

@@ -32,6 +32,9 @@ namespace cupuacu::storage
 
     private:
         friend class AudioEditTransaction;
+        friend class RevisionArchive;
+        static inline std::atomic<uint64_t> nextIdentity{1};
+        const uint64_t identity = nextIdentity.fetch_add(1);
         struct Node;
         using Tree = std::shared_ptr<const Node>;
         struct PreparedPeaks
@@ -48,6 +51,7 @@ namespace cupuacu::storage
             int64_t frames;
             int height;
             mutable std::shared_ptr<const PreparedPeaks> peaks;
+            const uint64_t identity = nextIdentity.fetch_add(1);
         };
         AudioShape dimensions;
         std::vector<Tree> channels;

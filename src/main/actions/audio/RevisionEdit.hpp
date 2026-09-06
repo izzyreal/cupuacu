@@ -17,6 +17,7 @@ namespace cupuacu::actions::audio
 
     class RevisionEdit final : public Undoable
     {
+        friend class persistence::RevisionPersistence;
         uint64_t tabId;
         std::string description;
         RevisionEditState before, after;

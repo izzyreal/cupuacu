@@ -4,6 +4,7 @@
 #include "BuildInfo.hpp"
 #include "actions/audio/EditCommands.hpp"
 #include "actions/audio/RevisionRecording.hpp"
+#include "persistence/RevisionPersistence.hpp"
 #include "actions/audio/SetSampleValue.hpp"
 #include "effects/PeakAnalysis.hpp"
 #include "actions/Zoom.hpp"
@@ -785,6 +786,158 @@ namespace
             result["validated"] = true;
             return;
         }
+        if (name.starts_with("checkpoint_") || name == "recovery_owned")
+        {
+            State state;
+            state.paths.reset();
+            const auto root =
+                std::filesystem::path(request.at("root").get<std::string>());
+            auto imported = file::importOwnedAudio(
+                request.at("fixture").get<std::string>(), root / "working",
+                std::make_shared<storage::DecodedBlockCache>(1024 * 1024));
+            auto &session = state.getActiveDocumentSession();
+            session.document = std::move(imported.metadata.document);
+            session.setCurrentFile(request.at("fixture").get<std::string>(),
+                                   imported.metadata.exportSettings);
+            session.bindReadRevision(
+                storage::AudioEditRevision::from(imported.audio));
+            const auto path = root / "checkpoint";
+            const bool initial = name == "checkpoint_initial_owned";
+            const bool recovery = name == "recovery_owned";
+            const int historyCount =
+                name == "checkpoint_history_owned" ? 1000 : 0;
+            for (int i = 0; i < historyCount; ++i)
+            {
+                state.addAndDoUndoable(
+                    std::make_shared<actions::audio::SetSampleValue>(
+                        &state, 0, 100 + i, sampleAt(100 + i, 0), -.125f));
+            }
+            if (!initial)
+            {
+                persistence::RevisionPersistence::save(
+                    path, *persistence::RevisionPersistence::capture(
+                              session, state.getActiveTab()));
+            }
+            if (!initial && !recovery)
+            {
+                state.addAndDoUndoable(
+                    std::make_shared<actions::audio::SetSampleValue>(
+                        &state, 1, 17, sampleAt(17, 1), -.25f));
+            }
+            auto archive = storage::RevisionArchive::open(path);
+            const auto before = archive->stats;
+            const auto sourceReads =
+                imported.audio->blockStore()->ioBytes().first;
+            State restored;
+            restored.paths.reset();
+            double captureMs = 0;
+            for (auto iteration : measurement)
+            {
+                (void)iteration;
+                const auto started = Clock::now();
+                if (recovery)
+                {
+                    persistence::RevisionPersistence::load(
+                        path, restored.getActiveDocumentSession());
+                    require(persistence::RevisionPersistence::installHistory(
+                                &restored, 0),
+                            "Recovery history install failed");
+                }
+                else
+                {
+                    auto cp = persistence::RevisionPersistence::capture(
+                        session, state.getActiveTab());
+                    captureMs = elapsed(started);
+                    persistence::RevisionPersistence::save(path, *cp);
+                }
+                const auto complete = elapsed(started);
+                result["revision_persistence"]["capture_ms"] = captureMs;
+                result["revision_persistence"]["completion_ms"] = complete;
+                measurement.SetIterationTime(complete / 1000.0);
+            }
+            result["revision_persistence"]["sample_bytes_copied"] =
+                archive->stats.sampleBytes - before.sampleBytes;
+            result["revision_persistence"]["original_bytes_copied"] =
+                archive->stats.sourceBytes - before.sourceBytes;
+            result["revision_persistence"]["metadata_bytes_written"] =
+                archive->stats.metadataBytes - before.metadataBytes;
+            result["revision_persistence"]["nodes_written"] =
+                archive->stats.nodes - before.nodes;
+            result["revision_persistence"]["history_entries"] =
+                historyCount + (initial || recovery ? 0 : 1);
+            require(imported.audio->blockStore()->ioBytes().first ==
+                        sourceReads,
+                    "Checkpoint decoded original audio");
+            if (!initial)
+            {
+                require(archive->stats.sampleBytes == before.sampleBytes,
+                        "Incremental checkpoint copied audio");
+                require(archive->stats.sourceBytes == before.sourceBytes,
+                        "Incremental checkpoint copied original bytes");
+            }
+            if (!recovery)
+            {
+                persistence::RevisionPersistence::load(
+                    path, restored.getActiveDocumentSession());
+                require(persistence::RevisionPersistence::installHistory(
+                            &restored, 0),
+                        "Checkpoint recovery failed");
+            }
+            const auto &recovered = restored.getActiveDocumentSession();
+            auto audio = recovered.getEditRevision();
+            require(audio && audio->shape().frames == frames,
+                    "Recovered duration mismatch");
+            audio->visitSourceRanges(
+                0, 0, frames,
+                [&](const auto &range)
+                {
+                    if (range.source)
+                    {
+                        require(range.source->blockStore()->ioBytes().first ==
+                                    0,
+                                "Recovery read samples before use");
+                    }
+                });
+            std::array<float, 16384> buffer;
+            for (int c = 0; c < channels; ++c)
+            {
+                for (int64_t f = 0; f < frames; f += buffer.size())
+                {
+                    const auto count =
+                        std::min<int64_t>(buffer.size(), frames - f);
+                    audio->readChannel(c, f, std::span(buffer).first(count));
+                    for (int64_t i = 0; i < count; ++i)
+                    {
+                        const auto at = f + i;
+                        const auto expected =
+                            c == 0 && at >= 100 && at < 100 + historyCount
+                                ? -.125f
+                            : c == 1 && at == 17 && !initial && !recovery
+                                ? -.25f
+                                : sampleAt(at, c);
+                        require(buffer[i] == expected,
+                                "Recovered sample mismatch");
+                    }
+                }
+            }
+            require(
+                restored.getActiveTab()->undoables.size() ==
+                    std::size_t(historyCount + (!initial && !recovery ? 1 : 0)),
+                "Recovered history length mismatch");
+            if (!initial && !recovery)
+            {
+                restored.undo();
+                float value = 0;
+                recovered.getEditRevision()->readChannel(1, 17, {&value, 1});
+                require(value == sampleAt(17, 1), "Recovered undo mismatch");
+                restored.redo();
+                require(recovered.getEditRevision() == audio,
+                        "Recovered redo lost root identity");
+            }
+            captureMetrics();
+            result["validated"] = true;
+            return;
+        }
         if (name.starts_with("record_"))
         {
             State state;
@@ -1229,8 +1382,8 @@ namespace
                 std::filesystem::path(request.at("root").get<std::string>());
             if (owned)
             {
-                // Reference mutations do not autosave yet. Keep their generated
-                // effect stores inside the runner-owned temporary directory.
+                // Keep generated effect stores inside the runner-owned
+                // temporary directory while preparing the worker.
                 state.paths = std::make_unique<BenchPaths>(root);
                 auto imported = file::importOwnedAudio(
                     request.at("fixture").get<std::string>(), root / "audio",
@@ -1262,6 +1415,7 @@ namespace
                                                            {50, 50, 0, true}),
                         "Effect did not queue");
                 result["effect_command"]["submission_ms"] = elapsed(started);
+                state.paths.reset(); // Publication excludes autosave.
                 require(state.backgroundEffectJob->waitForCompletion(
                             std::chrono::seconds(60)),
                         "Effect timed out");

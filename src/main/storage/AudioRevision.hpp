@@ -9,6 +9,9 @@ namespace cupuacu::storage
     class AudioRevision final : public AudioReader
     {
         friend class AudioRevisionBuilder;
+        friend class RevisionArchive;
+        static inline std::atomic<uint64_t> nextIdentity{1};
+        const uint64_t identity = nextIdentity.fetch_add(1);
         AudioShape dimensions;
         std::shared_ptr<const waveform::SourcePeaks> peaks;
         std::shared_ptr<AudioBlockStore> store;

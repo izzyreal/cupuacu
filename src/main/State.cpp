@@ -129,6 +129,11 @@ void cupuacu::State::addUndoableToTab(
     auto &tab = tabs[static_cast<std::size_t>(tabIndex)];
     tab.undoables.push_back(std::move(undoable));
     tab.redoables.clear();
+    ++tab.historyVersion;
+    if (tab.session.hasReadRevision())
+    {
+        cupuacu::actions::autosaveDocumentAfterMutation(this, tabIndex);
+    }
 }
 
 void cupuacu::State::addAndDoUndoableToTab(
@@ -163,6 +168,7 @@ void cupuacu::State::addAndDoUndoableToTab(
     }
 
     tabs[static_cast<std::size_t>(tabIndex)].redoables.clear();
+    ++tabs[static_cast<std::size_t>(tabIndex)].historyVersion;
     auto &session = tabs[static_cast<std::size_t>(tabIndex)].session;
     cupuacu::file::OverwritePreservationMutationHelper::applyToSession(
         session, undoable->overwritePreservationMutation());
@@ -217,6 +223,7 @@ void cupuacu::State::undo()
     cupuacu::file::OverwritePreservation::refreshActiveSession(this);
     undoable->updateGui();
     redoables.push_back(undoable);
+    ++getActiveTab()->historyVersion;
     cupuacu::actions::autosaveActiveDocumentAfterMutation(this);
 }
 
@@ -248,6 +255,7 @@ void cupuacu::State::redo()
     cupuacu::file::OverwritePreservation::refreshActiveSession(this);
     redoable->updateGui();
     undoables.push_back(redoable);
+    ++getActiveTab()->historyVersion;
     cupuacu::actions::autosaveActiveDocumentAfterMutation(this);
 }
 

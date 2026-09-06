@@ -6,10 +6,13 @@
 #include "UndoStore.hpp"
 
 #include <filesystem>
+#include <nlohmann/json_fwd.hpp>
 #include <string>
 
 namespace cupuacu::undo
 {
+    std::shared_ptr<actions::Undoable> restoreUndoEntry(State *, int,
+                                                        const nlohmann::json &);
     [[nodiscard]] std::uint64_t maxRestartUndoStoreBytes();
 
     [[nodiscard]] bool shouldPersistUndoStoreForRestart(

@@ -47,13 +47,11 @@ overwritten by its publication. Clipboard lifetime after closing a tab is unchan
 
 Remaining before default activation:
 
-- Reference clipboard and undo restart manifests are not implemented; no legacy
-  snapshot is advertised for reference history.
-- Recovery still needs revision integration. Bound sessions do not schedule
-  legacy autosave snapshots. Default resident sessions retain their existing
-  persistence and clipboard behavior.
-- Revision peak persistence remains independently rebuildable; revision saves
-  skip the resident waveform-cache rebuild/write after export.
+- Revision autosave, clipboard and matching restart history are integrated.
+  Legacy resident snapshots retain their existing reader; automatic conversion
+  of legacy recovery data into revisions is not implemented.
+- Revision peaks persist with the archive and remain independently rebuildable;
+  revision saves skip the resident waveform-cache rebuild/write after export.
 - Preservation uses the independently owned import container as its metadata
   reference. Rebinding that reference after a format-changing generic Save As
   remains work for activation; preservation explicitly rejects a target that
@@ -82,10 +80,10 @@ runs through the background reclaimer. Existing global long-task coordination
 still restricts user interaction while saving; this does not implement the
 planned document-level scheduler.
 
-Next slice: durable revision/clipboard/recovery manifests, plus owned-container
-rebinding after format conversion. Default activation follows
-coverage of those consumers; global scheduling, transport reservations, paged
-peaks/indexes and application-wide memory accounting remain in the larger plan.
+Next slice: owned-container rebinding after format conversion, followed by a
+focused default-activation checkpoint. Global scheduling, transport reservations,
+paged peaks/indexes and application-wide memory accounting remain in the larger
+plan; durable persistence does not complete those requirements.
 
 Focused validation: `[revision-ui],[revision-commands],[revision-effects]` covers production
 splices against a flat sample model, history and clipboard lifetime, exact marker
@@ -124,8 +122,63 @@ Queue overflow stops capture before a gap; write failure keeps only the already
 published prefix, reports the error and supplies one undo entry for that prefix.
 Failed later appends do not prevent reading previously flushed blocks. A closed
 or replaced document cancels publication while its remaining input is drained.
-These blocks remain process-local: this slice does not provide crash recovery
-or enable the revision backend by default. `[revision-recording]` exercises the
+Completed recording revisions now participate in document autosave; capture
+in progress is not checkpointed. The revision backend remains staged.
+`[revision-recording]` exercises the
 real callback/drain, overwrite/extension, mono/stereo, exact samples and peaks,
 undo/redo, overflow, write failure and stale publication without audio devices
 or GUI automation. `record_*_owned` measures fixed-work and growing-work scaling.
+
+## Durable revision checkpoints
+
+Bound sessions autosave immutable roots, saved-state identity, editor metadata
+and matching undo/redo together. Snapshot capture retains references; a worker
+writes newly encountered sequence nodes and source records to a checksummed,
+append-only index, then atomically replaces a small version-1 manifest. Data and
+index files are flushed before manifest publication. Unchanged nodes and source
+stores are reused. Peaks use binary 64 KiB pages instead of JSON sample arrays.
+
+Each document or clipboard archive independently owns its sample segments and
+original source container. Initial acquisition attempts filesystem cloning on
+macOS, with bounded copying as fallback; later appends copy only new bytes.
+This can duplicate logical storage across archives and requires initial I/O on
+filesystems without cloning. Original precision survives recovery and preserving
+export, including PCM32 bits not representable in float32.
+
+Startup restores the committed audio, view and matching history rather than
+combining it with newer session-list metadata. Normal recovery reads indexes and
+peaks without scanning sample data. Damaged peak pages can be rebuilt from owned
+audio on the recovery worker; damaged required revision records fail recovery
+without replacing the destination session. Rebuilt peak pages are not immediately
+rewritten. Resident version-2 snapshots remain readable through their existing
+path. Revision format migration is not a legacy-to-revision converter.
+
+The existing 512 MiB restart-history retention limit counts distinct stores
+required only by history, excluding current/saved document stores. Exceeding it
+retains the document and reports omitted restart history. Unsupported legacy
+commands likewise produce an explicit history warning. In-memory history is not
+evicted. Point and revision commands restore their shared before/after roots;
+metadata-only marker commands retain their existing serialization.
+
+Autosave tracks history-only changes and stale worker completion separately.
+Saving updates the saved root while retaining restart history. Write failures
+report an error and retry after a delay; failure before manifest replacement
+leaves the previous checkpoint readable. Closed archives reject late publication.
+Final release and store reclamation happen through the background reclaimer.
+Clipboard replacement prunes obsolete stores after their last reader releases;
+closing a document still leaves the clipboard intact.
+
+Limits: checkpoint capture and manifest serialization still scale with history
+metadata. Document archives retain unreachable records/stores until removal;
+clipboard archives prune stores but do not compact old index records. Malformed
+manifests with unidentifiable generations retain their sidecar data for recovery.
+Indexes and recovered peaks remain resident. There is no global memory admission
+policy or power-loss/platform validation claim in this slice. Existing shutdown
+flush and job coordination still apply.
+
+`[revision-persistence]` covers restart history/root identity, exact original
+precision, stale autosave, copy-only history, save/dirty-state transitions,
+retention limits, injected write failure, corruption, cancellation, close during
+checkpoint preparation and clipboard reclamation with live readers.
+`checkpoint_*` and `recovery_owned` benchmarks measure persistence separately
+from import, GUI rendering and sample validation.

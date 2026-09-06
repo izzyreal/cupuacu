@@ -489,6 +489,12 @@ namespace cupuacu::undo
         }
     } // namespace
 
+    std::shared_ptr<actions::Undoable>
+    restoreUndoEntry(State *state, int index, const nlohmann::json &entry)
+    {
+        return restoreUndoable(state, index, entry);
+    }
+
     std::uint64_t maxRestartUndoStoreBytes()
     {
         return kMaxRestartUndoStoreBytes;
