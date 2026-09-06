@@ -106,6 +106,7 @@ bool Waveform::hasRenderableChannel() const
     return channelIndex < document.getChannelCount() &&
            document.getFrameCount() > 0 &&
            (state->getActiveDocumentSession().hasReadRevision() ||
+            state->getActiveDocumentSession().openingPreview ||
             document.getAudioBuffer() != nullptr);
 }
 
@@ -1623,7 +1624,8 @@ int getYPosForSampleValue(const float sampleValue,
 
 std::vector<std::unique_ptr<SamplePoint>> Waveform::computeSamplePoints()
 {
-    if (!hasRenderableChannel())
+    if (!hasRenderableChannel() ||
+        state->getActiveDocumentSession().openingPreview)
     {
         return {};
     }
@@ -1744,7 +1746,8 @@ void Waveform::drawLinearSelection(SDL_Renderer *renderer,
 
 void Waveform::renderSmoothWaveform(SDL_Renderer *renderer) const
 {
-    if (!hasRenderableChannel())
+    if (!hasRenderableChannel() ||
+        state->getActiveDocumentSession().openingPreview)
     {
         return;
     }
@@ -2431,6 +2434,10 @@ void Waveform::drawMarkers(SDL_Renderer *renderer) const
 std::optional<float> Waveform::requestSampleValue(int64_t frame)
 {
     auto &session = state->getActiveDocumentSession();
+    if (session.openingPreview)
+    {
+        return {};
+    }
     if (frame < 0 || frame >= session.document.getFrameCount() ||
         !hasRenderableChannel())
     {

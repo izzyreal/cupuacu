@@ -99,7 +99,9 @@ namespace cupuacu::file
                       const AudioExportSettings &settings)
         {
             int subtype = 0;
-            switch (shape.format)
+            // The editor retains its original sample representation across
+            // Save As. The owned container determines the output encoding.
+            switch (p.format)
             {
                 case SampleFormat::PCM_S8:
                     subtype = p.wav ? SF_FORMAT_PCM_U8 : SF_FORMAT_PCM_S8;
@@ -121,7 +123,6 @@ namespace cupuacu::file
             }
             if (shape.frames < 0 || shape.channels <= 0 ||
                 shape.channels != p.channels || shape.sampleRate != p.rate ||
-                shape.format != p.format ||
                 settings.majorFormat !=
                     (p.wav ? SF_FORMAT_WAV : SF_FORMAT_AIFF) ||
                 !subtype || settings.subtype != subtype)

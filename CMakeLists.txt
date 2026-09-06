@@ -401,6 +401,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_edit_commands.cpp
     src/test/test_waveform_selection.cpp
     src/test/test_session_loading.cpp
+    src/test/test_revision_activation.cpp
     src/test/test_revision_persistence.cpp
     src/test/test_revision_recording.cpp
     src/test/test_revision_save.cpp

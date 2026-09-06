@@ -127,7 +127,9 @@ at the full file duration; decoding retains ownership of the audio until success
 Cancel or failure restores the previous tabs. Preview edge windows use base
 peaks, without reading unavailable audio. Final document queries remain exact.
 Persistent peak-cache hits bypass generation and can display the saved waveform
-during decoding. This does not yet impose a decoded-audio RAM limit.
+during decoding. Normal queued opening now writes decoded audio to owned disk blocks. Imports
+share a sample-read cache capped at 10% of physical RAM; this does not bound all
+process allocations. Peaks and indexes remain resident.
 
 `first_waveform` records the first available nonempty peak prefix in the active
 session. In core benchmarks this measures availability, not pixels presented on
@@ -183,12 +185,13 @@ retains a reference to a range. An import builder publishes a revision only at
 successful completion. Final store release removes its owned working directory
 and must occur on a worker. These process-local files are not a recovery format.
 
-This backend is not yet the editor default. Its cache limit bounds decoded
+This backend now serves normal queued file opening; legacy synchronous loading,
+resident restart histories and new-document creation retain compatibility paths. Its cache limit bounds decoded
 payload residency, not total process memory: decoder/import scratch, the flat
 block index and resident peak pyramid are separate. The cache exposes a 10%-of-
 physical-RAM default calculation, but application-wide admission, preferences
-and pressure handling remain to be integrated. Paged sequence indexes and default backend activation remain subsequent work.
-Bound sessions now integrate transport and durable revision manifests. Existing codec frame-count limits still apply.
+and pressure handling remain to be integrated. Paged sequence indexes and remaining compatibility-path removal are subsequent
+work. Revision sessions integrate transport and durable manifests. Existing codec frame-count limits still apply.
 The external-sink metadata is rejected by the legacy document commit path to
 prevent publishing a document without its samples.
 
@@ -412,9 +415,9 @@ cold-storage, scheduler contention or GUI latency measurement. Existing audio
 tests additionally cover selection updates and effect preview; focused read-ahead
 tests cover blocked reads, source release, edited disk ranges and partial EOF.
 
-Playback, ordinary export, structural commands and effect jobs can now consume
-disk revisions, but normal file opening still keeps decoded samples in RAM.
-See `src/main/storage/README.md` for the activation blockers.
+Playback, export, structural commands and effect jobs consume the disk revisions
+now produced by normal queued opening. See `src/main/storage/README.md` for the
+remaining compatibility paths, scheduling and memory-accounting work.
 
 `edit_command_memory` and `edit_command_owned` time the actual delete command,
 undo and redo for one frame near the beginning. Import/initialization is setup.
@@ -592,3 +595,19 @@ manifest metadata serialization; initial ownership and resident recovered
 indexes/peaks scale with source length. OS caching is uncontrolled, RSS includes
 setup/validation, and these cases do not establish power-loss durability, GUI
 event latency or application-wide bounded memory.
+
+Normal opening cases now exercise the activated disk backend. The timers still
+cover queue submission through background completion, including peak persistence.
+Validation reads the session range reader in bounded blocks; timers and work
+counters stop before validation. `peak_process_rss_bytes_before_validation`
+records lifetime peak RSS at that boundary for revision sessions. The existing
+`peak_process_rss_bytes_including_setup` still includes validation: reading every
+sample may fill the shared cache (10% of physical RAM), so it must not be mistaken
+for memory consumed just by opening. Older reports lack the earlier RSS field;
+the two measurements are not interchangeable. Core event probes exclude painting.
+
+Owned save-worker cases now include retaining an independent output container,
+without a second decode. On macOS, cloning normally avoids another full physical
+copy; the bounded copy fallback requires output-sized I/O. The preserved edit root
+continues to own its original sample sources. Consequently, save completion and
+logical disk storage can increase even though decoded memory remains bounded.
