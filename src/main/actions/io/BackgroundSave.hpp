@@ -35,8 +35,17 @@ namespace cupuacu::actions::io
     class BackgroundSaveJob
     {
     public:
+        struct Identity
+        {
+            uint64_t tabId = 0, audioVersion = 0, markerVersion = 0,
+                     sourceId = 0;
+            std::shared_ptr<const storage::AudioEditRevision> revision;
+            std::vector<DocumentMarker> markers;
+            std::shared_ptr<const storage::AudioRevision> preservationSource;
+        };
         struct Snapshot
         {
+            std::shared_ptr<const Identity> identity;
             bool completed = false;
             bool success = false;
             bool canceled = false;
@@ -47,11 +56,12 @@ namespace cupuacu::actions::io
             std::string error;
         };
 
-        BackgroundSaveJob(std::uint64_t idToUse,
-                          BackgroundSaveRequest requestToSave,
-                          cupuacu::State *stateToUse,
-                          const cupuacu::Document &documentToWrite,
-                          std::filesystem::path waveformCacheRootToUse = {});
+        BackgroundSaveJob(
+            std::uint64_t idToUse, BackgroundSaveRequest requestToSave,
+            cupuacu::State *stateToUse,
+            const cupuacu::Document &documentToWrite,
+            std::filesystem::path waveformCacheRootToUse = {},
+            std::shared_ptr<const storage::AudioEditRevision> revision = {});
         ~BackgroundSaveJob();
 
         BackgroundSaveJob(const BackgroundSaveJob &) = delete;
@@ -65,7 +75,7 @@ namespace cupuacu::actions::io
     private:
         std::uint64_t id = 0;
         BackgroundSaveRequest request;
-        cupuacu::State *state = nullptr;
+        std::shared_ptr<const Identity> identity;
         cupuacu::Document document;
         std::filesystem::path waveformCacheRoot;
         mutable std::mutex mutex;

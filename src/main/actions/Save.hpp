@@ -180,21 +180,43 @@ namespace cupuacu::actions
             }
         }
 
-        static void finalizeSavedDocument(cupuacu::State *state,
-                                          const std::filesystem::path &path,
-                                          const file::AudioExportSettings &settings,
-                                          const bool updateCurrentFile,
-                                          const bool
-                                              persistentWaveformCacheAlreadySaved =
-                                                  false)
+        static void finalizeSavedDocument(
+            cupuacu::State *state, const std::filesystem::path &path,
+            const file::AudioExportSettings &settings,
+            const bool updateCurrentFile,
+            const bool persistentWaveformCacheAlreadySaved = false,
+            const int targetTabIndex = -1, const bool markSaved = true)
         {
             if (!state)
             {
                 return;
             }
 
-            auto &session = state->getActiveDocumentSession();
-            clearActiveDocumentAutosave(state);
+            const auto tabIndex =
+                targetTabIndex < 0 ? state->activeTabIndex : targetTabIndex;
+            auto &session = state->tabs.at(tabIndex).session;
+            if (markSaved)
+            {
+                detail::discardAutosaveSnapshot(session);
+            }
+            if (session.hasReadRevision())
+            {
+                if (updateCurrentFile)
+                {
+                    session.currentFile = path.string();
+                }
+                session.currentFileExportSettings = settings;
+                session.currentFileRequiresSaveAs = false;
+                session.setPreservationReference(path.string(), settings);
+                if (markSaved)
+                {
+                    session.markRevisionSaved(session.getEditRevision(),
+                                              session.document.getMarkers());
+                }
+                session.clearPendingPersistentWaveformCacheSave();
+                file::OverwritePreservation::refreshSession(state, tabIndex);
+                return;
+            }
             if (updateCurrentFile)
             {
                 session.setCurrentFile(path.string(), settings);
@@ -205,13 +227,13 @@ namespace cupuacu::actions
                 session.setPreservationReference(path.string(), settings);
             }
 
-            file::OverwritePreservation::refreshActiveSession(state);
-            if (session.document.getSampleFormat() ==
-                    cupuacu::SampleFormat::PCM_S8 ||
-                session.document.getSampleFormat() ==
-                    cupuacu::SampleFormat::PCM_S16 ||
-                session.document.getSampleFormat() ==
-                    cupuacu::SampleFormat::FLOAT32)
+            file::OverwritePreservation::refreshSession(state, tabIndex);
+            if (markSaved && (session.document.getSampleFormat() ==
+                                  cupuacu::SampleFormat::PCM_S8 ||
+                              session.document.getSampleFormat() ==
+                                  cupuacu::SampleFormat::PCM_S16 ||
+                              session.document.getSampleFormat() ==
+                                  cupuacu::SampleFormat::FLOAT32))
             {
                 session.document.markCurrentStateAsSavedSource();
             }

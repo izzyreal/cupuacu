@@ -19,6 +19,7 @@ namespace cupuacu::storage
 {
     class AudioEditRevision;
     class AudioReader;
+    class AudioRevision;
 }
 namespace cupuacu::waveform
 {
@@ -61,6 +62,13 @@ namespace cupuacu
         {
             return bool(readRevision);
         }
+        // Retains the imported container even if edits remove every source
+        // leaf.
+        std::shared_ptr<const storage::AudioRevision> preservationSource;
+        bool revisionHasUnsavedChanges() const;
+        void
+            markRevisionSaved(std::shared_ptr<const storage::AudioEditRevision>,
+                              std::vector<DocumentMarker>);
         void clearReadRevision();
         std::shared_ptr<const storage::AudioEditRevision>
         getEditRevision() const;
@@ -73,6 +81,8 @@ namespace cupuacu
     private:
         std::shared_ptr<const storage::AudioEditRevision> readRevision;
         uint64_t readRevisionVersion = 0;
+        std::shared_ptr<const storage::AudioEditRevision> savedReadRevision;
+        std::vector<DocumentMarker> savedRevisionMarkers;
         mutable std::shared_ptr<const waveform::ViewportSource> viewportSource;
         mutable uint64_t viewportSourceVersion = UINT64_MAX;
         mutable const void *viewportBufferIdentity = nullptr;

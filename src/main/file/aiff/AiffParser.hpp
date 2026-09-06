@@ -194,6 +194,14 @@ namespace cupuacu::file::aiff
                                     result.sampleFormat =
                                         cupuacu::SampleFormat::PCM_S16;
                                     break;
+                                case 24:
+                                    result.sampleFormat =
+                                        cupuacu::SampleFormat::PCM_S24;
+                                    break;
+                                case 32:
+                                    result.sampleFormat =
+                                        cupuacu::SampleFormat::PCM_S32;
+                                    break;
                                 default:
                                     result.sampleFormat =
                                         cupuacu::SampleFormat::Unknown;

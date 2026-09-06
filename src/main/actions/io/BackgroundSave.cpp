@@ -1,4 +1,5 @@
 #include "BackgroundSave.hpp"
+#include "../../concurrency/DeferredRelease.hpp"
 
 #include "../../LongTask.hpp"
 #include "../../file/AudioFileWriter.hpp"
@@ -66,11 +67,11 @@ namespace cupuacu::actions::io
 
             const auto id = nextBackgroundSaveJobId();
             const auto detail = request.path.string();
-            state->backgroundSaveJob.reset(
-                new BackgroundSaveJob(
-                    id, std::move(request), state, *document,
-                    state->paths ? state->paths->waveformCachePath()
-                                 : std::filesystem::path{}));
+            state->backgroundSaveJob.reset(new BackgroundSaveJob(
+                id, std::move(request), state, *document,
+                state->paths ? state->paths->waveformCachePath()
+                             : std::filesystem::path{},
+                state->getActiveDocumentSession().getEditRevision()));
             cupuacu::setLongTask(state, "Saving file", detail, 0.0, false,
                                  true);
             state->backgroundSaveJob->start();
@@ -153,7 +154,7 @@ namespace cupuacu::actions::io
         {
             const auto &session = tab.session;
             const auto &document = session.document;
-            return document.getChannelCount() > 0 &&
+            return !session.hasReadRevision() && document.getChannelCount() > 0 &&
                    !session.autosaveSnapshotPath.empty() &&
                    (session.autosavedWaveformDataVersion !=
                         document.getWaveformDataVersion() ||
@@ -185,18 +186,59 @@ namespace cupuacu::actions::io
                 return;
             }
 
+            const int target =
+                snapshot.identity
+                    ? findTabIndexById(state, snapshot.identity->tabId)
+                    : -1;
+            if (target < 0)
+            {
+                state->pendingCloseTabAfterSaveId.reset();
+                return; // The pinned revision was saved; its tab no longer
+                        // exists.
+            }
+            auto &session = state->tabs[target].session;
+            const auto &saved = *snapshot.identity;
+            if (session.document.getPreservationSourceId() != saved.sourceId ||
+                session.hasReadRevision() != bool(saved.revision))
+            {
+                state->pendingCloseTabAfterSaveId.reset();
+                return; // The tab has been reused for another document.
+            }
+            const bool matches =
+                saved.revision
+                    ? session.getEditRevision() == saved.revision &&
+                          session.document.getMarkers() == saved.markers
+                    : session.document.getWaveformDataVersion() ==
+                              saved.audioVersion &&
+                          session.document.getMarkerDataVersion() ==
+                              saved.markerVersion;
+            if (!saved.revision && !matches)
+            {
+                // Resident mutations retain their current filename/autosave.
+                // Never clear newer work when an older snapshot completes.
+                state->pendingCloseTabAfterSaveId.reset();
+                return;
+            }
+            if (saved.revision && session.hasReadRevision())
+            {
+                session.markRevisionSaved(saved.revision, saved.markers);
+            }
             detail::finalizeSavedDocument(
                 state, snapshot.request.path, snapshot.request.settings,
                 updatesCurrentFile(snapshot.request.kind),
-                snapshot.persistentWaveformCacheSaved);
+                snapshot.persistentWaveformCacheSaved, target, matches);
             if (updatesCurrentFile(snapshot.request.kind))
-            {
                 rememberRecentFile(state, snapshot.request.path.string());
-                setMainWindowTitle(state, snapshot.request.path.string());
-            }
             else
-            {
                 persistSessionState(state);
+            if (state->activeTabIndex == target)
+            {
+                setMainWindowTitle(state, session.currentFile);
+            }
+            if (!matches)
+            {
+                state->pendingCloseTabAfterSaveId.reset();
+                return;
             }
 
             if (!state || !state->pendingCloseTabAfterSaveId.has_value())
@@ -207,26 +249,31 @@ namespace cupuacu::actions::io
             const auto tabIndex =
                 findTabIndexById(state, *state->pendingCloseTabAfterSaveId);
             state->pendingCloseTabAfterSaveId.reset();
-            if (tabIndex >= 0)
+            if (tabIndex == target)
             {
                 (void)closeTab(state, tabIndex);
             }
         }
     } // namespace
 
-    BackgroundSaveJob::BackgroundSaveJob(std::uint64_t idToUse,
-                                         BackgroundSaveRequest requestToSave,
-                                         cupuacu::State *stateToUse,
-                                         const cupuacu::Document &documentToWrite,
-                                         std::filesystem::path
-                                             waveformCacheRootToUse)
-        : id(idToUse),
-          request(std::move(requestToSave)),
-          state(stateToUse),
+    BackgroundSaveJob::BackgroundSaveJob(
+        std::uint64_t idToUse, BackgroundSaveRequest requestToSave,
+        cupuacu::State *stateToUse, const cupuacu::Document &documentToWrite,
+        std::filesystem::path waveformCacheRootToUse,
+        std::shared_ptr<const storage::AudioEditRevision> revision)
+        : id(idToUse), request(std::move(requestToSave)),
           document(documentToWrite),
           waveformCacheRoot(std::move(waveformCacheRootToUse)),
           detail(request.path.string())
     {
+        identity = std::make_shared<Identity>(Identity{
+            stateToUse && stateToUse->getActiveTab()
+                ? stateToUse->getActiveTab()->id
+                : 0,
+            document.getWaveformDataVersion(), document.getMarkerDataVersion(),
+            document.getPreservationSourceId(), std::move(revision),
+            document.getMarkers(),
+            stateToUse ? stateToUse->getActiveDocumentSession().preservationSource : nullptr});
     }
 
     BackgroundSaveJob::~BackgroundSaveJob()
@@ -328,11 +375,11 @@ namespace cupuacu::actions::io
     {
         std::lock_guard lock(mutex);
         return {
+            .identity = identity,
             .completed = completed,
             .success = success,
             .canceled = cancelRequested.load() && completed && !success,
-            .persistentWaveformCacheSaved =
-                persistentWaveformCacheSaved,
+            .persistentWaveformCacheSaved = persistentWaveformCacheSaved,
             .request = request,
             .detail = detail,
             .progress = progress,
@@ -378,9 +425,19 @@ namespace cupuacu::actions::io
                 case BackgroundSaveKind::Overwrite:
                 case BackgroundSaveKind::SaveAs:
                 {
-                    const auto lease = document.acquireReadLease();
-                    file::AudioFileWriter::writeFile(
-                        lease, request.path, request.settings, progressCallback);
+                    if (identity->revision)
+                    {
+                        file::AudioFileWriter::writeFile(
+                            *identity->revision, identity->markers,
+                            request.path, request.settings, progressCallback);
+                    }
+                    else
+                    {
+                        const auto lease = document.acquireReadLease();
+                        file::AudioFileWriter::writeFile(lease, request.path,
+                                                         request.settings,
+                                                         progressCallback);
+                    }
                     break;
                 }
                 case BackgroundSaveKind::OverwritePreserving:
@@ -391,19 +448,29 @@ namespace cupuacu::actions::io
                         throw std::runtime_error(
                             "Background preserving save job has no reference file");
                     }
-                    const auto lease = document.acquireReadLease();
-                    file::writePreservingFile(file::PreservationWriteInput{
-                        .document = lease,
-                        .referencePath = request.referencePath,
-                        .outputPath = request.path,
-                        .settings = request.settings,
-                        .progress = progressCallback,
-                    });
+                    if (identity->revision)
+                    {
+                        file::writePreservingRevision(
+                            *identity->revision, identity->markers,
+                            request.referencePath, request.path,
+                            request.settings, progressCallback);
+                    }
+                    else
+                    {
+                        const auto lease = document.acquireReadLease();
+                        file::writePreservingFile(file::PreservationWriteInput{
+                            .document = lease,
+                            .referencePath = request.referencePath,
+                            .outputPath = request.path,
+                            .settings = request.settings,
+                            .progress = progressCallback,
+                        });
+                    }
                     break;
                 }
             }
 
-            if (!waveformCacheRoot.empty() &&
+            if (!identity->revision && !waveformCacheRoot.empty() &&
                 !cancelRequested.load(std::memory_order_acquire))
             {
                 publishProgress("Caching waveform", std::nullopt);
@@ -530,7 +597,9 @@ namespace cupuacu::actions::io
         }
 
         const auto referencePath =
-            !session.preservationReferenceFile.empty()
+            session.hasReadRevision()
+                ? file::revisionPreservationReference(session)
+            : !session.preservationReferenceFile.empty()
                 ? std::filesystem::path(session.preservationReferenceFile)
                 : std::filesystem::path(session.currentFile);
         startBackgroundSave(
@@ -603,7 +672,9 @@ namespace cupuacu::actions::io
 
         const auto &session = state->getActiveDocumentSession();
         const auto referencePath =
-            !session.preservationReferenceFile.empty()
+            session.hasReadRevision()
+                ? file::revisionPreservationReference(session)
+            : !session.preservationReferenceFile.empty()
                 ? std::filesystem::path(session.preservationReferenceFile)
                 : std::filesystem::path(session.currentFile);
         startBackgroundSave(
@@ -632,8 +703,9 @@ namespace cupuacu::actions::io
         const auto snapshot = state->backgroundSaveJob->snapshot();
         if (snapshot.completed)
         {
-            auto job = std::move(state->backgroundSaveJob);
-            job.reset();
+            auto retired =
+                concurrency::releaseOnWorker(std::shared_ptr<BackgroundSaveJob>(
+                    state->backgroundSaveJob.release()));
             commitCompletedBackgroundSave(state, snapshot);
             return;
         }
@@ -651,7 +723,7 @@ namespace cupuacu::actions::io
 
         auto &tab = state->tabs[static_cast<std::size_t>(tabIndex)];
         auto &session = tab.session;
-        if (session.document.getChannelCount() <= 0)
+        if (session.hasReadRevision() || session.document.getChannelCount() <= 0)
         {
             return;
         }

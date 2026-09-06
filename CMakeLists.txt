@@ -372,6 +372,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/gui/TooltipController.cpp
     src/main/gui/Window.cpp
     src/main/actions/audio/RevisionEdit.cpp
+    src/main/file/RevisionPreservationWriter.cpp
     src/main/actions/effects/RevisionEffect.cpp
     src/main/actions/effects/BackgroundEffect.cpp
     src/main/actions/io/BackgroundOpen.cpp
@@ -396,6 +397,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_edit_commands.cpp
     src/test/test_waveform_selection.cpp
     src/test/test_session_loading.cpp
+    src/test/test_revision_save.cpp
     src/test/test_revision_edit_commands.cpp
     src/test/test_owned_audio_storage.cpp
     src/test/test_async_audio_reader.cpp

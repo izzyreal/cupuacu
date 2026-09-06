@@ -26,7 +26,8 @@ namespace cupuacu::actions
     inline bool documentSessionHasUnsavedChanges(
         const cupuacu::DocumentSession &session)
     {
-        if (!session.autosaveSnapshotPath.empty())
+        if (session.revisionHasUnsavedChanges() ||
+            !session.autosaveSnapshotPath.empty())
         {
             return true;
         }
