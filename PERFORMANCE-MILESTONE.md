@@ -118,7 +118,7 @@ Raw reports remain in ignored `dist/benchmarks/`:
 ## Explicitly deferred
 
 Paged peaks/indexes, a total application memory budget and pressure management,
-legacy recovery conversion, new-document backend migration, larger M4A limits,
+legacy recovery conversion, larger M4A limits,
 memory mapping and further scheduler unification remain outside this milestone.
 The next step is manual verification of the delivered workflow, not another
 architecture slice.
@@ -214,3 +214,49 @@ clipboard boundaries, configured empty targets, clipboard replacement, dirty
 state and recovery of the pasted document's undo history; 16 reporting tests.
 Native application and benchmark builds passed. No full suite, Linux or GUI
 integration tests were run for this fix.
+
+
+## Follow-up: new documents use revisions
+
+The New File command now binds an empty saved revision in the selected channel
+count, sample rate and format. Existing revision editing, waveform, recording,
+export and recovery paths therefore apply from the first mutation. Recording
+uses the existing bounded disk writer and incremental peaks, with one history
+entry that undoes to the empty saved document. This closes new-document backend
+migration; unconfigured startup tabs still acquire a format on New File or their
+first revision clipboard paste. Previously persisted resident documents retain
+the legacy recovery/conversion path.
+
+Matched native Release measurements, three repetitions per case:
+
+| New-document operation | Before | After |
+| --- | --- | --- |
+| Insert 1 MiB silence | 9.289 ms | 0.0160 ms |
+| Insert 16 MiB silence | 127.308 ms | 0.0158 ms |
+| Insert 2 GiB silence | Not run | 0.0128 ms |
+| Point edit in 16 MiB document | 0.017 ms | 0.0030 ms |
+
+Silence uses symbolic revision leaves, so those timings do not imply comparable
+throughput for writing real samples. All nine after-change editing runs passed
+complete sample validation. The 1/16 MiB comparisons used the same benchmark
+commands and build flags; no measured command regressed.
+
+`record_new` passed six runs at 1/256 MiB (three repetitions each). Median storage
+completion was 2.57/545 ms; exactly the recorded sample bytes were written. The
+largest handoff across these runs was 0.171 ms and the largest publication was
+0.039 ms. Queue occupancy stayed at or below 320 of 512 slots. This is accelerated
+headless storage throughput, not a physical-device or GUI-latency measurement.
+Samples and recording undo/redo were validated after timing.
+
+Focused native checks covered tabs, revision commands, clipboard paste,
+recording, save and recovery. Recording now starts with the production New File
+command in FLOAT32 and PCM16, consumes callback chunks through the production
+drain, restores its history after recovery, and saves/reopens its samples. The
+PCM16 save check allows one quantization step; an initially strict less-than
+comparison was corrected to include exactly one step. All eight recording cases
+passed after that test correction; the other 45 focused cases had already passed.
+The 16 reporting tests and native application/benchmark builds passed. No full
+suite, Linux or GUI integration run was added.
+
+Reports in `dist/benchmarks/`: `new-document-before.json`,
+`new-document-after.json`, `record-new.json`.

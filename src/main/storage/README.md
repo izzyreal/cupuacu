@@ -299,3 +299,13 @@ Reopening assigns a fresh process-local preservation identity to the imported
 revision and its document. Persisted numeric IDs from earlier application runs
 must not identify unrelated current documents during legacy clipboard conversion.
 The original container bytes, markers and sample values remain unchanged.
+
+
+New documents created through the New File command start with an empty saved
+`AudioEditRevision` in the selected format. Silence insertion, point edits,
+clipboard operations, effects and recording therefore use the same revision
+paths as imported documents. Recording starts with a readable empty revision,
+publishes disk-backed blocks and peaks, and finishes with one history entry;
+undo returns to the empty saved revision. Unconfigured startup tabs adopt a
+revision when first receiving a revision clipboard. Legacy recovered resident
+documents retain their existing backend and conversion path.

@@ -6,6 +6,9 @@
 #include "actions/MutationAvailability.hpp"
 #include "actions/DocumentTabs.hpp"
 #include "audio/AudioDevices.hpp"
+#include "persistence/RevisionPersistence.hpp"
+#include "persistence/DocumentAutosave.hpp"
+#include "file/file_loading.hpp"
 #include <chrono>
 #include <thread>
 
@@ -236,7 +239,10 @@ TEST_CASE(
     state.paths.reset();
     state.audioDevices = std::make_unique<audio::AudioDevices>(false);
     auto &session = state.getActiveDocumentSession();
-    bind(session, silent(0));
+    const auto format = GENERATE(SampleFormat::FLOAT32, SampleFormat::PCM_S16);
+    actions::createNewDocument(&state, 48000, format, 2, false);
+    REQUIRE(session.hasReadRevision());
+    const auto empty = session.getEditRevision();
     actions::startRevisionRecording(&state, 0, files.root / "audio");
     state.audioDevices->enqueue(audio::Record{.document = &session.document,
                                               .startPos = 0,
@@ -270,6 +276,45 @@ TEST_CASE(
                     captured.interleavedSamples[f * 2 + c]);
         }
     }
+    REQUIRE(session.revisionHasUnsavedChanges());
+    REQUIRE_FALSE(session.undoStore.isAttached());
+    const auto recorded = session.getEditRevision();
+    state.undo();
+    REQUIRE(session.getEditRevision() == empty);
+    REQUIRE_FALSE(session.revisionHasUnsavedChanges());
+    state.redo();
+    REQUIRE(session.getEditRevision() == recorded);
+
+    const auto checkpoint = files.root / "checkpoint";
+    persistence::RevisionPersistence::save(
+        checkpoint, *persistence::RevisionPersistence::capture(session, state.getActiveTab()));
+    State restored;
+    restored.paths.reset();
+    auto &recovered = restored.getActiveDocumentSession();
+    REQUIRE(persistence::loadDocumentAutosaveSnapshot(checkpoint, recovered));
+    REQUIRE(persistence::RevisionPersistence::installHistory(&restored, 0));
+    restored.undo();
+    REQUIRE(recovered.document.getFrameCount() == 0);
+    REQUIRE_FALSE(recovered.revisionHasUnsavedChanges());
+    restored.redo();
+    REQUIRE(recovered.document.getFrameCount() == 256);
+
+    const auto output = files.root / "recorded.wav";
+    const auto settings = *file::defaultExportSettingsForPath(output, format);
+    REQUIRE(actions::io::queueSaveAs(&restored, output.string(), settings));
+    until([&]
+    {
+        actions::io::processPendingSaveWork(&restored);
+        return !restored.backgroundSaveJob;
+    });
+    REQUIRE(recovered.currentFile == output.string());
+    REQUIRE_FALSE(recovered.revisionHasUnsavedChanges());
+    const auto saved = file::loadAudioFile(output);
+    REQUIRE(saved.document.getFrameCount() == 256);
+    for (int c = 0; c < 2; ++c)
+        for (int f = 0; f < 256; ++f)
+            REQUIRE(std::abs(saved.document.getSample(c, f) -
+                             captured.interleavedSamples[f * 2 + c]) <= 1.f / 32768);
 }
 TEST_CASE(
     "A failed recording segment rollover keeps earlier published blocks "

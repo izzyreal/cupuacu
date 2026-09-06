@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../State.hpp"
+#include "../storage/AudioEditRevision.hpp"
 #include "../gui/MainViewAccess.hpp"
 #include "../gui/Waveform.hpp"
 #include "DocumentSessionPersistence.hpp"
@@ -232,6 +233,8 @@ namespace cupuacu::actions
         detail::discardUndoStore(session);
         session.clearCurrentFile();
         session.document.initialize(format, sampleRate, channels, 0);
+        session.bindReadRevision(storage::AudioEditRevision::silence(
+            {0, channels, sampleRate, format}));
         session.selection.reset();
         session.cursor = 0;
         session.syncSelectionAndCursorToDocumentLength();
