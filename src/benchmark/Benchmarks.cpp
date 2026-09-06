@@ -539,6 +539,7 @@ namespace
 
     #include "LargeFileWorkflow.hpp"
     #include "RestoredClipboardPaste.hpp"
+    #include "AudioMemory.hpp"
 
     void scenario(benchmark::State &measurement)
     {
@@ -587,6 +588,11 @@ namespace
 #endif
         const std::string name = request.at("scenario");
         const int64_t frames = request.at("frames");
+        if (name == "audio_memory")
+        {
+            audioMemoryScenario(measurement, frames);
+            return;
+        }
         if (name == "recovery_legacy")
         {
             const auto root =

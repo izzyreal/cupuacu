@@ -391,3 +391,61 @@ suite, Linux or GUI integration runs were added.
 Reports: `recovery-legacy-before.json`, `recovery-legacy-durable.json` under
 `dist/benchmarks/`. `recovery-legacy.json` records the intermediate conversion-only
 implementation and must not be used as the final durable-migration result.
+
+
+## Follow-up: shared decoded-sample memory and scratch admission
+
+Production imports, archives/recovery, effects, recording and clipboard conversion
+now use the same decoded block cache. Its default ceiling is 10% of physical RAM,
+with a startup override in `config/performance.json` (`audio_memory_mib`; zero
+means automatic). Previously only imports shared the RAM-derived cache; other
+contexts could accumulate separate allowances. Declared scheduler scratch now
+reduces sample cache capacity before the job executes, including across independent
+schedulers. Existing scheduler execution and queue limits remain in place.
+
+macOS normal/warning/critical pressure notifications asynchronously restore,
+halve or quarter the cache target. SDL low-memory events request critical trimming.
+Running scratch reservations and reads drain normally; they cannot be reclaimed
+to immediately satisfy a lower pressure target. Scratch admission uses the normal
+configured ceiling. Native pressure monitoring on other desktop platforms remains
+outstanding. No simulated system-wide pressure was applied during validation.
+
+A disk miss no longer holds the shared cache mutex. In-flight sample arrays count
+against the ceiling and release their accounting on success or failure. When all
+capacity is reserved, reads use caller-owned buffers directly. This bounds decoded
+cache arrays plus declared scratch, not total process RSS: peaks/indexes, metadata,
+transport/caller buffers, codec/DSP internals, undeclared scratch and resident
+compatibility paths still require their own accounting. Only existing effect job
+scratch declarations are currently charged by production bulk scheduling.
+
+Native Release benchmark, three repetitions per size, four stores sharing 8 MiB:
+
+| Working samples | Peak cache + reserved scratch | Read every block | 10,000 warm reads |
+| --- | --- | --- | --- |
+| 1 MiB | 5 MiB | 0.41 ms | 0.154 ms |
+| 16 MiB | 8 MiB | 4.10 ms | 0.219 ms |
+| 256 MiB | 8 MiB | 54.80 ms | 0.219 ms |
+
+The scan requests 31 samples per block, causing full-block cache fills. Filesystem
+caching is uncontrolled; these are not physical cold-disk measurements. The scenario
+also reserves 4 MiB of scratch (without allocating a simulated scratch payload),
+checks displacement, requests critical trimming and releases the reservation.
+All nine runs passed. Whole-process peak RSS was approximately 4/11/11 MiB;
+reserved scratch is accounting capacity and need not appear in RSS.
+
+Matched playback against the saved `1806198` executable, same native Release flags,
+passed all six runs on each version, with zero sequential underrun frames. Median
+first-data latency was 1.18 → 1.16 ms at 1 MiB and 1.17 → 1.17 ms at 256 MiB.
+Sequential callback p99 medians were 0.0128 → 0.0155 ms and 0.0259 → 0.0164 ms.
+The small-workload increase is 0.0027 ms; no material playback regression appeared
+in these sampled workloads. This does not measure playback under system pressure.
+
+Validation: 35 focused native cases passed (memory, scheduler, owned storage,
+revision recording/persistence/effects), including five memory cases; 16 benchmark
+reporting tests passed. Native app and benchmark builds passed. No full suite,
+Linux build or GUI integration runs. Reports under `dist/benchmarks/`:
+`shared-memory-budget.json`, `shared-memory-playback-before.json`,
+`shared-memory-playback-after.json`.
+
+Next milestone: page detailed peaks/indexes and integrate their residency with
+resource admission. This slice does not close the original total-memory stage.

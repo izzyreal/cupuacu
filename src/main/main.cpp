@@ -110,6 +110,19 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
     auto &session = state->getActiveDocumentSession();
     cupuacu::logging::initialize(state->paths.get());
     cupuacu::logging::info("Cupuacu starting");
+    try
+    {
+        state->importSampleCache->setByteBudget(
+            cupuacu::storage::readAudioMemoryBudget(
+                state->paths->configPath() / "performance.json",
+                uint64_t(std::max(SDL_GetSystemRAM(), 0)) * 1024 * 1024));
+    }
+    catch (const std::exception &error)
+    {
+        cupuacu::logging::warn(std::string("Invalid audio memory settings: ") + error.what());
+    }
+    state->memoryPressureMonitor =
+        std::make_unique<cupuacu::storage::MemoryPressureMonitor>(state->importSampleCache);
 
     state->audioDevices = std::make_shared<cupuacu::audio::AudioDevices>();
     if (const auto persistedDisplayProperties =

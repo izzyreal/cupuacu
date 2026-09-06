@@ -71,7 +71,7 @@ namespace cupuacu::storage
         std::map<uint64_t, std::weak_ptr<const AudioRevision>> loadedSources;
         std::map<std::string, std::weak_ptr<AudioBlockStore>> loadedStores;
         std::shared_ptr<DecodedBlockCache> cache =
-            std::make_shared<DecodedBlockCache>(1024 * 1024);
+            defaultDecodedBlockCache();
         explicit RevisionArchive(std::filesystem::path);
         void check() const;
         uint64_t append(const Json &);

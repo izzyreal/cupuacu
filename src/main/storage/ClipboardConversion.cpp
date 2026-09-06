@@ -33,7 +33,7 @@ namespace cupuacu::storage
         {
             auto store = std::make_shared<AudioBlockStore>(path);
             static const auto cache =
-                std::make_shared<DecodedBlockCache>(4 * AudioBlockBytes);
+                defaultDecodedBlockCache();
             waveform::DecodedWaveformBuilder peaks;
             AudioRevisionBuilder builder(
                 shape, store, cache,

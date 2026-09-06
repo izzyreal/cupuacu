@@ -347,6 +347,11 @@ namespace cupuacu::gui
 
     inline SDL_AppResult handleAppEvent(State *state, SDL_Event *event)
     {
+        if (event->type == SDL_EVENT_LOW_MEMORY && state->memoryPressureMonitor)
+        {
+            state->memoryPressureMonitor->notify(2);
+            return SDL_APP_CONTINUE;
+        }
         if (state->eventObserver)
         {
             state->eventObserver(*event);

@@ -737,10 +737,7 @@ namespace cupuacu::actions::io
             {
                 if (!sampleCache)
                 {
-                    sampleCache = std::make_shared<storage::DecodedBlockCache>(
-                        storage::DecodedBlockCache::defaultByteBudget(
-                            uint64_t(std::max(1, SDL_GetSystemRAM())) * 1024 *
-                            1024));
+                    sampleCache = storage::defaultDecodedBlockCache();
                 }
                 const auto identity =
                     file::DecodedImportCache::sourceIdentity(request.path);

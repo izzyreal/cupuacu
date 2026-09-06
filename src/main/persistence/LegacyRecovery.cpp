@@ -134,7 +134,7 @@ namespace cupuacu::persistence
             std::filesystem::path root;
             std::shared_ptr<storage::AudioBlockStore> store;
             std::shared_ptr<storage::DecodedBlockCache> cache =
-                std::make_shared<storage::DecodedBlockCache>(1024 * 1024);
+                storage::defaultDecodedBlockCache();
             std::function<bool()> cancel;
             std::map<std::string, std::vector<Audio>> loaded;
 

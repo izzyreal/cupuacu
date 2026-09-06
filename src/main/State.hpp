@@ -1,6 +1,7 @@
 #pragma once
 #include "concurrency/TaskScheduler.hpp"
 #include "concurrency/DeferredRelease.hpp"
+#include "storage/MemoryResources.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -169,8 +170,10 @@ namespace cupuacu
 
         std::shared_ptr<concurrency::TaskScheduler> taskScheduler =
             concurrency::releaseOnWorker(
-                std::make_shared<concurrency::TaskScheduler>());
+                std::make_shared<concurrency::TaskScheduler>(2, 64, 128 * 1024 * 1024,
+                    storage::defaultDecodedBlockCache()));
         std::shared_ptr<audio::AudioDevices> audioDevices;
+        std::unique_ptr<storage::MemoryPressureMonitor> memoryPressureMonitor;
         std::unique_ptr<Paths> paths = std::make_unique<Paths>();
         uint8_t menuFontSize = 30;
         uint8_t pixelScale = 1;
@@ -184,9 +187,7 @@ namespace cupuacu
         std::shared_ptr<file::DecodedImportCache> decodedImportCache;
         uint64_t decodedImportCacheByteBudget = 8ull * 1024 * 1024 * 1024;
         std::shared_ptr<storage::DecodedBlockCache> importSampleCache =
-            std::make_shared<storage::DecodedBlockCache>(
-                storage::DecodedBlockCache::defaultByteBudget(
-                    uint64_t(std::max(1, SDL_GetSystemRAM())) * 1024 * 1024));
+            storage::defaultDecodedBlockCache();
         uint64_t playbackRangeStart = 0;
         uint64_t playbackRangeEnd = 0;
         uint64_t playbackSourceFrames = std::numeric_limits<uint64_t>::max();
