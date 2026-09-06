@@ -1,5 +1,7 @@
 #include "persistence/DocumentAutosave.hpp"
 #include "RevisionPersistence.hpp"
+#include "LegacyRecovery.hpp"
+#include "../waveform/DecodedWaveformBuilder.hpp"
 #include "../concurrency/DeferredRelease.hpp"
 
 #include "LongTask.hpp"
@@ -224,9 +226,15 @@ namespace cupuacu::persistence
             output.write(value.data(), static_cast<std::streamsize>(value.size()));
         }
 
-        std::string readString(std::istream &input)
+        std::string readString(std::istream &input, uint64_t fileBytes)
         {
             const uint32_t size = readU32(input);
+            const auto at = input.tellg();
+            if (at < 0 || uint64_t(at) > fileBytes ||
+                size > fileBytes - uint64_t(at))
+            {
+                throw std::runtime_error("Truncated autosave string");
+            }
             std::string value(size, '\0');
             input.read(value.data(), static_cast<std::streamsize>(value.size()));
             if (!input)
@@ -466,7 +474,8 @@ namespace cupuacu::persistence
     bool loadDocumentAutosaveSnapshot(
         const std::filesystem::path &path, cupuacu::DocumentSession &session,
         const DocumentAutosaveLoadProgress &progress,
-        const DocumentAutosaveLoadCancelCheck &isCanceled)
+        const DocumentAutosaveLoadCancelCheck &isCanceled,
+        const PersistedOpenDocumentState *legacyState)
     {
         if (path.empty())
         {
@@ -504,30 +513,38 @@ namespace cupuacu::persistence
                 return false;
             }
 
+            const auto fileBytes = std::filesystem::file_size(path);
+            const auto fileTime = std::filesystem::last_write_time(path);
             const auto format = sampleFormatFromInt(readU32(input));
             const auto sampleRate = readU32(input);
             const auto channels = readI64(input);
             const auto frames = readI64(input);
-            if (channels < 0 || frames < 0 ||
-                channels > std::numeric_limits<uint32_t>::max())
+            if (format == SampleFormat::Unknown || channels <= 0 ||
+                channels > 256 || frames < 0 || sampleRate == 0 ||
+                sampleRate > INT_MAX ||
+                frames > INT64_MAX / channels / sizeof(float))
             {
                 return false;
             }
 
-            const auto currentFile = readString(input);
+            const auto currentFile = readString(input, fileBytes);
             std::vector<cupuacu::DocumentMarker> markers;
             const auto markerCount = readI64(input);
-            if (markerCount < 0)
+            if (markerCount < 0 || uint64_t(markerCount) > fileBytes / 20)
             {
                 return false;
             }
             markers.reserve(static_cast<std::size_t>(markerCount));
             for (int64_t index = 0; index < markerCount; ++index)
             {
+                if (isCanceled && isCanceled())
+                {
+                    throw LongTaskCanceledError{};
+                }
                 markers.push_back(cupuacu::DocumentMarker{
                     .id = readU64(input),
                     .frame = readI64(input),
-                    .label = readString(input),
+                    .label = readString(input, fileBytes),
                 });
             }
 
@@ -536,65 +553,180 @@ namespace cupuacu::persistence
             {
                 return false;
             }
-            std::vector<gui::WaveformCache::BuildResult> waveformCacheResults;
-            waveformCacheResults.reserve(
-                static_cast<std::size_t>(waveformCacheChannelCount));
-            for (int64_t channel = 0; channel < waveformCacheChannelCount;
-                 ++channel)
+            for (int64_t channel = 0; channel < channels; ++channel)
             {
-                waveformCacheResults.push_back(readWaveformCacheResult(input));
+                (void)readI64(input);
+                (void)readI64(input);
+                (void)readI64(input);
+                const auto levels = readU32(input);
+                if (levels > 64)
+                {
+                    throw std::runtime_error("Invalid legacy peak levels");
+                }
+                for (uint32_t level = 0; level < levels; ++level)
+                {
+                    if (isCanceled && isCanceled())
+                    {
+                        throw LongTaskCanceledError{};
+                    }
+                    const uint64_t bytes = uint64_t(readU32(input)) * 8;
+                    const auto at = input.tellg();
+                    if (at < 0 || uint64_t(at) > fileBytes ||
+                        bytes > fileBytes - uint64_t(at))
+                    {
+                        throw std::runtime_error("Truncated legacy peaks");
+                    }
+                    input.seekg(std::streamoff(bytes), std::ios::cur);
+                }
+            }
+            const auto audioStart = input.tellg();
+            if (audioStart < 0 || uint64_t(audioStart) > fileBytes ||
+                uint64_t(frames) * channels * sizeof(float) >
+                    fileBytes - uint64_t(audioStart))
+            {
+                throw std::runtime_error("Truncated autosave samples");
             }
             const auto parsedMetadataAt = std::chrono::steady_clock::now();
 
-            cupuacu::Document document;
-            document.initialize(format, sampleRate, static_cast<uint32_t>(channels),
-                                frames);
+            const storage::AudioShape shape{frames, int(channels),
+                                            int(sampleRate), format};
+            auto store = legacyRecoveryStore(path.parent_path());
+            auto cache =
+                std::make_shared<storage::DecodedBlockCache>(1024 * 1024);
+            waveform::DecodedWaveformBuilder peaks;
+            storage::AudioRevisionBuilder builder(
+                shape, store, cache,
+                [&](int64_t first, auto blocks, uint32_t count)
+                {
+                    peaks.appendFrom(
+                        shape, first + count,
+                        [&](int c, int64_t at, std::span<float> out)
+                        {
+                            std::copy_n(blocks[c].data() + at - first,
+                                        out.size(), out.data());
+                        });
+                });
             if (progress)
             {
-                progress(frames > 0 ? std::optional<double>(0.0)
-                                    : std::optional<double>(1.0));
+                progress(frames ? 0.0 : 1.0);
             }
-            std::vector<float> interleaved(
-                static_cast<std::size_t>(std::max<int64_t>(1, channels)) *
-                static_cast<std::size_t>(kAudioBlockFrames));
-            for (int64_t frameStart = 0; frameStart < frames;
-                 frameStart += kAudioBlockFrames)
+            std::vector<float> interleaved(std::size_t(channels) *
+                                           kAudioBlockFrames);
+            for (int64_t first = 0; first < frames;)
             {
                 if (isCanceled && isCanceled())
                 {
-                    throw cupuacu::LongTaskCanceledError{};
+                    throw LongTaskCanceledError{};
                 }
-                const auto framesToRead = std::min<int64_t>(
-                    kAudioBlockFrames, frames - frameStart);
-                const auto sampleCount = framesToRead * channels;
+                const auto count = std::min(kAudioBlockFrames, frames - first);
                 readFloatBlock(input, interleaved.data(),
-                               static_cast<std::size_t>(sampleCount));
-
-                document.writeInterleavedFloatBlock(frameStart, interleaved.data(),
-                                                    framesToRead, channels, false);
-
+                               std::size_t(count * channels));
+                builder.appendInterleaved(
+                    std::span(interleaved).first(count * channels));
+                first += count;
                 if (progress)
                 {
-                    progress(static_cast<double>(frameStart + framesToRead) /
-                             static_cast<double>(frames));
+                    progress(double(first) / double(frames));
                 }
             }
-            const auto loadedAudioAt = std::chrono::steady_clock::now();
-            document.replaceMarkers(std::move(markers));
-
-            session.clearCurrentFile();
+            auto caches = peaks.takeCaches();
+            std::vector<std::vector<gui::PeakLevel>> levels;
+            for (int c = 0; c < channels && frames; ++c)
+            {
+                levels.push_back(
+                    caches.getCache(c).snapshotBuildState().levels);
+            }
+            auto audio = storage::AudioEditRevision::from(builder.finish(
+                {}, frames ? std::make_shared<waveform::SourcePeaks>(
+                                 shape, std::move(levels))
+                           : nullptr));
+            cupuacu::DocumentSession restored;
+            restored.document.setExternalAudioShape(format, sampleRate,
+                                                    channels, frames);
+            restored.document.replaceMarkers(std::move(markers));
             if (!currentFile.empty())
             {
-                session.setCurrentFile(currentFile);
+                restored.setCurrentFile(currentFile);
             }
-            session.document = std::move(document);
-            session.waveformCaches.resetToChannelCount(channels);
-            for (int64_t channel = 0; channel < channels; ++channel)
+            restored.bindReadRevision(std::move(audio));
+            restored.waveformCaches = std::move(caches);
+            restored.autosaveSnapshotPath = path;
+            const bool migrated = migrateLegacyHistory(
+                restored, legacyState, path.parent_path(), isCanceled);
+            if (!migrated)
             {
-                session.getWaveformCache(static_cast<int>(channel))
-                    .applyBuildResult(std::move(
-                        waveformCacheResults[static_cast<std::size_t>(channel)]));
+                // Compatibility is limited to histories whose recording
+                // commands change audio shape. Keep their old reader and
+                // history together.
+                Document resident;
+                resident.initialize(format, sampleRate, channels, frames);
+                std::vector<float> channel(kAudioBlockFrames);
+                auto reader = restored.getAudioReader();
+                for (int64_t first = 0; first < frames;
+                     first += kAudioBlockFrames)
+                {
+                    if (isCanceled && isCanceled())
+                    {
+                        throw LongTaskCanceledError{};
+                    }
+                    const auto count =
+                        std::min(kAudioBlockFrames, frames - first);
+                    for (int c = 0; c < channels; ++c)
+                    {
+                        reader->readChannel(c, first,
+                                            std::span(channel).first(count));
+                        resident.writeChannelFloatBlock(
+                            c, first, channel.data(), count, false);
+                    }
+                }
+                resident.replaceMarkers(restored.document.getMarkers());
+                restored.clearReadRevision();
+                restored.document = std::move(resident);
             }
+            if (isCanceled && isCanceled())
+            {
+                throw LongTaskCanceledError{};
+            }
+            const auto loadedAudioAt = std::chrono::steady_clock::now();
+            if (std::filesystem::file_size(path) != fileBytes ||
+                std::filesystem::last_write_time(path) != fileTime)
+            {
+                throw std::runtime_error(
+                    "Legacy snapshot changed during recovery");
+            }
+            // Publish the new format only after audio and the matching history
+            // are durable. The old snapshot stays readable on cancellation or
+            // write failure, and a second startup can use the archive directly.
+            CUPUACU_METRIC(performance::add(
+                performance::Work::AutosaveBytesRead, uint64_t(input.tellg())));
+            input.close();
+            if (progress)
+            {
+                progress(std::nullopt);
+            }
+            if (migrated)
+            {
+                RevisionPersistence::save(
+                    path, *restored.recoveredRevisionCheckpoint,
+                    [&]
+                    {
+                        if (isCanceled && isCanceled())
+                        {
+                            throw LongTaskCanceledError{};
+                        }
+                    },
+                    UINT64_MAX, isCanceled);
+            }
+            if (progress)
+            {
+                progress(1.0);
+            }
+            if (legacyState && !legacyState->undoStorePath.empty() &&
+                std::filesystem::is_directory(legacyState->undoStorePath))
+            {
+                restored.undoStore.attach(legacyState->undoStorePath);
+            }
+            session = std::move(restored);
             const auto appliedStateAt = std::chrono::steady_clock::now();
             session.autosaveSnapshotPath = path;
             session.autosavedWaveformDataVersion =

@@ -26,7 +26,8 @@ namespace cupuacu::persistence
         static void save(const std::filesystem::path &,
                          const RevisionCheckpoint &,
                          const std::function<void()> &beforeReplace = {},
-                         uint64_t maxHistoryBytes = UINT64_MAX);
+                         uint64_t maxHistoryBytes = UINT64_MAX,
+                         const std::function<bool()> &cancel = {});
         static void load(const std::filesystem::path &, DocumentSession &,
                          const std::function<bool()> &cancel = {});
         static bool installHistory(State *, int tabIndex);

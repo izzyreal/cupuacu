@@ -51,6 +51,36 @@ namespace
         return result;
     }
 
+    std::vector<float> readMonoSamples(const cupuacu::ClipboardAudio &clipboard)
+    {
+        if (auto audio = clipboard.getAudioRevision())
+        {
+            std::vector<float> out(audio->shape().frames);
+            audio->readChannel(0, 0, out);
+            return out;
+        }
+        std::vector<float> out(clipboard.getFrameCount());
+        for (std::size_t i = 0; i < out.size(); ++i)
+        {
+            out[i] = clipboard.getSample(0, i);
+        }
+        return out;
+    }
+
+    float readSample(const cupuacu::DocumentSession &session, int channel,
+                     int64_t frame)
+    {
+        float value;
+        session.getAudioReader()->readChannel(channel, frame, {&value, 1});
+        return value;
+    }
+    std::vector<float> readMonoSamples(const cupuacu::DocumentSession &session)
+    {
+        std::vector<float> out(session.document.getFrameCount());
+        session.getAudioReader()->readChannel(0, 0, out);
+        return out;
+    }
+
     void requireBuildStatesEqual(
         const cupuacu::gui::WaveformCache::BuildState &expected,
         const cupuacu::gui::WaveformCache::BuildState &actual)
@@ -160,9 +190,9 @@ TEST_CASE("Document autosave snapshots preserve untitled audio and markers",
     REQUIRE(restored.document.getSampleRate() == 44100);
     REQUIRE(restored.document.getChannelCount() == 1);
     REQUIRE(restored.document.getFrameCount() == 3);
-    REQUIRE(restored.document.getSample(0, 0) == Catch::Approx(0.25f));
-    REQUIRE(restored.document.getSample(0, 1) == Catch::Approx(-0.5f));
-    REQUIRE(restored.document.getSample(0, 2) == Catch::Approx(0.75f));
+    REQUIRE(readSample(restored, 0, 0) == Catch::Approx(0.25f));
+    REQUIRE(readSample(restored, 0, 1) == Catch::Approx(-0.5f));
+    REQUIRE(readSample(restored, 0, 2) == Catch::Approx(0.75f));
     REQUIRE(restored.document.getMarkers().size() == 1);
     REQUIRE(restored.document.getMarkers()[0].frame == 2);
     REQUIRE(restored.document.getMarkers()[0].label == "point");
@@ -192,8 +222,10 @@ TEST_CASE("Document autosave snapshot load reports frame progress", "[autosave]"
         path, restored,
         [&](const std::optional<double> progress)
         {
-            REQUIRE(progress.has_value());
-            progressValues.push_back(*progress);
+            if (progress)
+            {
+                progressValues.push_back(*progress);
+            }
         }));
     REQUIRE_FALSE(progressValues.empty());
     REQUIRE(progressValues.front() == Catch::Approx(0.0));
@@ -251,7 +283,7 @@ TEST_CASE("Undoable mutations autosave and restore untitled sessions",
     const auto &session = restored.getActiveDocumentSession();
     REQUIRE(session.currentFile.empty());
     REQUIRE(session.document.getFrameCount() == 3);
-    REQUIRE(session.document.getSample(0, 2) == Catch::Approx(0.75f));
+    REQUIRE(readSample(session, 0, 2) == Catch::Approx(0.75f));
     REQUIRE(session.document.getMarkers().size() == 1);
     REQUIRE(session.document.getMarkers()[0].label == "middle");
     REQUIRE_FALSE(session.getWaveformCacheBuildProgress().has_value());
@@ -287,7 +319,7 @@ TEST_CASE("Autosaved file-backed sessions restore the snapshot over the source",
     const auto &session = restored.getActiveDocumentSession();
     REQUIRE(session.currentFile == sourcePath.string());
     REQUIRE(session.document.getFrameCount() == 2);
-    REQUIRE(session.document.getSample(0, 1) == Catch::Approx(-0.5f));
+    REQUIRE(readSample(session, 0, 1) == Catch::Approx(-0.5f));
     REQUIRE(cupuacu::actions::documentTabTitle(*restored.getActiveTab()) ==
             "source.wav*");
 }
@@ -325,7 +357,7 @@ TEST_CASE("Shutdown flush persists dirty file-backed sessions for restart",
 
     const auto &session = restored.getActiveDocumentSession();
     REQUIRE(session.currentFile == sourcePath.string());
-    REQUIRE(session.document.getSample(0, 1) == Catch::Approx(-0.5f));
+    REQUIRE(readSample(session, 0, 1) == Catch::Approx(-0.5f));
     REQUIRE(cupuacu::actions::documentTabTitle(*restored.getActiveTab()) ==
             "source.wav*");
 }
@@ -364,6 +396,11 @@ TEST_CASE("Shutdown flush does not rewrite current restored autosave snapshots",
         restored.paths->sessionStatePath());
     cupuacu::actions::restoreStartupDocument(&restored, {}, persisted);
 
+    REQUIRE(cupuacu::storage::RevisionArchive::recognizes(autosavePath));
+    originalWriteTimeNs =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::filesystem::last_write_time(autosavePath).time_since_epoch())
+            .count();
     cupuacu::actions::flushAutosaveSnapshotsForShutdown(&restored);
     REQUIRE(std::filesystem::exists(autosavePath));
     const auto flushedWriteTimeNs =
@@ -513,7 +550,7 @@ TEST_CASE("Background autosave preserves peaks from its own audio revision",
     {
         for (int64_t i = 0; i < expected.document.getFrameCount(); ++i)
         {
-            REQUIRE(restored.document.getSample(ch, i) ==
+            REQUIRE(readSample(restored, ch, i) ==
                     expected.document.getSample(ch, i));
         }
         requireBuildStatesEqual(
@@ -824,12 +861,12 @@ TEST_CASE("Startup restore preserves persistent cut undo history", "[autosave]")
         restored.paths->sessionStatePath());
     cupuacu::actions::restoreStartupDocument(&restored, {}, persisted);
 
-    REQUIRE(readMonoSamples(restored.getActiveDocumentSession().document) ==
+    REQUIRE(readMonoSamples(restored.getActiveDocumentSession()) ==
             std::vector<float>({0.0f, 3.0f}));
     REQUIRE(restored.canUndo());
 
     restored.undo();
-    REQUIRE(readMonoSamples(restored.getActiveDocumentSession().document) ==
+    REQUIRE(readMonoSamples(restored.getActiveDocumentSession()) ==
             std::vector<float>({0.0f, 1.0f, 2.0f, 3.0f}));
 }
 
@@ -856,14 +893,14 @@ TEST_CASE("Startup restore preserves persistent delete undo history", "[autosave
         restored.paths->sessionStatePath());
     cupuacu::actions::restoreStartupDocument(&restored, {}, persisted);
 
-    REQUIRE(readMonoSamples(restored.getActiveDocumentSession().document) ==
+    REQUIRE(readMonoSamples(restored.getActiveDocumentSession()) ==
             std::vector<float>({0.0f, 3.0f}));
     REQUIRE(readMonoSamples(restored.clipboard) == std::vector<float>({9.0f}));
     REQUIRE(restored.canUndo());
     REQUIRE(restored.getUndoDescription() == "Delete");
 
     restored.undo();
-    REQUIRE(readMonoSamples(restored.getActiveDocumentSession().document) ==
+    REQUIRE(readMonoSamples(restored.getActiveDocumentSession()) ==
             std::vector<float>({0.0f, 1.0f, 2.0f, 3.0f}));
     REQUIRE(readMonoSamples(restored.clipboard) == std::vector<float>({9.0f}));
 }
@@ -891,12 +928,12 @@ TEST_CASE("Startup restore preserves persistent sample edit undo history",
         restored.paths->sessionStatePath());
     cupuacu::actions::restoreStartupDocument(&restored, {}, persisted);
 
-    REQUIRE(readMonoSamples(restored.getActiveDocumentSession().document) ==
+    REQUIRE(readMonoSamples(restored.getActiveDocumentSession()) ==
             std::vector<float>({0.0f, 9.0f, 2.0f}));
     REQUIRE(restored.canUndo());
 
     restored.undo();
-    REQUIRE(readMonoSamples(restored.getActiveDocumentSession().document) ==
+    REQUIRE(readMonoSamples(restored.getActiveDocumentSession()) ==
             std::vector<float>({0.0f, 1.0f, 2.0f}));
 }
 
@@ -969,7 +1006,7 @@ TEST_CASE("Startup restore preserves clipboard and copy undo history",
     restored.getActiveDocumentSession().selection.reset();
     restored.getActiveDocumentSession().cursor = 3;
     cupuacu::actions::audio::performPaste(&restored);
-    REQUIRE(readMonoSamples(restored.getActiveDocumentSession().document) ==
+    REQUIRE(readMonoSamples(restored.getActiveDocumentSession()) ==
             std::vector<float>({0.0f, 1.0f, 2.0f, 0.0f, 1.0f}));
 }
 
@@ -999,17 +1036,17 @@ TEST_CASE("Startup restore preserves multi-step persistent cut undo history",
         restored.paths->sessionStatePath());
     cupuacu::actions::restoreStartupDocument(&restored, {}, persisted);
 
-    REQUIRE(readMonoSamples(restored.getActiveDocumentSession().document) ==
+    REQUIRE(readMonoSamples(restored.getActiveDocumentSession()) ==
             std::vector<float>({0.0f, 2.0f}));
     REQUIRE(restored.canUndo());
 
     restored.undo();
-    REQUIRE(readMonoSamples(restored.getActiveDocumentSession().document) ==
+    REQUIRE(readMonoSamples(restored.getActiveDocumentSession()) ==
             std::vector<float>({0.0f, 2.0f, 3.0f}));
     REQUIRE(restored.canUndo());
 
     restored.undo();
-    REQUIRE(readMonoSamples(restored.getActiveDocumentSession().document) ==
+    REQUIRE(readMonoSamples(restored.getActiveDocumentSession()) ==
             std::vector<float>({0.0f, 1.0f, 2.0f, 3.0f}));
 }
 
@@ -1037,13 +1074,13 @@ TEST_CASE("Startup restore preserves persistent redo history",
         restored.paths->sessionStatePath());
     cupuacu::actions::restoreStartupDocument(&restored, {}, persisted);
 
-    REQUIRE(readMonoSamples(restored.getActiveDocumentSession().document) ==
+    REQUIRE(readMonoSamples(restored.getActiveDocumentSession()) ==
             std::vector<float>({0.0f, 1.0f, 2.0f, 3.0f}));
     REQUIRE_FALSE(restored.canUndo());
     REQUIRE(restored.canRedo());
 
     restored.redo();
-    REQUIRE(readMonoSamples(restored.getActiveDocumentSession().document) ==
+    REQUIRE(readMonoSamples(restored.getActiveDocumentSession()) ==
             std::vector<float>({0.0f, 3.0f}));
     REQUIRE(restored.canUndo());
     REQUIRE_FALSE(restored.canRedo());

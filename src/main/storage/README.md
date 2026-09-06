@@ -50,8 +50,8 @@ overwritten by its publication. Clipboard lifetime after closing a tab is unchan
 Remaining migration and resource work:
 
 - Revision autosave, clipboard and matching restart history are integrated.
-  Legacy resident snapshots retain their existing reader; automatic conversion
-  of legacy recovery data into revisions is not implemented.
+  Legacy snapshots and common histories now stream-convert to durable revisions.
+  Histories with shape-changing recording commands retain compatibility recovery.
 - Revision peaks persist with the archive and remain independently rebuildable;
   revision saves skip the resident waveform-cache rebuild/write after export.
 - Saves independently retain the new output container before destination
@@ -82,8 +82,8 @@ runs through the background reclaimer. Revision saves allow browsing, playback
 and local edits while writing the pinned revision; later edits remain dirty.
 
 Next slice: application-wide managed memory accounting and paged peaks/indexes.
-Legacy recovery migration and removal of resident compatibility paths remain
-in the larger plan.
+Shape-changing legacy recording history and removal of the remaining resident
+compatibility paths remain in the larger plan.
 
 Focused validation: `[revision-ui],[revision-commands],[revision-effects]` covers production
 splices against a flat sample model, history and clipboard lifetime, exact marker
@@ -150,8 +150,8 @@ combining it with newer session-list metadata. Normal recovery reads indexes and
 peaks without scanning sample data. Damaged peak pages can be rebuilt from owned
 audio on the recovery worker; damaged required revision records fail recovery
 without replacing the destination session. Rebuilt peak pages are not immediately
-rewritten. Resident version-2 snapshots remain readable through their existing
-path. Revision format migration is not a legacy-to-revision converter.
+rewritten. Resident version-2 snapshots now migrate to revision archives during recovery;
+shape-changing legacy recording history retains its existing reader.
 
 The existing 512 MiB restart-history retention limit counts distinct stores
 required only by history, excluding current/saved document stores. Exceeding it
@@ -306,5 +306,5 @@ clipboard operations, effects and recording therefore use the same revision
 paths as imported documents. Recording starts with a readable empty revision,
 publishes disk-backed blocks and peaks, and finishes with one history entry;
 undo returns to the empty saved revision. Unconfigured startup tabs adopt a
-revision when first receiving a revision clipboard. Legacy recovered resident
-documents retain their existing backend and conversion path.
+revision when first receiving a revision clipboard. Most legacy recovered documents now migrate to revisions. Shape-changing
+legacy recording histories retain their compatibility backend.
