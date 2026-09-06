@@ -3,6 +3,7 @@
 #include "BenchmarkSourceFingerprint.hpp"
 #include "BuildInfo.hpp"
 #include "actions/audio/EditCommands.hpp"
+#include "actions/audio/RevisionRecording.hpp"
 #include "actions/audio/SetSampleValue.hpp"
 #include "effects/PeakAnalysis.hpp"
 #include "actions/Zoom.hpp"
@@ -781,6 +782,104 @@ namespace
                     cache->stats().peakResidentBytes;
             }
             result["milestones_ms"]["background_complete"] = callbackMs;
+            result["validated"] = true;
+            return;
+        }
+        if (name.starts_with("record_"))
+        {
+            State state;
+            state.paths.reset();
+            const auto root = std::filesystem::path(request.at("root").get<std::string>());
+            auto imported = file::importOwnedAudio(
+                request.at("fixture").get<std::string>(), root / "audio",
+                std::make_shared<storage::DecodedBlockCache>(1024 * 1024));
+            auto &session = state.getActiveDocumentSession();
+            session.document = std::move(imported.metadata.document);
+            session.bindReadRevision(storage::AudioEditRevision::from(imported.audio));
+            const auto original = session.getEditRevision();
+            const int64_t recordedFrames = name == "record_fixed_owned" ? 65536 : frames;
+            constexpr int64_t first = 17;
+            const auto reads = imported.audio->blockStore()->ioBytes().first;
+            for (auto iteration : measurement)
+            {
+                (void)iteration;
+                const auto started = Clock::now();
+                actions::startRevisionRecording(&state, first, root / "recorded");
+                auto recording = state.revisionRecording;
+                result["recording"]["start_ms"] = elapsed(started);
+                double maxHandoff = 0, maxPublish = 0;
+                uint64_t publications = 0;
+                for (int64_t f = 0; f < recordedFrames;)
+                {
+                    // Model bounded UI handoffs while allowing the disk worker
+                    // to drain. No simulated realtime delay inflates throughput.
+                    while (recording->writer.queuedChunks() > 256)
+                    {
+                        require(elapsed(started) < 60000, "Recording drain timed out");
+                        std::this_thread::sleep_for(std::chrono::microseconds(100));
+                    }
+                    const auto handoff = Clock::now();
+                    for (int i = 0; i < 64 && f < recordedFrames; ++i)
+                    {
+                        audio::RecordedChunk chunk{first + f,
+                            uint32_t(std::min<int64_t>(256, recordedFrames - f)), channels, {}};
+                        for (uint32_t j = 0; j < chunk.frameCount; ++j)
+                            for (int c = 0; c < channels; ++c)
+                                chunk.interleavedSamples[j * channels + c] = -sampleAt(first + f + j, c);
+                        require(recording->writer.submit(chunk), "Recording queue rejected data");
+                        f += chunk.frameCount;
+                    }
+                    maxHandoff = std::max(maxHandoff, elapsed(handoff));
+                    const auto publish = Clock::now();
+                    publications += actions::pollRevisionRecording(&state);
+                    maxPublish = std::max(maxPublish, elapsed(publish));
+                }
+                recording->finishing = true;
+                recording->writer.finish();
+                while (state.revisionRecording)
+                {
+                    const auto publish = Clock::now();
+                    publications += actions::pollRevisionRecording(&state);
+                    maxPublish = std::max(maxPublish, elapsed(publish));
+                    require(elapsed(started) < 60000, "Recording completion timed out");
+                    if (state.revisionRecording)
+                        std::this_thread::sleep_for(std::chrono::microseconds(100));
+                }
+                const auto complete = elapsed(started);
+                const auto snapshot = recording->writer.snapshot();
+                require(snapshot.error.empty(), snapshot.error);
+                result["recording"]["completion_ms"] = complete;
+                result["recording"]["max_handoff_ms"] = maxHandoff;
+                result["recording"]["max_publication_ms"] = maxPublish;
+                result["recording"]["publications"] = publications;
+                result["recording"]["sample_bytes_written"] = snapshot.sampleBytesWritten;
+                result["recording"]["peak_queue_chunks"] = recording->writer.peakQueuedChunks();
+                measurement.SetIterationTime(complete / 1000.0);
+            }
+            const auto sourceReads = imported.audio->blockStore()->ioBytes().first - reads;
+            result["recording"]["original_sample_bytes_read"] = sourceReads;
+            require(sourceReads == 0, "Recording read overwritten or untouched original samples");
+            require(state.getActiveTab()->undoables.size() == 1, "Recording history is not one root switch");
+            const auto recorded = session.getEditRevision();
+            require(recorded->shape().frames == std::max(frames, first + recordedFrames), "Recording duration mismatch");
+            std::array<float, 16384> samples;
+            for (int c = 0; c < channels; ++c)
+                for (int64_t f = 0; f < recorded->shape().frames; f += samples.size())
+                {
+                    const auto count = std::min<int64_t>(samples.size(), recorded->shape().frames - f);
+                    recorded->readChannel(c, f, std::span(samples).first(count));
+                    for (int64_t i = 0; i < count; ++i)
+                        require(samples[i] == ((f+i >= first && f+i < first + recordedFrames) ? -sampleAt(f+i,c) : sampleAt(f+i,c)),
+                                "Recorded sample mismatch");
+                }
+            auto undo = state.getActiveTab()->undoables.back();
+            const auto undoStarted = Clock::now();
+            undo->undo();
+            result["recording"]["undo_ms"] = elapsed(undoStarted);
+            require(session.getEditRevision() == original, "Recording undo lost original root");
+            undo->redo();
+            require(session.getEditRevision() == recorded, "Recording redo lost recorded root");
+            captureMetrics();
             result["validated"] = true;
             return;
         }

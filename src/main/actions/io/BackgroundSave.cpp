@@ -79,7 +79,7 @@ namespace cupuacu::actions::io
 
         bool canStartSave(cupuacu::State *state)
         {
-            return state != nullptr && !state->backgroundSaveJob &&
+            return state != nullptr && !state->revisionRecording && !state->backgroundSaveJob &&
                    !state->backgroundOpenJob && !state->longTask.active;
         }
 
