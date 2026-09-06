@@ -151,7 +151,8 @@ TEST_CASE(
         [&](waveform::DecodedWaveformChunk chunk)
         {
             ++previews;
-            REQUIRE(chunk.toBlock >= chunk.fromBlock);
+            REQUIRE(chunk.progressivePeaks);
+            REQUIRE(chunk.progressivePeaks->availableFrames() > 0);
         },
         options);
     REQUIRE(previews == 2);
@@ -176,15 +177,18 @@ TEST_CASE(
     REQUIRE(actual == expected);
     gui::WaveformCache expectedPeaks;
     expectedPeaks.rebuildAll(expected.data(), expected.size());
-    const auto &peaks = imported.metadata.waveformCaches.getCache(0);
+    const auto &peaks = imported.audio->sourcePeaks();
+    REQUIRE(peaks);
     for (int level = 0; level < expectedPeaks.levelsCount(); ++level)
     {
         for (std::size_t i = 0; i < expectedPeaks.getLevelByIndex(level).size();
              ++i)
         {
-            REQUIRE(peaks.getLevelByIndex(level)[i].min ==
+            waveform::Peak actualPeak;
+            peaks->readPeaks(0, level, i, std::span(&actualPeak, 1));
+            REQUIRE(actualPeak.min ==
                     expectedPeaks.getLevelByIndex(level)[i].min);
-            REQUIRE(peaks.getLevelByIndex(level)[i].max ==
+            REQUIRE(actualPeak.max ==
                     expectedPeaks.getLevelByIndex(level)[i].max);
         }
     }

@@ -323,11 +323,25 @@ namespace cupuacu::actions::io
                 setMainWindowTitleToActiveDocument(state);
             }
             auto &session = state->getActiveDocumentSession();
+            if (chunk.audio)
+            {
+                session.openingAudio =
+                    concurrency::releaseOnWorker(chunk.audio);
+            }
+            if (session.openingPeaks.get() != chunk.progressivePeaks.get() ||
+                session.openingCachedPeaks.get() != chunk.sourcePeaks.get())
+            {
+                session.openingPeaks =
+                    concurrency::releaseOnWorker(chunk.progressivePeaks);
+                session.openingCachedPeaks =
+                    concurrency::releaseOnWorker(chunk.sourcePeaks);
+                session.invalidateViewportSource();
+            }
             if (chunk.cached)
             {
                 session.waveformCaches = std::move(*chunk.cached);
             }
-            else
+            else if (chunk.toBlock >= chunk.fromBlock)
             {
                 for (std::size_t c = 0; c < chunk.channels.size(); ++c)
                 {
@@ -421,6 +435,17 @@ namespace cupuacu::actions::io
                 {
                     session.openingAudio =
                         concurrency::releaseOnWorker(std::move(chunk->audio));
+                }
+                if (session.openingPeaks.get() !=
+                        chunk->progressivePeaks.get() ||
+                    session.openingCachedPeaks.get() !=
+                        chunk->sourcePeaks.get())
+                {
+                    session.openingPeaks =
+                        concurrency::releaseOnWorker(chunk->progressivePeaks);
+                    session.openingCachedPeaks =
+                        concurrency::releaseOnWorker(chunk->sourcePeaks);
+                    session.invalidateViewportSource();
                 }
                 if (chunk->cached)
                 {
@@ -668,6 +693,14 @@ namespace cupuacu::actions::io
     void BackgroundOpenJob::publishPreview(waveform::DecodedWaveformChunk chunk)
     {
         std::unique_lock lock(mutex);
+        // These notifications carry shared readers, not deltas. Retaining
+        // the latest availability is sufficient even when the UI is busy.
+        if (chunk.progressivePeaks && !previews.empty() &&
+            previews.back().progressivePeaks == chunk.progressivePeaks)
+        {
+            previews.back() = std::move(chunk);
+            return;
+        }
         previewCv.wait(lock,
                        [this]
                        {
@@ -799,18 +832,6 @@ namespace cupuacu::actions::io
                              request.kind == PendingOpenKind::UserOpen});
                     loaded = std::make_unique<file::LoadedAudioFile>(
                         std::move(imported.metadata));
-                    // Retain a peak-only snapshot for asynchronous persistence.
-                    if (!waveformCacheRoot.empty() &&
-                        !loaded->persistentWaveformCacheLoaded)
-                    {
-                        DocumentSession cacheSession;
-                        cacheSession.currentFile = request.path;
-                        cacheSession.document = loaded->document;
-                        cacheSession.waveformCaches = loaded->waveformCaches;
-                        loaded->pendingImportedPeaks =
-                            waveform::capturePersistentWaveformCache(
-                                cacheSession, waveformCacheRoot);
-                    }
                     loaded->audioRevision =
                         storage::AudioEditRevision::from(imported.audio);
                     loaded->ownedSource = std::move(imported.audio);

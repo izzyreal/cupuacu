@@ -337,8 +337,25 @@ UI-side cache snapshots. Durable archive format compatibility is unchanged.
 
 Recovery, effects and clipboard conversion now stream base summaries through
 `StreamingPeakBuilder`; archive loading rebuilds higher levels from streamed base
-records. These paths no longer materialize a full peak pyramid. Progressive import
-still retains its full UI/persistence peak caches before paging. Overviews across
-many sources, audio block indexes and provenance/edit metadata remain outside the
-shared bound. See the
-milestone report for the measured memory reduction and I/O/latency costs.
+records. These paths no longer materialize a full peak pyramid.
+
+Progressive import feeds the same sample reducer into `ProgressivePeaks`. One
+active spatial tile per channel/group accumulates base peaks and parent summaries;
+completed tiles are packed into temporary segment files. The final `SourcePeaks`
+reader shares those files, so completion neither copies nor repages the pyramid.
+Viewport workers query the published prefix under a read lock; the UI sees only
+shared readers and atomic availability. Notifications coalesce, and pending
+waveform regions never trigger synchronous reads. A completed request refreshes
+the texture; later availability schedules another request without canceling the
+one already running.
+
+Persistent v1 caches are loaded with bounded base-peak reads and saved by streaming
+the immutable reader. Existing cache files remain compatible. A cached overview
+may cover the whole document before sample decoding finishes; raw views/playback
+still respect available samples. Cache corruption falls back to generating peaks
+with decoding. Legacy resident-cache APIs remain for compatibility paths.
+
+Active tiles and small per-source overviews are bounded per source but are not
+charged to aggregate admission. Audio block indexes and provenance/edit metadata
+also remain outside the shared bound. See the milestone report for measured
+memory reduction and I/O/latency costs.

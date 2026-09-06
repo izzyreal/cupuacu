@@ -589,9 +589,12 @@ namespace
 #endif
         const std::string name = request.at("scenario");
         const int64_t frames = request.at("frames");
-        if (name == "peak_paged" || name == "peak_resident" || name == "peak_streaming")
+        if (name == "peak_paged" || name == "peak_resident" ||
+            name == "peak_streaming" || name == "peak_progressive")
         {
-            peakPagingScenario(measurement, frames, name == "peak_paged", name == "peak_streaming");
+            peakPagingScenario(measurement, frames, name == "peak_paged",
+                               name == "peak_streaming",
+                               name == "peak_progressive");
             return;
         }
         if (name == "audio_memory")
@@ -2669,7 +2672,11 @@ namespace
                 auto &session = state.getActiveDocumentSession();
                 if (opening && session.document.getChannelCount() > 0 &&
                     (session.hasReadRevision() ||
-                     session.getWaveformCache(0).builtSamplePrefixEnd() > 0) &&
+                     (session.openingCachedPeaks ||
+                      (session.openingPeaks &&
+                       session.openingPeaks->availableFrames() > 0) ||
+                      session.getWaveformCache(0).builtSamplePrefixEnd() >
+                          0)) &&
                     result["milestones_ms"]["first_waveform"].is_null())
                 {
                     result["milestones_ms"]["first_waveform"] =

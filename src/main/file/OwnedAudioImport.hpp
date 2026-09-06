@@ -4,6 +4,8 @@
 #include "OwnedSourceFile.hpp"
 #include "../storage/AudioRevision.hpp"
 #include "../waveform/DecodedWaveformBuilder.hpp"
+#include "../waveform/StreamingPeakBuilder.hpp"
+#include "../waveform/ProgressivePeaks.hpp"
 #include <fstream>
 #ifdef __APPLE__
 #include <sys/clonefile.h>
@@ -67,8 +69,9 @@ namespace cupuacu::file
             throw std::runtime_error("Source changed during import");
         }
 
-        waveform::DecodedWaveformBuilder peaks;
-        waveform::DocumentWaveformCaches cached;
+        std::unique_ptr<waveform::StreamingPeakBuilder> peaks;
+        std::shared_ptr<waveform::ProgressivePeaks> progressivePeaks;
+        std::shared_ptr<const waveform::SourcePeaks> sourcePeaks;
         bool cacheLoaded = false;
         std::unique_ptr<storage::AudioRevisionBuilder> builder;
         storage::AudioShape shape;
@@ -96,38 +99,39 @@ namespace cupuacu::file
                             std::make_shared<storage::ImportAudioReader>(
                                 shape, store, cache);
                     }
-                    if (preview && options.publishMetadata)
+                    progressivePeaks =
+                        std::make_shared<waveform::ProgressivePeaks>(shape,
+                                                                     cache);
+                    const auto publish = [&]
                     {
+                        if (!preview || !options.publishMetadata)
+                        {
+                            return;
+                        }
                         waveform::DecodedWaveformChunk chunk;
                         chunk.format = shape.format;
                         chunk.sampleRate = shape.sampleRate;
                         chunk.frameCount = shape.frames;
                         chunk.channels.resize(shape.channels);
                         chunk.audio = progressive;
+                        chunk.progressivePeaks = progressivePeaks;
+                        chunk.sourcePeaks = sourcePeaks;
                         preview(std::move(chunk));
-                    }
-                    if (!options.waveformCacheRoot.empty())
+                    };
+                    publish();
+                    sourcePeaks = waveform::loadPersistentSourcePeaks(
+                        source.string(), document, options.waveformCacheRoot,
+                        cache, cancel);
+                    cacheLoaded = bool(sourcePeaks);
+                    if (cacheLoaded)
                     {
-                        DocumentSession cacheSession;
-                        cacheSession.document = document;
-                        cacheSession.currentFile = source.string();
-                        cacheLoaded = waveform::loadPersistentWaveformCache(
-                            cacheSession, options.waveformCacheRoot);
-                        if (cacheLoaded)
-                        {
-                            cached = std::move(cacheSession.waveformCaches);
-                            if (preview && options.publishMetadata)
-                            {
-                                waveform::DecodedWaveformChunk chunk;
-                                chunk.format = shape.format;
-                                chunk.sampleRate = shape.sampleRate;
-                                chunk.frameCount = shape.frames;
-                                chunk.channels.resize(shape.channels);
-                                chunk.audio = progressive;
-                                chunk.cached = cached;
-                                preview(std::move(chunk));
-                            }
-                        }
+                        publish();
+                    }
+                    else
+                    {
+                        peaks =
+                            std::make_unique<waveform::StreamingPeakBuilder>(
+                                shape, cache, cancel, progressivePeaks);
                     }
                     builder = std::make_unique<storage::AudioRevisionBuilder>(
                         shape, store, cache,
@@ -138,41 +142,38 @@ namespace cupuacu::file
                             uint32_t frames)
                         {
                             detail::throwIfLoadCanceled(cancel);
-                            if (cacheLoaded)
+                            if (!cacheLoaded)
                             {
-                                if (preview && progressive)
-                                {
-                                    waveform::DecodedWaveformChunk chunk;
-                                    chunk.format = shape.format;
-                                    chunk.sampleRate = shape.sampleRate;
-                                    chunk.frameCount = shape.frames;
-                                    chunk.channels.resize(shape.channels);
-                                    chunk.audio = progressive;
-                                    preview(std::move(chunk));
-                                }
-                                return;
-                            }
-                            auto chunk = peaks.appendFrom(
-                                shape, blockStart + frames,
-                                [&](int channel, int64_t first,
-                                    std::span<float> output)
-                                {
-                                    if (first < blockStart ||
-                                        first - blockStart + output.size() >
-                                            frames)
+                                peaks->appendFrom(
+                                    shape, blockStart + frames,
+                                    [&](int channel, int64_t first,
+                                        std::span<float> output)
                                     {
-                                        throw std::logic_error(
-                                            "Waveform requested samples "
-                                            "outside decoded block");
-                                    }
-                                    std::copy_n(channels[channel].data() +
-                                                    first - blockStart,
-                                                output.size(), output.data());
-                                });
-                            if (preview && chunk)
+                                        if (first < blockStart ||
+                                            first - blockStart + output.size() >
+                                                frames)
+                                        {
+                                            throw std::logic_error(
+                                                "Waveform requested samples "
+                                                "outside decoded block");
+                                        }
+                                        std::copy_n(channels[channel].data() +
+                                                        first - blockStart,
+                                                    output.size(),
+                                                    output.data());
+                                    });
+                            }
+                            if (preview)
                             {
-                                chunk->audio = progressive;
-                                preview(std::move(*chunk));
+                                waveform::DecodedWaveformChunk chunk;
+                                chunk.format = shape.format;
+                                chunk.sampleRate = shape.sampleRate;
+                                chunk.frameCount = shape.frames;
+                                chunk.channels.resize(shape.channels);
+                                chunk.audio = progressive;
+                                chunk.progressivePeaks = progressivePeaks;
+                                chunk.sourcePeaks = sourcePeaks;
+                                preview(std::move(chunk));
                             }
                         },
                         progressive);
@@ -191,23 +192,19 @@ namespace cupuacu::file
                 shape, store, cache);
         }
         detail::throwIfLoadCanceled(cancel);
-        metadata.waveformCaches =
-            cacheLoaded ? std::move(cached) : peaks.takeCaches();
         metadata.persistentWaveformCacheChecked =
             !options.waveformCacheRoot.empty();
         metadata.persistentWaveformCacheLoaded = cacheLoaded;
-        std::shared_ptr<const waveform::SourcePeaks> sourcePeaks;
-        if (shape.frames)
+        if (peaks)
         {
-            std::vector<std::vector<gui::PeakLevel>> levels;
-            for (int channel = 0; channel < shape.channels; ++channel)
-            {
-                levels.push_back(metadata.waveformCaches.getCache(channel)
-                                     .snapshotBuildState()
-                                     .levels);
-            }
-            sourcePeaks = waveform::SourcePeaks::createPaged(
-                shape, std::move(levels), cache, cancel);
+            sourcePeaks = peaks->finish();
+        }
+        if (!cacheLoaded)
+        {
+            metadata.pendingImportedPeaks =
+                waveform::capturePersistentSourcePeaks(
+                    source.string(), metadata.document,
+                    options.waveformCacheRoot, sourcePeaks);
         }
         auto audio =
             builder->finish(owned, std::move(sourcePeaks),
