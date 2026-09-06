@@ -4,13 +4,11 @@ namespace cupuacu::effects
 {
     namespace
     {
-        EffectDialogDefinition<AmplifyFadeSettings>
-        makeAmplifyFadeDefinition()
+        EffectDialogDefinition<AmplifyFadeSettings> makeAmplifyFadeDefinition()
         {
             EffectDialogDefinition<AmplifyFadeSettings> definition{};
             definition.title = "Amplify/Fade";
-            definition.loadSettings =
-                [](cupuacu::State *state)
+            definition.loadSettings = [](cupuacu::State *state)
             {
                 return state->effectSettings.amplifyFade;
             };
@@ -77,8 +75,7 @@ namespace cupuacu::effects
                     }));
             definition.parameters.push_back(
                 EffectParameterSpec<AmplifyFadeSettings>::enumeration(
-                    "curve", "Curve",
-                    {"Linear", "Exponential", "Logarithmic"},
+                    "curve", "Curve", {"Linear", "Exponential", "Logarithmic"},
                     [](const AmplifyFadeSettings &settings)
                     {
                         return settings.curveIndex;
@@ -89,8 +86,7 @@ namespace cupuacu::effects
                     }));
 
             definition.actions.push_back(
-                {"Reset",
-                 [](AmplifyFadeSettings &settings, cupuacu::State *)
+                {"Reset", [](AmplifyFadeSettings &settings, cupuacu::State *)
                  {
                      settings.startPercent = 100.0;
                      settings.endPercent = 100.0;
@@ -98,23 +94,23 @@ namespace cupuacu::effects
                  }});
             definition.actions.push_back(
                 {"Normalize",
-                 [](AmplifyFadeSettings &settings, cupuacu::State *state)
+                 {},
+                 [](AmplifyFadeSettings &settings, float peak)
                  {
                      const double normalizePercent =
-                         computeNormalizePercent(state);
+                         peak > 0 ? std::clamp(100.0 / peak, 0.0, 1000.0)
+                                  : 100.0;
                      settings.startPercent = normalizePercent;
                      settings.endPercent = normalizePercent;
                  }});
             definition.actions.push_back(
-                {"Fade in",
-                 [](AmplifyFadeSettings &settings, cupuacu::State *)
+                {"Fade in", [](AmplifyFadeSettings &settings, cupuacu::State *)
                  {
                      settings.startPercent = 0.0;
                      settings.endPercent = 100.0;
                  }});
             definition.actions.push_back(
-                {"Fade out",
-                 [](AmplifyFadeSettings &settings, cupuacu::State *)
+                {"Fade out", [](AmplifyFadeSettings &settings, cupuacu::State *)
                  {
                      settings.startPercent = 100.0;
                      settings.endPercent = 0.0;

@@ -1,6 +1,7 @@
 #include "SamplePoint.hpp"
 
 #include "../actions/audio/SetSampleValue.hpp"
+#include "../actions/MutationAvailability.hpp"
 #include "MainViewAccess.hpp"
 #include "SamplePointInteractionPlanning.hpp"
 #include "Waveform.hpp"
@@ -9,10 +10,13 @@ using namespace cupuacu::gui;
 using namespace cupuacu::actions::audio;
 
 SamplePoint::SamplePoint(State *state, const uint8_t channelIndexToUse,
-                         const int64_t sampleIndexToUse)
+                         const int64_t sampleIndexToUse,
+                         std::optional<float> value)
     : ControlPointHandle(state, "Sample point idx " +
                                     std::to_string(sampleIndexToUse)),
-      sampleIndex(sampleIndexToUse), channelIndex(channelIndexToUse)
+      sampleIndex(sampleIndexToUse), channelIndex(channelIndexToUse),
+      displayedValue(value),
+      displayedRevision(state->getActiveDocumentSession().getEditRevision())
 {
 }
 
@@ -23,13 +27,21 @@ uint64_t SamplePoint::getSampleIndex() const
 
 float SamplePoint::getSampleValue() const
 {
+    if (displayedRevision)
+    {
+        return displayedValue.value();
+    }
     return state->getActiveDocumentSession().document.getSample(channelIndex,
                                                                 sampleIndex);
 }
 
 bool SamplePoint::mouseDown(const MouseEvent &e)
 {
-    if (!e.buttonState.left)
+    if (!e.buttonState.left ||
+        !cupuacu::actions::isDocumentMutationAvailable(state) ||
+        (displayedRevision &&
+         displayedRevision !=
+             state->getActiveDocumentSession().getEditRevision()))
     {
         return false;
     }
@@ -61,11 +73,14 @@ bool SamplePoint::mouseUp(const MouseEvent &e)
 
     state->addUndoable(undoable);
     auto &session = state->getActiveDocumentSession();
-    auto &waveformCache = session.getWaveformCache(channelIndex);
-    waveformCache.invalidateSample(sampleIndex);
-    waveformCache.rebuildDirtyFrom(
-        session.document.getAudioBuffer()->getImmutableChannelData(
-            channelIndex));
+    if (!displayedRevision)
+    {
+        auto &waveformCache = session.getWaveformCache(channelIndex);
+        waveformCache.invalidateSample(sampleIndex);
+        waveformCache.rebuildDirtyFrom(
+            session.document.getAudioBuffer()->getImmutableChannelData(
+                channelIndex));
+    }
     state->lastRealtimeDocumentMutationAt = std::chrono::steady_clock::now();
 
     undoable.reset();
@@ -94,8 +109,23 @@ bool SamplePoint::mouseMove(const MouseEvent &e)
     dragYPos = dragPlan.clampedY;
 
     setYPos(dragYPos);
-    state->getActiveDocumentSession().document.setSample(
-        channelIndex, sampleIndex, dragPlan.sampleValue);
+    if (displayedRevision)
+    {
+        undoable->setNewValue(dragPlan.sampleValue);
+        undoable->redo();
+        if (!undoable->lastOperationCommitted())
+        {
+            return false;
+        }
+        displayedValue = dragPlan.sampleValue;
+        displayedRevision = state->getActiveDocumentSession().getEditRevision();
+        Waveform::setAllWaveformsDirty(state);
+    }
+    else
+    {
+        state->getActiveDocumentSession().document.setSample(
+            channelIndex, sampleIndex, dragPlan.sampleValue);
+    }
     state->lastRealtimeDocumentMutationAt = std::chrono::steady_clock::now();
     updateSampleValueUnderMouseCursor(state, dragPlan.sampleValue, channelIndex,
                                       sampleIndex);

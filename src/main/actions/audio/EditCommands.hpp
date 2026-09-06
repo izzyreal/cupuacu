@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Copy.hpp"
+#include "ClipboardPaste.hpp"
 #include "RevisionEdit.hpp"
 #include "Cut.hpp"
 #include "Delete.hpp"
@@ -37,7 +38,8 @@ namespace cupuacu::actions::audio
     {
         if (!hasActiveSelection(state))
         {
-            return cupuacu::actions::unavailableAction("No selection is active");
+            return cupuacu::actions::unavailableAction(
+                "No selection is active");
         }
 
         return cupuacu::actions::combineAvailability(
@@ -54,22 +56,6 @@ namespace cupuacu::actions::audio
                 "Clipboard does not contain audio");
         }
 
-        const auto &session = state->getActiveDocumentSession();
-        const auto &clip = state->clipboard.getAudioRevision();
-        if (session.hasReadRevision() != bool(clip))
-        {
-            return cupuacu::actions::unavailableAction(
-                "Paste between storage backends is not enabled yet");
-        }
-        if (clip &&
-            (clip->shape().channels != session.document.getChannelCount() ||
-             clip->shape().sampleRate != session.document.getSampleRate() ||
-             clip->shape().format != session.document.getSampleFormat()))
-        {
-            return cupuacu::actions::unavailableAction(
-                "Clipboard audio format differs from this document");
-        }
-
         return cupuacu::actions::combineAvailability(
             cupuacu::actions::availableAction(),
             cupuacu::actions::describeDocumentMutationAvailability(state));
@@ -83,8 +69,10 @@ namespace cupuacu::actions::audio
             return target;
         }
 
-        target.start = state->getActiveDocumentSession().selection.getStartInt();
-        target.length = state->getActiveDocumentSession().selection.getLengthInt();
+        target.start =
+            state->getActiveDocumentSession().selection.getStartInt();
+        target.length =
+            state->getActiveDocumentSession().selection.getLengthInt();
         return target;
     }
 
@@ -98,9 +86,10 @@ namespace cupuacu::actions::audio
 
         if (state->getActiveDocumentSession().selection.isActive())
         {
-            target.start = state->getActiveDocumentSession().selection.getStartInt();
-            target.end =
-                state->getActiveDocumentSession().selection.getEndExclusiveInt();
+            target.start =
+                state->getActiveDocumentSession().selection.getStartInt();
+            target.end = state->getActiveDocumentSession()
+                             .selection.getEndExclusiveInt();
             return target;
         }
 
@@ -122,9 +111,8 @@ namespace cupuacu::actions::audio
                                    target.length);
             return;
         }
-        const auto undoable =
-            std::make_shared<cupuacu::actions::audio::Cut>(
-                state, target.start, target.length);
+        const auto undoable = std::make_shared<cupuacu::actions::audio::Cut>(
+            state, target.start, target.length);
         state->addAndDoUndoable(undoable);
     }
 
@@ -141,9 +129,8 @@ namespace cupuacu::actions::audio
                                    target.length);
             return;
         }
-        const auto undoable =
-            std::make_shared<cupuacu::actions::audio::Copy>(
-                state, target.start, target.length);
+        const auto undoable = std::make_shared<cupuacu::actions::audio::Copy>(
+            state, target.start, target.length);
         state->addAndDoUndoable(undoable);
     }
 
@@ -160,9 +147,8 @@ namespace cupuacu::actions::audio
                                    target.length);
             return;
         }
-        const auto undoable =
-            std::make_shared<cupuacu::actions::audio::Delete>(
-                state, target.start, target.length);
+        const auto undoable = std::make_shared<cupuacu::actions::audio::Delete>(
+            state, target.start, target.length);
         state->addAndDoUndoable(undoable);
     }
 
@@ -179,9 +165,8 @@ namespace cupuacu::actions::audio
                                    target.length);
             return;
         }
-        const auto undoable =
-            std::make_shared<cupuacu::actions::audio::Trim>(
-                state, target.start, target.length);
+        const auto undoable = std::make_shared<cupuacu::actions::audio::Trim>(
+            state, target.start, target.length);
         state->addAndDoUndoable(undoable);
     }
 
@@ -192,6 +177,12 @@ namespace cupuacu::actions::audio
             return;
         }
         const auto target = pasteTarget(state);
+        if (state->getActiveDocumentSession().hasReadRevision() !=
+            bool(state->clipboard.getAudioRevision()))
+        {
+            beginClipboardPaste(state, target.start, target.end);
+            return;
+        }
         if (state->getActiveDocumentSession().hasReadRevision())
         {
             performRevisionCommand(state, RevisionCommand::Paste, target.start,
@@ -199,9 +190,8 @@ namespace cupuacu::actions::audio
                                                   : target.end - target.start);
             return;
         }
-        const auto undoable =
-            std::make_shared<cupuacu::actions::audio::Paste>(
-                state, target.start, target.end);
+        const auto undoable = std::make_shared<cupuacu::actions::audio::Paste>(
+            state, target.start, target.end);
         state->addAndDoUndoable(undoable);
     }
 

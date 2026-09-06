@@ -3,6 +3,7 @@
 #include "../State.hpp"
 #include "../concurrency/LatestWinsBackgroundWorker.hpp"
 #include "../storage/AudioReader.hpp"
+#include "../storage/AsyncAudioReader.hpp"
 #include "../waveform/WaveformViewport.hpp"
 #include <SDL3/SDL.h>
 
@@ -19,6 +20,7 @@ namespace cupuacu::gui
 
     public:
         [[nodiscard]] bool isCurrentViewTextureReady() const;
+        std::optional<float> requestSampleValue(int64_t frame);
 
         static bool shouldShowSamplePoints(const double samplesPerPixel,
                                            const uint8_t pixelScale);
@@ -167,8 +169,8 @@ namespace cupuacu::gui
                                                  const double samplesPerPixel,
                                                  const uint8_t pixelScale)
         {
-            const int64_t clamped =
-                std::clamp<int64_t>(desiredOffset, 0, std::max<int64_t>(0, maxOffset));
+            const int64_t clamped = std::clamp<int64_t>(
+                desiredOffset, 0, std::max<int64_t>(0, maxOffset));
             if (samplesPerPixel < 1.0 ||
                 shouldShowSamplePoints(samplesPerPixel, pixelScale))
             {
@@ -187,9 +189,8 @@ namespace cupuacu::gui
             }
 
             return std::clamp<int64_t>(
-                static_cast<int64_t>(
-                    std::llround(static_cast<double>(clamped) /
-                                 static_cast<double>(step))) *
+                static_cast<int64_t>(std::llround(static_cast<double>(clamped) /
+                                                  static_cast<double>(step))) *
                     step,
                 0, std::max<int64_t>(0, maxOffset));
         }
@@ -222,12 +223,12 @@ namespace cupuacu::gui
             }
 
             const long double spp = static_cast<long double>(samplesPerPixel);
-            outStartSample = static_cast<double>(
-                static_cast<long double>(sampleOffset) +
-                static_cast<long double>(x) * spp);
-            outEndSample = static_cast<double>(
-                static_cast<long double>(sampleOffset) +
-                static_cast<long double>(x + 1) * spp);
+            outStartSample =
+                static_cast<double>(static_cast<long double>(sampleOffset) +
+                                    static_cast<long double>(x) * spp);
+            outEndSample =
+                static_cast<double>(static_cast<long double>(sampleOffset) +
+                                    static_cast<long double>(x + 1) * spp);
         }
 
         Waveform(State *, const uint8_t channelIndex);
@@ -263,6 +264,12 @@ namespace cupuacu::gui
         mutable std::shared_ptr<const waveform::ViewportSource> viewportSource;
         mutable std::unique_ptr<waveform::WaveformViewport> viewportWorker;
         mutable std::optional<waveform::ViewportRequest> viewportRequest;
+        std::unique_ptr<storage::AsyncAudioReader> hoverReader;
+        std::shared_ptr<const storage::AudioEditRevision> hoverRevision;
+        std::optional<int64_t> hoverFrame;
+        std::optional<float> hoverValue;
+        uint64_t hoverGeneration = 0;
+        mutable bool samplePointsNeedRefresh = false;
         mutable std::optional<waveform::ViewportData> viewportData;
         mutable uint64_t viewportGeneration = 0;
         mutable bool viewportFailed = false;
@@ -327,8 +334,7 @@ namespace cupuacu::gui
 
         mutable BaseTextureCacheKey cachedBaseTextureKey{};
         mutable bool cachedBaseTextureValid = false;
-        mutable SDL_FRect cachedBaseTextureSourceRect{
-            0.0f, 0.0f, 0.0f, 0.0f};
+        mutable SDL_FRect cachedBaseTextureSourceRect{0.0f, 0.0f, 0.0f, 0.0f};
         mutable int64_t cachedBaseTextureBuiltSamplePrefixEnd = -1;
         mutable bool progressiveBlockTextureRefreshPending = false;
         mutable std::optional<BaseTextureCacheKey>
@@ -353,8 +359,9 @@ namespace cupuacu::gui
         BaseTextureCacheKey computeBaseTextureCacheKey() const;
         BaseTextureCacheKey
         makeCurrentBlockTextureCoverageKey(const BaseTextureCacheKey &) const;
-        BaseTextureCacheKey chooseBaseTextureTargetKey(
-            const BaseTextureCacheKey &, bool allowBlockCoverageReuse) const;
+        BaseTextureCacheKey
+        chooseBaseTextureTargetKey(const BaseTextureCacheKey &,
+                                   bool allowBlockCoverageReuse) const;
         bool canRenderCurrentViewFromCachedBlockTexture(
             const BaseTextureCacheKey &currentViewKey,
             const BaseTextureCacheKey &sourceTextureKey,
@@ -371,8 +378,7 @@ namespace cupuacu::gui
         void rememberRenderedBlockTextureFrontier(
             const BaseTextureCacheKey &targetKey) const;
         bool refreshProgressiveBlockTexture(
-            SDL_Renderer *renderer,
-            const BaseTextureCacheKey &targetKey) const;
+            SDL_Renderer *renderer, const BaseTextureCacheKey &targetKey) const;
         void handleWaveformCacheUpdate() const;
         void renderBaseTextureFromBackgroundPlan(
             SDL_Renderer *, const BackgroundBlockRenderProgress &plan) const;
@@ -390,14 +396,16 @@ namespace cupuacu::gui
         bool activateStoredBlockTextureForView(
             const BaseTextureCacheKey &newKey) const;
         void drawBaseWaveformContents(SDL_Renderer *) const;
-        void drawProgressiveBlockBuildWaveform(
-            SDL_Renderer *, const BaseTextureCacheKey &key) const;
+        void
+        drawProgressiveBlockBuildWaveform(SDL_Renderer *,
+                                          const BaseTextureCacheKey &key) const;
         bool promoteProgressiveBlockBuildGeometryToTexture(
             SDL_Renderer *, const BaseTextureCacheKey &key) const;
-        void appendBlockWaveformGeometryRange(
-            std::vector<SDL_Vertex> &vertices, std::vector<int> &indices,
-            int xStart, int xEndExclusive, int widthToUse,
-            int64_t sampleOffset) const;
+        void appendBlockWaveformGeometryRange(std::vector<SDL_Vertex> &vertices,
+                                              std::vector<int> &indices,
+                                              int xStart, int xEndExclusive,
+                                              int widthToUse,
+                                              int64_t sampleOffset) const;
         void clearProgressiveBlockBuildGeometry() const;
         void drawHorizontalLines(SDL_Renderer *) const;
         bool shouldDrawSelection() const;

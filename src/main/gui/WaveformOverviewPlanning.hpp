@@ -92,6 +92,12 @@ namespace cupuacu::gui
         WaveformOverviewDebugStats *debugStats = nullptr)
     {
         const auto &document = session.document;
+        // Revision views publish samples/peaks asynchronously; never fall back
+        // to a legacy resident-buffer query while publication is pending.
+        if (session.hasReadRevision())
+        {
+            return false;
+        }
         if (session.openingPreview)
         {
             // Opening previews contain peaks only. Expand edge windows to base
@@ -170,10 +176,10 @@ namespace cupuacu::gui
         const auto &waveformCache = session.getWaveformCache(channelIndex);
         const int cacheLevel =
             bypassCache ? 0 : waveformCache.getLevelIndex(samplesPerPixel);
-        auto accumulateRawPeakRange = [&](const int64_t startSample,
-                                          const int64_t endSampleWindowExclusive,
-                                          Peak &ioPeak,
-                                          bool &ioHasPeak) -> void
+        auto accumulateRawPeakRange =
+            [&](const int64_t startSample,
+                const int64_t endSampleWindowExclusive, Peak &ioPeak,
+                bool &ioHasPeak) -> void
         {
             if (startSample >= endSampleWindowExclusive)
             {
@@ -191,8 +197,8 @@ namespace cupuacu::gui
             CUPUACU_METRIC(performance::add(
                 performance::Work::SampleBytesCopied,
                 (endSampleWindowExclusive - startSample - 1) * sizeof(float)));
-            for (int64_t start = startSample + 1; start < endSampleWindowExclusive;
-                 start += block.size())
+            for (int64_t start = startSample + 1;
+                 start < endSampleWindowExclusive; start += block.size())
             {
                 const auto count = std::min<int64_t>(
                     block.size(), endSampleWindowExclusive - start);
@@ -254,7 +260,8 @@ namespace cupuacu::gui
             accumulateRawPeakRange(a, b, outPeak, hasPeak);
             return hasPeak;
         }
-        accumulateRawPeakRange(a, std::min(b, firstFullBlockStart), peak, hasPeak);
+        accumulateRawPeakRange(a, std::min(b, firstFullBlockStart), peak,
+                               hasPeak);
 
         int64_t position = firstFullBlockStart;
         const int64_t cachedEnd = std::min(
@@ -300,10 +307,13 @@ namespace cupuacu::gui
         return true;
     }
 
-    inline std::vector<BlockWaveformPeakColumnPlan> planWaveformOverviewPeakColumns(
-        const cupuacu::DocumentSession &session, const int channelIndex,
-        const int64_t sampleOffset, const double samplesPerPixel,
-        const int widthToUse, const uint8_t pixelScale)
+    inline std::vector<BlockWaveformPeakColumnPlan>
+    planWaveformOverviewPeakColumns(const cupuacu::DocumentSession &session,
+                                    const int channelIndex,
+                                    const int64_t sampleOffset,
+                                    const double samplesPerPixel,
+                                    const int widthToUse,
+                                    const uint8_t pixelScale)
     {
         auto lookupPeak = [&](const int x, Peak &out) -> bool
         {
@@ -312,8 +322,8 @@ namespace cupuacu::gui
             Waveform::getBlockRenderSampleWindowForPixel(
                 x, sampleOffset, samplesPerPixel, aD, bD);
             return computeWaveformPeakForSampleWindow(
-                session, channelIndex, sampleOffset, samplesPerPixel, pixelScale, aD,
-                bD, out);
+                session, channelIndex, sampleOffset, samplesPerPixel,
+                pixelScale, aD, bD, out);
         };
 
         return planBlockWaveformPeakColumns(
@@ -322,17 +332,15 @@ namespace cupuacu::gui
             lookupPeak);
     }
 
-    inline std::optional<SDL_Rect> planFrameSpanRect(const int64_t startFrame,
-                                                     const int64_t frameCount,
-                                                     const int64_t sampleOffset,
-                                                     const double samplesPerPixel,
-                                                     const int width,
-                                                     const int height)
+    inline std::optional<SDL_Rect>
+    planFrameSpanRect(const int64_t startFrame, const int64_t frameCount,
+                      const int64_t sampleOffset, const double samplesPerPixel,
+                      const int width, const int height)
     {
         SDL_FRect rect{};
         if (!Waveform::computeBlockModeSelectionFillRect(
-                startFrame, startFrame + frameCount, sampleOffset, samplesPerPixel,
-                width, height, rect))
+                startFrame, startFrame + frameCount, sampleOffset,
+                samplesPerPixel, width, height, rect))
         {
             return std::nullopt;
         }

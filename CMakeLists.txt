@@ -299,6 +299,9 @@ FetchContent_MakeAvailable(json)
 include(cmake/ThirdPartyResources.cmake)
 
 set(CUPUACU_SHARED_SOURCES
+    src/main/storage/ClipboardConversion.cpp
+    src/main/actions/audio/ClipboardPaste.cpp
+    src/main/effects/PeakAnalysis.cpp
     src/main/ClipboardAudio.cpp
     src/main/Document.cpp
     src/main/undo/UndoManifestPersistence.cpp

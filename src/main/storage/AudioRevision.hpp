@@ -2,6 +2,7 @@
 #include "AudioBlockStore.hpp"
 #include "../waveform/SourcePeaks.hpp"
 #include <functional>
+#include "../audio/SampleProvenance.hpp"
 
 namespace cupuacu::storage
 {
@@ -14,6 +15,15 @@ namespace cupuacu::storage
         std::shared_ptr<DecodedBlockCache> cache;
         std::vector<std::vector<AudioBlock>> channels;
         std::filesystem::path ownedSource;
+        uint64_t preservationSourceId = 0;
+        struct MetadataRun
+        {
+            int64_t start, frames;
+            audio::SampleProvenance provenance;
+            uint8_t dirty;
+        };
+        std::vector<std::vector<MetadataRun>> metadata;
+
         AudioRevision(AudioShape shape,
                       std::shared_ptr<AudioBlockStore> storage,
                       std::shared_ptr<DecodedBlockCache> cacheToUse)
@@ -38,6 +48,68 @@ namespace cupuacu::storage
         const std::shared_ptr<AudioBlockStore> &blockStore() const
         {
             return store;
+        }
+        // Compatibility metadata for clipboard conversion. Generated audio is
+        // dirty; imports retain sequential source identity; legacy clips retain
+        // compact provenance runs rather than a second per-sample matrix.
+        void readLegacyMetadata(int channel, int64_t start,
+                                std::span<audio::SampleProvenance> provenance,
+                                std::span<uint8_t> dirty) const
+        {
+            validateRange(dimensions, channel, start, provenance.size());
+            if (dirty.size() != provenance.size())
+            {
+                throw std::invalid_argument("Metadata size mismatch");
+            }
+            if (metadata.empty() || metadata[channel].empty())
+            {
+                for (std::size_t i = 0; i < provenance.size(); ++i)
+                {
+                    provenance[i] =
+                        preservationSourceId
+                            ? audio::SampleProvenance{preservationSourceId,
+                                                      start + int64_t(i)}
+                            : audio::SampleProvenance{};
+                }
+                std::fill(dirty.begin(), dirty.end(),
+                          ownedSource.empty() ? 1 : 0);
+                return;
+            }
+            const auto &runs = metadata[channel];
+            auto it = std::upper_bound(runs.begin(), runs.end(), start,
+                                       [](int64_t frame, const MetadataRun &run)
+                                       {
+                                           return frame < run.start;
+                                       });
+            if (it == runs.begin())
+            {
+                throw std::logic_error("Missing sample metadata");
+            }
+            --it;
+            while (!provenance.empty())
+            {
+                if (it == runs.end() || start < it->start ||
+                    start >= it->start + it->frames)
+                {
+                    throw std::logic_error("Missing sample metadata");
+                }
+                const auto count = std::min<std::size_t>(
+                    provenance.size(), it->start + it->frames - start);
+                for (std::size_t i = 0; i < count; ++i)
+                {
+                    provenance[i] = it->provenance;
+                    if (provenance[i].isValid())
+                    {
+                        provenance[i].frameIndex +=
+                            start - it->start + int64_t(i);
+                    }
+                    dirty[i] = it->dirty;
+                }
+                start += count;
+                provenance = provenance.subspan(count);
+                dirty = dirty.subspan(count);
+                ++it;
+            }
         }
         void readChannel(int channel, int64_t start,
                          std::span<float> output) const override
@@ -145,6 +217,52 @@ namespace cupuacu::storage
                 new AudioRevision(shape, std::move(store), std::move(cache)));
             pending.resize(shape.channels);
         }
+        void appendChannelMetadata(
+            int channel, int64_t start,
+            std::span<const audio::SampleProvenance> provenance,
+            std::span<const uint8_t> dirty)
+        {
+            if (finished || dirty.size() != provenance.size())
+            {
+                throw std::invalid_argument("Invalid metadata append");
+            }
+            AudioReader::validateRange(revision->dimensions, channel, start,
+                                       provenance.size());
+            if (revision->metadata.empty())
+            {
+                revision->metadata.resize(revision->dimensions.channels);
+            }
+            auto &runs = revision->metadata[channel];
+            const auto next =
+                runs.empty() ? 0 : runs.back().start + runs.back().frames;
+            if (start != next)
+            {
+                throw std::invalid_argument("Metadata must be sequential");
+            }
+            for (std::size_t i = 0; i < provenance.size(); ++i)
+            {
+                const auto p = provenance[i];
+                if (!runs.empty())
+                {
+                    auto &last = runs.back();
+                    const bool canAdvance =
+                        !last.provenance.isValid() ||
+                        last.frames <= INT64_MAX - last.provenance.frameIndex;
+                    const auto expectedFrame =
+                        last.provenance.frameIndex +
+                        (last.provenance.isValid() && canAdvance ? last.frames
+                                                                 : 0);
+                    if (canAdvance && last.dirty == dirty[i] &&
+                        last.provenance.sourceId == p.sourceId &&
+                        expectedFrame == p.frameIndex)
+                    {
+                        ++last.frames;
+                        continue;
+                    }
+                }
+                runs.push_back({start + int64_t(i), 1, p, dirty[i]});
+            }
+        }
         void appendInterleaved(std::span<const float> samples)
         {
             if (finished || samples.size() % pending.size() != 0 ||
@@ -184,7 +302,8 @@ namespace cupuacu::storage
         }
         std::shared_ptr<const AudioRevision>
         finish(std::filesystem::path ownedSource = {},
-               std::shared_ptr<const waveform::SourcePeaks> peaks = {})
+               std::shared_ptr<const waveform::SourcePeaks> peaks = {},
+               uint64_t preservationSourceId = 0)
         {
             if (finished)
             {
@@ -207,6 +326,16 @@ namespace cupuacu::storage
                 flushBlock();
             }
             revision->store->flush();
+            for (const auto &runs : revision->metadata)
+            {
+                if (runs.empty() ||
+                    runs.back().start + runs.back().frames != received)
+                {
+                    throw std::runtime_error(
+                        "Cannot commit incomplete sample metadata");
+                }
+            }
+            revision->preservationSourceId = preservationSourceId;
             revision->ownedSource = std::move(ownedSource);
             revision->peaks = std::move(peaks);
             finished = true;

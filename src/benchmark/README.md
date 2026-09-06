@@ -438,6 +438,29 @@ excluded. Owned effects generate source peaks during output; subsequent viewport
 preparation is excluded. Every output sample is checked outside timing. Process
 peak RSS includes setup and validation and is not a managed-allocation budget.
 
+`sample_command_memory` and `sample_command_owned` use the same setup as the
+structural command cases, replacing one sample through `SetSampleValue` and
+undoing/redoing it. Owned cases assert zero sample-file I/O and start with 1,024
+edits. The resident implementation already supports inexpensive point edits;
+these cases expose the constant overhead of immutable root changes rather than
+assuming every operation improves. GUI drag-event delivery is outside timing.
+
+`normalize_{legacy,memory,owned}` analyzes both channels of an almost whole-file
+selection with unaligned ends. The legacy case runs the previous synchronous
+base-level peak scan (raw samples when peaks are dirty); memory and owned cases
+submit the production `PeakAnalysis` worker,
+which uses summaries with exact boundary samples. Submission and completion are
+separate; completion includes worker startup and result polling. Initial audio
+and summaries are setup. Every result must equal the fixture's exact peak.
+
+Operation-only command and resident effect cases explicitly clear `State::paths`
+to disable autosave. Owned effects use `BenchPaths` rooted in the runner's temporary
+directory; reference sessions do not schedule autosave. Default-constructed
+`State` has live application paths and must not be used unmodified in benchmarks.
+Earlier command/effect reports from before this isolation fix inadvertently
+included resident autosave work and must be regenerated. The runner removes each
+child's working directory, including effects retained when the forked child exits.
+
 The timing executable links the ordinary core. The diagnostic executable links
 a separately compiled core with atomic work counters and capacity observations;
 its timing is not a substitute for uninstrumented timing. Google Benchmark

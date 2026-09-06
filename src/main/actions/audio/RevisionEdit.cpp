@@ -109,9 +109,10 @@ namespace cupuacu::actions::audio
         }
     }
 
-    void performRevisionCommand(State *state, RevisionCommand command,
-                                int64_t start, int64_t count,
-                                int64_t silenceFrames)
+    void performRevisionCommand(
+        State *state, RevisionCommand command, int64_t start, int64_t count,
+        int64_t silenceFrames,
+        std::shared_ptr<const storage::AudioEditRevision> pasteSource)
     {
         auto &session = state->getActiveDocumentSession();
         auto before = RevisionEditState::capture(session);
@@ -157,7 +158,9 @@ namespace cupuacu::actions::audio
             {
                 name = command == RevisionCommand::Paste ? "Paste"
                                                          : "Insert silence";
-                auto inserted = state->clipboard.getAudioRevision();
+                auto inserted = pasteSource
+                                    ? pasteSource
+                                    : state->clipboard.getAudioRevision();
                 if (command == RevisionCommand::InsertSilence)
                 {
                     auto shape = before.audio->shape();
@@ -169,6 +172,7 @@ namespace cupuacu::actions::audio
                     throw std::logic_error(
                         "Paste requires a reference clipboard");
                 }
+                inserted = inserted->forPaste(before.audio->shape());
                 edit.replace(start, count, *inserted);
                 removeMarkerRange(after.markers, start, count);
                 for (auto &marker : after.markers)
