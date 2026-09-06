@@ -1,5 +1,6 @@
 #include "ClipboardPaste.hpp"
 #include "EditCommands.hpp"
+#include "../DocumentOperationAccess.hpp"
 #include "../../storage/ClipboardConversion.hpp"
 #include "../../LongTask.hpp"
 #include "../../concurrency/DeferredRelease.hpp"
@@ -50,7 +51,10 @@ namespace cupuacu::actions::audio
              std::to_string(
                  std::chrono::steady_clock::now().time_since_epoch().count()));
         auto job = std::make_shared<storage::ClipboardConversion>(
-            state->clipboard, session.hasReadRevision(), path);
+            state->clipboard, session.hasReadRevision(), path,
+            state->taskScheduler);
+        static uint64_t nextOperation = 1;
+        job->operationId = nextOperation++;
         job->tabId = state->getActiveTab()->id;
         job->documentVersion = session.document.getWaveformDataVersion();
         job->start = start;
@@ -58,8 +62,13 @@ namespace cupuacu::actions::audio
         job->cursor = session.cursor;
         job->selected = session.selection.isActive();
         state->backgroundClipboardConversion = std::move(job);
-        setLongTask(state, "Pasting audio", "Preparing clipboard", {}, false,
-                    true);
+        state->getActiveTab()->operation =
+            DocumentOperation{DocumentOperation::Kind::Edit,
+                              state->backgroundClipboardConversion->operationId,
+                              "Pasting audio",
+                              "Preparing clipboard",
+                              {},
+                              false};
     }
 
     void processPendingClipboardPaste(State *state)
@@ -69,11 +78,14 @@ namespace cupuacu::actions::audio
         {
             return;
         }
-        if (isLongTaskCancelRequested(state))
+        if (operationCanceled(state, job->tabId, DocumentOperation::Kind::Edit,
+                              job->operationId) ||
+            state->quitRequestedAfterLongTaskCancel)
         {
             state->backgroundClipboardConversion.reset();
             job->close();
-            clearLongTask(state, false);
+            finishOperation(state, job->tabId, DocumentOperation::Kind::Edit,
+                            job->operationId);
             return;
         }
         auto result = job->takePublished();
@@ -83,7 +95,8 @@ namespace cupuacu::actions::audio
         }
         state->backgroundClipboardConversion.reset();
         job->close();
-        clearLongTask(state, false);
+        finishOperation(state, job->tabId, DocumentOperation::Kind::Edit,
+                        job->operationId);
         try
         {
             if (result->error)
@@ -95,29 +108,31 @@ namespace cupuacu::actions::audio
                 return;
             }
             auto converted = std::move(*result->value);
-            if (!state->getActiveTab())
+            auto *tab = findOperationTab(state, job->tabId);
+            if (!tab)
             {
                 throw std::runtime_error("Paste target was closed");
             }
-            auto &session = state->getActiveDocumentSession();
-            const auto target = pasteTarget(state);
-            if (state->getActiveTab()->id != job->tabId ||
-                session.document.getWaveformDataVersion() !=
-                    job->documentVersion ||
-                target.start != job->start || target.end != job->end)
+            auto &session = tab->session;
+            if (session.document.getWaveformDataVersion() !=
+                job->documentVersion)
             {
                 throw std::runtime_error(
                     "Paste target changed while preparing clipboard");
             }
             if (session.hasReadRevision())
             {
-                performRevisionCommand(state, RevisionCommand::Paste,
-                                       job->start,
-                                       job->end < 0 ? 0 : job->end - job->start,
-                                       0, converted->getAudioRevision());
+                performRevisionCommand(
+                    state, RevisionCommand::Paste, job->start,
+                    job->end < 0 ? 0 : job->end - job->start, 0,
+                    converted->getAudioRevision(), job->tabId);
             }
             else
             {
+                if (state->getActiveTab()->id != job->tabId)
+                {
+                    throw std::runtime_error("Paste target changed");
+                }
                 state->addAndDoUndoable(std::make_shared<Paste>(
                     state, job->start, job->end, converted));
             }

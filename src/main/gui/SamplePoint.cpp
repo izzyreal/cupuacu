@@ -64,6 +64,31 @@ bool SamplePoint::mouseUp(const MouseEvent &e)
         return false;
     }
 
+    if (displayedRevision)
+    {
+        const auto revision = displayedRevision;
+        const auto value = getSampleValue();
+        actions::audio::prepareRevisionEdit(
+            state, "Change sample value",
+            [revision, value, channel = channelIndex,
+             frame = sampleIndex](const auto &before)
+            {
+                if (before.audio != revision)
+                {
+                    throw std::runtime_error("Sample edit target changed");
+                }
+                auto after = before;
+                storage::AudioEditTransaction edit(*before.audio);
+                edit.replaceChannel(channel, frame, 1, nullptr, 0, 0, value);
+                after.audio = edit.finish();
+                return after;
+            });
+        undoable.reset();
+        isDragging = false;
+        setActive(false);
+        return true;
+    }
+
     undoable->setNewValue(getSampleValue());
     undoable->updateGui = [state = state, channelIndex = channelIndex]
     {
@@ -111,15 +136,9 @@ bool SamplePoint::mouseMove(const MouseEvent &e)
     setYPos(dragYPos);
     if (displayedRevision)
     {
-        undoable->setNewValue(dragPlan.sampleValue);
-        undoable->redo();
-        if (!undoable->lastOperationCommitted())
-        {
-            return false;
-        }
+        // Drag previews stay local; the accepted gesture is prepared on a
+        // worker at release and enters history as one command.
         displayedValue = dragPlan.sampleValue;
-        displayedRevision = state->getActiveDocumentSession().getEditRevision();
-        Waveform::setAllWaveformsDirty(state);
     }
     else
     {

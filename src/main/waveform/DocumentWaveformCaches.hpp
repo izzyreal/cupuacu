@@ -1,4 +1,6 @@
 #pragma once
+#include "../concurrency/TaskScheduler.hpp"
+#include "../concurrency/DeferredRelease.hpp"
 
 #include "../Document.hpp"
 #include "../gui/WaveformCache.hpp"
@@ -117,14 +119,14 @@ namespace cupuacu::waveform
             bool completed = false;
             BuildProgress progress;
             std::deque<BuildOutput> outputs;
-            std::thread worker;
+            concurrency::TaskScheduler::Ticket completion;
             std::atomic_bool cancelRequested{false};
 
             void run();
         };
 
         std::vector<gui::WaveformCache> caches = std::vector<gui::WaveformCache>(2);
-        std::unique_ptr<BuildJob> buildJob;
+        std::shared_ptr<BuildJob> buildJob;
         std::optional<BuildProgress> appliedProgress;
         std::optional<uint64_t> documentVersion;
 

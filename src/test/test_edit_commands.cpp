@@ -1,3 +1,4 @@
+#include "TestRevisionCommands.hpp"
 #include <catch2/catch_test_macros.hpp>
 
 #include "State.hpp"
@@ -76,6 +77,7 @@ TEST_CASE("Edit command insert silence inserts at cursor without replacing clipb
     state.getActiveRedoables().clear();
 
     cupuacu::actions::audio::performInsertSilence(&state, 2);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(session.document.getFrameCount() == 6);
     REQUIRE(session.document.getSample(0, 0) == 1.0f);
@@ -102,6 +104,7 @@ TEST_CASE("Edit command insert silence replaces the active selection",
     session.selection.setValue2(4.0);
 
     cupuacu::actions::audio::performInsertSilence(&state, 2);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(session.document.getFrameCount() == 4);
     REQUIRE(session.document.getSample(0, 0) == 1.0f);

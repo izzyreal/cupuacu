@@ -398,7 +398,7 @@ namespace cupuacu::effects
             analyzedVersion = session.document.getWaveformDataVersion();
             peakAnalysis = std::make_unique<PeakAnalysis>(
                 session.getAudioReader(), session.getEditRevision(),
-                session.getViewportSource());
+                session.getViewportSource(), state->taskScheduler);
             applyAnalyzedPeak = apply;
             analyzingButton = button;
             analyzingLabel = label;

@@ -1,3 +1,4 @@
+#include "TestRevisionCommands.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include "TestPaths.hpp"
 #include "persistence/RevisionPersistence.hpp"
@@ -104,6 +105,7 @@ TEST_CASE(
             &state, 0, 17, read(*source, 0, 17), -.25f));
         actions::audio::performRevisionCommand(
             &state, actions::audio::RevisionCommand::InsertSilence, 29, 0, 7);
+        cupuacu::test::finishRevisionCommands(&state);
         state.undo(); // Restart must retain a redo stack too.
         expected = s.getEditRevision();
         persistence::RevisionPersistence::save(
@@ -352,6 +354,7 @@ TEST_CASE(
     // Copy adds history without changing audio/marker versions.
     actions::audio::performRevisionCommand(
         &state, actions::audio::RevisionCommand::Copy, 0, 10);
+    cupuacu::test::finishRevisionCommands(&state);
     until(
         [&]
         {

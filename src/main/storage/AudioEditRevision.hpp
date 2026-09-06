@@ -1,6 +1,6 @@
 #pragma once
 
-#include "AudioRevision.hpp"
+#include "EditTree.hpp"
 #include <utility>
 #include <optional>
 
@@ -12,16 +12,7 @@ namespace cupuacu::storage
     class AudioEditRevision final : public AudioReader
     {
     public:
-        struct SourceRange
-        {
-            std::shared_ptr<const AudioRevision>
-                source; // null means a constant range
-            int channel = 0;
-            int64_t start = 0;
-            int64_t frames = 0;
-            float constantValue = 0;
-        };
-
+        using SourceRange = EditRange;
         struct PeakWork
         {
             uint64_t visitedNodes = 0;
@@ -35,34 +26,20 @@ namespace cupuacu::storage
         friend class RevisionArchive;
         static inline std::atomic<uint64_t> nextIdentity{1};
         const uint64_t identity = nextIdentity.fetch_add(1);
-        struct Node;
-        using Tree = std::shared_ptr<const Node>;
-        struct PreparedPeaks
-        {
-            waveform::Peak whole = waveform::emptyPeak();
-            waveform::Peak head = waveform::emptyPeak();
-            waveform::Peak tail = waveform::emptyPeak();
-            int64_t headFrames = 0, tailFrames = 0;
-        };
-        struct Node
-        {
-            Tree left, right;
-            SourceRange range;
-            int64_t frames;
-            int height;
-            mutable std::shared_ptr<const PreparedPeaks> peaks;
-            const uint64_t identity = nextIdentity.fetch_add(1);
-        };
+        using Tree = EditTree;
+        using PreparedPeaks = EditPeaks;
         AudioShape dimensions;
+        std::shared_ptr<void> rootMemory;
+        std::shared_ptr<const AudioRevision> originalSource;
         std::vector<Tree> channels;
 
         static int height(const Tree &tree)
         {
-            return tree ? tree->height : 0;
+            return tree.height();
         }
         static int64_t length(const Tree &tree)
         {
-            return tree ? tree->frames : 0;
+            return tree.frames();
         }
         static int64_t sum(int64_t a, int64_t b)
         {
@@ -80,8 +57,7 @@ namespace cupuacu::storage
             }
             const auto frames = range.frames;
             ++allocated;
-            return std::make_shared<Node>(
-                Node{{}, {}, std::move(range), frames, 1, {}});
+            return Tree::leaf(std::move(range));
         }
         static Tree branch(Tree left, Tree right, uint64_t &allocated)
         {
@@ -96,8 +72,7 @@ namespace cupuacu::storage
             const auto frames = sum(left->frames, right->frames);
             const auto depth = 1 + std::max(left->height, right->height);
             ++allocated;
-            return std::make_shared<Node>(
-                Node{std::move(left), std::move(right), {}, frames, depth, {}});
+            return Tree::branch(left, right);
         }
         static Tree balance(Tree left, Tree right, uint64_t &allocated)
         {
@@ -109,7 +84,7 @@ namespace cupuacu::storage
                                   branch(left->right, right, allocated),
                                   allocated);
                 }
-                const auto &middle = left->right;
+                const auto middle = left->right;
                 return branch(branch(left->left, middle->left, allocated),
                               branch(middle->right, right, allocated),
                               allocated);
@@ -121,7 +96,7 @@ namespace cupuacu::storage
                     return branch(branch(left, right->left, allocated),
                                   right->right, allocated);
                 }
-                const auto &middle = right->left;
+                const auto middle = right->left;
                 return branch(branch(left, middle->left, allocated),
                               branch(middle->right, right->right, allocated),
                               allocated);
@@ -168,8 +143,8 @@ namespace cupuacu::storage
             {
                 first = first->left;
             }
-            const auto &a = last->range;
-            const auto &b = first->range;
+            const auto a = last->range;
+            const auto b = first->range;
             const bool contiguous =
                 a.source == b.source &&
                 (a.source
@@ -265,7 +240,7 @@ namespace cupuacu::storage
                 return false;
             }
             ++work.visitedNodes;
-            if (std::atomic_load(&tree->peaks))
+            if (tree.prepared())
             {
                 return true;
             }
@@ -277,9 +252,9 @@ namespace cupuacu::storage
                 {
                     return false;
                 }
-                prepared->whole = waveform::combine(
-                    std::atomic_load(&tree->left->peaks)->whole,
-                    std::atomic_load(&tree->right->peaks)->whole);
+                prepared->whole =
+                    waveform::combine(tree->left.prepared()->whole,
+                                      tree->right.prepared()->whole);
             }
             else if (!tree->range.source)
             {
@@ -288,7 +263,7 @@ namespace cupuacu::storage
             }
             else
             {
-                const auto &range = tree->range;
+                const auto range = tree->range;
                 const auto &source = *range.source;
                 if (!source.sourcePeaks())
                 {
@@ -346,7 +321,7 @@ namespace cupuacu::storage
             }
             std::shared_ptr<const PreparedPeaks> immutable =
                 std::move(prepared);
-            std::atomic_store(&tree->peaks, std::move(immutable));
+            tree.setPrepared(*immutable);
             ++work.preparedNodes;
             return true;
         }
@@ -358,7 +333,7 @@ namespace cupuacu::storage
                 return waveform::emptyPeak();
             }
             ++work.visitedNodes;
-            const auto prepared = std::atomic_load(&tree->peaks);
+            const auto prepared = tree.prepared();
             if (start == 0 && count == tree->frames)
             {
                 return prepared ? std::optional{prepared->whole} : std::nullopt;
@@ -369,7 +344,7 @@ namespace cupuacu::storage
                 {
                     return std::nullopt; // Pending never reads disk.
                 }
-                const auto &range = tree->range;
+                const auto range = tree->range;
                 if (!range.source)
                 {
                     return waveform::Peak{range.constantValue,
@@ -436,20 +411,42 @@ namespace cupuacu::storage
             }
             validateRange(shape, 0, start, std::size_t(count));
         }
-        AudioEditRevision(AudioShape shape, std::vector<Tree> roots)
-            : dimensions(shape), channels(std::move(roots))
+        static void validateShape(AudioShape shape)
         {
+            const bool unconfigured = shape.frames == 0 &&
+                                      shape.channels == 0 &&
+                                      shape.sampleRate >= 0;
+            if (shape.channels > 256 || shape.format < SampleFormat::PCM_S8 ||
+                shape.format > SampleFormat::Unknown ||
+                (!unconfigured && (shape.frames < 0 || shape.channels <= 0 ||
+                                   shape.sampleRate <= 0 ||
+                                   shape.format == SampleFormat::Unknown)))
+            {
+                throw std::invalid_argument("Invalid audio revision shape");
+            }
+        }
+        AudioEditRevision(AudioShape shape, std::vector<Tree> roots)
+            : dimensions(shape),
+              rootMemory(reserveWorking(sizeof(AudioEditRevision) +
+                                            roots.capacity() * sizeof(Tree),
+                                        MemoryUse::Index)),
+              channels(std::move(roots))
+        {
+            for (auto &root : channels)
+            {
+                root = root.pin();
+            }
+            if (!channels.empty())
+            {
+                originalSource = channels.front().ownedSource();
+            }
         }
 
     public:
         static std::shared_ptr<const AudioEditRevision>
         silence(AudioShape shape)
         {
-            if (shape.frames < 0 || shape.channels <= 0 ||
-                shape.sampleRate <= 0)
-            {
-                throw std::invalid_argument("Invalid silence shape");
-            }
+            validateShape(shape);
             std::vector<Tree> roots;
             uint64_t allocated = 0;
             for (int c = 0; c < shape.channels; ++c)
@@ -494,6 +491,34 @@ namespace cupuacu::storage
             return std::shared_ptr<const AudioEditRevision>(
                 new AudioEditRevision(target, std::move(roots)));
         }
+        // Legacy recording changes shape without resampling retained frames.
+        // Reuse common channels, trim excess frames and synthesize new silence.
+        std::shared_ptr<const AudioEditRevision>
+        withShape(AudioShape target) const
+        {
+            validateShape(target);
+            std::vector<Tree> roots(target.channels);
+            uint64_t allocated = 0;
+            for (int c = 0; c < target.channels; ++c)
+            {
+                auto root = c < dimensions.channels ? channels[c] : Tree{};
+                if (length(root) > target.frames)
+                {
+                    root = split(root, target.frames, allocated).first;
+                }
+                if (length(root) < target.frames)
+                {
+                    root = concatenate(
+                        root,
+                        leaf({{}, c, 0, target.frames - length(root)},
+                             allocated),
+                        allocated);
+                }
+                roots[c] = std::move(root);
+            }
+            return std::shared_ptr<const AudioEditRevision>(
+                new AudioEditRevision(target, std::move(roots)));
+        }
         // Worker-only metadata lookup; provenance pages may read disk.
         bool isDirty(int channel, int64_t frame) const
         {
@@ -512,6 +537,10 @@ namespace cupuacu::storage
                                   }
                               });
             return dirty;
+        }
+        std::shared_ptr<const AudioRevision> ownedSource() const
+        {
+            return originalSource;
         }
         AudioShape shape() const override
         {
@@ -600,6 +629,17 @@ namespace cupuacu::storage
             }
             validateRange(dimensions, channel, start, std::size_t(count));
             return overview(channels[channel], start, count, work);
+        }
+        EditTree::Stats indexStats() const
+        {
+            for (const auto &root : channels)
+            {
+                if (root)
+                {
+                    return root.stats();
+                }
+            }
+            return {};
         }
         int indexHeight() const
         {

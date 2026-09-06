@@ -196,7 +196,8 @@ namespace cupuacu
     void Document::setExternalAudioShape(SampleFormat formatToUse, int rate,
                                          int channels, int64_t frames)
     {
-        if (rate <= 0 || channels <= 0 || frames < 0)
+        if (!(frames == 0 && channels == 0 && rate >= 0) &&
+            (rate <= 0 || channels <= 0 || frames < 0))
         {
             throw std::invalid_argument("Invalid external audio shape");
         }

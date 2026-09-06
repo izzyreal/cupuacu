@@ -5,6 +5,7 @@
 #include "gui/EditorViewState.hpp"
 
 #include <deque>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -15,7 +16,7 @@ namespace cupuacu
     {
         inline uint64_t nextDocumentTabId()
         {
-            static uint64_t nextId = 1;
+            static std::atomic<uint64_t> nextId{1};
             return nextId++;
         }
     } // namespace detail

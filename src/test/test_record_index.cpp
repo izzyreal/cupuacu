@@ -347,3 +347,50 @@ TEST_CASE("Restoring older roots cannot shorten a shared archive store",
     CHECK(sample == .75f);
     RevisionArchive::remove(path / "manifest");
 }
+
+TEST_CASE("Monolithic legacy provenance streams through bounded reads",
+          "[record-index][legacy-cbor]")
+{
+    const auto path = test::makeUniqueTestRoot("monolithic-source-index");
+    auto cache = std::make_shared<DecodedBlockCache>(AudioBlockBytes);
+    constexpr int64_t frames = 65536;
+    AudioShape shape{frames, 1, 48000, SampleFormat::FLOAT32};
+    auto store = std::make_shared<AudioBlockStore>(path / "working");
+    AudioRevisionBuilder builder(shape, store, cache);
+    builder.appendInterleaved(std::vector<float>(frames, .75f));
+    auto source = builder.finish();
+    auto archive = RevisionArchive::open(path / "manifest");
+    const auto current = archive->saveSource(source);
+    archive->commit({{"source", current}});
+    auto manifest = archive->readManifest();
+    const auto index = path / "manifest.revisions" /
+                       manifest.at("generation").get<std::string>() /
+                       "index.bin";
+    auto legacy = readRecord(index, current);
+    auto runs = Json::array();
+    for (int64_t i = 0; i < frames; ++i)
+    {
+        runs.push_back({i, 1, 0, i, bool(i % 2)});
+    }
+    legacy["metadata"] = Json::array({std::move(runs)});
+    REQUIRE(Json::to_cbor(legacy).size() > 256 * 1024);
+    const auto id = appendRecord(index, legacy);
+    manifest["source"] = id;
+    manifest["logEnd"] = std::filesystem::file_size(index);
+    manifest["version"] = 1;
+    std::ofstream(path / "manifest") << manifest.dump();
+    archive->readManifest();
+    const auto originalBytes = std::filesystem::file_size(index);
+    auto restored = archive->loadSource(id);
+    float value = 0;
+    restored->readChannel(0, frames - 1, {&value, 1});
+    CHECK(value == .75f);
+    std::array<uint8_t, 2> dirty;
+    restored->readDirtyFlags(0, frames - 2, dirty);
+    CHECK(dirty == std::array<uint8_t, 2>{0, 1});
+    CHECK(std::filesystem::file_size(index) == originalBytes);
+    const auto copied = archive->saveSource(restored);
+    archive->commit({{"source", copied}});
+    CHECK(readRecord(index, copied)["metadata"][0].is_object());
+    RevisionArchive::remove(path / "manifest");
+}

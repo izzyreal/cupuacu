@@ -1,3 +1,4 @@
+#include "TestRevisionCommands.hpp"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
@@ -754,6 +755,7 @@ TEST_CASE("Overwrite after cut preserves surviving PCM16 AIFF sample bytes",
     session.selection.setValue1(2.0);
     session.selection.setValue2(4.0);
     cupuacu::actions::audio::performCut(&state);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
@@ -786,6 +788,7 @@ TEST_CASE("Overwrite after insert silence preserves surrounding PCM16 AIFF sampl
     auto &session = state.getActiveDocumentSession();
     session.cursor = 2;
     cupuacu::actions::audio::performInsertSilence(&state, 2);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
@@ -860,6 +863,7 @@ TEST_CASE("Overwrite after stereo cut preserves surviving interleaved AIFF PCM16
     session.selection.setValue1(1.0);
     session.selection.setValue2(3.0);
     cupuacu::actions::audio::performCut(&state);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(cupuacu::actions::overwritePreserving(&state));
 

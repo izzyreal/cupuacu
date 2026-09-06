@@ -8,7 +8,9 @@ namespace cupuacu::playback
     ReadAhead::ReadAhead(std::shared_ptr<const storage::AudioReader> reader,
                          int64_t initialFrame)
         : dimensions(reader ? reader->shape() : storage::AudioShape{}),
-          shared(std::make_shared<Shared>())
+          shared(std::make_shared<Shared>(storage::reserveWorking(
+              sizeof(Shared) + blockFrames * sizeof(float),
+              storage::MemoryUse::Transport)))
     {
         if (!reader || dimensions.frames <= 0 || dimensions.channels < 1 ||
             dimensions.channels > 2 || initialFrame < 0 ||

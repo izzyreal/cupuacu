@@ -1,3 +1,4 @@
+#include "TestRevisionCommands.hpp"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
@@ -613,9 +614,11 @@ TEST_CASE("Block waveform overview preserves pasted-copy peaks in the former com
     pastedSession.selection.setValue2(
         static_cast<double>(pastedSession.document.getFrameCount()));
     cupuacu::actions::audio::performCopy(&pastedState);
+    cupuacu::test::finishRevisionCommands(&pastedState);
     pastedSession.selection.reset();
     pastedSession.cursor = pasteOffset;
     cupuacu::actions::audio::performPaste(&pastedState);
+    cupuacu::test::finishRevisionCommands(&pastedState);
     pastedSession.rebuildWaveformCacheSynchronously();
 
     for (const int totalWidth : {756, 1200})

@@ -1,4 +1,5 @@
 #include "M4aAlacWriter.hpp"
+#include "../../storage/WorkingMemory.hpp"
 
 #include "../FileIo.hpp"
 #include "../SampleQuantization.hpp"
@@ -41,9 +42,10 @@ namespace cupuacu::file::m4a
             return *reinterpret_cast<const std::uint8_t *>(&value) == 1;
         }
 
-        void appendNativePcm(std::vector<std::uint8_t> &bytes,
-                             const std::int64_t value,
-                             const std::uint32_t bitsPerSample)
+        void appendNativePcm(
+            storage::WorkingVector<std::uint8_t, storage::MemoryUse::Container>
+                &bytes,
+            const std::int64_t value, const std::uint32_t bitsPerSample)
         {
             const auto pcm = static_cast<std::int32_t>(value);
             const auto *raw = reinterpret_cast<const std::uint8_t *>(&pcm);
@@ -153,12 +155,17 @@ namespace cupuacu::file::m4a
                     throw std::runtime_error("Failed to open M4A output file");
                 }
                 beginAlacM4a(output);
+                auto memory = storage::reserveWorking(
+                    uint64_t(packetFrames) * shape.channels * sizeof(float),
+                    storage::MemoryUse::Export);
                 AlacMovieDescription description;
                 description.packetSizes.reserve(
                     std::uint64_t(shape.frames) / packetFrames + 1);
                 std::vector<float> samples(std::size_t(packetFrames) *
                                            shape.channels);
-                std::vector<std::uint8_t> pcm;
+                storage::WorkingVector<std::uint8_t,
+                                       storage::MemoryUse::Container>
+                    pcm;
                 pcm.reserve(std::size_t(packetFrames) * shape.channels *
                             (bitDepth / 8));
                 std::uint64_t audioBytes = 0;

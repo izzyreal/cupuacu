@@ -46,7 +46,9 @@ namespace cupuacu::storage
         std::shared_ptr<const AudioEditRevision> original;
         int64_t start;
         std::filesystem::path directory;
-        std::array<audio::RecordedChunk, queueChunks> queue;
+        std::shared_ptr<void> memory;
+        using Queue = std::array<audio::RecordedChunk, queueChunks>;
+        std::unique_ptr<Queue> queue;
         std::atomic<uint64_t> head{0}, tail{0}, highWater{0};
         std::atomic_bool finishing{false}, canceled{false}, overflow{false};
         mutable std::mutex publicationMutex;

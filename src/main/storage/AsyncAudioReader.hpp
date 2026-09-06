@@ -1,5 +1,6 @@
 #pragma once
 #include "AudioWindow.hpp"
+#include "WorkingMemory.hpp"
 #include "../concurrency/LatestValueWorker.hpp"
 
 namespace cupuacu::storage
@@ -9,12 +10,32 @@ namespace cupuacu::storage
     public:
         struct Result
         {
+            std::shared_ptr<void> memory;
             uint64_t generation = 0;
             int channel = 0;
             int64_t start = 0;
             std::vector<float> samples;
             std::exception_ptr error;
             bool firstSampleDirty = true;
+            Result() = default;
+            Result(const Result &) = delete;
+            Result &operator=(const Result &) = delete;
+            Result(Result &&) noexcept = default;
+            Result &operator=(Result &&other) noexcept
+            {
+                if (this != &other)
+                {
+                    Result old(std::move(*this));
+                    memory = std::move(other.memory);
+                    generation = other.generation;
+                    channel = other.channel;
+                    start = other.start;
+                    samples = std::move(other.samples);
+                    error = std::move(other.error);
+                    firstSampleDirty = other.firstSampleDirty;
+                }
+                return *this;
+            }
         };
 
     private:
@@ -50,9 +71,14 @@ namespace cupuacu::storage
                       const Request &request, const Worker::CancelCheck &cancel)
                       -> std::optional<Result>
                   {
-                      Result result{0, request.channel, request.start, {}, {}};
+                      Result result;
+                      result.channel = request.channel;
+                      result.start = request.start;
                       try
                       {
+                          result.memory =
+                              reserveWorking(request.frames * sizeof(float),
+                                             MemoryUse::Viewport);
                           result.samples.resize(request.frames);
                           if (!readAudioWindow(*reader, request.channel,
                                                request.start, result.samples,

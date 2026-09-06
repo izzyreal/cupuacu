@@ -48,6 +48,7 @@ namespace cupuacu::actions::io
         [[nodiscard]] std::unique_ptr<file::LoadedAudioFile> takeLoadedFile();
         [[nodiscard]] std::optional<waveform::DecodedWaveformChunk>
         takePreview();
+        std::unique_ptr<DocumentSession> takeRestoredSession();
         [[nodiscard]] std::uint64_t getId() const;
         [[nodiscard]] const std::string &getPath() const;
         [[nodiscard]] const PendingOpenRequest &getRequest() const;
@@ -67,6 +68,7 @@ namespace cupuacu::actions::io
         std::optional<double> progress;
         std::string error;
         std::unique_ptr<file::LoadedAudioFile> loadedFile;
+        std::unique_ptr<DocumentSession> restoredSession;
         std::shared_ptr<concurrency::TaskScheduler> scheduler;
         concurrency::TaskScheduler::Ticket completion;
         std::atomic<bool> cancelRequested{false};

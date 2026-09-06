@@ -1,5 +1,5 @@
 #pragma once
-#include "../concurrency/LatestValueWorker.hpp"
+#include "../concurrency/ScheduledLatestValue.hpp"
 #include "../storage/AudioEditRevision.hpp"
 #include "../waveform/WaveformViewport.hpp"
 
@@ -13,14 +13,15 @@ namespace cupuacu::effects
     class PeakAnalysis
     {
         using Worker =
-            concurrency::LatestValueWorker<PeakAnalysisRequest, float>;
+            concurrency::ScheduledLatestValue<PeakAnalysisRequest, float>;
         Worker worker;
 
     public:
         PeakAnalysis(
             std::shared_ptr<const storage::AudioReader> reader,
             std::shared_ptr<const storage::AudioEditRevision> revision = {},
-            std::shared_ptr<const waveform::ViewportSource> view = {});
+            std::shared_ptr<const waveform::ViewportSource> view = {},
+            std::shared_ptr<concurrency::TaskScheduler> scheduler = {});
         uint64_t submit(PeakAnalysisRequest request)
         {
             return worker.submit(std::move(request));

@@ -124,6 +124,9 @@ namespace cupuacu::waveform
         }
         pages->store->flush();
         result->paged = std::move(pages);
+        auto remainingMemory = storage::reserveWorking(
+            result->residency().residentBytes, storage::MemoryUse::Peaks);
+        result->residentMemory = std::move(remainingMemory);
         return result;
     }
 
@@ -154,6 +157,15 @@ namespace cupuacu::waveform
             std::shared_ptr<SourcePeaks>(new SourcePeaks(shape, counts.size()));
         if (counts.front() <= residentLevelLimit)
         {
+            auto scratch = storage::reserveWorking(
+                counts.front() * sizeof(Peak), storage::MemoryUse::Peaks);
+            uint64_t bytes = 0;
+            for (const auto count : counts)
+            {
+                bytes += count * sizeof(Peak) * shape.channels;
+            }
+            result->residentMemory =
+                storage::reserveWorking(bytes, storage::MemoryUse::Peaks);
             for (int c = 0; c < shape.channels; ++c)
             {
                 check();
@@ -187,6 +199,8 @@ namespace cupuacu::waveform
         // Keep input reads large and sequential while sealing small output
         // tiles. Parent summaries propagate during append, without rereading
         // the detailed tiles to construct the next group.
+        auto scratch = storage::reserveWorking(16384 * sizeof(Peak),
+                                               storage::MemoryUse::Peaks);
         std::array<Peak, 16384> buffer;
         for (int c = 0; c < shape.channels; ++c)
         {

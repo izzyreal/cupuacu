@@ -374,6 +374,7 @@ set(CUPUACU_SHARED_SOURCES
     src/main/gui/TooltipController.cpp
     src/main/gui/Window.cpp
     src/main/concurrency/TaskScheduler.cpp
+    src/main/storage/EditTree.cpp
     src/main/storage/MemoryResources.cpp
     src/main/waveform/SourcePeaks.cpp
     src/main/waveform/StreamingPeakBuilder.cpp

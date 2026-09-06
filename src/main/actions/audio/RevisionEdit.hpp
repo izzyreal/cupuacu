@@ -2,6 +2,7 @@
 
 #include "../Undoable.hpp"
 #include "../../storage/AudioEditRevision.hpp"
+#include "../../storage/WorkingAllocator.hpp"
 
 namespace cupuacu::actions::audio
 {
@@ -9,7 +10,8 @@ namespace cupuacu::actions::audio
     struct RevisionEditState
     {
         std::shared_ptr<const storage::AudioEditRevision> audio;
-        std::vector<DocumentMarker> markers;
+        storage::WorkingVector<DocumentMarker, storage::MemoryUse::Index>
+            markers;
         gui::Selection<double> selection{0.0};
         int64_t cursor = 0;
         static RevisionEditState capture(const DocumentSession &session);
@@ -57,6 +59,13 @@ namespace cupuacu::actions::audio
         file::OverwritePreservationMutation
         overwritePreservationMutation() const override
         {
+            const auto old = before.audio->shape(), next = after.audio->shape();
+            if (old.channels != next.channels ||
+                old.sampleRate != next.sampleRate || old.format != next.format)
+            {
+                return file::OverwritePreservationMutationHelper::incompatible(
+                    "Edit changed audio format");
+            }
             return file::OverwritePreservationMutationHelper::compatible();
         }
     };
@@ -73,7 +82,15 @@ namespace cupuacu::actions::audio
     void performRevisionCommand(
         State *, RevisionCommand, int64_t start, int64_t count,
         int64_t silenceFrames = 0,
-        std::shared_ptr<const storage::AudioEditRevision> pasteSource = {});
-    void removeMarkerRange(std::vector<DocumentMarker> &, int64_t start,
+        std::shared_ptr<const storage::AudioEditRevision> pasteSource = {},
+        uint64_t targetTabId = 0);
+    void processPendingRevisionCommands(State *);
+    void prepareRevisionEdit(
+        State *, std::string,
+        std::function<RevisionEditState(const RevisionEditState &)>);
+    void prepareRevisionAction(State *,
+                               std::function<std::function<void(State *, int)>(
+                                   const RevisionEditState &)>);
+    void removeMarkerRange(std::span<DocumentMarker>, int64_t start,
                            int64_t count);
 } // namespace cupuacu::actions::audio

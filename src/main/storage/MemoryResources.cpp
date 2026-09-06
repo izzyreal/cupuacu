@@ -8,11 +8,16 @@
 
 namespace cupuacu::storage
 {
+    std::shared_ptr<WorkingMemory> defaultWorkingMemory()
+    {
+        return defaultDecodedBlockCache();
+    }
     std::shared_ptr<DecodedBlockCache> defaultDecodedBlockCache()
     {
         static const auto cache = std::make_shared<DecodedBlockCache>(
             DecodedBlockCache::defaultByteBudget(
-                uint64_t(std::max(SDL_GetSystemRAM(), 0)) * 1024 * 1024));
+                uint64_t(std::max(SDL_GetSystemRAM(), 0)) * 1024 * 1024),
+            true);
         return cache;
     }
 

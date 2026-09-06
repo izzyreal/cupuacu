@@ -49,10 +49,9 @@ namespace cupuacu
         }
         const auto shape = replacement->shape();
         const auto old = expected->shape();
-        if (shape.channels != old.channels ||
-            shape.sampleRate != old.sampleRate || shape.format != old.format)
+        if (shape.channels != old.channels)
         {
-            throw std::invalid_argument("Edit changes document audio format");
+            waveformCaches.resetToChannelCount(shape.channels);
         }
         auto retained = concurrency::releaseOnWorker(std::move(replacement));
         document.setExternalAudioShape(shape.format, shape.sampleRate,
@@ -111,21 +110,7 @@ namespace cupuacu
         readRevision = std::move(retained);
         savedReadRevision = readRevision;
         savedRevisionMarkers = document.getMarkers();
-        preservationSource.reset();
-        if (shape.frames)
-        {
-            readRevision->visitSourceRanges(
-                0, 0, shape.frames,
-                [&](const auto &range)
-                {
-                    if (!preservationSource && range.source &&
-                        !range.source->sourcePath().empty())
-                    {
-                        preservationSource =
-                            concurrency::releaseOnWorker(range.source);
-                    }
-                });
-        }
+        preservationSource = readRevision->ownedSource();
 
         readRevisionVersion = document.getWaveformDataVersion();
         viewportSource.reset();

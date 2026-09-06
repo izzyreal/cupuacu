@@ -4,6 +4,7 @@
 #include "LegacyRecovery.hpp"
 #include "../waveform/DecodedWaveformBuilder.hpp"
 #include "../concurrency/DeferredRelease.hpp"
+#include "../concurrency/TaskScheduler.hpp"
 
 #include "LongTask.hpp"
 #include "Logger.hpp"
@@ -34,21 +35,12 @@ namespace cupuacu::persistence
         {
         public:
             ClipboardSnapshotWorker()
-                : worker(
-                      [this]
-                      { run(); })
+                : scheduler(concurrency::defaultTaskScheduler())
             {
             }
-
             ~ClipboardSnapshotWorker()
             {
                 flush();
-                {
-                    std::lock_guard lock(mutex);
-                    stopping = true;
-                }
-                cv.notify_all();
-                worker.join();
             }
 
             void schedule(std::filesystem::path path,
@@ -71,8 +63,11 @@ namespace cupuacu::persistence
                     }
                     pending = Request{std::move(path), std::move(clipboard),
                                       revision};
+                    if (!busy)
+                    {
+                        dispatch();
+                    }
                 }
-                cv.notify_all();
             }
 
             void flush()
@@ -95,55 +90,76 @@ namespace cupuacu::persistence
             std::condition_variable cv;
             std::optional<Request> pending;
             bool busy = false;
-            bool stopping = false;
             std::filesystem::path activePath;
             uint64_t activeRevision = 0;
             std::filesystem::path completedPath;
             uint64_t completedRevision = 0;
-            std::thread worker;
+            std::shared_ptr<concurrency::TaskScheduler> scheduler;
+            concurrency::TaskScheduler::Ticket ticket;
+            void dispatch()
+            {
+                busy = true;
+                try
+                {
+                    ticket = scheduler->submit(
+                        [this]
+                        {
+                            run();
+                        },
+                        {.priority =
+                             concurrency::TaskScheduler::Priority::Autosave,
+                         .deadline = std::chrono::steady_clock::now() +
+                                     std::chrono::seconds(5)});
+                }
+                catch (const std::exception &e)
+                {
+                    busy = false;
+                    pending.reset();
+                    logging::info(std::string("Clipboard autosave: ") +
+                                  e.what());
+                    cv.notify_all();
+                }
+            }
 
             void run()
             {
-                for (;;)
+                std::optional<Request> request;
                 {
-                    std::optional<Request> request;
-                    {
-                        std::unique_lock lock(mutex);
-                        cv.wait(lock,
-                                [this]
-                                { return stopping || pending.has_value(); });
-                        if (stopping && !pending.has_value())
-                        {
-                            return;
-                        }
-                        request = std::move(pending);
-                        pending.reset();
-                        busy = true;
-                        activePath = request->path;
-                        activeRevision = request->revision;
-                    }
-
-                    bool saved = true;
+                    std::lock_guard lock(mutex);
+                    request = std::move(pending);
+                    pending.reset();
+                    activePath = request->path;
+                    activeRevision = request->revision;
+                }
+                bool saved = false;
+                try
+                {
                     if (request->clipboard.hasAudio())
-                    {
                         saved = saveClipboardSnapshot(request->path,
                                                       request->clipboard);
-                    }
                     else
                     {
                         removeClipboardSnapshot(request->path);
+                        saved = true;
                     }
-
-                    {
-                        std::lock_guard lock(mutex);
-                        busy = false;
-                        completedPath = saved ? std::move(activePath)
-                                              : std::filesystem::path{};
-                        completedRevision = saved ? activeRevision : 0;
-                        activeRevision = 0;
-                    }
-                    cv.notify_all();
                 }
+                catch (const std::exception &e)
+                {
+                    logging::info(std::string("Clipboard autosave: ") +
+                                  e.what());
+                }
+                request.reset(); // Release completed sources on this worker.
+                std::lock_guard lock(mutex);
+                busy = false;
+                completedPath =
+                    saved ? std::move(activePath) : std::filesystem::path{};
+                completedRevision = saved ? activeRevision : 0;
+                activeRevision = 0;
+                if (pending)
+                {
+                    dispatch();
+                }
+                cv.notify_all();
             }
         };
 
@@ -611,8 +627,8 @@ namespace cupuacu::persistence
             {
                 progress(frames ? 0.0 : 1.0);
             }
-            std::vector<float> interleaved(std::size_t(channels) *
-                                           kAudioBlockFrames);
+            storage::WorkingVector<float, storage::MemoryUse::Import>
+            interleaved(std::size_t(channels) * kAudioBlockFrames);
             for (int64_t first = 0; first < frames;)
             {
                 if (isCanceled && isCanceled())
@@ -646,36 +662,7 @@ namespace cupuacu::persistence
                 restored, legacyState, path.parent_path(), isCanceled);
             if (!migrated)
             {
-                // Compatibility is limited to histories whose recording
-                // commands change audio shape. Keep their old reader and
-                // history together.
-                Document resident;
-                resident.initialize(format, sampleRate, channels, frames);
-                std::vector<float> channel(kAudioBlockFrames);
-                auto reader = restored.getAudioReader();
-                waveform::DecodedWaveformBuilder compatibilityPeaks;
-                for (int64_t first = 0; first < frames;
-                     first += kAudioBlockFrames)
-                {
-                    if (isCanceled && isCanceled())
-                    {
-                        throw LongTaskCanceledError{};
-                    }
-                    const auto count =
-                        std::min(kAudioBlockFrames, frames - first);
-                    for (int c = 0; c < channels; ++c)
-                    {
-                        reader->readChannel(c, first,
-                                            std::span(channel).first(count));
-                        resident.writeChannelFloatBlock(
-                            c, first, channel.data(), count, false);
-                    }
-                    compatibilityPeaks.append(resident, first + count);
-                }
-                restored.waveformCaches = compatibilityPeaks.takeCaches();
-                resident.replaceMarkers(restored.document.getMarkers());
-                restored.clearReadRevision();
-                restored.document = std::move(resident);
+                throw std::runtime_error("Legacy history migration failed");
             }
             if (isCanceled && isCanceled())
             {

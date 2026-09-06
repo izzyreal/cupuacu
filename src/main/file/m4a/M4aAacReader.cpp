@@ -70,7 +70,8 @@ namespace cupuacu::file::m4a
             static_cast<std::uint64_t>(parsed.primingFrames);
         const auto audibleEnd = static_cast<std::uint64_t>(
             parsed.frameCount - parsed.paddingFrames);
-        std::vector<std::uint8_t> packet;
+        storage::WorkingVector<std::uint8_t, storage::MemoryUse::Container>
+            packet;
         for (std::size_t i = 0; i < parsed.packetSizes.size(); ++i)
         {
             packet.resize(parsed.packetSizes[i]);

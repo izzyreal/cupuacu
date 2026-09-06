@@ -7,7 +7,12 @@ namespace cupuacu::storage
     RecordingWriter::RecordingWriter(
         std::shared_ptr<const AudioEditRevision> before, int64_t first,
         std::filesystem::path path)
-        : original(std::move(before)), start(first), directory(std::move(path))
+        : original(std::move(before)), start(first), directory(std::move(path)),
+          memory(reserveWorking(sizeof(Queue) +
+                                    batchFrames * audio::kMaxRecordedChannels *
+                                        sizeof(float),
+                                MemoryUse::Transport)),
+          queue(std::make_unique<Queue>())
     {
         if (!original || start < 0 || start > original->shape().frames ||
             original->shape().channels > int(audio::kMaxRecordedChannels))
@@ -52,7 +57,7 @@ namespace cupuacu::storage
             finish();
             return false;
         }
-        queue[next % queueChunks] = chunk;
+        (*queue)[next % queueChunks] = chunk;
         head.store(next + 1, std::memory_order_release);
         highWater.store(std::max(highWater.load(), next + 1 - consumed));
         return true;
@@ -94,31 +99,32 @@ namespace cupuacu::storage
                     std::span(samples).first(buffered * shape.channels));
                 // Build summaries from the captured scratch, never reread
                 // audio.
-                std::vector<std::vector<gui::PeakLevel>> levels(shape.channels);
-                for (int c = 0; c < shape.channels; ++c)
-                {
-                    auto &base = levels[c].emplace_back();
-                    base.resize(
-                        (buffered + waveform::SourcePeaks::blockFrames - 1) /
-                        waveform::SourcePeaks::blockFrames);
-                    for (int64_t p = 0; p < int64_t(base.size()); ++p)
+                auto peaks = waveform::SourcePeaks::createStreaming(
+                    batchShape,
+                    [&](int c, uint64_t first, std::span<gui::Peak> out)
                     {
-                        auto peak = waveform::emptyPeak();
-                        for (int64_t f = p * waveform::SourcePeaks::blockFrames;
-                             f <
-                             std::min(buffered,
-                                      (p + 1) *
-                                          waveform::SourcePeaks::blockFrames);
-                             ++f)
+                        for (std::size_t p = 0; p < out.size(); ++p)
                         {
-                            const auto value = samples[f * shape.channels + c];
-                            peak = waveform::combine(peak, {value, value});
+                            auto peak = waveform::emptyPeak();
+                            const auto begin =
+                                int64_t(first + p) *
+                                waveform::SourcePeaks::blockFrames;
+                            for (auto f = begin;
+                                 f <
+                                 std::min(
+                                     buffered,
+                                     begin +
+                                         waveform::SourcePeaks::blockFrames);
+                                 ++f)
+                            {
+                                const auto value =
+                                    samples[f * shape.channels + c];
+                                peak = waveform::combine(peak, {value, value});
+                            }
+                            out[p] = peak;
                         }
-                        base.set(p, peak);
-                    }
-                }
-                auto peaks = std::make_shared<waveform::SourcePeaks>(
-                    batchShape, std::move(levels));
+                    },
+                    cache);
                 auto inserted = AudioEditRevision::from(
                     builder.finish({}, std::move(peaks)));
                 AudioEditTransaction edit(*current);
@@ -163,7 +169,7 @@ namespace cupuacu::storage
                     std::this_thread::sleep_for(std::chrono::milliseconds(1));
                     continue;
                 }
-                const auto chunk = queue[next % queueChunks];
+                const auto chunk = (*queue)[next % queueChunks];
                 tail.store(next + 1, std::memory_order_release);
                 if (!chunk.frameCount ||
                     chunk.frameCount > audio::kRecordedChunkFrames ||

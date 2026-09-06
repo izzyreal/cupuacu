@@ -47,6 +47,8 @@ namespace cupuacu::actions::effects
         result->beforeRevision = concurrency::releaseOnWorker(source);
         storage::AudioEditTransaction edit(*source);
         constexpr int64_t blockFrames = 16384;
+        auto scratch = storage::reserveWorking(2 * blockFrames * sizeof(float),
+                                               storage::MemoryUse::Effect);
         std::array<float, blockFrames> buffer;
         const auto publish = [&](double fraction)
         {

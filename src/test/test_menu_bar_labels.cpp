@@ -3,6 +3,7 @@
 
 #include "State.hpp"
 #include "TestPaths.hpp"
+#include "TestRevisionCommands.hpp"
 #include "TestSdlTtfGuard.hpp"
 #include "actions/io/BackgroundSave.hpp"
 #include "actions/Undoable.hpp"
@@ -861,6 +862,7 @@ TEST_CASE("MenuBar split by markers creates one new document per marker gap",
 
     auto *splitByMarkersEntry = editEntries[9];
     splitByMarkersEntry->mouseDown(leftMouseDown());
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(state.tabs.size() == 3);
     REQUIRE(state.tabs[1].session.document.getFrameCount() == 3);

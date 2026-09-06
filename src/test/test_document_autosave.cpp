@@ -1,3 +1,4 @@
+#include "TestRevisionCommands.hpp"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
@@ -81,27 +82,33 @@ namespace
         return out;
     }
 
-    void requireBuildStatesEqual(
+    void requireRestoredPeaksEqual(
         const cupuacu::gui::WaveformCache::BuildState &expected,
-        const cupuacu::gui::WaveformCache::BuildState &actual)
+        const cupuacu::DocumentSession &restored, int channel = 0)
     {
-        REQUIRE(actual.numSamples == expected.numSamples);
-        REQUIRE(actual.dirtyFromBlock == expected.dirtyFromBlock);
-        REQUIRE(actual.dirtyToBlock == expected.dirtyToBlock);
-        REQUIRE(actual.levels.size() == expected.levels.size());
-        for (std::size_t levelIndex = 0; levelIndex < expected.levels.size();
-             ++levelIndex)
+        auto revision = restored.getEditRevision();
+        REQUIRE(revision);
+        REQUIRE(revision->shape().frames == expected.numSamples);
+        cupuacu::storage::AudioEditRevision::PeakWork work;
+        REQUIRE(revision->prepareWaveform(work));
+        for (std::size_t level = 0; level < expected.levels.size(); ++level)
         {
-            const auto &expectedLevel = expected.levels[levelIndex];
-            const auto &actualLevel = actual.levels[levelIndex];
-            REQUIRE(actualLevel.size() == expectedLevel.size());
-            for (std::size_t peakIndex = 0; peakIndex < expectedLevel.size();
-                 ++peakIndex)
+            const int64_t width = int64_t(128) << level;
+            for (std::size_t i = 0; i < expected.levels[level].size(); ++i)
             {
-                REQUIRE(actualLevel[peakIndex].min ==
-                        Catch::Approx(expectedLevel[peakIndex].min));
-                REQUIRE(actualLevel[peakIndex].max ==
-                        Catch::Approx(expectedLevel[peakIndex].max));
+                const auto count =
+                    std::min(width, expected.numSamples - int64_t(i) * width);
+                if (count <= 0)
+                {
+                    continue;
+                }
+                auto actual = revision->queryWaveformOverview(
+                    channel, int64_t(i) * width, count, work);
+                REQUIRE(actual);
+                CHECK(actual->min ==
+                      Catch::Approx(expected.levels[level][i].min));
+                CHECK(actual->max ==
+                      Catch::Approx(expected.levels[level][i].max));
             }
         }
     }
@@ -196,8 +203,7 @@ TEST_CASE("Document autosave snapshots preserve untitled audio and markers",
     REQUIRE(restored.document.getMarkers().size() == 1);
     REQUIRE(restored.document.getMarkers()[0].frame == 2);
     REQUIRE(restored.document.getMarkers()[0].label == "point");
-    requireBuildStatesEqual(
-        cacheState, restored.getWaveformCache(0).snapshotBuildState());
+    requireRestoredPeaksEqual(cacheState, restored);
     REQUIRE_FALSE(restored.getWaveformCacheBuildProgress().has_value());
 }
 
@@ -287,10 +293,14 @@ TEST_CASE("Undoable mutations autosave and restore untitled sessions",
     REQUIRE(session.document.getMarkers().size() == 1);
     REQUIRE(session.document.getMarkers()[0].label == "middle");
     REQUIRE_FALSE(session.getWaveformCacheBuildProgress().has_value());
-    const auto restoredCacheState = session.getWaveformCache(0).snapshotBuildState();
-    REQUIRE(restoredCacheState.numSamples == 3);
-    REQUIRE(restoredCacheState.dirtyToBlock < restoredCacheState.dirtyFromBlock);
-    REQUIRE_FALSE(restoredCacheState.levels.empty());
+    auto revision = session.getEditRevision();
+    REQUIRE(revision);
+    cupuacu::storage::AudioEditRevision::PeakWork work;
+    REQUIRE(revision->prepareWaveform(work));
+    auto peak = revision->queryWaveformOverview(0, 0, 3, work);
+    REQUIRE(peak);
+    CHECK(peak->min == 0.f);
+    CHECK(peak->max == .75f);
 }
 
 TEST_CASE("Autosaved file-backed sessions restore the snapshot over the source",
@@ -553,9 +563,8 @@ TEST_CASE("Background autosave preserves peaks from its own audio revision",
             REQUIRE(readSample(restored, ch, i) ==
                     expected.document.getSample(ch, i));
         }
-        requireBuildStatesEqual(
-            expected.getWaveformCache(ch).snapshotBuildState(),
-            restored.getWaveformCache(ch).snapshotBuildState());
+        requireRestoredPeaksEqual(
+            expected.getWaveformCache(ch).snapshotBuildState(), restored, ch);
     }
 }
 
@@ -843,6 +852,7 @@ TEST_CASE("Startup restore preserves persistent cut undo history", "[autosave]")
         session.selection.setValue2(3.0);
 
         cupuacu::actions::audio::performCut(&state);
+        cupuacu::test::finishRevisionCommands(&state);
         drainPendingAutosave(state);
         cupuacu::actions::persistSessionState(&state);
 
@@ -883,6 +893,7 @@ TEST_CASE("Startup restore preserves persistent delete undo history", "[autosave
         session.selection.setValue1(1.0);
         session.selection.setValue2(3.0);
         cupuacu::actions::audio::performDelete(&state);
+        cupuacu::test::finishRevisionCommands(&state);
 
         drainPendingAutosave(state);
         cupuacu::actions::persistSessionState(&state);
@@ -977,6 +988,7 @@ TEST_CASE("Startup restore preserves clipboard and copy undo history",
         session.selection.setValue1(0.0);
         session.selection.setValue2(2.0);
         cupuacu::actions::audio::performCopy(&state);
+        cupuacu::test::finishRevisionCommands(&state);
 
         const auto autosavePath =
             state.paths->autosavePath() / "clipboard-copy-doc.cupuacu-autosave";
@@ -1006,6 +1018,7 @@ TEST_CASE("Startup restore preserves clipboard and copy undo history",
     restored.getActiveDocumentSession().selection.reset();
     restored.getActiveDocumentSession().cursor = 3;
     cupuacu::actions::audio::performPaste(&restored);
+    cupuacu::test::finishRevisionCommands(&restored);
     REQUIRE(readMonoSamples(restored.getActiveDocumentSession()) ==
             std::vector<float>({0.0f, 1.0f, 2.0f, 0.0f, 1.0f}));
 }
@@ -1022,10 +1035,12 @@ TEST_CASE("Startup restore preserves multi-step persistent cut undo history",
         session.selection.setValue1(1.0);
         session.selection.setValue2(2.0);
         cupuacu::actions::audio::performCut(&state);
+        cupuacu::test::finishRevisionCommands(&state);
 
         session.selection.setValue1(2.0);
         session.selection.setValue2(3.0);
         cupuacu::actions::audio::performCut(&state);
+        cupuacu::test::finishRevisionCommands(&state);
 
         drainPendingAutosave(state);
         cupuacu::actions::persistSessionState(&state);
@@ -1062,6 +1077,7 @@ TEST_CASE("Startup restore preserves persistent redo history",
         session.selection.setValue2(3.0);
 
         cupuacu::actions::audio::performCut(&state);
+        cupuacu::test::finishRevisionCommands(&state);
         state.undo();
         REQUIRE(state.canRedo());
 
@@ -1098,6 +1114,7 @@ TEST_CASE("Startup restore prunes stale undo stores and keeps active ones",
         session.selection.setValue1(1.0);
         session.selection.setValue2(3.0);
         cupuacu::actions::audio::performCut(&state);
+        cupuacu::test::finishRevisionCommands(&state);
         drainPendingAutosave(state);
         cupuacu::actions::persistSessionState(&state);
         activeUndoStore = session.undoStore.root();
@@ -1212,6 +1229,7 @@ TEST_CASE("Startup restore reports dropped undo history",
         session.selection.setValue1(1.0);
         session.selection.setValue2(3.0);
         cupuacu::actions::audio::performCut(&state);
+        cupuacu::test::finishRevisionCommands(&state);
         drainPendingAutosave(state);
         cupuacu::actions::persistSessionState(&state);
 
@@ -1295,4 +1313,58 @@ TEST_CASE("Session-only undoables do not persist restart undo history",
         state.paths->sessionStatePath());
     REQUIRE(persisted.openDocuments.size() == 1);
     REQUIRE(persisted.openDocuments[0].undoStorePath.empty());
+}
+
+#include "actions/io/BackgroundOpen.hpp"
+TEST_CASE(
+    "Startup autosave and clipboard restore return before bulk slots are "
+    "available",
+    "[startup-scheduler]")
+{
+    cupuacu::test::StateWithTestPaths source{
+        std::string_view{"scheduled-restore"}};
+    initializeMonoDocument(source, {.25f, -.5f, .75f});
+    const auto path = source.paths->statePath() / "restore.snapshot";
+    REQUIRE(cupuacu::persistence::saveDocumentAutosaveSnapshot(
+        path, source.getActiveDocumentSession()));
+    source.clipboard.assignDocument(source.getActiveDocumentSession().document);
+    const auto clipPath = source.paths->statePath() / "restore.clipboard";
+    REQUIRE(cupuacu::persistence::saveClipboardSnapshot(clipPath,
+                                                        source.clipboard));
+    cupuacu::test::StateWithTestPaths target{
+        std::string_view{"scheduled-restore-target"}};
+    target.taskScheduler =
+        std::make_shared<cupuacu::concurrency::TaskScheduler>(1, 8);
+    std::promise<void> release;
+    auto gate = release.get_future().share();
+    auto blocker = target.taskScheduler->submit(
+        [gate]
+        {
+            gate.wait();
+        },
+        {});
+    cupuacu::persistence::PersistedSessionState persisted;
+    persisted.clipboardSnapshotPath = clipPath.string();
+    persisted.openDocuments.push_back({.autosaveSnapshotPath = path.string()});
+    cupuacu::actions::restoreStartupDocument(&target, {}, persisted, true);
+    // No assertion may throw before releasing the intentionally blocked task.
+    const bool pending = bool(target.startupClipboardRestore) &&
+                         target.pendingOpenFiles.size() == 1;
+    const auto beforeFrames =
+        target.getActiveDocumentSession().document.getFrameCount();
+    release.set_value();
+    REQUIRE(pending);
+    REQUIRE(beforeFrames == 0);
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (target.startupRestore.active &&
+           std::chrono::steady_clock::now() < deadline)
+    {
+        cupuacu::actions::io::processPendingOpenWork(&target);
+        std::this_thread::sleep_for(std::chrono::microseconds(100));
+    }
+    REQUIRE_FALSE(target.startupRestore.active);
+    REQUIRE(target.getActiveDocumentSession().document.getFrameCount() == 3);
+    REQUIRE(readSample(target.getActiveDocumentSession(), 0, 1) == -.5f);
+    REQUIRE(target.clipboard.getFrameCount() == 3);
 }

@@ -1,5 +1,6 @@
 #pragma once
 #include "concurrency/TaskScheduler.hpp"
+#include "concurrency/ScheduledLatestValue.hpp"
 #include "concurrency/DeferredRelease.hpp"
 #include "storage/MemoryResources.hpp"
 
@@ -30,6 +31,10 @@ namespace cupuacu::file { class DecodedImportCache; }
 
 namespace cupuacu
 {
+    namespace concurrency
+    {
+        struct RevisionCommandJob;
+    }
     namespace storage
     {
         class ClipboardConversion;
@@ -168,10 +173,10 @@ namespace cupuacu
             int previousActiveTabIndex = 0;
         };
 
+        std::vector<std::shared_ptr<concurrency::RevisionCommandJob>>
+            revisionCommands;
         std::shared_ptr<concurrency::TaskScheduler> taskScheduler =
-            concurrency::releaseOnWorker(
-                std::make_shared<concurrency::TaskScheduler>(2, 64, 128 * 1024 * 1024,
-                    storage::defaultDecodedBlockCache()));
+            concurrency::defaultTaskScheduler();
         std::shared_ptr<audio::AudioDevices> audioDevices;
         std::unique_ptr<storage::MemoryPressureMonitor> memoryPressureMonitor;
         std::unique_ptr<Paths> paths = std::make_unique<Paths>();
@@ -245,6 +250,11 @@ namespace cupuacu
         std::optional<std::uint64_t> pendingCloseTabAfterSaveId;
         std::deque<PendingOpenRequest> pendingOpenFiles;
         StartupRestoreStatus startupRestore;
+        using ClipboardRestoreWorker =
+            concurrency::ScheduledLatestValue<std::filesystem::path,
+                                              std::shared_ptr<ClipboardAudio>>;
+        std::shared_ptr<ClipboardRestoreWorker> startupClipboardRestore;
+        uint64_t startupClipboardVersion = 0;
         PendingOpenWaveformBuildStatus pendingOpenWaveformBuild;
         std::unique_ptr<actions::io::BackgroundOpenJob,
                         void (*)(actions::io::BackgroundOpenJob *)>

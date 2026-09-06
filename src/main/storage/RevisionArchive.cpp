@@ -96,6 +96,12 @@ namespace cupuacu::storage
         {
             AudioShape s{j.at(0).get<int64_t>(), j.at(1).get<int>(),
                          j.at(2).get<int>(), SampleFormat(j.at(3).get<int>())};
+            if (s.frames == 0 && s.channels == 0 && s.sampleRate >= 0 &&
+                s.format >= SampleFormat::PCM_S8 &&
+                s.format <= SampleFormat::Unknown)
+            {
+                return s;
+            }
             if (s.frames < 0 || s.channels <= 0 || s.channels > 256 ||
                 s.sampleRate <= 0 || s.frames > INT64_MAX / s.channels / 4 ||
                 s.format < SampleFormat::PCM_S8 ||
@@ -267,16 +273,55 @@ namespace cupuacu::storage
         {
             throw std::runtime_error("Invalid revision record length");
         }
-        std::vector<uint8_t> bytes(size);
-        in.read(reinterpret_cast<char *>(bytes.data()), size);
-        if (!in || checksum(bytes) != hash)
-        {
-            throw std::runtime_error("Corrupt revision record");
-        }
         if (next)
         {
             *next = id + 8 + size;
         }
+        if (size > 256 * 1024)
+        {
+            if (!upgradeMetadata)
+            {
+                roots.clear();
+                nodes.clear();
+                sources.clear();
+                upgradeMetadata = true;
+            }
+            // Validate the committed bytes before using any of their
+            // references.
+            std::array<uint8_t, 16384> buffer;
+            uint32_t actual = 2166136261u;
+            for (uint64_t left = size; left;)
+            {
+                check();
+                const auto count = std::min<uint64_t>(left, buffer.size());
+                in.read(reinterpret_cast<char *>(buffer.data()), count);
+                if (!in)
+                {
+                    throw std::runtime_error("Truncated revision record");
+                }
+                for (auto b : std::span(buffer).first(count))
+                {
+                    actual = (actual ^ b) * 16777619u;
+                }
+                left -= count;
+            }
+            if (actual != hash)
+            {
+                throw std::runtime_error("Corrupt revision record");
+            }
+            in.seekg(id + 8);
+            return legacyMetadata.read(directory / "index.bin", id + 8, size,
+                                       [this]
+                                       {
+                                           check();
+                                       });
+        }
+        auto scratch =
+            reserveWorking(uint64_t(size) * 8 + 4096, MemoryUse::Index);
+        std::vector<uint8_t> bytes(size);
+        in.read(reinterpret_cast<char *>(bytes.data()), size);
+        if (!in || checksum(bytes) != hash)
+            throw std::runtime_error("Corrupt revision record");
         return Json::from_cbor(bytes);
     }
     RevisionArchive::Json
@@ -306,6 +351,15 @@ namespace cupuacu::storage
         const Json &sequence, uint64_t before,
         const std::function<void(const Json &)> &visitor)
     {
+        if (sequence.is_object() && sequence.contains("$offset"))
+        {
+            legacyMetadata.visit(sequence, visitor,
+                                 [this]
+                                 {
+                                     check();
+                                 });
+            return;
+        }
         if (sequence.is_array())
         {
             for (const auto &value : sequence)
@@ -350,7 +404,9 @@ namespace cupuacu::storage
         auto &copy = stores[source.store->id()];
         if (copy.name.empty())
         {
-            copy.name = "store-" + std::to_string(append({{"kind", "store"}}));
+            copy.setNames("store-" +
+                              std::to_string(append({{"kind", "store"}})),
+                          copy.source);
         }
         const auto destination = directory / copy.name;
         std::filesystem::create_directories(destination);
@@ -431,7 +487,7 @@ namespace cupuacu::storage
             const auto size = std::filesystem::file_size(source.ownedSource);
             copyFile(source.ownedSource, destination / name, 0, size);
             stats.sourceBytes += size;
-            copy.source = name;
+            copy.setNames(copy.name, name);
         }
         sync(destination, true);
         return copy;
@@ -443,9 +499,9 @@ namespace cupuacu::storage
         {
             return 0;
         }
-        if (auto it = sources.find(source->identity); it != sources.end())
+        if (auto it = sources.find(source->identity))
         {
-            return it->second;
+            return *it;
         }
         const auto &copy = copyStore(*source);
         Json blocks = Json::array(), metadata = Json::array(),
@@ -533,7 +589,7 @@ namespace cupuacu::storage
                                 {"blocks", std::move(blocks)},
                                 {"metadata", std::move(metadata)},
                                 {"peaks", std::move(peaks)}});
-        sources[source->identity] = id;
+        sources.set(source->identity, id);
         return id;
     }
     uint64_t RevisionArchive::saveNode(const Tree &tree)
@@ -542,14 +598,14 @@ namespace cupuacu::storage
         {
             return 0;
         }
-        if (auto it = nodes.find(tree->identity); it != nodes.end())
+        if (auto it = nodes.find(tree->identity))
         {
-            return it->second;
+            return *it;
         }
         Json j;
         if (tree->height == 1)
         {
-            const auto &r = tree->range;
+            const auto r = tree->range;
             j = {{"kind", "leaf"},
                  {"source", saveSource(r.source)},
                  {"channel", r.channel},
@@ -564,7 +620,7 @@ namespace cupuacu::storage
                  {"right", saveNode(tree->right)}};
         }
         const auto id = append(j);
-        nodes[tree->identity] = id;
+        nodes.set(tree->identity, id);
         ++stats.nodes;
         return id;
     }
@@ -575,9 +631,9 @@ namespace cupuacu::storage
         {
             return 0;
         }
-        if (auto it = roots.find(audio->identity); it != roots.end())
+        if (auto it = roots.find(audio->identity))
         {
-            return it->second;
+            return *it;
         }
         auto channels = Json::array();
         for (auto &root : audio->channels)
@@ -587,7 +643,7 @@ namespace cupuacu::storage
         auto id = append({{"kind", "revision"},
                           {"shape", shapeJson(audio->shape())},
                           {"channels", channels}});
-        roots[audio->identity] = id;
+        roots.set(audio->identity, id);
         return id;
     }
     std::shared_ptr<const AudioRevision>
@@ -709,8 +765,7 @@ namespace cupuacu::storage
         // a newer root. Never regress the archived-copy watermark: a rebound
         // source may be saved into this same archive, whose bytes are live.
         auto &savedStore = stores[store->id()];
-        savedStore.name = name;
-        savedStore.source = original;
+        savedStore.setNames(name, original);
         for (uint64_t i = 0; i < lengths.size(); ++i)
         {
             if (i == savedStore.lengths.size())
@@ -769,6 +824,7 @@ namespace cupuacu::storage
                 std::size_t pageIndex = 0, byteOffset = 0;
                 uint64_t consumed = 0;
                 uint64_t nextPeak = 0, peakPageCount = 0;
+                RecordIndex<uint64_t> legacyPeakPages;
                 Json page;
                 audio->peaks = waveform::SourcePeaks::createStreaming(
                     shape,
@@ -789,9 +845,19 @@ namespace cupuacu::storage
                             pageIndex = 0;
                             byteOffset = 0;
                             consumed = 0;
+                            legacyPeakPages = RecordIndex<uint64_t>{};
+                            if (legacyPages)
+                            {
+                                readSequence(level.at("pages"), id,
+                                             [&](const Json &ref)
+                                             {
+                                                 legacyPeakPages.push_back(
+                                                     ref.get<uint64_t>());
+                                             });
+                            }
                             peakPageCount =
                                 legacyPages
-                                    ? level.at("pages").size()
+                                    ? legacyPeakPages.size()
                                     : level.at("pageCount").get<uint64_t>();
                             nextPeak = legacyPages
                                            ? 0
@@ -814,11 +880,9 @@ namespace cupuacu::storage
                                     throw std::runtime_error(
                                         "Invalid source peak reference");
                                 }
-                                const auto ref = legacyPages
-                                                     ? level.at("pages")
-                                                           .at(pageIndex)
-                                                           .get<uint64_t>()
-                                                     : nextPeak;
+                                const auto ref =
+                                    legacyPages ? legacyPeakPages[pageIndex]
+                                                : nextPeak;
                                 if (ref >= id)
                                 {
                                     throw std::runtime_error(
@@ -898,7 +962,10 @@ namespace cupuacu::storage
             }
         }
         loadedSources[id] = audio;
-        sources[audio->identity] = id;
+        if (!upgradeMetadata)
+        {
+            sources.set(audio->identity, id);
+        }
         return audio;
     }
     RevisionArchive::Tree RevisionArchive::loadNode(uint64_t id, int depth)
@@ -911,9 +978,12 @@ namespace cupuacu::storage
         {
             throw std::runtime_error("Invalid revision tree depth");
         }
-        if (auto value = loadedNodes[id].lock())
+        if (auto weak = loadedNodes.find(id))
         {
-            return value;
+            if (auto value = EditTree::lock(*weak))
+            {
+                return value;
+            }
         }
         auto j = record(id);
         Tree tree;
@@ -958,8 +1028,11 @@ namespace cupuacu::storage
         {
             throw std::runtime_error("Invalid revision node kind");
         }
-        loadedNodes[id] = tree;
-        nodes[tree->identity] = id;
+        loadedNodes.set(id, tree.weak());
+        if (!upgradeMetadata)
+        {
+            nodes.set(tree->identity, id);
+        }
         return tree;
     }
     std::shared_ptr<const AudioEditRevision> RevisionArchive::load(uint64_t id)
@@ -999,7 +1072,10 @@ namespace cupuacu::storage
         auto audio = std::shared_ptr<const AudioEditRevision>(
             new AudioEditRevision(shape, std::move(channels)));
         loadedRoots[id] = audio;
-        roots[audio->identity] = id;
+        if (!upgradeMetadata)
+        {
+            roots.set(audio->identity, id);
+        }
         return audio;
     }
     uint64_t RevisionArchive::additionalHistoryBytes(
@@ -1007,13 +1083,19 @@ namespace cupuacu::storage
         const std::shared_ptr<const AudioRevision> &preservation,
         const std::vector<std::shared_ptr<const AudioEditRevision>> &history)
     {
-        std::unordered_set<const AudioEditRevision::Node *> visited;
-        std::unordered_set<const AudioBlockStore *> retained;
+        WorkingMap<uint8_t> visited;
+        WorkingMap<uint8_t> retained;
         uint64_t bytes = 0;
         auto source =
             [&](const std::shared_ptr<const AudioRevision> &s, bool count)
         {
-            if (!s || !retained.insert(s->store.get()).second || !count)
+            if (!s ||
+                retained.find(reinterpret_cast<uintptr_t>(s->store.get())))
+            {
+                return;
+            }
+            retained.set(reinterpret_cast<uintptr_t>(s->store.get()), 1);
+            if (!count)
             {
                 return;
             }
@@ -1037,10 +1119,11 @@ namespace cupuacu::storage
         };
         auto visit = [&](auto &&self, const Tree &node, bool count) -> void
         {
-            if (!node || !visited.insert(node.get()).second)
+            if (!node || visited.find(node.identity()))
             {
                 return;
             }
+            visited.set(node.identity(), 1);
             source(node->range.source, count);
             self(self, node->left, count);
             self(self, node->right, count);
@@ -1078,7 +1161,7 @@ namespace cupuacu::storage
                     {
                         if (range.source)
                         {
-                            neededStores.insert(
+                            retainStoreName(
                                 stores.at(range.source->store->id()).name);
                         }
                     });
@@ -1181,6 +1264,7 @@ namespace cupuacu::storage
             check();
             file::replaceFile(temporary, manifestPath);
             cleanup.dismiss();
+            upgradeMetadata = false;
         }
         sync(manifestPath.parent_path(), true);
     }
@@ -1205,6 +1289,13 @@ namespace cupuacu::storage
         if (!index || std::string_view(magic.data(), 4) != "CRV1")
         {
             throw std::runtime_error("Invalid revision index header");
+        }
+        if (j.at("version") == 1 && !upgradeMetadata)
+        {
+            roots.clear();
+            nodes.clear();
+            sources.clear();
+            upgradeMetadata = true;
         }
         readLimit = j.at("logEnd");
         if (readLimit > std::filesystem::file_size(directory / "index.bin"))

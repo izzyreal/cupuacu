@@ -1,4 +1,5 @@
 #pragma once
+#include "../storage/WorkingMemory.hpp"
 
 #include "../State.hpp"
 #include "../concurrency/DeferredRelease.hpp"
@@ -280,6 +281,7 @@ namespace cupuacu::file
             auto &doc = result.document;
             std::uint64_t totalFramesLoaded = 0;
             constexpr std::uint32_t kLoadBlockFrames = 65536u;
+            std::shared_ptr<void> interleavedMemory;
             std::vector<float> interleaved;
             std::uint16_t streamChannels = 0;
             auto flushInterleaved = [&doc, &interleaved, &totalFramesLoaded,
@@ -320,20 +322,24 @@ namespace cupuacu::file
             fileInfo = cupuacu::file::m4a::streamAlacM4aFile(
                 path,
                 [&doc, &interleaved, &totalFramesLoaded, &streamChannels,
-                 &flushInterleaved](const std::uint8_t *interleavedPcmBytes,
-                                    const std::uint32_t pcmByteCount,
-                                    const std::uint32_t frameCount,
-                                    const std::uint16_t channels,
-                                    const std::uint16_t bitDepth)
+                 &flushInterleaved, &interleavedMemory, kLoadBlockFrames](
+                    const std::uint8_t *interleavedPcmBytes,
+                    const std::uint32_t pcmByteCount,
+                    const std::uint32_t frameCount,
+                    const std::uint16_t channels, const std::uint16_t bitDepth)
                 {
                     const auto sampleCount = static_cast<std::size_t>(frameCount) *
                                              static_cast<std::size_t>(channels);
                     if (streamChannels == 0)
                     {
                         streamChannels = channels;
-                        interleaved.reserve(
-                            static_cast<std::size_t>(kLoadBlockFrames) *
-                            static_cast<std::size_t>(channels));
+                        interleavedMemory = storage::reserveWorking(
+                            uint64_t(std::max(kLoadBlockFrames, frameCount)) *
+                                channels * sizeof(float),
+                            storage::MemoryUse::Import);
+                        interleaved.reserve(static_cast<std::size_t>(std::max(
+                                                kLoadBlockFrames, frameCount)) *
+                                            static_cast<std::size_t>(channels));
                     }
                     if (streamChannels != channels)
                     {
@@ -353,6 +359,18 @@ namespace cupuacu::file
                     }
 
                     const auto writeOffset = interleaved.size();
+                    if (writeOffset + incomingSamples > interleaved.capacity())
+                    {
+                        auto next = storage::reserveWorking(
+                            (writeOffset + incomingSamples) * sizeof(float),
+                            storage::MemoryUse::Import);
+                        std::vector<float> larger;
+                        larger.reserve(writeOffset + incomingSamples);
+                        larger.assign(interleaved.begin(), interleaved.end());
+                        interleaved.swap(larger);
+                        std::vector<float>().swap(larger);
+                        interleavedMemory = std::move(next);
+                    }
                     interleaved.resize(writeOffset + incomingSamples);
                     auto *const output = interleaved.data() + writeOffset;
                     switch (bitDepth)
@@ -650,6 +668,9 @@ namespace cupuacu::file
         }
 
         constexpr sf_count_t kLoadBlockFrames = 65536;
+        auto interleavedMemory = storage::reserveWorking(
+            uint64_t(kLoadBlockFrames) * channels * sizeof(float),
+            storage::MemoryUse::Import);
         std::vector<float> interleaved(
             static_cast<std::size_t>(kLoadBlockFrames) *
             static_cast<std::size_t>(channels));

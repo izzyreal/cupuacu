@@ -87,7 +87,24 @@ void cupuacu::actions::record(cupuacu::State *state)
                           : std::filesystem::temp_directory_path()) /
             ("recording-" + std::to_string(std::chrono::steady_clock::now()
                                              .time_since_epoch().count()));
-        startRevisionRecording(state, recordMessage.startPos, directory);
+        try
+        {
+            startRevisionRecording(state, recordMessage.startPos, directory);
+        }
+        catch (const std::exception &error)
+        {
+            if (state->errorReporter)
+            {
+                state->errorReporter("Recording unavailable", error.what());
+            }
+            else if (SDL_WasInit(SDL_INIT_VIDEO))
+            {
+                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
+                                         "Recording unavailable", error.what(),
+                                         nullptr);
+            }
+            return;
+        }
     }
     state->audioDevices->enqueue(std::move(recordMessage));
 }

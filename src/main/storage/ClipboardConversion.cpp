@@ -53,6 +53,10 @@ namespace cupuacu::storage
                         });
                 });
             auto lease = clip.acquireReadLease();
+            auto memory = reserveWorking(
+                chunk * (uint64_t(shape.channels) * sizeof(float) +
+                         sizeof(audio::SampleProvenance) + sizeof(uint8_t)),
+                MemoryUse::Conversion);
             std::vector<float> interleaved(chunk * shape.channels);
             // Peak generation has its own bounded scratch on this call stack.
             // Keep conversion metadata off the smaller macOS worker stack.

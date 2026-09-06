@@ -14,6 +14,7 @@ namespace cupuacu::waveform
         std::shared_ptr<ProgressivePeaks> progressive;
         int64_t built = 0;
         bool finished = false, failed = false;
+        std::shared_ptr<void> memory;
         std::shared_ptr<storage::AudioBlockStore> spool;
         std::vector<std::ofstream> writers;
         std::vector<std::vector<Peak>> small;
@@ -41,6 +42,17 @@ namespace cupuacu::waveform
                 throw std::invalid_argument("Invalid peak shape");
             }
             check();
+            const auto baseCount =
+                shape.frames / 128 + (shape.frames % 128 != 0);
+            const uint64_t retained =
+                !this->progressive &&
+                        baseCount <= int64_t(SourcePeaks::residentLevelLimit)
+                    ? uint64_t(baseCount) * shape.channels * sizeof(Peak)
+                    : 0;
+            memory = storage::reserveWorking(
+                retained + uint64_t(shape.channels) * sizeof(Peak) +
+                    65536 * sizeof(float) + 513 * sizeof(Peak),
+                storage::MemoryUse::Peaks);
             partial.resize(shape.channels, emptyPeak());
             if (this->progressive)
             {
@@ -50,6 +62,10 @@ namespace cupuacu::waveform
             if (count <= int64_t(SourcePeaks::residentLevelLimit))
             {
                 small.resize(shape.channels);
+                for (auto &channel : small)
+                {
+                    channel.reserve(count);
+                }
             }
             else
             {
@@ -176,7 +192,10 @@ namespace cupuacu::waveform
         s.check();
         if (s.progressive)
         {
-            return s.progressive->finish();
+            auto result = s.progressive->finish();
+            std::vector<Peak>().swap(s.partial);
+            s.memory.reset();
+            return result;
         }
         for (auto &writer : s.writers)
         {
@@ -219,6 +238,8 @@ namespace cupuacu::waveform
         s.writers.clear();
         s.spool.reset();
         s.small.clear();
+        std::vector<Peak>().swap(s.partial);
+        s.memory.reset();
         return result;
     }
 } // namespace cupuacu::waveform

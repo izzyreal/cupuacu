@@ -147,6 +147,7 @@ void largeFileWorkflow(benchmark::State &measurement)
               [&]
               {
                   actions::audio::performDelete(&state);
+                  finishRevisionCommands(&state);
               });
         require(session.document.getFrameCount() == frames - 1000,
                 "Delete failed");
@@ -158,6 +159,7 @@ void largeFileWorkflow(benchmark::State &measurement)
               [&]
               {
                   actions::audio::performCut(&state);
+                  finishRevisionCommands(&state);
               });
         require(session.document.getFrameCount() == frames - 1000,
                 "Cut failed");
@@ -169,6 +171,7 @@ void largeFileWorkflow(benchmark::State &measurement)
               [&]
               {
                   actions::audio::performPaste(&state);
+                  finishRevisionCommands(&state);
               });
         require(session.document.getFrameCount() == frames + 1000,
                 "Paste failed");
@@ -183,6 +186,7 @@ void largeFileWorkflow(benchmark::State &measurement)
               {
                   require(actions::markers::splitByMarkers(&state),
                           "Split failed");
+                  finishRevisionCommands(&state);
               });
         require(state.tabs.size() == std::size_t(tabCount + 2),
                 "Split tab count");

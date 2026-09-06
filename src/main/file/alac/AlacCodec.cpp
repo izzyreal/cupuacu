@@ -130,10 +130,11 @@ namespace cupuacu::file::alac
         template <typename ReadPacketFn>
         bool decodePcmPacketsImpl(
             const AlacDecodingParameters &parameters,
-            const std::vector<std::uint64_t> &packetOffsets,
-            const std::vector<std::uint32_t> &packetSizes,
-            DecodeProgressCallback progressCallback,
-            ReadPacketFn readPacket,
+            const storage::WorkingVector<
+                std::uint64_t, storage::MemoryUse::Container> &packetOffsets,
+            const storage::WorkingVector<
+                std::uint32_t, storage::MemoryUse::Container> &packetSizes,
+            DecodeProgressCallback progressCallback, ReadPacketFn readPacket,
             const DecodedPacketCallback &decodedPacketCallback)
         {
             constexpr std::size_t kBitReaderPaddingBytes = 3u;
@@ -167,9 +168,10 @@ namespace cupuacu::file::alac
             const auto maxPacketSampleCount =
                 static_cast<std::size_t>(decoder.mConfig.frameLength) *
                 static_cast<std::size_t>(parameters.channels);
-            std::vector<std::uint8_t> packetOutput(maxPacketSampleCount *
-                                                   outputBytesPerSample);
-            std::vector<std::uint8_t> packetScratch;
+            storage::WorkingVector<std::uint8_t, storage::MemoryUse::Container>
+                packetOutput(maxPacketSampleCount * outputBytesPerSample);
+            storage::WorkingVector<std::uint8_t, storage::MemoryUse::Container>
+                packetScratch;
 
             std::uint64_t decodedFrames = 0;
             for (std::size_t packetIndex = 0; packetIndex < packetSizes.size();
@@ -342,8 +344,10 @@ namespace cupuacu::file::alac
             return std::nullopt;
         }
 
-        std::vector<unsigned char> packetInput(fullPacketInputBytes);
-        std::vector<std::uint8_t> packetOutput(maxPacketBytes);
+        storage::WorkingVector<unsigned char, storage::MemoryUse::Container>
+            packetInput(fullPacketInputBytes);
+        storage::WorkingVector<std::uint8_t, storage::MemoryUse::Container>
+            packetOutput(maxPacketBytes);
         for (std::uint64_t frameOffset = 0; frameOffset < frameCount;
              frameOffset += parameters.framesPerPacket)
         {
@@ -404,9 +408,10 @@ namespace cupuacu::file::alac
                                    parameters.framesPerPacket};
     }
 
-    std::optional<AlacEncodedPackets>
-    encodePcmPackets(AlacEncodingParameters parameters,
-                     const std::vector<std::uint8_t> &interleavedPcmBytes)
+    std::optional<AlacEncodedPackets> encodePcmPackets(
+        AlacEncodingParameters parameters,
+        const storage::WorkingVector<
+            std::uint8_t, storage::MemoryUse::Container> &interleavedPcmBytes)
     {
         const auto bytesPerFrame = std::uint64_t(parameters.channels) *
                                    ((parameters.bitsPerSample + 7u) / 8u);
@@ -442,13 +447,16 @@ namespace cupuacu::file::alac
         return encoded;
     }
 
-    std::optional<AlacDecodedPcm>
-    decodePcmPackets(const AlacDecodingParameters &parameters,
-                     const std::vector<std::uint8_t> &packetBytes,
-                     const std::vector<std::uint32_t> &packetSizes,
-                     DecodeProgressCallback progressCallback)
+    std::optional<AlacDecodedPcm> decodePcmPackets(
+        const AlacDecodingParameters &parameters,
+        const storage::WorkingVector<
+            std::uint8_t, storage::MemoryUse::Container> &packetBytes,
+        const storage::WorkingVector<
+            std::uint32_t, storage::MemoryUse::Container> &packetSizes,
+        DecodeProgressCallback progressCallback)
     {
-        std::vector<std::uint64_t> packetOffsets;
+        storage::WorkingVector<std::uint64_t, storage::MemoryUse::Container>
+            packetOffsets;
         packetOffsets.reserve(packetSizes.size());
         std::uint64_t packetOffset = 0;
         for (const auto packetSize : packetSizes)
@@ -465,12 +473,15 @@ namespace cupuacu::file::alac
                                 packetSizes, std::move(progressCallback));
     }
 
-    std::optional<AlacDecodedPcm>
-    decodePcmPackets(const AlacDecodingParameters &parameters,
-                     const std::vector<std::uint8_t> &sourceBytes,
-                     const std::vector<std::uint64_t> &packetOffsets,
-                     const std::vector<std::uint32_t> &packetSizes,
-                     DecodeProgressCallback progressCallback)
+    std::optional<AlacDecodedPcm> decodePcmPackets(
+        const AlacDecodingParameters &parameters,
+        const storage::WorkingVector<
+            std::uint8_t, storage::MemoryUse::Container> &sourceBytes,
+        const storage::WorkingVector<
+            std::uint64_t, storage::MemoryUse::Container> &packetOffsets,
+        const storage::WorkingVector<
+            std::uint32_t, storage::MemoryUse::Container> &packetSizes,
+        DecodeProgressCallback progressCallback)
     {
         if (sourceBytes.empty())
         {
@@ -528,12 +539,14 @@ namespace cupuacu::file::alac
         return decoded;
     }
 
-    std::optional<AlacDecodedPcm>
-    decodePcmPackets(const AlacDecodingParameters &parameters,
-                     const std::vector<std::uint64_t> &packetOffsets,
-                     const std::vector<std::uint32_t> &packetSizes,
-                     PacketReadCallback packetReadCallback,
-                     DecodeProgressCallback progressCallback)
+    std::optional<AlacDecodedPcm> decodePcmPackets(
+        const AlacDecodingParameters &parameters,
+        const storage::WorkingVector<
+            std::uint64_t, storage::MemoryUse::Container> &packetOffsets,
+        const storage::WorkingVector<
+            std::uint32_t, storage::MemoryUse::Container> &packetSizes,
+        PacketReadCallback packetReadCallback,
+        DecodeProgressCallback progressCallback)
     {
         if (!packetReadCallback)
         {
@@ -581,12 +594,15 @@ namespace cupuacu::file::alac
         return decoded;
     }
 
-    bool streamDecodedPcmPackets(const AlacDecodingParameters &parameters,
-                                 const std::vector<std::uint64_t> &packetOffsets,
-                                 const std::vector<std::uint32_t> &packetSizes,
-                                 PacketReadCallback packetReadCallback,
-                                 DecodedPacketCallback decodedPacketCallback,
-                                 DecodeProgressCallback progressCallback)
+    bool streamDecodedPcmPackets(
+        const AlacDecodingParameters &parameters,
+        const storage::WorkingVector<
+            std::uint64_t, storage::MemoryUse::Container> &packetOffsets,
+        const storage::WorkingVector<
+            std::uint32_t, storage::MemoryUse::Container> &packetSizes,
+        PacketReadCallback packetReadCallback,
+        DecodedPacketCallback decodedPacketCallback,
+        DecodeProgressCallback progressCallback)
     {
         if (!packetReadCallback || !decodedPacketCallback)
         {
@@ -606,13 +622,16 @@ namespace cupuacu::file::alac
             std::move(decodedPacketCallback));
     }
 
-    std::optional<AlacDecodedPcm16>
-    decodePcm16Packets(const AlacDecodingParameters &parameters,
-                       const std::vector<std::uint8_t> &packetBytes,
-                       const std::vector<std::uint32_t> &packetSizes,
-                       DecodeProgressCallback progressCallback)
+    std::optional<AlacDecodedPcm16> decodePcm16Packets(
+        const AlacDecodingParameters &parameters,
+        const storage::WorkingVector<
+            std::uint8_t, storage::MemoryUse::Container> &packetBytes,
+        const storage::WorkingVector<
+            std::uint32_t, storage::MemoryUse::Container> &packetSizes,
+        DecodeProgressCallback progressCallback)
     {
-        std::vector<std::uint64_t> packetOffsets;
+        storage::WorkingVector<std::uint64_t, storage::MemoryUse::Container>
+            packetOffsets;
         packetOffsets.reserve(packetSizes.size());
         std::uint64_t packetOffset = 0;
         for (const auto packetSize : packetSizes)
@@ -629,12 +648,15 @@ namespace cupuacu::file::alac
                                   packetSizes, std::move(progressCallback));
     }
 
-    std::optional<AlacDecodedPcm16>
-    decodePcm16Packets(const AlacDecodingParameters &parameters,
-                       const std::vector<std::uint8_t> &sourceBytes,
-                       const std::vector<std::uint64_t> &packetOffsets,
-                       const std::vector<std::uint32_t> &packetSizes,
-                       DecodeProgressCallback progressCallback)
+    std::optional<AlacDecodedPcm16> decodePcm16Packets(
+        const AlacDecodingParameters &parameters,
+        const storage::WorkingVector<
+            std::uint8_t, storage::MemoryUse::Container> &sourceBytes,
+        const storage::WorkingVector<
+            std::uint64_t, storage::MemoryUse::Container> &packetOffsets,
+        const storage::WorkingVector<
+            std::uint32_t, storage::MemoryUse::Container> &packetSizes,
+        DecodeProgressCallback progressCallback)
     {
         if (parameters.bitsPerSample != 16)
         {

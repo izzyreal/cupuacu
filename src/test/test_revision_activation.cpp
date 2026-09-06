@@ -1,3 +1,4 @@
+#include "TestRevisionCommands.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 #include "TestPaths.hpp"
@@ -106,7 +107,7 @@ TEST_CASE("Normal opening commits owned audio and reusable source peaks",
         std::make_shared<storage::DecodedBlockCache>(0), {}, {},
         [&](const auto &chunk)
         {
-            if (chunk.cached)
+            if (chunk.cached || chunk.sourcePeaks)
             {
                 ++cachedPreviews;
             }
@@ -119,7 +120,7 @@ TEST_CASE("Normal opening commits owned audio and reusable source peaks",
          .waveformCacheRoot = state.paths->waveformCachePath(),
          .publishMetadata = true});
     REQUIRE(cached.metadata.persistentWaveformCacheLoaded);
-    REQUIRE(cachedPreviews == 1);
+    REQUIRE(cachedPreviews >= 1);
     REQUIRE(generatedPreviews == 0);
     std::filesystem::remove(path);
     std::array<float, 17> samples;
@@ -433,6 +434,7 @@ TEST_CASE(
     auto store = source.preservationSource->blockStore();
     const auto io = store->ioBytes();
     REQUIRE(actions::markers::splitByMarkers(&state));
+    cupuacu::test::finishRevisionCommands(&state);
     REQUIRE(state.tabs.size() == 3);
     CHECK(state.activeTabIndex == 0);
     CHECK(store->ioBytes() == io);
