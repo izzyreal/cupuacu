@@ -190,7 +190,6 @@ namespace cupuacu::file::m4a
             const auto sampleCount = readBe32(bytes, stsz.payloadOffset + 8);
 
             std::vector<std::uint32_t> packetSizes;
-            packetSizes.reserve(sampleCount);
             if (sampleSize != 0)
             {
                 packetSizes.assign(sampleCount, sampleSize);
@@ -200,6 +199,7 @@ namespace cupuacu::file::m4a
             requireRange(bytes, stsz.payloadOffset + 12,
                          static_cast<std::uint64_t>(sampleCount) * 4u,
                          "Truncated stsz packet table");
+            packetSizes.reserve(sampleCount);
             for (std::uint32_t i = 0; i < sampleCount; ++i)
             {
                 packetSizes.push_back(
@@ -212,7 +212,8 @@ namespace cupuacu::file::m4a
             const Bytes &bytes,
             const AtomView &stts,
             std::uint32_t &framesPerPacket,
-            std::uint32_t &frameCount)
+            std::uint64_t &frameCount,
+            std::size_t expectedPackets)
         {
             requireRange(bytes, stts.payloadOffset, 8, "Truncated stts atom");
             const auto entryCount = readBe32(bytes, stts.payloadOffset + 4);
@@ -223,6 +224,7 @@ namespace cupuacu::file::m4a
             std::uint64_t totalFrameCount = 0;
             framesPerPacket = 0;
             std::vector<std::uint32_t> packetFrameCounts;
+            packetFrameCounts.reserve(expectedPackets);
             for (std::uint32_t i = 0; i < entryCount; ++i)
             {
                 const auto entryOffset = stts.payloadOffset + 8u + i * 8u;
@@ -236,16 +238,16 @@ namespace cupuacu::file::m4a
                 {
                     framesPerPacket = sampleDelta;
                 }
-                totalFrameCount += static_cast<std::uint64_t>(sampleCount) *
-                                   static_cast<std::uint64_t>(sampleDelta);
-                if (totalFrameCount > std::numeric_limits<std::uint32_t>::max())
+                if (sampleCount > expectedPackets - packetFrameCounts.size() ||
+                    (sampleCount && sampleDelta > (std::uint64_t(INT64_MAX) - totalFrameCount) / sampleCount))
                 {
                     throw std::runtime_error("M4A frame count exceeds importer limit");
                 }
+                totalFrameCount += std::uint64_t(sampleCount) * sampleDelta;
                 packetFrameCounts.insert(packetFrameCounts.end(), sampleCount,
                                          sampleDelta);
             }
-            frameCount = static_cast<std::uint32_t>(totalFrameCount);
+            frameCount = totalFrameCount;
             return packetFrameCounts;
         }
 
@@ -672,8 +674,12 @@ namespace cupuacu::file::m4a
         std::uint32_t parseTrackId(const Bytes &bytes, const AtomView &trak)
         {
             const auto tkhd = requireChild(bytes, trak, "tkhd");
-            requireRange(bytes, tkhd.payloadOffset, 20, "Truncated tkhd atom");
-            return readBe32(bytes, tkhd.payloadOffset + 12);
+            const auto version = readU8(bytes, tkhd.payloadOffset);
+            if (version > 1)
+                throw std::runtime_error("Unsupported M4A track-header version");
+            const auto idOffset = tkhd.payloadOffset + (version == 1 ? 20 : 12);
+            requireRange(bytes, idOffset, 4, "Truncated tkhd atom");
+            return readBe32(bytes, idOffset);
         }
 
         std::string parseHandlerType(const Bytes &bytes, const AtomView &trak)
@@ -714,7 +720,7 @@ namespace cupuacu::file::m4a
             return trackIds;
         }
 
-        std::uint32_t parseInitialEmptyEditDuration(const Bytes &bytes,
+        std::uint64_t parseInitialEmptyEditDuration(const Bytes &bytes,
                                                     const AtomView &trak)
         {
             const auto edts = findChild(bytes, trak, "edts");
@@ -745,20 +751,22 @@ namespace cupuacu::file::m4a
                 return mediaTime == 0xffffffffu ? duration : 0;
             }
 
+            if (version != 1)
+                throw std::runtime_error("Unsupported M4A edit-list version");
             requireRange(bytes, elst->payloadOffset + 8, 20,
                          "Truncated elst entry");
             const auto duration = readBe64(bytes, elst->payloadOffset + 8);
             const auto mediaTime = readBe64(bytes, elst->payloadOffset + 16);
-            if (mediaTime == std::numeric_limits<std::uint64_t>::max() &&
-                duration <= std::numeric_limits<std::uint32_t>::max())
+            if (mediaTime == std::numeric_limits<std::uint64_t>::max())
             {
-                return static_cast<std::uint32_t>(duration);
+                return duration;
             }
             return 0;
         }
 
         std::vector<std::uint32_t> parseSampleDurations(const Bytes &bytes,
-                                                        const AtomView &stts)
+                                                        const AtomView &stts,
+                                                        std::size_t expectedSamples)
         {
             requireRange(bytes, stts.payloadOffset, 8, "Truncated stts atom");
             const auto entryCount = readBe32(bytes, stts.payloadOffset + 4);
@@ -772,6 +780,8 @@ namespace cupuacu::file::m4a
                 const auto entryOffset = stts.payloadOffset + 8u + i * 8u;
                 const auto sampleCount = readBe32(bytes, entryOffset);
                 const auto sampleDelta = readBe32(bytes, entryOffset + 4);
+                if (sampleCount > expectedSamples - durations.size())
+                    throw std::runtime_error("M4A chapter timing exceeds sample table");
                 durations.insert(durations.end(), sampleCount, sampleDelta);
             }
             return durations;
@@ -816,8 +826,8 @@ namespace cupuacu::file::m4a
                         requireNested(bytes, trak, {"mdia", "minf", "stbl"});
                     const auto stts = requireChild(bytes, stbl, "stts");
                     const auto stsz = requireChild(bytes, stbl, "stsz");
-                    const auto durations = parseSampleDurations(bytes, stts);
                     const auto sampleSizes = parsePacketSizes(bytes, stsz);
+                    const auto durations = parseSampleDurations(bytes, stts, sampleSizes.size());
                     if (durations.size() != sampleSizes.size())
                     {
                         throw std::runtime_error("M4A chapter timing table does not match sample table");
@@ -868,6 +878,8 @@ namespace cupuacu::file::m4a
                                 .label = std::move(label),
                             });
                         }
+                        if (frame > std::uint64_t(INT64_MAX) - durations[i])
+                            throw std::runtime_error("M4A chapter timeline exceeds editor frame limit");
                         frame += durations[i];
                     }
                     return markers;
@@ -1136,7 +1148,7 @@ namespace cupuacu::file::m4a
             parsed.packetSizes = parsePacketSizes(moovBytes, stsz);
             std::uint32_t sttsFramesPerPacket = 0;
             parsed.packetFrameCounts = parsePacketFrameCounts(
-                moovBytes, stts, sttsFramesPerPacket, parsed.frameCount);
+                moovBytes, stts, sttsFramesPerPacket, parsed.frameCount, parsed.packetSizes.size());
             if (parsed.framesPerPacket == 0)
             {
                 parsed.framesPerPacket = sttsFramesPerPacket;
@@ -1186,7 +1198,7 @@ namespace cupuacu::file::m4a
             auto parsed = parseAacSampleDescription(moovBytes, stsd);
             parsed.packetSizes = parsePacketSizes(moovBytes, stsz);
             parsed.packetFrameCounts = parsePacketFrameCounts(
-                moovBytes, stts, parsed.framesPerPacket, parsed.frameCount);
+                moovBytes, stts, parsed.framesPerPacket, parsed.frameCount, parsed.packetSizes.size());
             if (parsed.packetFrameCounts.size() != parsed.packetSizes.size())
             {
                 throw std::runtime_error(

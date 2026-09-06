@@ -278,7 +278,7 @@ namespace cupuacu::file
             LoadedAudioFile result;
             result.externalSamples = bool(sink);
             auto &doc = result.document;
-            std::uint32_t totalFramesLoaded = 0;
+            std::uint64_t totalFramesLoaded = 0;
             constexpr std::uint32_t kLoadBlockFrames = 65536u;
             std::vector<float> interleaved;
             std::uint16_t streamChannels = 0;
@@ -415,8 +415,8 @@ namespace cupuacu::file
                         static_cast<std::size_t>(streamInfo.channels));
                 },
                 [progress, path, &lastDecodePercent, &decodeStarted,
-                 isCanceled](const std::uint32_t decodedFrames,
-                             const std::uint32_t totalFrames)
+                 isCanceled](const std::uint64_t decodedFrames,
+                             const std::uint64_t totalFrames)
                 {
                     if (!progress || totalFrames == 0)
                     {
@@ -500,7 +500,7 @@ namespace cupuacu::file
             result.requiresSaveAs = true;
             result.externalSamples = bool(sink);
             auto &doc = result.document;
-            std::uint32_t totalFramesLoaded = 0;
+            std::uint64_t totalFramesLoaded = 0;
             int lastPercent = -1;
             const auto info = cupuacu::file::m4a::streamAacM4aFile(
                 path,
@@ -545,8 +545,8 @@ namespace cupuacu::file
                     }
                 },
                 [progress, path, isCanceled,
-                 &lastPercent](const std::uint32_t decodedFrames,
-                               const std::uint32_t totalFrames)
+                 &lastPercent](const std::uint64_t decodedFrames,
+                               const std::uint64_t totalFrames)
                 {
                     throwIfLoadCanceled(isCanceled);
                     if (!progress || totalFrames == 0)

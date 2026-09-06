@@ -30,14 +30,14 @@ namespace cupuacu::file::alac
         std::vector<std::uint8_t> bytes;
         std::vector<std::uint32_t> packetSizes;
         AlacEncoderCookie cookie;
-        std::uint32_t frameCount = 0;
+        std::uint64_t frameCount = 0;
         std::uint32_t framesPerPacket = 0;
     };
 
     struct AlacEncodingSummary
     {
         AlacEncoderCookie cookie;
-        std::uint32_t frameCount = 0;
+        std::uint64_t frameCount = 0;
         std::uint32_t framesPerPacket = 0;
     };
 
@@ -59,7 +59,7 @@ namespace cupuacu::file::alac
         std::uint32_t channels = 0;
         std::uint32_t bitsPerSample = 0;
         std::uint32_t framesPerPacket = 0;
-        std::uint32_t frameCount = 0;
+        std::uint64_t frameCount = 0;
         std::vector<std::uint8_t> magicCookie;
         std::vector<std::uint32_t> packetFrameCounts;
     };
@@ -70,7 +70,7 @@ namespace cupuacu::file::alac
         std::uint32_t sampleRate = 0;
         std::uint32_t channels = 0;
         std::uint32_t bitsPerSample = 0;
-        std::uint32_t frameCount = 0;
+        std::uint64_t frameCount = 0;
     };
 
     struct AlacDecodedPcm16
@@ -78,11 +78,11 @@ namespace cupuacu::file::alac
         std::vector<std::int16_t> interleavedSamples;
         std::uint32_t sampleRate = 0;
         std::uint32_t channels = 0;
-        std::uint32_t frameCount = 0;
+        std::uint64_t frameCount = 0;
     };
 
     using DecodeProgressCallback = std::function<void(
-        std::uint32_t decodedFrames, std::uint32_t totalFrames)>;
+        std::uint64_t decodedFrames, std::uint64_t totalFrames)>;
     struct PacketBufferView
     {
         const std::uint8_t *bytes = nullptr;

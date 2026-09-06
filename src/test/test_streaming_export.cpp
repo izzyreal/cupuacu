@@ -5,6 +5,8 @@
 #include "file/PcmPreservationIO.hpp"
 #include "file/file_loading.hpp"
 #include "file/m4a/M4aAtoms.hpp"
+#include "file/m4a/M4aParser.hpp"
+#include "LongTask.hpp"
 #include "storage/AudioEditRevision.hpp"
 #include <fstream>
 #include <sstream>
@@ -213,9 +215,14 @@ TEST_CASE("Streaming ALAC rejects unsupported durations and propagates aborts",
         ++writes;
         return false;
     };
-    REQUIRE_FALSE(streamEncodedPcmPackets(parameters, uint64_t(UINT32_MAX) + 1,
+    REQUIRE_FALSE(streamEncodedPcmPackets(parameters, uint64_t(INT64_MAX) + 1,
                                           reader, writer));
     REQUIRE(reads == 0);
+    REQUIRE_FALSE(streamEncodedPcmPackets(parameters, uint64_t(UINT32_MAX) + 1,
+                                          reader, writer));
+    REQUIRE(reads == 1);
+    REQUIRE(writes == 1);
+    reads = writes = 0;
     REQUIRE_FALSE(streamEncodedPcmPackets(parameters, 8193, reader, writer));
     REQUIRE(reads == 1);
     REQUIRE(writes == 1);
@@ -271,4 +278,115 @@ TEST_CASE(
     output.setstate(std::ios::badbit);
     REQUIRE_THROWS(
         file::preservation::copyByteRange(input, output, 0, 19, "bad output"));
+}
+
+TEST_CASE("Large ALAC export starts with bounded reads and cancels atomically",
+          "[streaming-export][m4a-large]")
+{
+    ExportFiles files;
+    GeneratedReader source;
+    source.dimensions.frames = int64_t(UINT32_MAX) + 8193;
+    const auto output = files.root / "large.m4a";
+    { std::ofstream file(output); file << "original"; }
+    const auto settings = *file::defaultExportSettingsForPath(output, SampleFormat::PCM_S16);
+    unsigned progressCalls = 0;
+    REQUIRE_THROWS_AS(file::AudioFileWriter::writeFile(
+        source, {}, output, settings, [&](const auto &, auto)
+        {
+            if (++progressCalls == 3) throw LongTaskCanceledError{};
+        }), LongTaskCanceledError);
+    REQUIRE(source.largestRead == file::alac::defaultFramesPerPacket());
+    REQUIRE(bytes(output) == "original");
+    REQUIRE(std::distance(std::filesystem::directory_iterator(files.root),
+                          std::filesystem::directory_iterator{}) == 1);
+    source.largestRead = 0;
+    REQUIRE_THROWS_AS(file::AudioFileWriter::writeFile(
+        source, {{1, 0, "Too long"}}, output, settings), std::out_of_range);
+    REQUIRE(source.largestRead == 0);
+    REQUIRE(bytes(output) == "original");
+}
+
+TEST_CASE("M4A parses wide durations and chapter offsets without reading sparse audio",
+          "[streaming-export][m4a-large]")
+{
+    using namespace file::m4a;
+    ExportFiles files;
+    const auto path = files.root / "wide.m4a";
+    const uint64_t frames = uint64_t(UINT32_MAX) + 8193;
+    const auto packetFrames = file::alac::defaultFramesPerPacket();
+    const auto packet = file::alac::encodePcmPackets(
+        {48000, 1, 16, packetFrames}, std::vector<uint8_t>(packetFrames * 2));
+    REQUIRE(packet);
+    AlacMovieDescription description;
+    description.sampleRate = 48000;
+    description.frameCount = frames;
+    description.framesPerPacket = packetFrames;
+    description.sampleEntry = {1, 16, 48000, packet->cookie.bytes};
+    description.packetSizes.assign(frames / packetFrames, 5000);
+    const uint64_t audioBytes = description.packetSizes.size() * 5000ull;
+    REQUIRE(audioBytes > UINT32_MAX);
+    const std::vector<DocumentMarker> markers{
+        {1, int64_t(frames - 8192), "Past 32 bits"},
+        {2, int64_t(frames - 4096), "Last chapter"}};
+    {
+        std::ofstream output(path, std::ios::binary);
+        beginAlacM4a(output);
+        output.write(reinterpret_cast<const char *>(packet->bytes.data()), packet->bytes.size());
+        output.seekp(ftypAtom().size() + 16 + audioBytes);
+        finishAlacM4a(output, std::move(description), audioBytes, markers);
+        REQUIRE(output.good());
+    }
+    const auto parsed = parseAlacM4aFile(path);
+    REQUIRE(parsed.frameCount == frames);
+    REQUIRE(parsed.packetFrameCounts.size() == frames / packetFrames);
+    REQUIRE(parsed.packetOffsets.back() > UINT32_MAX);
+    REQUIRE(parsed.markers == markers);
+    uint64_t total = 0, decoded = 0;
+    REQUIRE_THROWS_AS(streamAlacM4aFile(
+        path, [](const uint8_t *, uint32_t, uint32_t count, uint16_t, uint16_t)
+        { REQUIRE(count == 4096); }, {},
+        [&](uint64_t done, uint64_t expected)
+        {
+            decoded = done;
+            total = expected;
+            throw LongTaskCanceledError{};
+        }), LongTaskCanceledError);
+    REQUIRE(decoded == packetFrames);
+    REQUIRE(total == frames);
+}
+
+TEST_CASE("ALAC decodes real packets beyond a four GiB sparse prefix",
+          "[streaming-export][m4a-large]")
+{
+    using namespace file::m4a;
+    ExportFiles files;
+    const auto path = files.root / "offset.m4a";
+    const auto packet = file::alac::encodePcmPackets(
+        {48000, 1, 16, 4096}, std::vector<uint8_t>(62, 0));
+    REQUIRE(packet);
+    AlacMovieDescription description;
+    description.sampleRate = 48000;
+    description.frameCount = 31;
+    description.framesPerPacket = 4096;
+    description.sampleEntry = {1, 16, 48000, packet->cookie.bytes};
+    description.packetSizes = packet->packetSizes;
+    description.mdatPayloadOffset = uint64_t(UINT32_MAX) + 4096;
+    const auto ftyp = ftypAtom();
+    Bytes header;
+    appendBe32(header, 1);
+    appendFourCc(header, "mdat");
+    appendBe64(header, description.mdatPayloadOffset + packet->bytes.size() - ftyp.size());
+    {
+        std::ofstream output(path, std::ios::binary);
+        output.write(reinterpret_cast<const char *>(ftyp.data()), ftyp.size());
+        output.write(reinterpret_cast<const char *>(header.data()), header.size());
+        output.seekp(description.mdatPayloadOffset);
+        output.write(reinterpret_cast<const char *>(packet->bytes.data()), packet->bytes.size());
+        const auto moov = movieAtom(description);
+        output.write(reinterpret_cast<const char *>(moov.data()), moov.size());
+        REQUIRE(output.good());
+    }
+    const auto audio = readAlacM4aFile(path);
+    REQUIRE(audio.frameCount == 31);
+    REQUIRE(audio.interleavedPcmBytes == std::vector<uint8_t>(62, 0));
 }

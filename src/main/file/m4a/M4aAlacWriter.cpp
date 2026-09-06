@@ -127,9 +127,7 @@ namespace cupuacu::file::m4a
         const auto shape = audio.shape();
         if (outputPath.empty() || shape.sampleRate <= 0 ||
             shape.channels <= 0 || shape.channels > int(alac::maxChannels()) ||
-            shape.frames <= 0 ||
-            std::uint64_t(shape.frames) >
-                std::numeric_limits<std::uint32_t>::max())
+            shape.frames <= 0)
         {
             throw std::invalid_argument(
                 "Document exceeds supported M4A ALAC format limits");
@@ -139,6 +137,7 @@ namespace cupuacu::file::m4a
                                   : bitDepthForDocument(shape.format);
         const auto format = sampleFormatForBitDepth(bitDepth);
         const auto packetFrames = alac::defaultFramesPerPacket();
+        validateAlacM4aDuration(shape.frames, packetFrames, markers);
         const auto detail = outputPath.string();
         if (progress)
         {
