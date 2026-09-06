@@ -461,6 +461,20 @@ Earlier command/effect reports from before this isolation fix inadvertently
 included resident autosave work and must be regenerated. The runner removes each
 child's working directory, including effects retained when the forked child exits.
 
+`save_worker_{generic,preserving}_{memory,owned}` imports a PCM16 WAV fixture (sizes describe decoded float data),
+changes one sample near the beginning, and runs the production background save
+worker. Submission and completion are separate. Completion is observed with
+100-microsecond polling, so sub-millisecond differences include polling and
+scheduling noise. Both backends omit post-save waveform-cache persistence and UI
+publication; those have separate correctness checks. The application’s resident
+save still performs its post-save cache work, while revision saves defer peak
+persistence. All saved samples are validated through a streaming decoder outside
+timing: exact PCM16 values for preservation, the existing one-LSB tolerance for
+ordinary export quantization, plus exact frame count and encoding. Owned
+preserving cases assert zero decoded-sample store reads; original
+PCM source-byte reads and output writes are still required. All working output
+is under the runner’s temporary directory; `State::paths` is explicitly disabled.
+
 The timing executable links the ordinary core. The diagnostic executable links
 a separately compiled core with atomic work counters and capacity observations;
 its timing is not a substitute for uninstrumented timing. Google Benchmark

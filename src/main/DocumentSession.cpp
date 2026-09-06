@@ -59,9 +59,24 @@ namespace cupuacu
         return true;
     }
 
+    bool DocumentSession::revisionHasUnsavedChanges() const
+    {
+        return readRevision && (readRevision != savedReadRevision ||
+                                document.getMarkers() != savedRevisionMarkers);
+    }
+    void DocumentSession::markRevisionSaved(
+        std::shared_ptr<const storage::AudioEditRevision> revision,
+        std::vector<DocumentMarker> markers)
+    {
+        savedReadRevision = concurrency::releaseOnWorker(std::move(revision));
+        savedRevisionMarkers = std::move(markers);
+    }
     void DocumentSession::clearReadRevision()
     {
         readRevision.reset();
+        savedReadRevision.reset();
+        savedRevisionMarkers.clear();
+        preservationSource.reset();
         viewportSource.reset();
         viewportSourceVersion = UINT64_MAX;
         viewportBufferIdentity = nullptr;
@@ -83,6 +98,24 @@ namespace cupuacu
                                        shape.channels, shape.frames);
         clearPendingPersistentWaveformCacheSave();
         readRevision = std::move(retained);
+        savedReadRevision = readRevision;
+        savedRevisionMarkers = document.getMarkers();
+        preservationSource.reset();
+        if (shape.frames)
+        {
+            readRevision->visitSourceRanges(
+                0, 0, shape.frames,
+                [&](const auto &range)
+                {
+                    if (!preservationSource && range.source &&
+                        !range.source->sourcePath().empty())
+                    {
+                        preservationSource =
+                            concurrency::releaseOnWorker(range.source);
+                    }
+                });
+        }
+
         readRevisionVersion = document.getWaveformDataVersion();
         viewportSource.reset();
     }

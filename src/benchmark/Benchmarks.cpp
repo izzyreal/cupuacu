@@ -784,6 +784,111 @@ namespace
             result["validated"] = true;
             return;
         }
+        if (name.starts_with("save_worker_"))
+        {
+            const bool owned = name.ends_with("owned");
+            const bool preserving =
+                name.find("preserving") != std::string::npos;
+            State state;
+            state.paths
+                .reset(); // Worker-only: no live application paths/autosave.
+            auto &session = state.getActiveDocumentSession();
+            const auto root =
+                std::filesystem::path(request.at("root").get<std::string>());
+            const auto fixture =
+                std::filesystem::path(request.at("fixture").get<std::string>());
+            const auto output = root / "saved.wav";
+            std::filesystem::path reference = fixture;
+            std::shared_ptr<storage::AudioBlockStore> store;
+            if (owned)
+            {
+                auto imported = file::importOwnedAudio(
+                    fixture, root / "audio",
+                    std::make_shared<storage::DecodedBlockCache>(2 * 1024 *
+                                                                 1024));
+                session.document = std::move(imported.metadata.document);
+                session.bindReadRevision(
+                    storage::AudioEditRevision::from(imported.audio));
+                reference = imported.audio->sourcePath();
+                store = imported.audio->blockStore();
+                auto before = session.getEditRevision();
+                storage::AudioEditTransaction edit(*before);
+                edit.replaceChannel(0, 10001, 1, nullptr, 0, 0, .25f);
+                require(session.commitEditRevision(before, edit.finish(), {}),
+                        "Save edit failed");
+            }
+            else
+            {
+                auto loaded = file::loadAudioFile(fixture);
+                session.document = std::move(loaded.document);
+                session.document.setSample(0, 10001, .25f);
+            }
+            const auto settings = *file::defaultExportSettingsForPath(
+                output, session.document.getSampleFormat());
+            const auto beforeIO = store ? store->ioBytes().first : 0;
+            for (auto iteration : measurement)
+            {
+                (void)iteration;
+                const auto started = Clock::now();
+                actions::io::BackgroundSaveJob job(
+                    1,
+                    {preserving
+                         ? actions::io::BackgroundSaveKind::SaveAsPreserving
+                         : actions::io::BackgroundSaveKind::SaveAs,
+                     output, reference, settings},
+                    &state, session.document, {}, session.getEditRevision());
+                job.start();
+                result["save_worker"]["submission_ms"] = elapsed(started);
+                for (;;)
+                {
+                    const auto snapshot = job.snapshot();
+                    if (snapshot.completed)
+                    {
+                        require(snapshot.success, snapshot.error);
+                        break;
+                    }
+                    require(elapsed(started) < 60000, "Save worker timed out");
+                    std::this_thread::sleep_for(std::chrono::microseconds(100));
+                }
+                result["save_worker"]["completion_ms"] = elapsed(started);
+                measurement.SetIterationTime(elapsed(started) / 1000.0);
+            }
+            if (store)
+            {
+                const auto reads = store->ioBytes().first - beforeIO;
+                result["save_worker"]["decoded_sample_bytes_read"] = reads;
+                if (preserving)
+                {
+                    require(reads == 0,
+                            "Preserving save decoded unchanged audio");
+                }
+            }
+            captureMetrics();
+            int64_t checked = 0;
+            auto savedOutput = file::loadAudioFile(
+                output, {}, {}, {},
+                [&](const Document &, int64_t start, const float *samples,
+                    int64_t count)
+                {
+                    for (int64_t i = 0; i < count; ++i)
+                    {
+                        for (int c = 0; c < channels; ++c)
+                        {
+                            const auto expected = start+i == 10001 && c == 0 ? .25f : sampleAt(start+i,c);
+                            // Ordinary PCM export quantizes through libsndfile;
+                            // preserving output must retain the source exactly.
+                            require(std::abs(samples[i*channels+c]-expected) <= (preserving ? 0.f : 1.f/32768),
+                                    "Saved sample mismatch");
+                        }
+                    }
+                    checked += count;
+                });
+            require(checked == frames, "Saved length mismatch");
+            require(savedOutput.exportSettings && savedOutput.exportSettings->subtype == settings.subtype,
+                    "Saved PCM encoding mismatch");
+            result["validated"] = true;
+            return;
+        }
         if (name == "export_memory_alac" || name == "export_memory_wav" ||
             name == "export_owned_alac" || name == "export_owned_wav")
         {
