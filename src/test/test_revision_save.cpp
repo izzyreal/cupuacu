@@ -183,12 +183,6 @@ TEST_CASE(
     auto before = storage::AudioEditRevision::from(a.audio);
     session.bindReadRevision(before);
     REQUIRE_FALSE(actions::documentSessionHasUnsavedChanges(session));
-    session.autosaveSnapshotPath = files.root / "legacy-autosave";
-    actions::io::queueAutosaveForTab(&state, 0);
-    REQUIRE_FALSE(state.backgroundAutosaveJob);
-    actions::io::processPendingAutosaveWork(&state);
-    REQUIRE_FALSE(state.backgroundAutosaveJob);
-    session.autosaveSnapshotPath.clear();
     state.tabs[1].session.currentFile = "other tab";
     std::string error;
     state.errorReporter = [&](auto, auto message)

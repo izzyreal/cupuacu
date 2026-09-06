@@ -1,4 +1,5 @@
 #include "BackgroundSave.hpp"
+#include "../../persistence/RevisionPersistence.hpp"
 #include "../../concurrency/DeferredRelease.hpp"
 
 #include "../../LongTask.hpp"
@@ -85,9 +86,9 @@ namespace cupuacu::actions::io
 
         bool canRunAutosavePump(const cupuacu::State *state)
         {
-            return state != nullptr && !state->backgroundOpenJob &&
-                   !state->backgroundSaveJob && !state->backgroundEffectJob &&
-                   !state->longTask.active;
+            return state != nullptr && !state->revisionRecording &&
+                   !state->backgroundOpenJob && !state->backgroundSaveJob &&
+                   !state->backgroundEffectJob && !state->longTask.active;
         }
 
         bool shouldDeferAutosaveForInteraction(const cupuacu::State *state)
@@ -154,12 +155,16 @@ namespace cupuacu::actions::io
         {
             const auto &session = tab.session;
             const auto &document = session.document;
-            return !session.hasReadRevision() && document.getChannelCount() > 0 &&
+            return document.getChannelCount() > 0 &&
+                   std::chrono::steady_clock::now() >=
+                       session.autosaveRetryAfter &&
                    !session.autosaveSnapshotPath.empty() &&
                    (session.autosavedWaveformDataVersion !=
                         document.getWaveformDataVersion() ||
                     session.autosavedMarkerDataVersion !=
-                        document.getMarkerDataVersion());
+                        document.getMarkerDataVersion() ||
+                    (session.hasReadRevision() &&
+                     session.autosavedHistoryVersion != tab.historyVersion));
         }
 
         void commitCompletedBackgroundSave(cupuacu::State *state,
@@ -289,12 +294,16 @@ namespace cupuacu::actions::io
         const uint64_t waveformDataVersionToUse,
         const uint64_t markerDataVersionToUse, std::string currentFileToUse,
         const cupuacu::Document &documentToSave,
-        const waveform::DocumentWaveformCaches &cachesToSave)
+        const waveform::DocumentWaveformCaches &cachesToSave,
+        std::shared_ptr<const persistence::RevisionCheckpoint> revisionToSave)
         : tabId(tabIdToUse), path(std::move(pathToUse)),
           waveformDataVersion(waveformDataVersionToUse),
           markerDataVersion(markerDataVersionToUse),
           currentFile(std::move(currentFileToUse)), document(documentToSave),
-          waveformCaches(cachesToSave.snapshotForDocument(documentToSave))
+          waveformCaches(revisionToSave ? waveform::DocumentWaveformCaches{}
+                                        : cachesToSave.snapshotForDocument(
+                                              documentToSave)),
+          revision(std::move(revisionToSave))
     {
     }
 
@@ -322,6 +331,9 @@ namespace cupuacu::actions::io
             .path = path,
             .waveformDataVersion = waveformDataVersion,
             .markerDataVersion = markerDataVersion,
+            .historyVersion = revision ? revision->metadata.value(
+                                             "historyVersion", uint64_t{0})
+                                       : 0,
             .currentFile = currentFile,
             .progress = completed ? std::optional<double>(1.0) : std::nullopt,
             .error = error,
@@ -332,6 +344,14 @@ namespace cupuacu::actions::io
     {
         try
         {
+            if (revision)
+            {
+                persistence::RevisionPersistence::save(path, *revision);
+                std::lock_guard lock(mutex);
+                success = true;
+                completed = true;
+                return;
+            }
             cupuacu::DocumentSession snapshotSession;
             snapshotSession.document = document;
             snapshotSession.currentFile = currentFile;
@@ -723,7 +743,8 @@ namespace cupuacu::actions::io
 
         auto &tab = state->tabs[static_cast<std::size_t>(tabIndex)];
         auto &session = tab.session;
-        if (session.hasReadRevision() || session.document.getChannelCount() <= 0)
+        if (session.document.getChannelCount() <= 0 ||
+            std::chrono::steady_clock::now() < session.autosaveRetryAfter)
         {
             return;
         }
@@ -744,7 +765,11 @@ namespace cupuacu::actions::io
                     session.document.getWaveformDataVersion(),
                     session.document.getMarkerDataVersion(),
                     session.currentFile, session.document,
-                    session.waveformCaches),
+                    session.waveformCaches,
+                    session.hasReadRevision()
+                        ? persistence::RevisionPersistence::capture(session,
+                                                                    &tab)
+                        : nullptr),
                 cupuacu::destroyBackgroundAutosaveJob};
             state->backgroundAutosaveJob->start();
         }
@@ -785,17 +810,31 @@ namespace cupuacu::actions::io
                     {
                         auto &session =
                             state->tabs[static_cast<std::size_t>(tabIndex)].session;
+                        session.lastAutosaveError.clear();
+                        session.autosaveRetryAfter = {};
+                        if (session.hasReadRevision() && snapshotStillOwned)
+                        {
+                            // Publish the durable path even if newer edits are
+                            // already waiting for another checkpoint.
+                            state->pendingAutosaveSessionPersistRequestedAt =
+                                std::chrono::steady_clock::now();
+                        }
                         if (session.autosaveSnapshotPath == snapshot.path &&
                             session.currentFile == snapshot.currentFile &&
                             session.document.getWaveformDataVersion() ==
                                 snapshot.waveformDataVersion &&
                             session.document.getMarkerDataVersion() ==
-                                snapshot.markerDataVersion)
+                                snapshot.markerDataVersion &&
+                            (!session.hasReadRevision() ||
+                             state->tabs[tabIndex].historyVersion ==
+                                 snapshot.historyVersion))
                         {
                             session.autosavedWaveformDataVersion =
                                 snapshot.waveformDataVersion;
                             session.autosavedMarkerDataVersion =
                                 snapshot.markerDataVersion;
+                            session.autosavedHistoryVersion =
+                                snapshot.historyVersion;
                             if (shouldDelaySessionPersistAfterAutosave(state))
                             {
                                 state->pendingAutosaveSessionPersistRequestedAt =
@@ -810,7 +849,27 @@ namespace cupuacu::actions::io
                     }
                 }
 
-                state->backgroundAutosaveJob.reset();
+                if (!snapshot.success && snapshotStillOwned)
+                {
+                    const int index = findTabIndexById(state, snapshot.tabId);
+                    if (index >= 0)
+                    {
+                        auto &session = state->tabs[index].session;
+                        session.autosaveRetryAfter =
+                            std::chrono::steady_clock::now() +
+                            std::chrono::seconds(5);
+                        if (session.lastAutosaveError != snapshot.error)
+                        {
+                            session.lastAutosaveError = snapshot.error;
+                            detail::reportSaveFailure(state, "Autosave",
+                                                      snapshot.path.string(),
+                                                      snapshot.error);
+                        }
+                    }
+                }
+                auto retired = concurrency::releaseOnWorker(
+                    std::shared_ptr<BackgroundAutosaveJob>(
+                        state->backgroundAutosaveJob.release()));
             }
         }
 
@@ -830,7 +889,11 @@ namespace cupuacu::actions::io
                         tab.session.document.getWaveformDataVersion(),
                         tab.session.document.getMarkerDataVersion(),
                         tab.session.currentFile, tab.session.document,
-                        tab.session.waveformCaches),
+                        tab.session.waveformCaches,
+                        tab.session.hasReadRevision()
+                            ? persistence::RevisionPersistence::capture(
+                                  tab.session, &tab)
+                            : nullptr),
                     cupuacu::destroyBackgroundAutosaveJob};
                 state->backgroundAutosaveJob->start();
                 break;

@@ -5,6 +5,11 @@
 #include <bit>
 #include <limits>
 
+namespace cupuacu::storage
+{
+    class RevisionArchive;
+}
+
 namespace cupuacu::waveform
 {
     using Peak = gui::Peak;
@@ -22,6 +27,7 @@ namespace cupuacu::waveform
     // only levels beyond the legacy ceiling are added, up to a full overview.
     class SourcePeaks
     {
+        friend class storage::RevisionArchive;
         storage::AudioShape dimensions;
         std::vector<std::vector<gui::PeakLevel>> channels;
 

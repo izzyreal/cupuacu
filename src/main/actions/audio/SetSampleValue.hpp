@@ -12,6 +12,8 @@ namespace cupuacu::actions::audio
 {
     class SetSampleValue : public Undoable
     {
+        friend class persistence::RevisionPersistence;
+
     private:
         const uint32_t channel;
         const int64_t sampleIndex;

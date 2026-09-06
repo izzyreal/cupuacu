@@ -195,7 +195,7 @@ namespace cupuacu::actions
             const auto tabIndex =
                 targetTabIndex < 0 ? state->activeTabIndex : targetTabIndex;
             auto &session = state->tabs.at(tabIndex).session;
-            if (markSaved)
+            if (markSaved && !session.hasReadRevision())
             {
                 detail::discardAutosaveSnapshot(session);
             }
@@ -215,6 +215,13 @@ namespace cupuacu::actions
                 }
                 session.clearPendingPersistentWaveformCacheSave();
                 file::OverwritePreservation::refreshSession(state, tabIndex);
+                // Keep the durable history; checkpoint the new saved root and
+                // filename even when audio/marker versions did not change.
+                session.autosavedHistoryVersion = UINT64_MAX;
+                if (state->paths)
+                {
+                    io::queueAutosaveForTab(state, tabIndex);
+                }
                 return;
             }
             if (updateCurrentFile)

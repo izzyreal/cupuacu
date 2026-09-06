@@ -73,6 +73,7 @@ namespace cupuacu
     }
     void DocumentSession::clearReadRevision()
     {
+        recoveredRevisionCheckpoint.reset();
         readRevision.reset();
         savedReadRevision.reset();
         savedRevisionMarkers.clear();

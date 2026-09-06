@@ -187,9 +187,8 @@ This backend is not yet the editor default. Its cache limit bounds decoded
 payload residency, not total process memory: decoder/import scratch, the flat
 block index and resident peak pyramid are separate. The cache exposes a 10%-of-
 physical-RAM default calculation, but application-wide admission, preferences
-and pressure handling remain to be integrated. Paged sequence indexes, default
-editor/transport integration and durable
-revision manifests are subsequent slices. Existing codec frame-count limits still apply.
+and pressure handling remain to be integrated. Paged sequence indexes and default backend activation remain subsequent work.
+Bound sessions now integrate transport and durable revision manifests. Existing codec frame-count limits still apply.
 The external-sink metadata is rejected by the legacy document commit path to
 prevent publishing a document without its samples.
 
@@ -455,7 +454,8 @@ and summaries are setup. Every result must equal the fixture's exact peak.
 
 Operation-only command and resident effect cases explicitly clear `State::paths`
 to disable autosave. Owned effects use `BenchPaths` rooted in the runner's temporary
-directory; reference sessions do not schedule autosave. Default-constructed
+directory when preparing their worker, then clear paths before publication to
+exclude autosave. Default-constructed
 `State` has live application paths and must not be used unmodified in benchmarks.
 Earlier command/effect reports from before this isolation fix inadvertently
 included resident autosave work and must be regenerated. The runner removes each
@@ -563,3 +563,32 @@ SDL painting. Original-sample reads must be zero, output is compared sample by
 sample, and undo/redo must restore the exact retained roots. The benchmark does
 not claim a resident-path speedup or measure audio-device contention. Peak RSS
 includes import, validation and retained peak/index metadata.
+
+`checkpoint_initial_owned`, `checkpoint_edit_owned`, `checkpoint_history_owned`
+and `recovery_owned` measure durable revision persistence. Import is setup.
+Initial checkpoint includes ownership of samples/original bytes and all indexes
+and peaks. Edit checkpoint starts from a persisted document, changes one sample,
+then measures reference capture and incremental writing. The history case starts
+with 1,000 point edits and measures the 1,001st checkpoint. Normal recovery loads
+the persisted document and installs matching history without reading samples.
+These cases use the production persistence service, not UI autosave polling.
+
+```sh
+python3 scripts/run-benchmarks.py --build-dir build --mode timing \
+  --profile extended --filter 'checkpoint_*' --sizes-mib 1 256 \
+  --repetitions 3 --output dist/benchmarks/revision-checkpoints.json
+python3 scripts/run-benchmarks.py --build-dir build --mode timing \
+  --profile extended --filter recovery_owned --sizes-mib 1 256 \
+  --repetitions 3 --output dist/benchmarks/revision-recovery.json
+```
+
+`revision_persistence` reports capture/completion time, appended node count,
+logical copied sample/original bytes and metadata bytes written. Filesystem
+clones count their logical length; this is not physical disk traffic. Incremental
+point checkpoints must copy no sample/original payload. Normal recovery must
+perform no sample reads before validation. Every recovered sample and applicable
+undo/redo root identity is checked outside timing. Histories still require full
+manifest metadata serialization; initial ownership and resident recovered
+indexes/peaks scale with source length. OS caching is uncontrolled, RSS includes
+setup/validation, and these cases do not establish power-loss durability, GUI
+event latency or application-wide bounded memory.

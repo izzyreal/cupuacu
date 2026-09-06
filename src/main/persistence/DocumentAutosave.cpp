@@ -1,4 +1,6 @@
 #include "persistence/DocumentAutosave.hpp"
+#include "RevisionPersistence.hpp"
+#include "../concurrency/DeferredRelease.hpp"
 
 #include "LongTask.hpp"
 #include "Logger.hpp"
@@ -118,10 +120,11 @@ namespace cupuacu::persistence
                         activeRevision = request->revision;
                     }
 
+                    bool saved = true;
                     if (request->clipboard.hasAudio())
                     {
-                        (void)saveClipboardSnapshot(request->path,
-                                                    request->clipboard);
+                        saved = saveClipboardSnapshot(request->path,
+                                                      request->clipboard);
                     }
                     else
                     {
@@ -131,8 +134,9 @@ namespace cupuacu::persistence
                     {
                         std::lock_guard lock(mutex);
                         busy = false;
-                        completedPath = std::move(activePath);
-                        completedRevision = activeRevision;
+                        completedPath = saved ? std::move(activePath)
+                                              : std::filesystem::path{};
+                        completedRevision = saved ? activeRevision : 0;
                         activeRevision = 0;
                     }
                     cv.notify_all();
@@ -422,6 +426,12 @@ namespace cupuacu::persistence
 
         try
         {
+            if (session.hasReadRevision())
+            {
+                RevisionPersistence::save(
+                    path, *RevisionPersistence::capture(session));
+                return true;
+            }
             cupuacu::file::writeFileAtomically(
                 path,
                 [&](const std::filesystem::path &temporaryPath)
@@ -465,6 +475,15 @@ namespace cupuacu::persistence
 
         try
         {
+            if (storage::RevisionArchive::recognizes(path))
+            {
+                RevisionPersistence::load(path, session, isCanceled);
+                if (progress)
+                {
+                    progress(1.0);
+                }
+                return true;
+            }
             const auto startedAt = std::chrono::steady_clock::now();
             std::ifstream input(path, std::ios::binary);
             CUPUACU_METRIC(auto ioObservation = performance::observeRead(
@@ -631,8 +650,28 @@ namespace cupuacu::persistence
         }
 
         cupuacu::DocumentSession session;
-        session.document = clipboard.toDocument();
-        session.clearCurrentFile();
+        if (auto audio = clipboard.getAudioRevision())
+        {
+            const auto shape = audio->shape();
+            session.document.setExternalAudioShape(
+                shape.format, shape.sampleRate, shape.channels, shape.frames);
+            session.bindReadRevision(audio);
+            try
+            {
+                auto cp = RevisionPersistence::capture(session);
+                cp->metadata["clipboard"] = true;
+                RevisionPersistence::save(path, *cp);
+                return true;
+            }
+            catch (...)
+            {
+                return false;
+            }
+        }
+        else
+        {
+            session.document = clipboard.toDocument();
+        }
         return saveDocumentAutosaveSnapshot(path, session);
     }
 
@@ -644,7 +683,14 @@ namespace cupuacu::persistence
         {
             return false;
         }
-        clipboard.assignDocument(session.document);
+        if (session.hasReadRevision())
+        {
+            clipboard.assignRevision(session.getEditRevision());
+        }
+        else
+        {
+            clipboard.assignDocument(session.document);
+        }
         return clipboard.hasAudio();
     }
 
@@ -670,8 +716,15 @@ namespace cupuacu::persistence
             return;
         }
 
-        std::error_code ec;
-        std::filesystem::remove(path, ec);
+        try
+        {
+            storage::RevisionArchive::remove(path);
+        }
+        catch (...)
+        {
+            std::error_code ec;
+            std::filesystem::remove(path, ec);
+        }
     }
 
     void removeClipboardSnapshot(const std::filesystem::path &path)

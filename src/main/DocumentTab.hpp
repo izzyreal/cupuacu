@@ -27,6 +27,7 @@ namespace cupuacu
     struct DocumentTab
     {
         uint64_t id = detail::nextDocumentTabId();
+        uint64_t historyVersion = 0;
         std::string title;
         DocumentSession session;
         gui::EditorViewState viewState{};
