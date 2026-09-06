@@ -13,6 +13,7 @@
 #include "State.hpp"
 #include "actions/DocumentSessionPersistence.hpp"
 #include "file/SampleQuantization.hpp"
+#include "storage/AudioEditRevision.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -64,8 +65,7 @@ namespace cupuacu::gui
         std::string formatHoveredSampleValue() const
         {
             const auto &hovered =
-                state->getActiveViewState()
-                    .sampleValueUnderMouseCursor;
+                state->getActiveViewState().sampleValueUnderMouseCursor;
             if (!hovered.has_value())
             {
                 return "";
@@ -73,10 +73,20 @@ namespace cupuacu::gui
 
             const auto format =
                 state->getActiveDocumentSession().document.getSampleFormat();
-            const auto buffer = state->getActiveDocumentSession().document.getAudioBuffer();
-            const bool preserveLoadedCode =
-                buffer && file::isIntegerPcmSampleFormat(format) &&
-                !buffer->isDirty(hovered->channel, hovered->frame);
+            const auto &session = state->getActiveDocumentSession();
+            bool preserveLoadedCode = false;
+            if (file::isIntegerPcmSampleFormat(format) && hovered->frame >= 0 &&
+                hovered->frame < session.document.getFrameCount() &&
+                hovered->channel >= 0 &&
+                hovered->channel < session.document.getChannelCount())
+            {
+                preserveLoadedCode =
+                    session.hasReadRevision()
+                        ? !session.getEditRevision()->isDirty(
+                              int(hovered->channel), hovered->frame)
+                        : !session.document.getAudioBuffer()->isDirty(
+                              hovered->channel, hovered->frame);
+            }
             const auto quantized = file::quantizedStatusSampleValue(
                 format, hovered->value, preserveLoadedCode);
             if (quantized.has_value())
@@ -177,16 +187,24 @@ namespace cupuacu::gui
 
             posField->setOnSubmit(
                 [this](const std::string &text)
-                { return applyPositionEdit(text); });
+                {
+                    return applyPositionEdit(text);
+                });
             startField->setOnSubmit(
                 [this](const std::string &text)
-                { return applyStartEdit(text); });
+                {
+                    return applyStartEdit(text);
+                });
             endField->setOnSubmit(
                 [this](const std::string &text)
-                { return applyEndEdit(text); });
+                {
+                    return applyEndEdit(text);
+                });
             lengthField->setOnSubmit(
                 [this](const std::string &text)
-                { return applyLengthEdit(text); });
+                {
+                    return applyLengthEdit(text);
+                });
         }
 
     public:
@@ -219,9 +237,10 @@ namespace cupuacu::gui
             endField->setBounds(2 * fieldWidth, 0, fieldWidth, fieldHeight);
             lengthField->setBounds(3 * fieldWidth, 0, fieldWidth, fieldHeight);
             valueField->setBounds(4 * fieldWidth, 0, fieldWidth, fieldHeight);
-            sampleRateField->setBounds(5 * fieldWidth, 0, fieldWidth, fieldHeight);
-            bitDepthField->setBounds(6 * fieldWidth, 0, getWidth() - 6 * fieldWidth,
-                                     fieldHeight);
+            sampleRateField->setBounds(5 * fieldWidth, 0, fieldWidth,
+                                       fieldHeight);
+            bitDepthField->setBounds(6 * fieldWidth, 0,
+                                     getWidth() - 6 * fieldWidth, fieldHeight);
         }
 
         void onDraw(SDL_Renderer *renderer) override
@@ -232,8 +251,7 @@ namespace cupuacu::gui
         void timerCallback() override
         {
             const auto &session = state->getActiveDocumentSession();
-            const auto &viewState =
-                state->getActiveViewState();
+            const auto &viewState = state->getActiveViewState();
             const int64_t currentPos =
                 getPlaybackPositionIfPlaying().value_or(session.cursor);
 

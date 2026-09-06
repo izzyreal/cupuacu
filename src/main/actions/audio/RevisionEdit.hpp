@@ -69,8 +69,10 @@ namespace cupuacu::actions::audio
         Trim,
         InsertSilence
     };
-    void performRevisionCommand(State *, RevisionCommand, int64_t start,
-                                int64_t count, int64_t silenceFrames = 0);
+    void performRevisionCommand(
+        State *, RevisionCommand, int64_t start, int64_t count,
+        int64_t silenceFrames = 0,
+        std::shared_ptr<const storage::AudioEditRevision> pasteSource = {});
     void removeMarkerRange(std::vector<DocumentMarker> &, int64_t start,
                            int64_t count);
 } // namespace cupuacu::actions::audio

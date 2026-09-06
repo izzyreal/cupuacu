@@ -4,6 +4,7 @@
 #include "BuildInfo.hpp"
 #include "actions/audio/EditCommands.hpp"
 #include "actions/audio/SetSampleValue.hpp"
+#include "effects/PeakAnalysis.hpp"
 #include "actions/Zoom.hpp"
 #include "file/file_loading.hpp"
 #include "file/OwnedAudioImport.hpp"
@@ -199,7 +200,8 @@ namespace
         state.mainDocumentSessionWindow =
             std::make_unique<gui::DocumentSessionWindow>(
                 &state, &session, &state.getActiveViewState(),
-                "Cupuacu benchmark", viewportWidth + 16, 500, SDL_WINDOW_HIDDEN);
+                "Cupuacu benchmark", viewportWidth + 16, 500,
+                SDL_WINDOW_HIDDEN);
         auto *window = state.mainDocumentSessionWindow->getWindow();
         require(window->isOpen(), SDL_GetError());
         state.windows.push_back(window);
@@ -1016,11 +1018,16 @@ namespace
             const bool owned = name.ends_with("owned");
             const bool whole = name.starts_with("effect_all_");
             State state;
+            state.paths.reset(); // Operation-only cases exclude autosave and
+                                 // live application state.
             auto &session = state.getActiveDocumentSession();
             const auto root =
                 std::filesystem::path(request.at("root").get<std::string>());
             if (owned)
             {
+                // Reference mutations do not autosave yet. Keep their generated
+                // effect stores inside the runner-owned temporary directory.
+                state.paths = std::make_unique<BenchPaths>(root);
                 auto imported = file::importOwnedAudio(
                     request.at("fixture").get<std::string>(), root / "audio",
                     std::make_shared<storage::DecodedBlockCache>(2 * 1024 *
@@ -1087,10 +1094,81 @@ namespace
             result["validated"] = true;
             return;
         }
-        if (name == "edit_command_owned" || name == "edit_command_memory")
+        if (name == "normalize_owned" || name == "normalize_memory" ||
+            name == "normalize_legacy")
         {
-            const bool owned = name == "edit_command_owned";
             State state;
+            state.paths.reset(); // Operation-only cases exclude autosave and
+                                 // live application state.
+            auto &session = state.getActiveDocumentSession();
+            if (name == "normalize_owned")
+            {
+                auto imported = file::importOwnedAudio(
+                    request.at("fixture").get<std::string>(),
+                    std::filesystem::path(
+                        request.at("root").get<std::string>()) /
+                        "audio",
+                    std::make_shared<storage::DecodedBlockCache>(2 * 1024 *
+                                                                 1024));
+                session.document = std::move(imported.metadata.document);
+                session.bindReadRevision(
+                    storage::AudioEditRevision::from(imported.audio));
+            }
+            else
+            {
+                initialize(session, frames);
+            }
+            selection(state, 17, frames - 34);
+            float peak = 0;
+            for (auto iteration : measurement)
+            {
+                (void)iteration;
+                const auto started = Clock::now();
+                if (name == "normalize_legacy")
+                {
+                    peak = effects::computeTargetPeakAbsolute(&state);
+                }
+                else
+                {
+                    effects::PeakAnalysis analysis(session.getAudioReader(),
+                                                   session.getEditRevision(),
+                                                   session.getViewportSource());
+                    analysis.submit({17, frames - 34, {0, 1}});
+                    result["peak_analysis"]["submission_ms"] = elapsed(started);
+                    for (;;)
+                    {
+                        if (auto ready = analysis.takePublished())
+                        {
+                            if (ready->error)
+                            {
+                                std::rethrow_exception(ready->error);
+                            }
+                            require(ready->value.has_value(),
+                                    "Peak result missing");
+                            peak = *ready->value;
+                            break;
+                        }
+                        require(elapsed(started) < 10000,
+                                "Peak analysis timed out");
+                        std::this_thread::yield();
+                    }
+                }
+                result["peak_analysis"]["completion_ms"] = elapsed(started);
+                measurement.SetIterationTime(elapsed(started) / 1000.0);
+            }
+            require(peak == .875f, "Normalization peak was not exact");
+            captureMetrics();
+            result["validated"] = true;
+            return;
+        }
+        if (name == "edit_command_owned" || name == "edit_command_memory" ||
+            name == "sample_command_owned" || name == "sample_command_memory")
+        {
+            const bool owned = name.ends_with("owned");
+            const bool point = name.starts_with("sample_");
+            State state;
+            state.paths.reset(); // Operation-only cases exclude autosave and
+                                 // live application state.
             auto &session = state.getActiveDocumentSession();
             auto cache =
                 std::make_shared<storage::DecodedBlockCache>(2 * 1024 * 1024);
@@ -1139,9 +1217,19 @@ namespace
                 {
                     selection(state, 10001, 1);
                     auto started = Clock::now();
-                    actions::audio::performDelete(&state);
+                    if (point)
+                    {
+                        state.addAndDoUndoable(
+                            std::make_shared<actions::audio::SetSampleValue>(
+                                &state, 0, 10001, sampleAt(10001, 0), .75f));
+                    }
+                    else
+                    {
+                        actions::audio::performDelete(&state);
+                    }
                     deletes.push_back(elapsed(started));
-                    require(session.document.getFrameCount() == frames - 1,
+                    require(session.document.getFrameCount() ==
+                                frames - (point ? 0 : 1),
                             "Delete command did not commit");
                     started = Clock::now();
                     state.undo();
@@ -1151,7 +1239,8 @@ namespace
                     started = Clock::now();
                     state.redo();
                     redos.push_back(elapsed(started));
-                    require(session.document.getFrameCount() == frames - 1,
+                    require(session.document.getFrameCount() ==
+                                frames - (point ? 0 : 1),
                             "Redo command did not commit");
                     state.undo();
                 }
@@ -1177,7 +1266,7 @@ namespace
                     {"max_ms", values.back()}};
             };
             result["production_commands"] = {
-                {"delete", stats(deletes)},
+                {point ? "sample" : "delete", stats(deletes)},
                 {"undo", stats(undos)},
                 {"redo", stats(redos)},
                 {"repetitions", repeats},

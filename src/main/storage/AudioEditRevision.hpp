@@ -14,10 +14,12 @@ namespace cupuacu::storage
     public:
         struct SourceRange
         {
-            std::shared_ptr<const AudioRevision> source; // null means silence
+            std::shared_ptr<const AudioRevision>
+                source; // null means a constant range
             int channel = 0;
             int64_t start = 0;
             int64_t frames = 0;
+            float constantValue = 0;
         };
 
         struct PeakWork
@@ -239,7 +241,8 @@ namespace cupuacu::storage
             }
             else if (!tree->range.source)
             {
-                prepared->whole = {0, 0};
+                prepared->whole = {tree->range.constantValue,
+                                   tree->range.constantValue};
             }
             else
             {
@@ -327,7 +330,8 @@ namespace cupuacu::storage
                 const auto &range = tree->range;
                 if (!range.source)
                 {
-                    return waveform::Peak{0, 0};
+                    return waveform::Peak{range.constantValue,
+                                          range.constantValue};
                 }
                 const auto end = start + count;
                 auto result = waveform::emptyPeak();
@@ -430,6 +434,43 @@ namespace cupuacu::storage
             return std::shared_ptr<const AudioEditRevision>(
                 new AudioEditRevision(shape, std::move(roots)));
         }
+        std::shared_ptr<const AudioEditRevision>
+        forPaste(AudioShape target) const
+        {
+            if (target.channels <= 0 || target.sampleRate <= 0)
+            {
+                throw std::invalid_argument("Invalid paste target");
+            }
+            target.frames = dimensions.frames;
+            auto roots = channels;
+            roots.resize(target.channels);
+            uint64_t allocated = 0;
+            for (int c = dimensions.channels; c < target.channels; ++c)
+            {
+                roots[c] = leaf({{}, c, 0, target.frames}, allocated);
+            }
+            return std::shared_ptr<const AudioEditRevision>(
+                new AudioEditRevision(target, std::move(roots)));
+        }
+        // Memory-only metadata lookup; does not read sample files.
+        bool isDirty(int channel, int64_t frame) const
+        {
+            bool dirty = true;
+            visitSourceRanges(channel, frame, 1,
+                              [&](const SourceRange &range)
+                              {
+                                  if (range.source)
+                                  {
+                                      audio::SampleProvenance provenance;
+                                      uint8_t flag = 1;
+                                      range.source->readLegacyMetadata(
+                                          range.channel, range.start,
+                                          {&provenance, 1}, {&flag, 1});
+                                      dirty = flag != 0;
+                                  }
+                              });
+            return dirty;
+        }
         AudioShape shape() const override
         {
             return dimensions;
@@ -462,7 +503,8 @@ namespace cupuacu::storage
                     }
                     else
                     {
-                        std::fill(destination.begin(), destination.end(), 0.0f);
+                        std::fill(destination.begin(), destination.end(),
+                                  range.constantValue);
                     }
                     output = output.subspan(destination.size());
                 });
@@ -591,7 +633,8 @@ namespace cupuacu::storage
         // sourceChannel.
         void replaceChannel(int channel, int64_t at, int64_t count,
                             const Revision *source = nullptr,
-                            int sourceChannel = 0, int64_t sourceStart = 0)
+                            int sourceChannel = 0, int64_t sourceStart = 0,
+                            float constantValue = 0)
         {
             Revision::validateFrames(dimensions, at, count);
             AudioReader::validateRange(dimensions, channel, at,
@@ -621,7 +664,8 @@ namespace cupuacu::storage
             }
             else
             {
-                replacement = Revision::leaf({{}, 0, 0, count}, allocated);
+                replacement =
+                    Revision::leaf({{}, 0, 0, count, constantValue}, allocated);
             }
             auto [left, tail] =
                 Revision::split(channels[channel], at, allocated);

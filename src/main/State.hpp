@@ -25,6 +25,10 @@
 
 namespace cupuacu
 {
+    namespace storage
+    {
+        class ClipboardConversion;
+    }
     namespace audio
     {
         class AudioDevices;
@@ -247,6 +251,8 @@ namespace cupuacu
         persistence::PersistedSessionState startupPersistedSessionState;
         bool preserveStartupSessionStateOnShutdown = false;
 
+        std::shared_ptr<storage::ClipboardConversion>
+            backgroundClipboardConversion;
         ~State();
 
         DocumentTab *getActiveTab()
@@ -313,8 +319,7 @@ namespace cupuacu
             return getActiveTab()->redoables;
         }
 
-        void addUndoableToTab(int tabIndex,
-                              std::shared_ptr<actions::Undoable>);
+        void addUndoableToTab(int tabIndex, std::shared_ptr<actions::Undoable>);
         void addAndDoUndoableToTab(int tabIndex,
                                    std::shared_ptr<actions::Undoable>);
         void addUndoable(std::shared_ptr<actions::Undoable>);

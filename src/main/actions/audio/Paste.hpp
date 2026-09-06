@@ -15,6 +15,7 @@ namespace cupuacu::actions::audio
     {
         int64_t startFrame;
         int64_t endFrame;
+        std::shared_ptr<const ClipboardAudio> sourceClipboard;
 
         int64_t insertedFrameCount = 0;
         int64_t overwrittenFrameCount = 0;
@@ -81,21 +82,21 @@ namespace cupuacu::actions::audio
             return markers;
         }
 
-        [[nodiscard]] cupuacu::Document buildRedoDocument(
-            const cupuacu::Document &sourceDocument,
-            const cupuacu::Document::AudioSegment &before,
-            const cupuacu::Document::AudioSegment &inserted,
-            const cupuacu::Document::AudioSegment &after,
-            std::vector<cupuacu::DocumentMarker> markers,
-            detail::OperationProgressUi &progressUi,
-            const int64_t outputFrameCount) const
+        [[nodiscard]] cupuacu::Document
+        buildRedoDocument(const cupuacu::Document &sourceDocument,
+                          const cupuacu::Document::AudioSegment &before,
+                          const cupuacu::Document::AudioSegment &inserted,
+                          const cupuacu::Document::AudioSegment &after,
+                          std::vector<cupuacu::DocumentMarker> markers,
+                          detail::OperationProgressUi &progressUi,
+                          const int64_t outputFrameCount) const
         {
             cupuacu::Document replacement;
-            replacement.initialize(sourceDocument.getSampleFormat(),
-                                   sourceDocument.getSampleRate(),
-                                   static_cast<uint32_t>(
-                                       sourceDocument.getChannelCount()),
-                                   outputFrameCount);
+            replacement.initialize(
+                sourceDocument.getSampleFormat(),
+                sourceDocument.getSampleRate(),
+                static_cast<uint32_t>(sourceDocument.getChannelCount()),
+                outputFrameCount);
             detail::writeSegmentWithCancelableProgress(
                 state, replacement, 0, before, progressUi,
                 "Preparing pasted document", 0.72, 0.78);
@@ -121,11 +122,11 @@ namespace cupuacu::actions::audio
             const int64_t outputFrameCount) const
         {
             cupuacu::Document replacement;
-            replacement.initialize(sourceDocument.getSampleFormat(),
-                                   sourceDocument.getSampleRate(),
-                                   static_cast<uint32_t>(
-                                       sourceDocument.getChannelCount()),
-                                   outputFrameCount);
+            replacement.initialize(
+                sourceDocument.getSampleFormat(),
+                sourceDocument.getSampleRate(),
+                static_cast<uint32_t>(sourceDocument.getChannelCount()),
+                outputFrameCount);
             detail::writeSegmentWithCancelableProgress(
                 state, replacement, 0, before, progressUi,
                 "Preparing restored document", 0.68, 0.76);
@@ -137,7 +138,8 @@ namespace cupuacu::actions::audio
             }
             detail::writeSegmentWithCancelableProgress(
                 state, replacement,
-                startFrame + (overwritten.has_value() ? overwrittenFrameCount : 0),
+                startFrame +
+                    (overwritten.has_value() ? overwrittenFrameCount : 0),
                 after, progressUi, "Preparing restored document", 0.84, 0.9);
             replacement.replaceMarkers(std::move(markers));
             replacement.adoptPreservationSourceId(
@@ -146,9 +148,10 @@ namespace cupuacu::actions::audio
         }
 
     public:
-        Paste(State *state, int64_t start, int64_t end = -1)
-            : DurationMutationUndoable(state), startFrame(start),
-              endFrame(end)
+        Paste(State *state, int64_t start, int64_t end = -1,
+              std::shared_ptr<const ClipboardAudio> source = {})
+            : DurationMutationUndoable(state), startFrame(start), endFrame(end),
+              sourceClipboard(std::move(source))
         {
             auto &session = state->getActiveDocumentSession();
             if (session.selection.isActive())
@@ -188,7 +191,9 @@ namespace cupuacu::actions::audio
         {
             lastCommitted = false;
             auto &session = state->getActiveDocumentSession();
-            const auto &clip = state->clipboard;
+            const auto pinnedClipboard = sourceClipboard;
+            const auto &clip =
+                pinnedClipboard ? *pinnedClipboard : state->clipboard;
             auto &doc = session.document;
             const int64_t docFrames = doc.getFrameCount();
 
@@ -202,9 +207,9 @@ namespace cupuacu::actions::audio
                 return;
             }
 
-            cupuacu::LongTaskScope longTask(
-                state, getRedoDescription(), "Capturing inserted audio", 0.0, false,
-                true);
+            cupuacu::LongTaskScope longTask(state, getRedoDescription(),
+                                            "Capturing inserted audio", 0.0,
+                                            false, true);
             cupuacu::renderLongTaskOverlayNow(state);
             detail::OperationProgressUi progressUi(state,
                                                    "Capturing inserted audio");
@@ -220,7 +225,8 @@ namespace cupuacu::actions::audio
 
                 if (!insertedHandle.empty())
                 {
-                    insertedOwned = session.undoStore.readSegment(insertedHandle);
+                    insertedOwned =
+                        session.undoStore.readSegment(insertedHandle);
                     inserted = &*insertedOwned;
                 }
                 else if (const auto *clipboardSegment =
@@ -287,8 +293,8 @@ namespace cupuacu::actions::audio
                     [&](const int64_t completed, const int64_t totalToCopy)
                     {
                         detail::publishCancelablePhaseProgress(
-                            state, progressUi, "Capturing surrounding audio", 0.46,
-                            0.59, completed, totalToCopy);
+                            state, progressUi, "Capturing surrounding audio",
+                            0.46, 0.59, completed, totalToCopy);
                     });
                 const auto after = doc.captureSegment(
                     startFrame + overwrittenFrameCount,
@@ -296,8 +302,8 @@ namespace cupuacu::actions::audio
                     [&](const int64_t completed, const int64_t totalToCopy)
                     {
                         detail::publishCancelablePhaseProgress(
-                            state, progressUi, "Capturing surrounding audio", 0.59,
-                            0.72, completed, totalToCopy);
+                            state, progressUi, "Capturing surrounding audio",
+                            0.59, 0.72, completed, totalToCopy);
                     });
 
                 auto markers = [&]()
@@ -305,12 +311,14 @@ namespace cupuacu::actions::audio
                     auto lease = doc.acquireReadLease();
                     return applyPasteRedoMarkerTransform(
                         std::vector<cupuacu::DocumentMarker>(
-                            lease.getMarkers().begin(), lease.getMarkers().end()),
+                            lease.getMarkers().begin(),
+                            lease.getMarkers().end()),
                         startFrame, overwrittenFrameCount, insertedFrameCount);
                 }();
 
                 auto replacement = buildRedoDocument(
-                    doc, before, *inserted, after, std::move(markers), progressUi,
+                    doc, before, *inserted, after, std::move(markers),
+                    progressUi,
                     docFrames - overwrittenFrameCount + insertedFrameCount);
                 cupuacu::throwIfLongTaskCanceled(state);
 
@@ -326,6 +334,7 @@ namespace cupuacu::actions::audio
                 detail::rebuildWaveformCacheAfterTransactionalCommit(
                     state, session, progressUi, "Paste complete");
                 session.syncSelectionAndCursorToDocumentLength();
+                sourceClipboard.reset();
                 lastCommitted = true;
             }
             catch (const cupuacu::LongTaskCanceledError &)
@@ -351,34 +360,36 @@ namespace cupuacu::actions::audio
                 state, std::string("Undoing ") + getUndoDescription(),
                 "Capturing surrounding audio", 0.0, false, true);
             cupuacu::renderLongTaskOverlayNow(state);
-            detail::OperationProgressUi progressUi(state,
-                                                   "Capturing surrounding audio");
+            detail::OperationProgressUi progressUi(
+                state, "Capturing surrounding audio");
 
             try
             {
-                const int64_t removeCount =
-                    std::min<int64_t>(insertedFrameCount, docFrames - startFrame);
+                const int64_t removeCount = std::min<int64_t>(
+                    insertedFrameCount, docFrames - startFrame);
                 const auto before = doc.captureSegment(
                     0, startFrame,
                     [&](const int64_t completed, const int64_t totalToCopy)
                     {
                         detail::publishCancelablePhaseProgress(
-                            state, progressUi, "Capturing surrounding audio", 0.0,
-                            0.3, completed, totalToCopy);
+                            state, progressUi, "Capturing surrounding audio",
+                            0.0, 0.3, completed, totalToCopy);
                     });
                 const auto after = doc.captureSegment(
-                    startFrame + removeCount, docFrames - (startFrame + removeCount),
+                    startFrame + removeCount,
+                    docFrames - (startFrame + removeCount),
                     [&](const int64_t completed, const int64_t totalToCopy)
                     {
                         detail::publishCancelablePhaseProgress(
-                            state, progressUi, "Capturing surrounding audio", 0.3,
-                            0.6, completed, totalToCopy);
+                            state, progressUi, "Capturing surrounding audio",
+                            0.3, 0.6, completed, totalToCopy);
                     });
 
                 std::optional<cupuacu::Document::AudioSegment> overwritten;
                 if (endFrame >= 0 && overwrittenFrameCount > 0)
                 {
-                    overwritten = session.undoStore.readSegment(overwrittenHandle);
+                    overwritten =
+                        session.undoStore.readSegment(overwrittenHandle);
                 }
                 cupuacu::throwIfLongTaskCanceled(state);
 
@@ -387,18 +398,20 @@ namespace cupuacu::actions::audio
                     auto lease = doc.acquireReadLease();
                     return applyPasteUndoMarkerTransform(
                         std::vector<cupuacu::DocumentMarker>(
-                            lease.getMarkers().begin(), lease.getMarkers().end()),
+                            lease.getMarkers().begin(),
+                            lease.getMarkers().end()),
                         startFrame, removeCount, overwrittenFrameCount);
                 }();
 
                 auto replacement = buildUndoDocument(
-                    doc, before, overwritten, after, std::move(markers), progressUi,
+                    doc, before, overwritten, after, std::move(markers),
+                    progressUi,
                     docFrames - removeCount + overwrittenFrameCount);
                 cupuacu::throwIfLongTaskCanceled(state);
 
-                cupuacu::setLongTask(state,
-                                     std::string("Undoing ") + getUndoDescription(),
-                                     "Committing undo", 0.9, false, false);
+                cupuacu::setLongTask(
+                    state, std::string("Undoing ") + getUndoDescription(),
+                    "Committing undo", 0.9, false, false);
                 progressUi.publishProgress("Committing undo", 0.9, true);
                 session.stopWaveformCacheBuild();
                 session.document = std::move(replacement);
@@ -483,7 +496,8 @@ namespace cupuacu::actions::audio
             return overwrittenFrameCount;
         }
 
-        [[nodiscard]] const undo::UndoStore::SegmentHandle &getInsertedHandle() const
+        [[nodiscard]] const undo::UndoStore::SegmentHandle &
+        getInsertedHandle() const
         {
             return insertedHandle;
         }
@@ -517,7 +531,8 @@ namespace cupuacu::actions::audio
         [[nodiscard]] cupuacu::file::OverwritePreservationMutation
         overwritePreservationMutation() const override
         {
-            return cupuacu::file::OverwritePreservationMutationHelper::compatible();
+            return cupuacu::file::OverwritePreservationMutationHelper::
+                compatible();
         }
 
         [[nodiscard]] bool lastOperationCommitted() const override

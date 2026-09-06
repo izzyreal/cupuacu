@@ -13,7 +13,7 @@ namespace
 {
     struct Fixture
     {
-        State state;
+        test::StateWithTestPaths state{std::string_view{"revision-editing"}};
         std::shared_ptr<storage::AudioBlockStore> store =
             std::make_shared<storage::AudioBlockStore>(
                 test::makeUniqueTestRoot("revision-commands") / "audio");
@@ -398,4 +398,277 @@ TEST_CASE("Production effect publication commits roots and rejects stale work",
         f.state.redo();
         REQUIRE(session.getEditRevision() == after);
     }
+}
+
+#include "actions/audio/SetSampleValue.hpp"
+#include "actions/audio/ClipboardPaste.hpp"
+#include "storage/ClipboardConversion.hpp"
+#include "effects/PeakAnalysis.hpp"
+
+TEST_CASE(
+    "A reference sample gesture retains one before/after root without I/O",
+    "[revision-ui]")
+{
+    Fixture f;
+    auto &session = f.state.getActiveDocumentSession();
+    const auto before = session.getEditRevision();
+    const auto io = f.store->ioBytes();
+    auto edit = std::make_shared<actions::audio::SetSampleValue>(
+        &f.state, 1, 65535, f.samples[65535 * 2 + 1]);
+    for (int i = 0; i < 100; ++i)
+    {
+        edit->setNewValue(float(i) / 64);
+        edit->redo();
+        REQUIRE(edit->lastOperationCommitted());
+    }
+    f.state.addUndoable(edit);
+    auto after = session.getEditRevision();
+    REQUIRE(after->indexHeight() <= 3);
+    REQUIRE(f.store->ioBytes() == io);
+    REQUIRE_FALSE(edit->canPersistForRestart());
+    f.state.undo();
+    REQUIRE(session.getEditRevision() == before);
+    f.state.redo();
+    REQUIRE(session.getEditRevision() == after);
+    REQUIRE(f.store->ioBytes() == io);
+    std::array<float, 3> samples;
+    after->readChannel(1, 65534, samples);
+    REQUIRE(samples[0] == f.samples[65534 * 2 + 1]);
+    REQUIRE(samples[1] == 99.f / 64);
+    REQUIRE(samples[2] == f.samples[65536 * 2 + 1]);
+    storage::AudioEditRevision::PeakWork work;
+    REQUIRE(after->prepareWaveform(work));
+    REQUIRE(after->queryWaveformOverview(1, 65535, 1, work)->max == 99.f / 64);
+}
+
+TEST_CASE(
+    "Normalization excludes boundary spikes and uses exact revision summaries",
+    "[revision-ui]")
+{
+    Fixture f;
+    storage::AudioEditTransaction edit(*f.original);
+    edit.replaceChannel(0, 17, 1, nullptr, 0, 0, 100);
+    edit.replaceChannel(0, 41, 1, nullptr, 0, 0, 2);
+    auto source = edit.finish();
+    effects::PeakAnalysisRequest request{18, 65119, {0}};
+    const auto before = f.store->ioBytes();
+    auto peak =
+        effects::PeakAnalysis::compute(*source, source.get(), nullptr, request,
+                                       []
+                                       {
+                                           return false;
+                                       });
+    REQUIRE(peak == 2.f);
+    REQUIRE(f.store->ioBytes().first - before.first <=
+            2 * storage::AudioBlockBytes);
+    request.start = 17;
+    REQUIRE(effects::PeakAnalysis::compute(*source, source.get(), nullptr,
+                                           request,
+                                           []
+                                           {
+                                               return false;
+                                           }) == 100.f);
+    request.channels = {1};
+    auto expected = 0.f;
+    for (int64_t i = request.start; i < request.start + request.count; ++i)
+    {
+        expected = std::max(expected, std::fabs(f.samples[i * 2 + 1]));
+    }
+    REQUIRE(effects::PeakAnalysis::compute(*source, source.get(), nullptr,
+                                           request,
+                                           []
+                                           {
+                                               return false;
+                                           }) == expected);
+    REQUIRE_FALSE(effects::PeakAnalysis::compute(*source, source.get(), nullptr,
+                                                 request,
+                                                 []
+                                                 {
+                                                     return true;
+                                                 }));
+}
+
+TEST_CASE("Clipboard conversion roundtrips samples and preservation metadata",
+          "[revision-ui]")
+{
+    Document doc;
+    doc.initialize(SampleFormat::PCM_S32, 44100, 2, 65573);
+    for (int64_t i = 0; i < doc.getFrameCount(); ++i)
+    {
+        for (int c = 0; c < 2; ++c)
+        {
+            doc.setSample(c, i, float((i + c) % 17) / 32, false);
+        }
+    }
+    doc.markCurrentStateAsSavedSource();
+    doc.setSample(0, 65535, .875f);
+    doc.setSampleProvenance(1, 7, {123, 300});
+    ClipboardAudio original;
+    original.assignSegment(doc.captureSegment(0, doc.getFrameCount()));
+    const auto path =
+        test::makeUniqueTestRoot("clipboard-conversion") / "audio";
+    auto disk = storage::convertClipboard(original, true, path,
+                                          []
+                                          {
+                                              return false;
+                                          });
+    REQUIRE(disk.getAudioRevision());
+    auto restored = storage::convertClipboard(disk, false, {},
+                                              []
+                                              {
+                                                  return false;
+                                              });
+    auto old = original.acquireReadLease();
+    auto next = restored.acquireReadLease();
+    for (int c = 0; c < 2; ++c)
+    {
+        for (int64_t i = 0; i < doc.getFrameCount(); ++i)
+        {
+            REQUIRE(next.getSample(c, i) == old.getSample(c, i));
+            REQUIRE(next.isDirty(c, i) == old.isDirty(c, i));
+            REQUIRE(next.getSampleProvenance(c, i).sourceId ==
+                    old.getSampleProvenance(c, i).sourceId);
+            REQUIRE(next.getSampleProvenance(c, i).frameIndex ==
+                    old.getSampleProvenance(c, i).frameIndex);
+        }
+    }
+    auto shape = disk.getAudioRevision()->shape();
+    shape.channels = 3;
+    shape.sampleRate = 48000;
+    shape.format = SampleFormat::FLOAT32;
+    auto mapped = disk.getAudioRevision()->forPaste(shape);
+    REQUIRE(mapped->shape().sampleRate == 48000);
+    std::array<float, 7> padded;
+    mapped->readChannel(2, 65530, padded);
+    REQUIRE(std::all_of(padded.begin(), padded.end(),
+                        [](float value)
+                        {
+                            return value == 0;
+                        }));
+    storage::AudioEditRevision::PeakWork work;
+    REQUIRE(mapped->prepareWaveform(work));
+    auto canceledPath = test::makeUniqueTestRoot("cancel-clipboard") / "audio";
+    int checks = 0;
+    REQUIRE_THROWS_AS(storage::convertClipboard(original, true, canceledPath,
+                                                [&]
+                                                {
+                                                    return ++checks > 3;
+                                                }),
+                      LongTaskCanceledError);
+    REQUIRE_FALSE(std::filesystem::exists(canceledPath));
+}
+
+TEST_CASE(
+    "Mixed backend paste pins accepted clipboard and publishes through history",
+    "[revision-ui]")
+{
+    const bool toRevision = GENERATE(false, true);
+    Fixture f(1000);
+    auto &session = f.state.getActiveDocumentSession();
+    ClipboardAudio incoming;
+    if (toRevision)
+    {
+        incoming.initialize(SampleFormat::PCM_S16, 44100, 1, 5);
+        for (int i = 0; i < 5; ++i)
+        {
+            incoming.setSample(0, i, float(i) / 8);
+        }
+    }
+    else
+    {
+        storage::AudioEditTransaction slice(*f.original);
+        slice.trim(40, 5);
+        incoming.assignRevision(slice.finish());
+        session.clearReadRevision();
+        session.document.initialize(SampleFormat::FLOAT32, 48000, 2, 1000);
+        session.document.writeInterleavedFloatBlock(0, f.samples.data(), 1000,
+                                                    2, false);
+        session.rebuildWaveformCacheSynchronously();
+    }
+    f.select(17, 3);
+    f.state.clipboard = incoming;
+    actions::audio::performPaste(&f.state);
+    REQUIRE(f.state.backgroundClipboardConversion);
+    REQUIRE(f.state.getActiveUndoables().empty());
+    f.state.clipboard.clear(); // Accepted paste retains its submitted contents.
+    const auto clipboardVersion = f.state.clipboard.getRevision();
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (f.state.backgroundClipboardConversion &&
+           std::chrono::steady_clock::now() < deadline)
+    {
+        actions::audio::processPendingClipboardPaste(&f.state);
+        std::this_thread::yield();
+    }
+    REQUIRE_FALSE(f.state.backgroundClipboardConversion);
+    REQUIRE(f.state.getActiveUndoables().size() == 1);
+    REQUIRE(session.document.getFrameCount() == 1002);
+    REQUIRE(f.state.clipboard.getRevision() == clipboardVersion);
+    const auto after = f.read();
+    for (int i = 0; i < 5; ++i)
+    {
+        REQUIRE(after[(17 + i) * 2] ==
+                (toRevision ? float(i) / 8 : f.samples[(40 + i) * 2]));
+        REQUIRE(after[(17 + i) * 2 + 1] ==
+                (toRevision ? 0.f : f.samples[(40 + i) * 2 + 1]));
+    }
+    f.state.undo();
+    REQUIRE(f.read() == f.samples);
+    f.state.redo();
+    REQUIRE(f.read() == after);
+}
+
+#include "gui/SamplePoint.hpp"
+#include "gui/Waveform.hpp"
+
+TEST_CASE(
+    "A sample point consumes published values and survives refresh during "
+    "dragging",
+    "[revision-ui]")
+{
+    Fixture f(1000);
+    gui::Waveform waveform(&f.state, 0);
+    f.state.waveforms.push_back(&waveform);
+    f.state.getActiveViewState().samplesPerPixel = .01;
+    waveform.setBounds(0, 0, 640, 120);
+    auto &session = f.state.getActiveDocumentSession();
+    const auto before = session.getEditRevision();
+    auto owned =
+        std::make_unique<gui::SamplePoint>(&f.state, 0, 41, f.samples[82]);
+    auto *point = owned.get();
+    point->setBounds(10, 40, 12, 12);
+    waveform.addChild(owned);
+    const auto io = f.store->ioBytes();
+    REQUIRE(point->mouseDown(
+        {gui::DOWN, 0, 0, 0, 0, 0, 0, {true, false, false}, 1}));
+    REQUIRE(point->mouseMove(
+        {gui::MOVE, 0, 0, 0, 0, 0, -5, {true, false, false}, 1}));
+    const auto value = point->getSampleValue();
+    waveform.updateSamplePoints();
+    REQUIRE(waveform.getChildren().size() == 1);
+    REQUIRE(
+        point->mouseUp({gui::UP, 0, 0, 0, 0, 0, 0, {false, false, false}, 1}));
+    REQUIRE(f.state.getActiveUndoables().size() == 1);
+    REQUIRE(f.store->ioBytes() == io);
+    f.state.undo();
+    REQUIRE(session.getEditRevision() == before);
+    f.state.redo();
+    std::array<float, 1> sample;
+    session.getAudioReader()->readChannel(0, 41, sample);
+    REQUIRE(sample[0] == value);
+    REQUIRE_FALSE(waveform.requestSampleValue(
+        42)); // Coarse/missing viewport uses async I/O.
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    std::optional<float> hovered;
+    while (!hovered && std::chrono::steady_clock::now() < deadline)
+    {
+        waveform.timerCallback();
+        hovered = waveform.requestSampleValue(42);
+        std::this_thread::yield();
+    }
+    REQUIRE(hovered);
+    REQUIRE(*hovered == f.samples[84]);
+    waveform.clearHighlight();
+    f.state.waveforms.clear();
 }

@@ -176,7 +176,9 @@ namespace cupuacu::file
             sourcePeaks = std::make_shared<waveform::SourcePeaks>(
                 shape, std::move(levels));
         }
-        auto audio = builder->finish(owned, std::move(sourcePeaks));
+        auto audio =
+            builder->finish(owned, std::move(sourcePeaks),
+                            metadata.document.getPreservationSourceId());
         metadata.waveformCachesReady = true;
         return {std::move(audio), std::move(metadata), cloned};
     }

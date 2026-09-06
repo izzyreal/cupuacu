@@ -7,7 +7,7 @@ buffer access throws instead of returning placeholder silence. The session
 reader supplies audio for background viewport requests, read-ahead playback
 and ordinary streaming export.
 
-Production cut, copy, delete, trim, same-format reference paste, insert silence
+Production cut, copy, delete, trim, reference paste, insert silence
 and make-silent dispatch through immutable revisions when bound. Clipboard and
 history pin source blocks, source coordinates and owned original files. Their
 final releases go through the background reclaimer. Closing a tab does not clear
@@ -28,13 +28,27 @@ partial output. Publication checks tab identity and the expected audio root.
 History stores roots and editor metadata, not old/new full sample matrices or
 whole-document waveform snapshots.
 
+Single-sample edits use constant leaves and replace the same original root
+throughout a drag; they neither fetch samples nor write sample files. Sample
+handles consume published viewport values. Hover inspection uses available raw
+viewport data or a latest-request asynchronous one-sample read. Missing data does
+not trigger UI-thread disk reads. Normalize buttons run exact selected-range
+analysis on a worker, reusing summaries and checking partial boundaries. Changes
+to the document, selection, channels or settings discard obsolete results.
+
+Mixed resident/revision clipboard pastes convert the accepted clipboard snapshot
+on a worker, then validate the destination before committing. Resident-to-revision
+conversion streams samples and compresses dirty/provenance runs; the reverse
+bridge necessarily creates the legacy full clipboard segment. Reference pastes
+share leaves, retain the existing sample-rate interpretation (no resampling),
+drop excess source channels and pad missing destination channels with silence.
+Clipboard changes during conversion do not change the accepted paste or get
+overwritten by its publication. Clipboard lifetime after closing a tab is unchanged.
+
 Remaining before default activation:
 
-- Sample-point dragging and dialogs that synchronously inspect samples (such as
-  peak/normalization preparation) still need revision-aware UI paths.
-- Clipboard conversion between resident/revision backends and differing audio
-  formats is explicitly unavailable in staged sessions. Reference clipboard
-  restart manifests are not implemented; no legacy snapshot is advertised.
+- Reference clipboard and undo restart manifests are not implemented; no legacy
+  snapshot is advertised for reference history.
 - Preservation writers must resolve original source byte ranges through revision
   leaves. Original bytes remain owned; preservation saving is explicitly
   unavailable for bound sessions until that writer exists.
@@ -46,10 +60,17 @@ Remaining before default activation:
   length or edit structure. The bounded effect scratch/cache is not a total RSS
   guarantee, and the existing effect job coordination still applies.
 
-Focused validation: `[revision-commands],[revision-effects]` covers production
+Next slice: preservation-aware streaming writers and background-save integration,
+followed by recording and durable revision/clipboard/recovery manifests. Default
+activation follows coverage of those consumers; the global scheduler, transport
+reservations and application-wide memory policy remain part of the larger plan.
+
+Focused validation: `[revision-ui],[revision-commands],[revision-effects]` covers production
 splices against a flat sample model, history and clipboard lifetime, exact marker
 restoration, blocked legacy sample access, effect parity across block boundaries
-and channel selections, cancellation cleanup and stale publication. Native
+and channel selections, clipboard conversion metadata, point gestures, exact
+normalization boundaries, cancellation cleanup and stale publication. Native
 `edit_command_*` and `effect_{fixed,all}_*` benchmarks exercise the actual command
-and effect job paths. Broader platform, GUI and transport contention validation
+and effect job paths. `sample_command_*` and `normalize_*` cover point edits
+and summary-based peak analysis against resident implementations. Broader platform, GUI and transport contention validation
 belongs at the activation checkpoint.

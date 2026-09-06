@@ -769,9 +769,14 @@ namespace cupuacu::effects
                  }});
             definition.actions.push_back(
                 {"Normalize",
-                 [](AmplifyEnvelopeSettings &settings, cupuacu::State *state)
+                 {},
+                 [](AmplifyEnvelopeSettings &settings, float peak)
                  {
-                     normalizeAmplifyEnvelopeSettings(settings, state);
+                     const double percent =
+                         peak > 0 ? std::clamp(100.0 / peak, 0.0, 1000.0)
+                                  : 100.0;
+                     settings.points = {{0.0, percent}, {1.0, percent}};
+                     sanitizeAmplifyEnvelopeSettings(settings);
                  }});
             definition.actions.push_back(
                 {"Fade in & out",

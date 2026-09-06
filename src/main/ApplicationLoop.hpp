@@ -1,6 +1,7 @@
 #pragma once
 
 #include "State.hpp"
+#include "actions/audio/ClipboardPaste.hpp"
 #include "actions/effects/BackgroundEffect.hpp"
 #include "actions/io/BackgroundOpen.hpp"
 #include "actions/io/BackgroundSave.hpp"
@@ -18,6 +19,7 @@ namespace cupuacu
         {
             state->audioDevices->servicePlayback();
         }
+        cupuacu::actions::audio::processPendingClipboardPaste(state);
         cupuacu::actions::effects::processPendingEffectWork(state);
         cupuacu::actions::io::processPendingOpenWork(state);
         cupuacu::actions::io::processPendingSaveWork(state);
