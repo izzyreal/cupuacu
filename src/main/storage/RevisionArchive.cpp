@@ -1,3 +1,4 @@
+#include "waveform/StreamingPeakBuilder.hpp"
 #include "RevisionArchive.hpp"
 #include "../file/FileIo.hpp"
 #include "../LongTask.hpp"
@@ -636,42 +637,73 @@ namespace cupuacu::storage
         }
         if (!j.at("peaks").empty())
         {
-            std::vector<std::vector<gui::PeakLevel>> channels;
             try
             {
-                for (const auto &channel : j.at("peaks"))
+                if (j.at("peaks").size() != std::size_t(shape.channels))
                 {
-                    auto &levels = channels.emplace_back();
-                    for (const auto &level : channel)
+                    throw std::runtime_error("Invalid peak channel count");
+                }
+                int previous = -1;
+                std::size_t pageIndex = 0, byteOffset = 0;
+                uint64_t consumed = 0;
+                Json page;
+                audio->peaks = waveform::SourcePeaks::createStreaming(
+                    shape,
+                    [&](int c, uint64_t first, std::span<waveform::Peak> output)
                     {
-                        auto &out = levels.emplace_back();
-                        const auto count = level.at("count").get<uint64_t>();
-                        if (count > uint64_t(shape.frames / 128 + 1))
+                        check();
+                        const auto &level = j.at("peaks").at(c).at(0);
+                        const auto count = uint64_t(shape.frames / 128 +
+                                                    (shape.frames % 128 != 0));
+                        if (level.at("count").get<uint64_t>() != count)
                         {
-                            throw std::runtime_error(
-                                "Invalid source peak count");
+                            throw std::runtime_error("Invalid base peak count");
                         }
-                        out.resize(count);
-                        std::size_t first = 0;
-                        for (const auto &ref : level.at("pages"))
+                        const auto &refs = level.at("pages");
+                        if (previous != c)
                         {
-                            if (ref.get<uint64_t>() >= id)
+                            previous = c;
+                            pageIndex = 0;
+                            byteOffset = 0;
+                            consumed = 0;
+                            page = Json();
+                        }
+                        if (first != consumed)
+                        {
+                            throw std::logic_error(
+                                "Nonsequential archive peak read");
+                        }
+                        while (!output.empty())
+                        {
+                            if (page.is_null() ||
+                                byteOffset ==
+                                    page.at("bytes").get_binary().size())
                             {
-                                throw std::runtime_error(
-                                    "Invalid source peak reference");
-                            }
-                            const auto page = record(ref);
-                            if (page.at("kind") != "peaks")
-                            {
-                                throw std::runtime_error("Invalid peak page");
+                                if (pageIndex >= refs.size() ||
+                                    refs.at(pageIndex).get<uint64_t>() >= id)
+                                {
+                                    throw std::runtime_error(
+                                        "Invalid source peak reference");
+                                }
+                                page = record(refs.at(pageIndex++));
+                                byteOffset = 0;
+                                if (page.at("kind") != "peaks")
+                                {
+                                    throw std::runtime_error(
+                                        "Invalid peak page");
+                                }
+                                const auto size =
+                                    page.at("bytes").get_binary().size();
+                                if (!size || size % 8 || size > 65536 ||
+                                    size / 8 > count - consumed)
+                                {
+                                    throw std::runtime_error(
+                                        "Invalid source peak bytes");
+                                }
                             }
                             const auto &bytes = page.at("bytes").get_binary();
-                            if (bytes.size() % 8 || bytes.size() > 65536 ||
-                                bytes.size() / 8 > out.size() - first)
-                            {
-                                throw std::runtime_error(
-                                    "Invalid source peak bytes");
-                            }
+                            const auto take = std::min(
+                                output.size(), (bytes.size() - byteOffset) / 8);
                             auto number = [&](std::size_t at)
                             {
                                 uint32_t v = 0;
@@ -681,20 +713,21 @@ namespace cupuacu::storage
                                 }
                                 return std::bit_cast<float>(v);
                             };
-                            for (std::size_t i = 0; i < bytes.size() / 8; ++i)
+                            for (std::size_t i = 0; i < take; ++i)
                             {
-                                out.set(first++,
-                                        {number(i * 8), number(i * 8 + 4)});
+                                output[i] = {number(byteOffset + i * 8),
+                                             number(byteOffset + i * 8 + 4)};
                             }
+                            byteOffset += take * 8;
+                            consumed += take;
+                            output = output.subspan(take);
                         }
-                        if (first != out.size())
+                        if (consumed == count && pageIndex != refs.size())
                         {
-                            throw std::runtime_error("Incomplete peak level");
+                            throw std::runtime_error("Extra source peak pages");
                         }
-                    }
-                }
-                audio->peaks = waveform::SourcePeaks::createPaged(
-                    shape, std::move(channels), cache, canceled);
+                    },
+                    cache, canceled);
             }
             catch (const LongTaskCanceledError &)
             {
@@ -702,9 +735,9 @@ namespace cupuacu::storage
             }
             catch (const std::exception &)
             {
-                // Summaries are rebuildable; a corrupt peak page cannot make
-                // otherwise intact committed audio unrecoverable.
-                waveform::DecodedWaveformBuilder builder;
+                // Higher levels are derived from the base summaries. If those
+                // are damaged, rebuild all levels with bounded audio reads.
+                waveform::StreamingPeakBuilder builder(shape, cache, canceled);
                 for (int64_t first = 0; first < shape.frames;)
                 {
                     check();
@@ -716,15 +749,7 @@ namespace cupuacu::storage
                             audio->readChannel(c, at, out);
                         });
                 }
-                auto caches = builder.takeCaches();
-                channels.clear();
-                for (int c = 0; c < shape.channels; ++c)
-                {
-                    channels.push_back(
-                        caches.getCache(c).snapshotBuildState().levels);
-                }
-                audio->peaks = waveform::SourcePeaks::createPaged(
-                    shape, std::move(channels), cache, canceled);
+                audio->peaks = builder.finish();
             }
         }
         loadedSources[id] = audio;

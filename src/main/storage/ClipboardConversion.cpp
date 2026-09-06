@@ -1,3 +1,4 @@
+#include "waveform/StreamingPeakBuilder.hpp"
 #include "ClipboardConversion.hpp"
 #include "AudioEditRevision.hpp"
 #include "../waveform/DecodedWaveformBuilder.hpp"
@@ -34,7 +35,7 @@ namespace cupuacu::storage
             auto store = std::make_shared<AudioBlockStore>(path);
             static const auto cache =
                 defaultDecodedBlockCache();
-            waveform::DecodedWaveformBuilder peaks;
+            waveform::StreamingPeakBuilder peaks(shape, cache, cancel);
             AudioRevisionBuilder builder(
                 shape, store, cache,
                 [&](int64_t first,
@@ -75,17 +76,9 @@ namespace cupuacu::storage
                 builder.appendInterleaved(
                     std::span(interleaved).first(count * shape.channels));
             }
-            auto caches = peaks.takeCaches();
-            std::vector<std::vector<gui::PeakLevel>> levels;
-            for (int c = 0; c < shape.channels; ++c)
-            {
-                levels.push_back(
-                    caches.getCache(c).snapshotBuildState().levels);
-            }
             check();
-            result.assignRevision(AudioEditRevision::from(builder.finish(
-                {}, waveform::SourcePeaks::createPaged(shape, std::move(levels),
-                                                       cache, cancel))));
+            result.assignRevision(
+                AudioEditRevision::from(builder.finish({}, peaks.finish())));
         }
         else
         {

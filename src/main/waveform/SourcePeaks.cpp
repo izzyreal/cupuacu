@@ -120,6 +120,198 @@ namespace cupuacu::waveform
         return result;
     }
 
+    std::shared_ptr<const SourcePeaks> SourcePeaks::createStreaming(
+        storage::AudioShape shape, const ReadBasePeaks &read,
+        std::shared_ptr<storage::DecodedBlockCache> cache,
+        const std::function<bool()> &cancel)
+    {
+        if (shape.frames < 0 || shape.channels <= 0 || !read)
+        {
+            throw std::invalid_argument("Invalid streaming peak source");
+        }
+        auto check = [&]
+        {
+            if (cancel && cancel())
+            {
+                throw LongTaskCanceledError();
+            }
+        };
+        check();
+        std::vector<uint64_t> counts{uint64_t(
+            shape.frames / blockFrames + (shape.frames % blockFrames != 0))};
+        while (counts.back() > 1)
+        {
+            counts.push_back((counts.back() + 1) / 2);
+        }
+        auto result =
+            std::shared_ptr<SourcePeaks>(new SourcePeaks(shape, counts.size()));
+        if (counts.front() <= residentLevelLimit)
+        {
+            for (int c = 0; c < shape.channels; ++c)
+            {
+                check();
+                std::vector<Peak> base(counts[0]);
+                read(c, 0, base);
+                result->channels[c][0].resize(base.size());
+                for (std::size_t i = 0; i < base.size(); ++i)
+                {
+                    result->channels[c][0].set(i, base[i]);
+                }
+                for (std::size_t l = 1; l < counts.size(); ++l)
+                {
+                    auto &level = result->channels[c][l];
+                    const auto &previous = result->channels[c][l - 1];
+                    level.resize(counts[l]);
+                    for (std::size_t i = 0; i < level.size(); ++i)
+                    {
+                        level.set(i, i * 2 + 1 < previous.size()
+                                         ? combine(previous[i * 2],
+                                                   previous[i * 2 + 1])
+                                         : previous[i * 2]);
+                    }
+                }
+            }
+            check();
+            return result;
+        }
+        auto pages = std::make_shared<PagedData>();
+        pages->cache =
+            cache ? std::move(cache) : storage::defaultDecodedBlockCache();
+        static std::atomic<uint64_t> sequence{0};
+        pages->store = std::make_shared<storage::AudioBlockStore>(
+            std::filesystem::temp_directory_path() /
+            ("cupuacu-streamed-peaks-" +
+             std::to_string(
+                 std::chrono::steady_clock::now().time_since_epoch().count()) +
+             "-" + std::to_string(sequence.fetch_add(1))));
+        pages->levels.resize(shape.channels,
+                             std::vector<PagedData::Level>(counts.size()));
+        result->paged = pages;
+        constexpr std::size_t depth = 14, width = 16384;
+        std::array<Peak, width> base;
+        std::array<float, storage::AudioBlockFrames> buffer;
+        for (int c = 0; c < shape.channels; ++c)
+        {
+            for (std::size_t l = 0; l < counts.size(); ++l)
+            {
+                if (counts[l] <= residentLevelLimit)
+                {
+                    result->channels[c][l].resize(counts[l]);
+                }
+            }
+            for (std::size_t group = 0; group < counts.size(); group += depth)
+            {
+                const bool disk = counts[group] > residentLevelLimit;
+                const auto tiles = (counts[group] - 1) / width + 1;
+                const auto firstBlock =
+                    pages->scalars / storage::AudioBlockFrames;
+                if (disk &&
+                    tiles > (UINT64_MAX / sizeof(float) - pages->scalars) /
+                                storage::AudioBlockFrames)
+                {
+                    throw std::overflow_error("Peak storage size overflow");
+                }
+                for (std::size_t l = group;
+                     l < std::min(counts.size(), group + depth); ++l)
+                {
+                    if (counts[l] > residentLevelLimit)
+                    {
+                        pages->levels[c][l] = {firstBlock, counts[l],
+                                               unsigned(l - group)};
+                    }
+                }
+                for (uint64_t tile = 0; tile < tiles; ++tile)
+                {
+                    check();
+                    buffer.fill(0);
+                    const auto first = tile * width;
+                    const auto n =
+                        std::min<uint64_t>(width, counts[group] - first);
+                    if (!group)
+                    {
+                        read(c, first, std::span(base).first(n));
+                    }
+                    else
+                    {
+                        // The preceding subtree's last level is already sealed.
+                        // Reading its pairs avoids retaining a growing array of
+                        // roots.
+                        std::array<Peak, 256> pairs;
+                        for (uint64_t at = 0; at < n;)
+                        {
+                            const auto take =
+                                std::min<uint64_t>(pairs.size() / 2, n - at);
+                            const auto source = (first + at) * 2;
+                            const auto pairCount = std::min<uint64_t>(
+                                take * 2, counts[group - 1] - source);
+                            result->readPeaks(
+                                c, group - 1, source,
+                                std::span(pairs).first(pairCount));
+                            for (uint64_t i = 0; i < take; ++i)
+                            {
+                                base[at + i] = i * 2 + 1 < pairCount
+                                                   ? combine(pairs[i * 2],
+                                                             pairs[i * 2 + 1])
+                                                   : pairs[i * 2];
+                            }
+                            at += take;
+                        }
+                    }
+                    for (uint64_t i = 0; i < n; ++i)
+                    {
+                        buffer[i * 2] = base[i].min;
+                        buffer[i * 2 + 1] = base[i].max;
+                    }
+                    auto length = n;
+                    for (std::size_t l = group;
+                         l < std::min(counts.size(), group + depth); ++l)
+                    {
+                        const auto local = l - group;
+                        const auto localWidth = width >> local;
+                        const auto offset = 32768 - (32768 >> local);
+                        if (counts[l] <= residentLevelLimit)
+                        {
+                            for (uint64_t i = 0; i < length; ++i)
+                            {
+                                result->channels[c][l].set(
+                                    tile * localWidth + i,
+                                    {buffer[2 * (offset + i)],
+                                     buffer[2 * (offset + i) + 1]});
+                            }
+                        }
+                        if (l + 1 < std::min(counts.size(), group + depth))
+                        {
+                            const auto nextOffset = offset + localWidth;
+                            for (uint64_t i = 0; i < (length + 1) / 2; ++i)
+                            {
+                                auto p = Peak{buffer[2 * (offset + i * 2)],
+                                              buffer[2 * (offset + i * 2) + 1]};
+                                if (i * 2 + 1 < length)
+                                {
+                                    p = combine(
+                                        p,
+                                        {buffer[2 * (offset + i * 2 + 1)],
+                                         buffer[2 * (offset + i * 2 + 1) + 1]});
+                                }
+                                buffer[2 * (nextOffset + i)] = p.min;
+                                buffer[2 * (nextOffset + i) + 1] = p.max;
+                            }
+                            length = (length + 1) / 2;
+                        }
+                    }
+                    if (disk)
+                    {
+                        pages->store->append(buffer);
+                        pages->scalars += buffer.size();
+                    }
+                }
+            }
+        }
+        check();
+        pages->store->flush();
+        return result;
+    }
+
     std::size_t SourcePeaks::levelSize(int channel, std::size_t level) const
     {
         const auto size = channels.at(channel).at(level).size();
