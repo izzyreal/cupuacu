@@ -3,6 +3,7 @@
 #include "AudioReader.hpp"
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <atomic>
 #include <condition_variable>
 #include <filesystem>
@@ -12,6 +13,7 @@
 #include <memory>
 #include <mutex>
 #include <vector>
+#include <unordered_map>
 
 namespace cupuacu::storage
 {
@@ -204,32 +206,48 @@ namespace cupuacu::storage
     class DecodedBlockCache
         : public std::enable_shared_from_this<DecodedBlockCache>
     {
-        using Samples = std::array<float, AudioBlockFrames>;
         struct Key
         {
             uint64_t store, segment, offset;
+            uint32_t frames;
             auto operator<=>(const Key &) const = default;
+        };
+        struct KeyHash
+        {
+            std::size_t operator()(const Key &key) const
+            {
+                // Mix aligned disk offsets before bucket selection; their
+                // low bits alone would cluster sample and peak pages.
+                uint64_t value = key.offset ^ std::rotl(key.segment, 23) ^
+                                 std::rotl(key.store, 41) ^ key.frames;
+                value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ULL;
+                value = (value ^ (value >> 27)) * 0x94d049bb133111ebULL;
+                return value ^ (value >> 31);
+            }
         };
         struct Entry
         {
             Key key;
-            std::unique_ptr<Samples> samples;
+            std::unique_ptr<float[]> samples;
+            uint64_t bytes;
         };
         mutable std::mutex mutex;
         std::atomic<uint64_t> budget;
         std::condition_variable scratchAvailable;
         unsigned pressure = 0;
-        uint64_t reserved = 0, inFlight = 0, peakManaged = 0, evictions = 0;
+        uint64_t reserved = 0, inFlight = 0, resident = 0, peakManaged = 0,
+                 evictions = 0;
         uint64_t capacity() const
         {
             const auto target = budget.load() >> pressure;
-            const auto pinned = reserved + inFlight * AudioBlockBytes;
-            return target > pinned ? (target - pinned) / AudioBlockBytes : 0;
+            const auto pinned = reserved + inFlight;
+            return target > pinned ? target - pinned : 0;
         }
         void trim()
         {
-            while (lru.size() > capacity())
+            while (resident > capacity())
             {
+                resident -= lru.back().bytes;
                 entries.erase(lru.back().key);
                 lru.pop_back();
                 ++evictions;
@@ -237,11 +255,8 @@ namespace cupuacu::storage
         }
         void observe()
         {
-            peakBytes =
-                std::max(peakBytes, (lru.size() + inFlight) * AudioBlockBytes);
-            peakManaged =
-                std::max(peakManaged,
-                         (lru.size() + inFlight) * AudioBlockBytes + reserved);
+            peakBytes = std::max(peakBytes, resident + inFlight);
+            peakManaged = std::max(peakManaged, resident + inFlight + reserved);
         }
         struct Reservation
         {
@@ -260,7 +275,7 @@ namespace cupuacu::storage
             }
         };
         std::list<Entry> lru;
-        std::map<Key, std::list<Entry>::iterator> entries;
+        std::unordered_map<Key, std::list<Entry>::iterator, KeyHash> entries;
         uint64_t hits = 0, misses = 0, peakBytes = 0;
 
     public:
@@ -281,7 +296,7 @@ namespace cupuacu::storage
         Stats stats() const
         {
             std::lock_guard lock(mutex);
-            return {(lru.size() + inFlight) * AudioBlockBytes,
+            return {resident + inFlight,
                     peakBytes,
                     hits,
                     misses,
@@ -290,7 +305,7 @@ namespace cupuacu::storage
                     budget.load() >> pressure,
                     peakManaged,
                     evictions,
-                    inFlight * AudioBlockBytes};
+                    inFlight};
         }
         uint64_t byteBudget() const
         {
@@ -329,10 +344,8 @@ namespace cupuacu::storage
                 [&]
                 {
                     return bytes > budget.load() ||
-                           (reserved + inFlight * AudioBlockBytes <=
-                                budget.load() &&
-                            bytes <= budget.load() - reserved -
-                                         inFlight * AudioBlockBytes);
+                           (reserved + inFlight <= budget.load() &&
+                            bytes <= budget.load() - reserved - inFlight);
                 });
             if (bytes > budget.load())
             {
@@ -357,14 +370,20 @@ namespace cupuacu::storage
             {
                 return;
             }
-            const Key key{store.id(), block.segment, block.offset};
-            std::unique_ptr<Samples> samples;
+            const Key key{store.id(), block.segment, block.offset,
+                          block.frames};
+            // Round within bounded size classes. The floor also bounds entry
+            // bookkeeping when a store contains many tiny tail blocks.
+            const uint64_t allocation = std::bit_ceil(std::max<uint64_t>(
+                4096, uint64_t(block.frames) * sizeof(float)));
+            std::unique_ptr<float[]> samples;
             bool borrowed = false;
             struct ReleaseRead
             {
                 DecodedBlockCache &cache;
-                std::unique_ptr<Samples> &samples;
+                std::unique_ptr<float[]> &samples;
                 bool &borrowed;
+                uint64_t bytes;
                 ~ReleaseRead()
                 {
                     if (borrowed)
@@ -372,40 +391,46 @@ namespace cupuacu::storage
                         samples.reset();
                         {
                             std::lock_guard lock(cache.mutex);
-                            --cache.inFlight;
+                            cache.inFlight -= bytes;
                         }
                         cache.scratchAvailable.notify_all();
                     }
                 }
-            } release{*this, samples, borrowed};
+            } release{*this, samples, borrowed, allocation};
             {
                 std::lock_guard lock(mutex);
                 if (auto found = entries.find(key); found != entries.end())
                 {
                     ++hits;
                     lru.splice(lru.begin(), lru, found->second);
-                    std::copy_n(lru.front().samples->data() + start,
+                    std::copy_n(lru.front().samples.get() + start,
                                 output.size(), output.data());
                     return;
                 }
                 ++misses;
-                if (capacity())
+                const auto available = capacity();
+                if (allocation <= available)
                 {
-                    if (lru.size() == capacity())
+                    while (resident > available - allocation)
                     {
-                        samples = std::move(lru.back().samples);
+                        if (!samples && lru.back().bytes == allocation)
+                        {
+                            samples = std::move(lru.back().samples);
+                        }
+                        resident -= lru.back().bytes;
                         entries.erase(lru.back().key);
                         lru.pop_back();
                         ++evictions;
                     }
-                    else
-                    {
-                        samples = std::make_unique<Samples>();
-                    }
-                    ++inFlight;
+                    inFlight += allocation;
                     borrowed = true;
                     observe();
                 }
+            }
+            if (borrowed && !samples)
+            {
+                samples = std::make_unique_for_overwrite<float[]>(
+                    allocation / sizeof(float));
             }
             // Disk misses never hold the shared cache lock. Warm reads from
             // another tab and memory reclamation can proceed independently.
@@ -414,22 +439,19 @@ namespace cupuacu::storage
                 store.read(block, start, output);
                 return;
             }
-            store.read(block, 0,
-                       std::span<float>(*samples).first(block.frames));
-            std::copy_n(samples->data() + start, output.size(), output.data());
+            store.read(block, 0, std::span<float>(samples.get(), block.frames));
+            std::copy_n(samples.get() + start, output.size(), output.data());
             {
                 std::lock_guard lock(mutex);
-                // The read's own slot becomes available when it is published.
                 const auto target = budget.load() >> pressure;
-                const auto pinnedAfter =
-                    reserved + (inFlight - 1) * AudioBlockBytes;
-                const auto slots =
-                    target > pinnedAfter
-                        ? (target - pinnedAfter) / AudioBlockBytes
-                        : 0;
-                if (lru.size() < slots && !entries.contains(key))
+                const auto pinnedAfter = reserved + inFlight - allocation;
+                const auto available =
+                    target > pinnedAfter ? target - pinnedAfter : 0;
+                if (resident <= available &&
+                    allocation <= available - resident &&
+                    !entries.contains(key))
                 {
-                    lru.push_front({key, std::move(samples)});
+                    lru.push_front({key, std::move(samples), allocation});
                     try
                     {
                         entries.emplace(key, lru.begin());
@@ -439,12 +461,13 @@ namespace cupuacu::storage
                         lru.pop_front();
                         throw;
                     }
+                    resident += allocation;
                 }
                 else
                 {
                     samples.reset();
                 }
-                --inFlight;
+                inFlight -= allocation;
                 borrowed = false;
             }
             scratchAvailable.notify_all();

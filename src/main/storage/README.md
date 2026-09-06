@@ -75,9 +75,14 @@ remain valid even if they temporarily exceed the reduced target. Scratch admissi
 uses the configured ceiling, not the temporary pressure target. Other desktop
 platforms do not yet have native pressure monitoring.
 
-Cache misses release the cache mutex before disk I/O. In-flight cache arrays count
-against the same budget, including concurrent reads and failed reads. With no cache
-slot available, reads go directly into caller buffers. Those caller buffers must
+Cache misses release the cache mutex before disk I/O. Buffers use power-of-two
+allocation sizes from 4 KiB to 256 KiB, so a small peak page does not occupy a full
+sample-buffer allocation. Resident buffers, reads in flight and scratch reservations
+share byte accounting. Failed reads release their reservation; pressure trimming
+evicts enough bytes rather than a fixed number of entries. A hash index keeps
+lookups efficient when the budget holds many small pages. The 4 KiB floor bounds
+entry bookkeeping; that bookkeeping remains outside buffer accounting. With
+insufficient cache capacity, reads go directly into caller buffers. Those caller buffers must
 be budgeted separately. Existing effect scratch declarations participate in the
 shared ceiling; decoder/DSP internals, transport, overview/index storage, resident
 compatibility paths, cache metadata and undeclared job scratch are not covered.
@@ -328,16 +333,21 @@ revision when first receiving a revision clipboard. Most legacy recovered docume
 legacy recording histories retain their compatibility backend.
 
 
-Detailed revision peak levels now use disk pages via `SourcePeaks::createPaged`.
-Each page groups a spatial subtree of summary levels to avoid cache thrashing;
-it shares the decoded-sample cache and budget. Levels with at most 4,096 values
-remain resident. `queryBlocks`/`readPeaks` on such sources may read disk and belong
+Detailed revision peaks use 4 KiB spatial subtrees, grouping 256 base values and
+their summaries. This reduces the storage fetched for zoomed-out queries while
+keeping neighboring levels together. Pages share the sample cache and its byte
+budget. Sources with at most 4,096 base peaks remain fully resident; larger sources
+retain their small top group. The legacy full-pyramid adapter also retains levels
+with at most 4,096 values. `queryBlocks`/`readPeaks` on such sources may read disk and belong
 on workers; the ordinary SourcePeaks constructor remains memory-only for legacy
 UI-side cache snapshots. Durable archive format compatibility is unchanged.
 
 Recovery, effects and clipboard conversion now stream base summaries through
 `StreamingPeakBuilder`; archive loading rebuilds higher levels from streamed base
-records. These paths no longer materialize a full peak pyramid.
+records. These paths no longer materialize a full peak pyramid. Large streamed
+sources now use the same online tile builder as import: parent summaries propagate
+as base peaks arrive, avoiding another disk pass over lower summaries. Input reads
+remain large and sequential even though output pages are small.
 
 Progressive import feeds the same sample reducer into `ProgressivePeaks`. One
 active spatial tile per channel/group accumulates base peaks and parent summaries;

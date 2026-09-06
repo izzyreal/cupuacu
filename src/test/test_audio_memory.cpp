@@ -7,6 +7,113 @@
 using namespace cupuacu;
 using namespace cupuacu::storage;
 
+TEST_CASE("Small peak pages and full sample blocks share byte capacity",
+          "[audio-memory]")
+{
+    constexpr uint64_t budget = AudioBlockBytes + 32 * 4096;
+    auto cache = std::make_shared<DecodedBlockCache>(budget);
+    AudioBlockStore store(test::makeUniqueTestRoot("mixed-pages") / "store");
+    std::vector<AudioBlock> blocks;
+    std::vector<float> samples(AudioBlockFrames, .75f);
+    blocks.push_back(store.append(samples));
+    for (int i = 0; i < 32; ++i)
+    {
+        blocks.push_back(store.append(std::span(samples).first(1024)));
+    }
+    const auto read = [&](AudioBlock block)
+    {
+        std::array<float, 17> out;
+        cache->read(store, block, block.frames - out.size(), out);
+        CHECK(std::all_of(out.begin(), out.end(),
+                          [](float v)
+                          {
+                              return v == .75f;
+                          }));
+    };
+    for (auto block : blocks)
+    {
+        read(block);
+    }
+    const auto before = store.ioBytes();
+    for (auto block : blocks)
+    {
+        read(block);
+    }
+    CHECK(store.ioBytes() == before);
+    CHECK(cache->stats().residentBytes == budget);
+    auto scratch = cache->reserveScratch(4096);
+    CHECK(cache->stats().residentBytes + cache->stats().reservedBytes <=
+          budget);
+    for (auto block : blocks)
+    {
+        read(block);
+    }
+    CHECK(cache->stats().peakManagedBytes <= budget);
+    cache->setPressure(2);
+    CHECK(cache->stats().residentBytes + 4096 <= budget / 4);
+    for (auto block : blocks)
+    {
+        read(block);
+    }
+    CHECK(cache->stats().inFlightBytes == 0);
+}
+
+TEST_CASE(
+    "Concurrent mixed-size cache misses release their actual reservations",
+    "[audio-memory]")
+{
+    constexpr uint64_t budget = AudioBlockBytes + 4096;
+    auto cache = std::make_shared<DecodedBlockCache>(budget);
+    const auto root = test::makeUniqueTestRoot("mixed-concurrent");
+    const std::array<int, 4> sizes{65536, 1024, 5000, 33};
+    std::vector<std::unique_ptr<AudioBlockStore>> stores;
+    std::vector<AudioBlock> blocks;
+    for (int i = 0; i < 4; ++i)
+    {
+        stores.push_back(
+            std::make_unique<AudioBlockStore>(root / std::to_string(i)));
+        blocks.push_back(
+            stores.back()->append(std::vector<float>(sizes[i], float(i))));
+    }
+    std::latch start(4);
+    std::vector<std::future<bool>> readers;
+    for (int i = 0; i < 4; ++i)
+    {
+        readers.push_back(
+            std::async(std::launch::async,
+                       [&, i]
+                       {
+                           start.count_down();
+                           start.wait();
+                           for (int j = 0; j < 100; ++j)
+                           {
+                               std::array<float, 31> out;
+                               cache->read(*stores[i], blocks[i],
+                                           j % (sizes[i] - out.size()), out);
+                               if (!std::all_of(out.begin(), out.end(),
+                                                [i](float v)
+                                                {
+                                                    return v == i;
+                                                }))
+                               {
+                                   return false;
+                               }
+                           }
+                           return true;
+                       }));
+    }
+    for (auto &reader : readers)
+    {
+        CHECK(reader.get());
+    }
+    CHECK(cache->stats().peakManagedBytes <= budget);
+    std::array<float, 1> out;
+    CHECK_THROWS(cache->read(*stores[0], {UINT64_MAX, 0, 1024}, 0, out));
+    CHECK(cache->stats().inFlightBytes == 0);
+    auto scratch = cache->reserveScratch(budget);
+    CHECK(cache->stats().residentBytes == 0);
+}
+
 TEST_CASE("Shared sample capacity yields to scratch and pressure",
           "[audio-memory]")
 {
@@ -174,9 +281,12 @@ TEST_CASE("Memory pressure requests reach the background trimmer",
     auto cache = std::make_shared<DecodedBlockCache>(8 * AudioBlockBytes);
     MemoryPressureMonitor monitor(cache);
     monitor.notify(2);
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(2);
     while (cache->stats().targetBytes != 2 * AudioBlockBytes &&
            std::chrono::steady_clock::now() < deadline)
+    {
         std::this_thread::yield();
+    }
     CHECK(cache->stats().targetBytes == 2 * AudioBlockBytes);
 }

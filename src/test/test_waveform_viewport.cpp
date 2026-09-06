@@ -14,6 +14,65 @@
 using namespace cupuacu;
 using namespace std::chrono_literals;
 
+TEST_CASE("Detailed peak misses read and retain a small spatial tile",
+          "[paged-peaks][progressive-peaks]")
+{
+    const bool progressive = GENERATE(false, true);
+    const storage::AudioShape shape{128 * 65537, 1, 48000,
+                                    SampleFormat::FLOAT32};
+    auto cache = std::make_shared<storage::DecodedBlockCache>(4096);
+    std::shared_ptr<const waveform::SourcePeaks> peaks;
+    const auto value = [](uint64_t i)
+    {
+        return waveform::Peak{-float(i % 17), float(i % 19)};
+    };
+    if (progressive)
+    {
+        auto live = std::make_shared<waveform::ProgressivePeaks>(shape, cache);
+        std::array<waveform::Peak, 511> batch;
+        for (uint64_t first = 0; first < 65537;)
+        {
+            const auto n = std::min<uint64_t>(batch.size(), 65537 - first);
+            for (uint64_t i = 0; i < n; ++i)
+            {
+                batch[i] = value(first + i);
+            }
+            live->append(0, std::span(batch).first(n));
+            first += n;
+            live->publish(first * 128);
+        }
+        peaks = live->finish();
+    }
+    else
+    {
+        peaks = waveform::SourcePeaks::createStreaming(
+            shape,
+            [&](int, uint64_t first, std::span<waveform::Peak> out)
+            {
+                for (std::size_t i = 0; i < out.size(); ++i)
+                {
+                    out[i] = value(first + i);
+                }
+            },
+            cache);
+    }
+    cache->setByteBudget(0);
+    cache->setByteBudget(4096);
+    const auto before = peaks->residency().bytesRead;
+    waveform::Peak actual;
+    peaks->readPeaks(0, 0, 123, std::span(&actual, 1));
+    CHECK(actual.min == value(123).min);
+    CHECK(actual.max == value(123).max);
+    const auto after = peaks->residency().bytesRead;
+    CHECK(after - before <= 4096);
+    CHECK(cache->stats().residentBytes == 4096);
+    peaks->readPeaks(0, 1, 61, std::span(&actual, 1));
+    const auto expected = waveform::combine(value(122), value(123));
+    CHECK(actual.min == expected.min);
+    CHECK(actual.max == expected.max);
+    CHECK(peaks->residency().bytesRead == after);
+}
+
 TEST_CASE("Progressive peak tiles preserve every level and published prefix",
           "[progressive-peaks]")
 {

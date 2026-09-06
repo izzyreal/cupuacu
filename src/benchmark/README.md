@@ -861,3 +861,14 @@ Use `open_owned` for matched production import completion/RSS and
 `large_file_workflow` for the application event-loop/viewport path. First waveform
 availability now observes the shared progressive reader. These headless scenarios
 do not measure SDL texture upload or actual on-screen frame presentation.
+
+
+The small-peak-page milestone compares `peak_progressive` and `peak_streaming`
+with their saved pre-change executable, plus `open_owned`, `recovery_legacy`, and
+`audio_memory` for production/regression checks. `peak_read_bytes` counts requested
+storage bytes, not physical device traffic; it includes any construction reads.
+The final one-pass constructors perform no peak-storage reads before the view
+queries. First and repeated passes are reported separately; OS caching is
+uncontrolled, and neither is a controlled cold-device test. Omit `--formats wav`
+for the 8 GiB synthetic case: its size-based case label is CAF despite requiring
+no audio fixture. See `PERFORMANCE-MILESTONE.md` for results and report paths.
