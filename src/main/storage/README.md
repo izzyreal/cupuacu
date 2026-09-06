@@ -22,8 +22,8 @@ Trim also restores its view snapshot. Failed commands retain redo history.
 Reverse, gain/fade, dynamics, envelope and remove-silence jobs accept a pinned
 revision. Generated effects process channels sequentially, using a 16,384-float
 scratch block plus the builder's 65,536-float pending block. Peaks are generated
-as output is written. Generated revisions share one 1 MiB decoded cache across
-jobs/history, separately from imported-data caches. Remove-silence uses two
+as output is written. Generated revisions share the application's decoded cache
+with imports, recovery, recording and clipboard conversion. Remove-silence uses two
 16,384-float scratch blocks, retains run descriptors and rearranges source
 references; channel-only compaction pads with silence. Cancellation discards
 partial output. Publication checks tab identity and the expected audio root.
@@ -59,10 +59,28 @@ Remaining migration and resource work:
   container's encoding while unchanged audio/history roots retain their original
   representation. Foreign legacy clipboard provenance without retained source
   bytes cannot restore precision already lost to float.
-- Bulk scheduling now bounds execution and outstanding results. Paged indexes/peaks
-  and application-wide memory accounting remain outstanding. Peak/index/run
-  storage still grows with audio length or edit structure; effect reservations
-  are not a total RSS guarantee.
+- Bulk scheduling bounds execution and outstanding results. Declared job scratch
+  displaces decoded samples within one shared budget (default 10% physical RAM).
+  Paged indexes/peaks and comprehensive application memory accounting remain
+  outstanding. Peak/index/run storage still grows with audio length or edit
+  structure; effect reservations are not a total RSS guarantee.
+
+`config/performance.json` accepts `{"audio_memory_mib": 256}` to override the
+decoded-sample plus declared-scratch budget at startup. Missing or zero uses 10%
+of physical RAM; invalid values are logged and retain the automatic default.
+macOS memory-pressure notifications halve/quarter the cache target on a worker;
+normal pressure restores capacity without eagerly reading data. SDL low-memory
+events also request critical trimming. Running scratch reservations and reads
+remain valid even if they temporarily exceed the reduced target. Scratch admission
+uses the configured ceiling, not the temporary pressure target. Other desktop
+platforms do not yet have native pressure monitoring.
+
+Cache misses release the cache mutex before disk I/O. In-flight cache arrays count
+against the same budget, including concurrent reads and failed reads. With no cache
+slot available, reads go directly into caller buffers. Those caller buffers must
+be budgeted separately. Existing effect scratch declarations participate in the
+shared ceiling; decoder/DSP internals, transport, peak/index storage, resident
+compatibility paths, cache metadata and undeclared job scratch are not covered.
 
 Background save/overwrite now pins the revision, editor metadata and original
 container before worker execution. Ordinary export uses the range reader;

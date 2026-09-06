@@ -75,7 +75,7 @@ namespace cupuacu::storage
         try
         {
             auto store = std::make_shared<AudioBlockStore>(directory);
-            auto cache = std::make_shared<DecodedBlockCache>(1024 * 1024);
+            auto cache = defaultDecodedBlockCache();
             auto current = original;
             auto shape = original->shape();
             std::array<float, batchFrames * audio::kMaxRecordedChannels>

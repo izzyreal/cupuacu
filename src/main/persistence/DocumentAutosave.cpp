@@ -592,7 +592,7 @@ namespace cupuacu::persistence
                                             int(sampleRate), format};
             auto store = legacyRecoveryStore(path.parent_path());
             auto cache =
-                std::make_shared<storage::DecodedBlockCache>(1024 * 1024);
+                storage::defaultDecodedBlockCache();
             waveform::DecodedWaveformBuilder peaks;
             storage::AudioRevisionBuilder builder(
                 shape, store, cache,

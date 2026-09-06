@@ -11,6 +11,8 @@
 #include <thread>
 #include <vector>
 
+namespace cupuacu::storage { class DecodedBlockCache; }
+
 namespace cupuacu::concurrency
 {
     // Bulk work only. Transport and latest-viewport services retain independent
@@ -55,7 +57,8 @@ namespace cupuacu::concurrency
         };
         explicit TaskScheduler(std::size_t workers = 2,
                                std::size_t queueLimit = 64,
-                               uint64_t scratchBudget = 128 * 1024 * 1024);
+                               uint64_t scratchBudget = 128 * 1024 * 1024,
+                               std::shared_ptr<storage::DecodedBlockCache> memory = {});
         ~TaskScheduler();
         Ticket submit(std::function<void()> work, Options options);
         Stats stats() const;
@@ -75,6 +78,7 @@ namespace cupuacu::concurrency
         std::vector<std::thread> workers;
         std::size_t workerCount, queueLimit;
         uint64_t scratchBudget;
+        std::shared_ptr<storage::DecodedBlockCache> memory;
         Stats counters;
         bool stopping = false;
         void run();

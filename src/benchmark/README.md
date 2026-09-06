@@ -781,3 +781,26 @@ The scenario accepts the former resident loader to permit matched reference
 builds; its return did not include rebuilding the fixture's dirty peaks or
 creating a durable archive. Compare both first-load costs and subsequent archive
 loads, not just a percentage change for unlike completion work.
+
+
+### Shared audio memory budget
+
+`audio_memory` distributes the requested decoded size across four stores sharing
+an 8 MiB cache. It requests 31 samples from each block (full-block cache fills),
+measures 10,000 warm reads, reserves 4 MiB of scratch, and checks cache displacement
+and pressure trimming. The scratch reservation is not a simulated scratch allocation.
+Setup writes and input buffers are outside the measured scan; filesystem caching is
+uncontrolled. `audio_memory` metrics include the managed peak, hits/misses, evictions,
+scan/warm-read time and reservation/pressure-trimming time. Every run validates
+samples and the combined cache/in-flight/reservation ceiling.
+
+```sh
+python3 scripts/run-benchmarks.py --profile extended --suite core --mode timing \
+  --filter audio_memory --sizes-mib 1 16 256 --repetitions 3 \
+  --output dist/benchmarks/shared-memory-budget.json
+```
+
+This is a focused resource-budget measurement, not total application memory or
+concurrent transport stress. Use `playback_owned` for the existing playback
+regression check. See `PERFORMANCE-MILESTONE.md` for measured results and remaining
+unbudgeted resource categories.

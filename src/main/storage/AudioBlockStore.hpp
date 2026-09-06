@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <condition_variable>
 #include <filesystem>
 #include <fstream>
 #include <list>
@@ -201,6 +202,7 @@ namespace cupuacu::storage
     // One cache can serve many revisions/stores. Copies go into caller-owned
     // buffers, so callers cannot pin evicted entries beyond the budget.
     class DecodedBlockCache
+        : public std::enable_shared_from_this<DecodedBlockCache>
     {
         using Samples = std::array<float, AudioBlockFrames>;
         struct Key
@@ -214,7 +216,49 @@ namespace cupuacu::storage
             std::unique_ptr<Samples> samples;
         };
         mutable std::mutex mutex;
-        const uint64_t capacity;
+        std::atomic<uint64_t> budget;
+        std::condition_variable scratchAvailable;
+        unsigned pressure = 0;
+        uint64_t reserved = 0, inFlight = 0, peakManaged = 0, evictions = 0;
+        uint64_t capacity() const
+        {
+            const auto target = budget.load() >> pressure;
+            const auto pinned = reserved + inFlight * AudioBlockBytes;
+            return target > pinned ? (target - pinned) / AudioBlockBytes : 0;
+        }
+        void trim()
+        {
+            while (lru.size() > capacity())
+            {
+                entries.erase(lru.back().key);
+                lru.pop_back();
+                ++evictions;
+            }
+        }
+        void observe()
+        {
+            peakBytes =
+                std::max(peakBytes, (lru.size() + inFlight) * AudioBlockBytes);
+            peakManaged =
+                std::max(peakManaged,
+                         (lru.size() + inFlight) * AudioBlockBytes + reserved);
+        }
+        struct Reservation
+        {
+            std::shared_ptr<DecodedBlockCache> owner;
+            uint64_t bytes = 0;
+            ~Reservation()
+            {
+                if (bytes)
+                {
+                    {
+                        std::lock_guard lock(owner->mutex);
+                        owner->reserved -= bytes;
+                    }
+                    owner->scratchAvailable.notify_all();
+                }
+            }
+        };
         std::list<Entry> lru;
         std::map<Key, std::list<Entry>::iterator> entries;
         uint64_t hits = 0, misses = 0, peakBytes = 0;
@@ -223,9 +267,11 @@ namespace cupuacu::storage
         struct Stats
         {
             uint64_t residentBytes, peakResidentBytes, hits, misses;
+            uint64_t reservedBytes, configuredBytes, targetBytes,
+                peakManagedBytes, evictions, inFlightBytes;
         };
         explicit DecodedBlockCache(uint64_t decodedByteBudget)
-            : capacity(decodedByteBudget / AudioBlockBytes)
+            : budget(decodedByteBudget)
         {
         }
         static uint64_t defaultByteBudget(uint64_t physicalRamBytes)
@@ -235,7 +281,69 @@ namespace cupuacu::storage
         Stats stats() const
         {
             std::lock_guard lock(mutex);
-            return {lru.size() * AudioBlockBytes, peakBytes, hits, misses};
+            return {(lru.size() + inFlight) * AudioBlockBytes,
+                    peakBytes,
+                    hits,
+                    misses,
+                    reserved,
+                    budget.load(),
+                    budget.load() >> pressure,
+                    peakManaged,
+                    evictions,
+                    inFlight * AudioBlockBytes};
+        }
+        uint64_t byteBudget() const
+        {
+            return budget.load();
+        }
+        // Worker-only: trimming may release many allocations and wait for a
+        // read.
+        void setByteBudget(uint64_t bytes)
+        {
+            {
+                std::lock_guard lock(mutex);
+                budget.store(bytes);
+                trim();
+            }
+            scratchAvailable.notify_all();
+        }
+        // Normal / warning / critical. Existing job reservations remain valid;
+        // pressure sacrifices cache capacity first, never accepted edits.
+        void setPressure(unsigned level)
+        {
+            std::lock_guard lock(mutex);
+            pressure = std::min(level, 2u);
+            trim();
+        }
+        std::shared_ptr<void> reserveScratch(uint64_t bytes)
+        {
+            if (!bytes)
+            {
+                return {};
+            }
+            auto token = std::make_shared<Reservation>();
+            token->owner = shared_from_this();
+            std::unique_lock lock(mutex);
+            scratchAvailable.wait(
+                lock,
+                [&]
+                {
+                    return bytes > budget.load() ||
+                           (reserved + inFlight * AudioBlockBytes <=
+                                budget.load() &&
+                            bytes <= budget.load() - reserved -
+                                         inFlight * AudioBlockBytes);
+                });
+            if (bytes > budget.load())
+            {
+                throw std::runtime_error(
+                    "Job scratch exceeds the audio memory budget");
+            }
+            reserved += bytes;
+            token->bytes = bytes;
+            trim();
+            observe();
+            return token;
         }
         void read(const AudioBlockStore &store, AudioBlock block,
                   uint32_t start, std::span<float> output)
@@ -249,41 +357,101 @@ namespace cupuacu::storage
             {
                 return;
             }
-            std::lock_guard lock(mutex);
             const Key key{store.id(), block.segment, block.offset};
-            auto found = entries.find(key);
-            if (found == entries.end())
+            std::unique_ptr<Samples> samples;
+            bool borrowed = false;
+            struct ReleaseRead
             {
-                ++misses;
-                if (capacity == 0)
+                DecodedBlockCache &cache;
+                std::unique_ptr<Samples> &samples;
+                bool &borrowed;
+                ~ReleaseRead()
                 {
-                    store.read(block, start, output);
+                    if (borrowed)
+                    {
+                        samples.reset();
+                        {
+                            std::lock_guard lock(cache.mutex);
+                            --cache.inFlight;
+                        }
+                        cache.scratchAvailable.notify_all();
+                    }
+                }
+            } release{*this, samples, borrowed};
+            {
+                std::lock_guard lock(mutex);
+                if (auto found = entries.find(key); found != entries.end())
+                {
+                    ++hits;
+                    lru.splice(lru.begin(), lru, found->second);
+                    std::copy_n(lru.front().samples->data() + start,
+                                output.size(), output.data());
                     return;
                 }
-                std::unique_ptr<Samples> samples;
-                if (lru.size() == capacity)
+                ++misses;
+                if (capacity())
                 {
-                    samples = std::move(lru.back().samples);
-                    entries.erase(lru.back().key);
-                    lru.pop_back();
+                    if (lru.size() == capacity())
+                    {
+                        samples = std::move(lru.back().samples);
+                        entries.erase(lru.back().key);
+                        lru.pop_back();
+                        ++evictions;
+                    }
+                    else
+                    {
+                        samples = std::make_unique<Samples>();
+                    }
+                    ++inFlight;
+                    borrowed = true;
+                    observe();
+                }
+            }
+            // Disk misses never hold the shared cache lock. Warm reads from
+            // another tab and memory reclamation can proceed independently.
+            if (!samples)
+            {
+                store.read(block, start, output);
+                return;
+            }
+            store.read(block, 0,
+                       std::span<float>(*samples).first(block.frames));
+            std::copy_n(samples->data() + start, output.size(), output.data());
+            {
+                std::lock_guard lock(mutex);
+                // The read's own slot becomes available when it is published.
+                const auto target = budget.load() >> pressure;
+                const auto pinnedAfter =
+                    reserved + (inFlight - 1) * AudioBlockBytes;
+                const auto slots =
+                    target > pinnedAfter
+                        ? (target - pinnedAfter) / AudioBlockBytes
+                        : 0;
+                if (lru.size() < slots && !entries.contains(key))
+                {
+                    lru.push_front({key, std::move(samples)});
+                    try
+                    {
+                        entries.emplace(key, lru.begin());
+                    }
+                    catch (...)
+                    {
+                        lru.pop_front();
+                        throw;
+                    }
                 }
                 else
                 {
-                    samples = std::make_unique<Samples>();
+                    samples.reset();
                 }
-                store.read(block, 0,
-                           std::span<float>(*samples).first(block.frames));
-                lru.push_front({key, std::move(samples)});
-                entries.emplace(key, lru.begin());
-                peakBytes = std::max(peakBytes, lru.size() * AudioBlockBytes);
+                --inFlight;
+                borrowed = false;
             }
-            else
-            {
-                ++hits;
-                lru.splice(lru.begin(), lru, found->second);
-            }
-            std::copy_n(lru.front().samples->data() + start, output.size(),
-                        output.data());
+            scratchAvailable.notify_all();
         }
     };
+    // One application cache for imports, effects, recordings, clipboard and
+    // recovery. Explicit cache injection remains available for isolated
+    // readers.
+    std::shared_ptr<DecodedBlockCache> defaultDecodedBlockCache();
 } // namespace cupuacu::storage

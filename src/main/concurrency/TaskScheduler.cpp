@@ -1,11 +1,14 @@
 #include "TaskScheduler.hpp"
+#include "../storage/AudioBlockStore.hpp"
 #include <algorithm>
 #include <stdexcept>
 namespace cupuacu::concurrency
 {
-    TaskScheduler::TaskScheduler(std::size_t count, std::size_t limit,
-                                 uint64_t budget)
-        : workerCount(count), queueLimit(limit), scratchBudget(budget)
+    TaskScheduler::TaskScheduler(
+        std::size_t count, std::size_t limit, uint64_t budget,
+        std::shared_ptr<storage::DecodedBlockCache> memory)
+        : workerCount(count), queueLimit(limit), scratchBudget(budget),
+          memory(std::move(memory))
     {
         if (!count || !limit)
         {
@@ -31,7 +34,8 @@ namespace cupuacu::concurrency
         if (stopping ||
             (queue.size() >= queueLimit ||
              outstanding->load() >= queueLimit + workerCount) ||
-            options.scratchBytes > scratchBudget)
+            options.scratchBytes > scratchBudget ||
+            (memory && options.scratchBytes > memory->byteBudget()))
         {
             throw std::runtime_error("Background task capacity exhausted");
         }
@@ -54,8 +58,19 @@ namespace cupuacu::concurrency
                                       --*count;
                                   });
         ++*outstanding;
-        Entry entry{std::packaged_task<void()>(std::move(work)), options,
-                    admission};
+        Entry entry{std::packaged_task<void()>(
+                        [work = std::move(work), memory = memory,
+                         bytes = options.scratchBytes]() mutable
+                        {
+                            // Never reserve while holding the scheduler mutex:
+                            // a cache miss must not block UI-side task
+                            // submission.
+                            auto scratch = memory
+                                               ? memory->reserveScratch(bytes)
+                                               : nullptr;
+                            work();
+                        }),
+                    options, admission};
         auto completion = entry.work.get_future().share();
         queue.push_back(std::move(entry));
         counters.queued = queue.size();
@@ -134,7 +149,8 @@ namespace cupuacu::concurrency
     }
     std::shared_ptr<TaskScheduler> defaultTaskScheduler()
     {
-        static auto scheduler = std::make_shared<TaskScheduler>();
+        static auto scheduler = std::make_shared<TaskScheduler>(
+            2, 64, 128 * 1024 * 1024, storage::defaultDecodedBlockCache());
         return scheduler;
     }
 } // namespace cupuacu::concurrency

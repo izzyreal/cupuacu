@@ -170,9 +170,7 @@ namespace cupuacu::actions::effects
         {
             // Share the generated-sample cache across effects and history.
             // Retaining another undo root must not create another cache budget.
-            // Application-wide admission (including imported audio) follows.
-            static const auto cache = std::make_shared<storage::DecodedBlockCache>(
-                4 * storage::AudioBlockBytes);
+            static const auto cache = storage::defaultDecodedBlockCache();
             auto store = std::make_shared<storage::AudioBlockStore>(directory);
             for (std::size_t index = 0; index < request.targetChannels.size();
                  ++index)
