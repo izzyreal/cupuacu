@@ -110,7 +110,7 @@ TEST_CASE("Export streams disk edits with bounded reads and preserves markers",
         REQUIRE(lastProgress == 1);
         int64_t checked = 0;
         const auto loaded = file::loadAudioFile(
-            output, {}, {}, {},
+            output.string(), {}, {}, {},
             [&](const Document &, int64_t start, const float *samples,
                 int64_t count)
             {

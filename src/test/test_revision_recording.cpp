@@ -309,7 +309,7 @@ TEST_CASE(
     });
     REQUIRE(recovered.currentFile == output.string());
     REQUIRE_FALSE(recovered.revisionHasUnsavedChanges());
-    const auto saved = file::loadAudioFile(output);
+    const auto saved = file::loadAudioFile(output.string());
     REQUIRE(saved.document.getFrameCount() == 256);
     for (int c = 0; c < 2; ++c)
         for (int f = 0; f < 256; ++f)
