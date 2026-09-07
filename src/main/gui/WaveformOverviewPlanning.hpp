@@ -94,67 +94,9 @@ namespace cupuacu::gui
         const auto &document = session.document;
         // Revision views publish samples/peaks asynchronously; never fall back
         // to a legacy resident-buffer query while publication is pending.
-        if (session.hasReadRevision())
+        if (session.hasReadRevision() || session.openingPreview)
         {
             return false;
-        }
-        if (session.openingPreview)
-        {
-            // Opening previews contain peaks only. Expand edge windows to base
-            // peaks instead of consulting audio which has not been committed.
-            if (channelIndex < 0 || channelIndex >= document.getChannelCount())
-            {
-                return false;
-            }
-            const auto &cache = session.getWaveformCache(channelIndex);
-            constexpr int64_t base = WaveformCache::BASE_BLOCK_SIZE;
-            const auto prefix = cache.builtSamplePrefixEnd();
-            if (endSampleExclusive <= 0 || startSampleInclusive >= prefix)
-            {
-                return false;
-            }
-            int64_t position =
-                static_cast<int64_t>(std::max(0.0, startSampleInclusive)) /
-                base;
-            const auto end = std::min<int64_t>(
-                cache.validPeakCountForLevel(0),
-                static_cast<int64_t>(std::ceil(
-                    std::min(endSampleExclusive, static_cast<double>(prefix)) /
-                    base)));
-            bool found = false;
-            while (position < end)
-            {
-                int level = cache.getLevelIndex(samplesPerPixel);
-                int64_t width = int64_t{1} << level;
-                while (level > 0 &&
-                       (position % width != 0 || width > end - position))
-                {
-                    --level;
-                    width /= 2;
-                }
-                const auto peak =
-                    cache.getLevelByIndex(level)[position / width];
-                if (!found)
-                {
-                    outPeak = peak;
-                }
-                else
-                {
-                    outPeak.min = std::min(outPeak.min, peak.min);
-                    outPeak.max = std::max(outPeak.max, peak.max);
-                }
-                found = true;
-                position += width;
-                if (debugStats)
-                {
-                    ++debugStats->cachedPeaksUsed;
-                }
-            }
-            if (debugStats)
-            {
-                ++debugStats->windowsUsedCache;
-            }
-            return found;
         }
         // Keep the borrowed sample view alive and use dimensions from the
         // same revision throughout the query.

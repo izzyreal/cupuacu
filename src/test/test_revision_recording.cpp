@@ -8,7 +8,7 @@
 #include "audio/AudioDevices.hpp"
 #include "persistence/RevisionPersistence.hpp"
 #include "persistence/DocumentAutosave.hpp"
-#include "file/file_loading.hpp"
+#include "file/LegacyAudioLoading.hpp"
 #include <chrono>
 #include <thread>
 
@@ -309,7 +309,7 @@ TEST_CASE(
     });
     REQUIRE(recovered.currentFile == output.string());
     REQUIRE_FALSE(recovered.revisionHasUnsavedChanges());
-    const auto saved = file::loadAudioFile(output.string());
+    const auto saved = file::legacy::loadAudioFile(output.string());
     REQUIRE(saved.document.getFrameCount() == 256);
     for (int c = 0; c < 2; ++c)
         for (int f = 0; f < 256; ++f)

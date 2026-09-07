@@ -6,7 +6,7 @@
 #include "../file/AudioExport.hpp"
 #include "../file/MarkerPersistence.hpp"
 #include "../file/AudioFileWriter.hpp"
-#include "../file/OwnedSourceFile.hpp"
+#include "../file/AudioSaveOperation.hpp"
 #include "../file/OverwritePreservation.hpp"
 #include "../file/PreservationBackend.hpp"
 #include "../file/SaveWritePlan.hpp"
@@ -23,46 +23,34 @@ namespace cupuacu::actions
 {
     namespace detail
     {
-        static void writeRevisionSave(State *state,
-                                      const std::filesystem::path &path,
-                                      const file::AudioExportSettings &settings,
-                                      bool preserving)
+        static void writeSessionSave(State *state,
+                                     const std::filesystem::path &path,
+                                     const file::AudioExportSettings &settings,
+                                     bool preserving)
         {
             auto &session = state->getActiveDocumentSession();
-            const auto audio = session.getEditRevision();
-            const auto reference = file::revisionPreservationReference(session);
-            auto progress =
+            const file::AudioSaveSnapshot input{
+                session.document, session.getEditRevision(), session.preservationSource};
+            const auto reference = input.revision
+                ? file::revisionPreservationReference(session)
+                : std::filesystem::path(session.preservationReferenceFile.empty()
+                      ? session.currentFile : session.preservationReferenceFile);
+            auto container = file::writeAudioSave(
+                input,
+                {path, reference,
+                 state->paths ? state->paths->statePath()
+                              : std::filesystem::temp_directory_path(),
+                 settings, preserving},
                 [&](const std::string &detail, std::optional<double> value)
-            {
-                throwIfLongTaskCanceled(state);
-                updateLongTask(state, detail, value);
-            };
-            auto container = file::writeOwnedRevisionContainer(
-                path,
-                state->paths ? state->paths->statePath()
-                             : std::filesystem::temp_directory_path(),
-                audio->shape(),
-                [&](const auto &owned)
                 {
-                    if (preserving)
-                    {
-                        file::writePreservingRevision(
-                            *audio, session.document.getMarkers(), reference,
-                            owned, settings, progress);
-                    }
-                    else
-                    {
-                        file::AudioFileWriter::writeFile(
-                            *audio, session.document.getMarkers(), owned,
-                            settings, progress);
-                    }
-                },
-                [&](double value)
-                {
-                    progress("Retaining saved source", value);
+                    throwIfLongTaskCanceled(state);
+                    updateLongTask(state, detail, value);
                 });
-            session.preservationSource =
-                concurrency::releaseOnWorker(std::move(container));
+            if (container)
+            {
+                session.preservationSource =
+                    concurrency::releaseOnWorker(std::move(container));
+            }
         }
         static SDL_Window *getSaveErrorParentWindow(cupuacu::State *state)
         {
@@ -342,16 +330,7 @@ namespace cupuacu::actions
             {
                 cupuacu::LongTaskScope longTask(
                     state, "Saving file", session.currentFile);
-                if (session.hasReadRevision())
-                {
-                    detail::writeRevisionSave(state, session.currentFile,
-                                              *settings, false);
-                }
-                else
-                {
-                    file::AudioFileWriter::writeFile(state, session.currentFile,
-                                                     *settings);
-                }
+                detail::writeSessionSave(state, session.currentFile, *settings, false);
             });
         if (!ok)
         {
@@ -414,15 +393,7 @@ namespace cupuacu::actions
             {
                 cupuacu::LongTaskScope longTask(
                     state, "Saving file", session.currentFile);
-                if (session.hasReadRevision())
-                {
-                    detail::writeRevisionSave(state, session.currentFile,
-                                              *settings, true);
-                }
-                else
-                {
-                    file::overwritePreservingCurrentFile(state, *settings);
-                }
+                detail::writeSessionSave(state, session.currentFile, *settings, true);
             });
         if (!ok)
         {
@@ -473,16 +444,7 @@ namespace cupuacu::actions
             {
                 cupuacu::LongTaskScope longTask(
                     state, "Saving file", normalizedPath.string());
-                if (state->getActiveDocumentSession().hasReadRevision())
-                {
-                    detail::writeRevisionSave(state, normalizedPath, settings,
-                                              false);
-                }
-                else
-                {
-                    file::AudioFileWriter::writeFile(state, normalizedPath,
-                                                     settings);
-                }
+                detail::writeSessionSave(state, normalizedPath, settings, false);
             });
         if (!ok)
         {
@@ -528,21 +490,7 @@ namespace cupuacu::actions
             {
                 cupuacu::LongTaskScope longTask(
                     state, "Saving file", normalizedPath.string());
-                const auto &session = state->getActiveDocumentSession();
-                const auto referencePath =
-                    !session.preservationReferenceFile.empty()
-                        ? std::filesystem::path(session.preservationReferenceFile)
-                        : std::filesystem::path(session.currentFile);
-                if (session.hasReadRevision())
-                {
-                    detail::writeRevisionSave(state, normalizedPath, settings,
-                                              true);
-                }
-                else
-                {
-                    file::writePreservingFile(state, referencePath,
-                                              normalizedPath, settings);
-                }
+                detail::writeSessionSave(state, normalizedPath, settings, true);
             });
         if (!ok)
         {

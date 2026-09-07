@@ -55,11 +55,12 @@ namespace cupuacu
         bool openingPreview = false;
         std::shared_ptr<const waveform::PersistentCacheSnapshot>
             pendingImportedPeaks;
-        void retryImportedPeakPersistence()
+        void retryImportedPeakPersistence(
+            std::shared_ptr<concurrency::TaskScheduler> scheduler = {})
         {
             if (pendingImportedPeaks &&
                 waveform::schedulePersistentWaveformCache(
-                    pendingImportedPeaks) !=
+                    pendingImportedPeaks, std::move(scheduler)) !=
                     waveform::CacheSaveScheduleResult::Busy)
             {
                 pendingImportedPeaks.reset();
@@ -160,7 +161,9 @@ namespace cupuacu
             pendingPersistentWaveformCacheVersion.reset();
         }
 
-        [[nodiscard]] bool pumpWaveformCacheWork(const Paths *paths = nullptr)
+        [[nodiscard]] bool pumpWaveformCacheWork(
+            const Paths *paths = nullptr,
+            std::shared_ptr<concurrency::TaskScheduler> scheduler = {})
         {
             if (openingPreview || readRevision)
             {
@@ -180,7 +183,8 @@ namespace cupuacu
                 !getWaveformCacheBuildProgress().has_value())
             {
                 const auto result =
-                    waveform::schedulePersistentWaveformCache(*this, *paths);
+                    waveform::schedulePersistentWaveformCache(
+                        *this, *paths, std::move(scheduler));
                 if (result != waveform::CacheSaveScheduleResult::Busy)
                 {
                     clearPendingPersistentWaveformCacheSave();

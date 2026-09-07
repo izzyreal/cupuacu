@@ -1,8 +1,8 @@
 #pragma once
 
 #include "../../State.hpp"
-#include "../../file/file_loading.hpp"
-#include "../../waveform/DecodedWaveformBuilder.hpp"
+#include "../../file/AudioFileLoading.hpp"
+#include "../../waveform/ImportPreview.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -46,7 +46,7 @@ namespace cupuacu::actions::io
         void start(std::shared_ptr<concurrency::TaskScheduler> scheduler = {});
         [[nodiscard]] Snapshot snapshot() const;
         [[nodiscard]] std::unique_ptr<file::LoadedAudioFile> takeLoadedFile();
-        [[nodiscard]] std::optional<waveform::DecodedWaveformChunk>
+        [[nodiscard]] std::optional<waveform::ImportPreview>
         takePreview();
         std::unique_ptr<DocumentSession> takeRestoredSession();
         [[nodiscard]] std::uint64_t getId() const;
@@ -73,10 +73,10 @@ namespace cupuacu::actions::io
         concurrency::TaskScheduler::Ticket completion;
         std::atomic<bool> cancelRequested{false};
         std::condition_variable previewCv;
-        std::deque<waveform::DecodedWaveformChunk> previews;
+        std::deque<waveform::ImportPreview> previews;
 
         void run();
-        void publishPreview(waveform::DecodedWaveformChunk chunk);
+        void publishPreview(waveform::ImportPreview chunk);
         void publishProgress(const std::string &detailToUse,
                              std::optional<double> progressToUse);
     };

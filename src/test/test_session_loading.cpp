@@ -9,7 +9,7 @@
 #include "actions/DocumentLifecycle.hpp"
 #include "file/SndfilePath.hpp"
 #include "file/aiff/AiffMarkerMetadata.hpp"
-#include "file/file_loading.hpp"
+#include "file/LegacyAudioLoading.hpp"
 #include "file/wav/WavMarkerMetadata.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/DocumentSessionWindow.hpp"
@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <random>
 #include <string>
 #include <system_error>
@@ -153,7 +154,7 @@ TEST_CASE("Loading a file resets session selection and cursor", "[session]")
     REQUIRE(session.selection.isActive());
     REQUIRE(session.cursor == 77);
 
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
 
     REQUIRE(session.document.getSampleRate() == 48000);
     REQUIRE(session.document.getChannelCount() == 2);
@@ -189,7 +190,7 @@ TEST_CASE("Loading a second file fully reinitializes document cache and shape",
     auto &session = state.getActiveDocumentSession();
 
     session.currentFile = firstPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
     session.rebuildWaveformCacheSynchronously();
     REQUIRE(session.getWaveformCache(0).levelsCount() > 0);
 
@@ -201,7 +202,7 @@ TEST_CASE("Loading a second file fully reinitializes document cache and shape",
     REQUIRE(session.cursor == 123);
 
     session.currentFile = secondPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
 
     REQUIRE(session.document.getSampleRate() == 22050);
     REQUIRE(session.document.getChannelCount() == 1);
@@ -231,7 +232,7 @@ TEST_CASE("Loading PCM16 and FLOAT64 files maps sample formats correctly",
     auto &session = state.getActiveDocumentSession();
 
     session.currentFile = pcm16Path.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
     REQUIRE(session.document.getSampleFormat() ==
             cupuacu::SampleFormat::PCM_S16);
     REQUIRE(session.document.getSampleRate() == 32000);
@@ -239,7 +240,7 @@ TEST_CASE("Loading PCM16 and FLOAT64 files maps sample formats correctly",
     REQUIRE(session.document.getFrameCount() == 4);
 
     session.currentFile = float64Path.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
     REQUIRE(session.document.getSampleFormat() ==
             cupuacu::SampleFormat::FLOAT64);
     REQUIRE(session.document.getSampleRate() == 96000);
@@ -254,7 +255,7 @@ TEST_CASE("Loading a missing file throws a descriptive error", "[session]")
         (makeUniqueTempDir("cupuacu-test-session-missing") / "missing.wav")
             .string();
 
-    REQUIRE_THROWS_WITH(cupuacu::file::loadSampleData(&state),
+    REQUIRE_THROWS_WITH(cupuacu::file::legacy::loadSampleData(&state),
                         Catch::Matchers::StartsWith("Failed to open file: "));
 }
 
@@ -271,7 +272,7 @@ TEST_CASE("Opening a file failure preserves the existing session", "[session]")
     cupuacu::test::StateWithTestPaths state{};
     auto &session = state.getActiveDocumentSession();
     session.currentFile = goodPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
     session.selection.setValue1(1.0);
     session.selection.setValue2(2.0);
     session.cursor = 1;
@@ -293,6 +294,62 @@ TEST_CASE("Opening a file failure preserves the existing session", "[session]")
     REQUIRE(session.document.getSampleRate() == 44100);
     REQUIRE(session.document.getChannelCount() == 1);
     REQUIRE(session.document.getFrameCount() == 3);
+}
+
+TEST_CASE("Synchronous application opens retain owned revision audio", "[session]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-sync-owned"));
+    const auto source = cleanup.path() / "source.wav";
+    writeTestWav(source, 48000, 1, {0.25f, -0.5f, 0.75f});
+    cupuacu::test::StateWithTestPaths state{cleanup.path() / "state"};
+    REQUIRE(cupuacu::actions::loadFileIntoSession(
+        &state, source.string(), false, false, false));
+    auto &session = state.getActiveDocumentSession();
+    REQUIRE(session.hasReadRevision());
+    REQUIRE(session.preservationSource);
+    REQUIRE_THROWS_AS(session.document.getAudioBuffer(), std::logic_error);
+    REQUIRE_FALSE(std::filesystem::equivalent(
+        source, session.preservationSource->sourcePath()));
+    std::filesystem::remove(source);
+    std::array<float, 3> samples{};
+    session.getAudioReader()->readChannel(0, 0, samples);
+    REQUIRE(samples[0] == Catch::Approx(0.25f));
+    REQUIRE(samples[1] == Catch::Approx(-0.5f));
+    REQUIRE(samples[2] == Catch::Approx(0.75f));
+}
+
+TEST_CASE("Synchronous file restoration migrates legacy point history",
+          "[session][legacy-recovery]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-test-sync-history"));
+    const auto source = cleanup.path() / "source.wav";
+    const auto history = cleanup.path() / "history";
+    writeTestWav(source, 48000, 1, {0.25f, -0.5f, 0.75f});
+    std::filesystem::create_directories(history);
+    std::ofstream(history / "manifest.json") << R"({
+        "version": 1,
+        "entries": [{"kind": "set-sample-value", "channel": 0,
+                     "sampleIndex": 1, "oldValue": 0.5, "newValue": -0.5}],
+        "redoEntries": []
+    })";
+    cupuacu::test::StateWithTestPaths state{cleanup.path() / "state"};
+    cupuacu::persistence::PersistedSessionState saved;
+    cupuacu::persistence::PersistedOpenDocumentState document;
+    document.filePath = source.string();
+    document.undoStorePath = history.string();
+    saved.openDocuments = {document};
+    saved.openFiles = {source.string()};
+    saved.activeOpenFileIndex = 0;
+    cupuacu::actions::restoreStartupDocument(&state, {}, saved);
+    REQUIRE(state.getActiveDocumentSession().hasReadRevision());
+    REQUIRE(state.getActiveTab()->undoables.size() == 1);
+    std::array<float, 1> sample{};
+    state.undo();
+    state.getActiveDocumentSession().getAudioReader()->readChannel(0, 1, sample);
+    REQUIRE(sample[0] == Catch::Approx(0.5f));
+    state.redo();
+    state.getActiveDocumentSession().getAudioReader()->readChannel(0, 1, sample);
+    REQUIRE(sample[0] == Catch::Approx(-0.5f));
 }
 
 TEST_CASE("Startup restore skips unreadable existing paths", "[session]")

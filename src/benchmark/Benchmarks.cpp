@@ -12,7 +12,8 @@
 #include "actions/audio/SetSampleValue.hpp"
 #include "effects/PeakAnalysis.hpp"
 #include "actions/Zoom.hpp"
-#include "file/file_loading.hpp"
+#include "file/LegacyAudioLoading.hpp"
+#include "file/SndfilePath.hpp"
 #include "file/OwnedAudioImport.hpp"
 #include "file/DecodedImportCache.hpp"
 #include "file/AudioFileWriter.hpp"
@@ -79,6 +80,23 @@ namespace
             {
                 std::this_thread::yield();
             }
+        }
+    }
+
+    void editSample(State *state, uint32_t channel, int64_t frame,
+                    float oldValue, float value)
+    {
+        if (auto revision = state->getActiveDocumentSession().getEditRevision())
+        {
+            actions::audio::prepareRevisionSampleEdit(
+                state, std::move(revision), channel, frame, value);
+            finishRevisionCommands(state);
+        }
+        else
+        {
+            state->addAndDoUndoable(
+                std::make_shared<actions::audio::SetSampleValue>(
+                    state, channel, frame, oldValue, value));
         }
     }
 
@@ -292,7 +310,6 @@ namespace
         }
         if (state.backgroundEffectJob || state.backgroundOpenJob ||
             state.backgroundSaveJob || state.backgroundAutosaveJob ||
-            state.pendingOpenWaveformBuild.active ||
             !state.pendingOpenFiles.empty() || state.longTask.active)
         {
             return true;
@@ -841,8 +858,7 @@ namespace
                 finishRevisionCommands(&state);
                 result["new_document"]["insert_silence_ms"] = elapsed(started);
                 auto began = Clock::now();
-                state.addAndDoUndoable(std::make_shared<actions::audio::SetSampleValue>(
-                    &state, 0, 17, 0.f, .5f));
+                editSample(&state, 0, 17, 0.f, .5f);
                 result["new_document"]["point_edit_ms"] = elapsed(began);
                 began = Clock::now();
                 state.undo();
@@ -902,7 +918,7 @@ namespace
             }
             else
             {
-                auto loaded = file::loadAudioFile(
+                auto loaded = file::legacy::loadAudioFile(
                     request.at("fixture").get<std::string>());
                 session.document = std::move(loaded.document);
             }
@@ -1110,9 +1126,7 @@ namespace
                 name == "checkpoint_history_owned" ? 1000 : 0;
             for (int i = 0; i < historyCount; ++i)
             {
-                state.addAndDoUndoable(
-                    std::make_shared<actions::audio::SetSampleValue>(
-                        &state, 0, 100 + i, sampleAt(100 + i, 0), -.125f));
+                editSample(&state, 0, 100 + i, sampleAt(100 + i, 0), -.125f);
             }
             if (!initial)
             {
@@ -1122,9 +1136,7 @@ namespace
             }
             if (!initial && !recovery)
             {
-                state.addAndDoUndoable(
-                    std::make_shared<actions::audio::SetSampleValue>(
-                        &state, 1, 17, sampleAt(17, 1), -.25f));
+                editSample(&state, 1, 17, sampleAt(17, 1), -.25f);
             }
             auto archive = storage::RevisionArchive::open(path);
             const auto before = archive->stats;
@@ -1382,7 +1394,7 @@ namespace
             }
             else
             {
-                auto loaded = file::loadAudioFile(fixture);
+                auto loaded = file::legacy::loadAudioFile(fixture);
                 session.document = std::move(loaded.document);
                 session.document.setSample(0, 10001, .25f);
             }
@@ -1428,8 +1440,8 @@ namespace
             }
             captureMetrics();
             int64_t checked = 0;
-            auto savedOutput = file::loadAudioFile(
-                output, {}, {}, {},
+            auto savedOutput = file::decodeAudioFile(
+                output,
                 [&](const Document &, int64_t start, const float *samples,
                     int64_t count)
                 {
@@ -1473,7 +1485,7 @@ namespace
             }
             else
             {
-                auto loaded = file::loadAudioFile(
+                auto loaded = file::legacy::loadAudioFile(
                     request.at("fixture").get<std::string>());
                 session.document = std::move(loaded.document);
             }
@@ -1502,8 +1514,8 @@ namespace
                 measurement.SetIterationTime(totalMs / 1000.0);
             }
             int64_t checked = 0;
-            file::loadAudioFile(
-                output, {}, {}, {},
+            file::decodeAudioFile(
+                output,
                 [&](const Document &, int64_t start, const float *samples,
                     int64_t count)
                 {
@@ -1556,7 +1568,7 @@ namespace
             }
             else
             {
-                auto loaded = file::loadAudioFile(
+                auto loaded = file::legacy::loadAudioFile(
                     request.at("fixture").get<std::string>());
                 session.document = std::move(loaded.document);
                 session.rebuildWaveformCacheSynchronously();
@@ -1984,9 +1996,7 @@ namespace
                     auto started = Clock::now();
                     if (point)
                     {
-                        state.addAndDoUndoable(
-                            std::make_shared<actions::audio::SetSampleValue>(
-                                &state, 0, 10001, sampleAt(10001, 0), .75f));
+                        editSample(&state, 0, 10001, sampleAt(10001, 0), .75f);
                     }
                     else
                     {
@@ -2383,7 +2393,7 @@ namespace
                         request.at("root").get<std::string>()) /
                         "owned-audio",
                     cache, {}, {},
-                    [&](waveform::DecodedWaveformChunk)
+                    [&](waveform::ImportPreview)
                     {
                         if (result["milestones_ms"]["first_waveform"].is_null())
                         {
@@ -2536,7 +2546,7 @@ namespace
         if (opening && name == "open_cached")
         {
             DocumentSession cached;
-            auto loaded = file::loadAudioFile(request.at("fixture"));
+            auto loaded = file::legacy::loadAudioFile(request.at("fixture"));
             cached.document = std::move(loaded.document);
             cached.setCurrentFile(request.at("fixture"));
             cached.waveformCaches.resetToChannelCount(channels);
@@ -2587,9 +2597,7 @@ namespace
             }
             else if (name == "sample" || name == "sample_shared")
             {
-                auto edit = std::make_shared<actions::audio::SetSampleValue>(
-                    &state, 0, 9001, sampleAt(9001, 0), 0.25f);
-                state.addAndDoUndoable(edit);
+                editSample(&state, 0, 9001, sampleAt(9001, 0), 0.25f);
                 expected = [](int64_t i, int ch)
                 {
                     return i == 9001 && ch == 0 ? 0.25f : sampleAt(i, ch);

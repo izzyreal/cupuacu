@@ -112,6 +112,8 @@ namespace cupuacu::concurrency
                                     !e.options.documentId ||
                                     !mutatingDocuments.contains(
                                         e.options.documentId)) &&
+                                   (!e.options.serialGroup ||
+                                    !activeSerialGroups.contains(e.options.serialGroup)) &&
                                    e.options.scratchBytes <=
                                        scratchBudget - counters.reservedBytes;
                         });
@@ -139,6 +141,8 @@ namespace cupuacu::concurrency
                 {
                     if ((!it->options.mutation || !it->options.documentId ||
                          !mutatingDocuments.contains(it->options.documentId)) &&
+                        (!it->options.serialGroup ||
+                         !activeSerialGroups.contains(it->options.serialGroup)) &&
                         it->options.scratchBytes <=
                             scratchBudget - counters.reservedBytes &&
                         (chosen == queue.end() || rank(*it) < rank(*chosen)))
@@ -154,6 +158,10 @@ namespace cupuacu::concurrency
                 {
                     mutatingDocuments.insert(entry.options.documentId);
                 }
+                if (entry.options.serialGroup)
+                {
+                    activeSerialGroups.insert(entry.options.serialGroup);
+                }
                 counters.peakRunning =
                     std::max(counters.peakRunning, counters.running);
                 counters.reservedBytes += entry.options.scratchBytes;
@@ -168,6 +176,10 @@ namespace cupuacu::concurrency
                 if (entry.options.mutation && entry.options.documentId)
                 {
                     mutatingDocuments.erase(entry.options.documentId);
+                }
+                if (entry.options.serialGroup)
+                {
+                    activeSerialGroups.erase(entry.options.serialGroup);
                 }
                 counters.reservedBytes -= entry.options.scratchBytes;
             }

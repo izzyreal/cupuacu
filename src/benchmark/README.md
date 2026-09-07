@@ -441,8 +441,9 @@ preparation is excluded. Every output sample is checked outside timing. Process
 peak RSS includes setup and validation and is not a managed-allocation budget.
 
 `sample_command_memory` and `sample_command_owned` use the same setup as the
-structural command cases, replacing one sample through `SetSampleValue` and
-undoing/redoing it. Owned cases assert zero sample-file I/O and start with 1,024
+structural command cases. Resident cases use `SetSampleValue`; owned cases use
+`prepareRevisionSampleEdit`, the GUI entry point, and wait for worker preparation
+and history publication before undoing/redoing it. Owned cases assert zero sample-file I/O and start with 1,024
 edits. The resident implementation already supports inexpensive point edits;
 these cases expose the constant overhead of immutable root changes rather than
 assuming every operation improves. GUI drag-event delivery is outside timing.
@@ -964,3 +965,10 @@ Rows = frame label / 16 (8,192 rows per MiB label), independent of audio duratio
 The timed operation includes parsing, visiting and releasing decoded metadata.
 `legacy_metadata` reports encoded bytes, rows, managed staging and process peak RSS.
 This isolates metadata parsing; it does not time audio decoding or checksum reads.
+
+Sample-edit cleanup: owned point timings (including `large_file_workflow`,
+`new_document_edit`, and `sample_command_owned`) now include worker preparation and
+publication. Earlier reports measured a synchronous helper and are not directly
+comparable. They still exclude mouse-event delivery and subsequent waveform work.
+Legacy resident baselines remain explicit; production revision point history now
+uses the same `RevisionEdit` implementation as other prepared edits.

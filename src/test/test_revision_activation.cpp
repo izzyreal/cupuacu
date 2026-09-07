@@ -11,7 +11,6 @@
 #include "actions/effects/BackgroundEffect.hpp"
 #include "playback/PlaybackRange.hpp"
 #include <latch>
-#include "actions/audio/SetSampleValue.hpp"
 #include "file/OwnedSourceFile.hpp"
 #include "file/OwnedAudioImport.hpp"
 #include "file/DecodedImportCache.hpp"
@@ -107,11 +106,11 @@ TEST_CASE("Normal opening commits owned audio and reusable source peaks",
         std::make_shared<storage::DecodedBlockCache>(0), {}, {},
         [&](const auto &chunk)
         {
-            if (chunk.cached || chunk.sourcePeaks)
+            if (chunk.sourcePeaks)
             {
                 ++cachedPreviews;
             }
-            else if (chunk.toBlock >= chunk.fromBlock)
+            else if (chunk.progressivePeaks && chunk.progressivePeaks->availableFrames() > 0)
             {
                 ++generatedPreviews;
             }
@@ -135,8 +134,7 @@ TEST_CASE("Normal opening commits owned audio and reusable source peaks",
         session.getEditRevision()->queryWaveformOverview(0, 0, 262144, work));
     auto original = session.getEditRevision();
     state.paths.reset();
-    state.addAndDoUndoable(std::make_shared<actions::audio::SetSampleValue>(
-        &state, 0, 7, .5f, -.25f));
+    test::setRevisionSample(&state, 0, 7, -.25f);
     state.undo();
     REQUIRE(session.getEditRevision() == original);
 }
@@ -272,13 +270,13 @@ TEST_CASE(
         REQUIRE(actions::switchToTab(&state, 0));
         CHECK(actions::isDocumentMutationAvailable(&state));
         state.paths.reset();
-        state.addAndDoUndoable(std::make_shared<actions::audio::SetSampleValue>(
-            &state, 0, 7, .5f, -.25f));
-        REQUIRE(actions::effects::queueReverse(&state));
-        CHECK(state.additionalEffectJobs.size() == 1);
+        actions::audio::prepareRevisionSampleEdit(
+            &state, state.getActiveDocumentSession().getEditRevision(), 0, 7, -.25f);
         REQUIRE(actions::closeTabWithoutConfirmation(&state, 1));
         actions::effects::processPendingEffectWork(&state);
     }
+    test::finishRevisionCommands(&state);
+    REQUIRE(actions::effects::queueReverse(&state));
     until(
         [&]
         {
@@ -333,14 +331,15 @@ TEST_CASE("Canceling a queued import preserves unrelated tab edits",
         requestLongTaskCancel(&state);
         REQUIRE(actions::switchToTab(&state, 0));
         state.paths.reset();
-        state.addAndDoUndoable(std::make_shared<actions::audio::SetSampleValue>(
-            &state, 0, 7, .5f, -.25f));
+        actions::audio::prepareRevisionSampleEdit(
+            &state, state.getActiveDocumentSession().getEditRevision(), 0, 7, -.25f);
         actions::io::processPendingOpenWork(&state);
         if (GENERATE(false, true))
         {
             REQUIRE(actions::switchToTab(&state, 1));
         }
     }
+    test::finishRevisionCommands(&state);
     until(
         [&]
         {
@@ -376,8 +375,8 @@ TEST_CASE(
             preview.openingPreview = true;
             preview.openingAudio = chunk.audio;
             preview.document.setExternalAudioShape(
-                chunk.format, chunk.sampleRate, int(chunk.channels.size()),
-                chunk.frameCount);
+                chunk.shape.format, chunk.shape.sampleRate, chunk.shape.channels,
+                chunk.shape.frames);
             const auto available = chunk.audio->availableFrames();
             ++published;
             if (!pinned)
@@ -393,7 +392,7 @@ TEST_CASE(
                                                       pinned->shape().frames,
                                                       pinned->shape().frames)
                       .end == pinned->shape().frames);
-            if (available < chunk.frameCount)
+            if (available < chunk.shape.frames)
             {
                 auto source = preview.getViewportSource();
                 REQUIRE(source);
@@ -505,8 +504,7 @@ TEST_CASE("Peak writer saturation and failure cannot delay imported edits",
         REQUIRE(state.getActiveDocumentSession().pendingImportedPeaks);
         CHECK(actions::isDocumentMutationAvailable(&state));
         state.paths.reset();
-        state.addAndDoUndoable(std::make_shared<actions::audio::SetSampleValue>(
-            &state, 0, 7, .5f, -.25f));
+        test::setRevisionSample(&state, 0, 7, -.25f);
         state.getActiveDocumentSession().retryImportedPeakPersistence();
         CHECK(state.getActiveDocumentSession().pendingImportedPeaks);
     }
@@ -541,7 +539,7 @@ TEST_CASE("A stalled importer leaves sealed audio and async browsing available",
     Files files;
     const auto path = files.root / "source.wav";
     fixture(path);
-    std::promise<waveform::DecodedWaveformChunk> publication;
+    std::promise<waveform::ImportPreview> publication;
     auto published = publication.get_future();
     std::promise<void> release;
     auto gate = release.get_future().share();
@@ -570,8 +568,8 @@ TEST_CASE("A stalled importer leaves sealed audio and async browsing available",
     DocumentSession session;
     session.openingPreview = true;
     session.openingAudio = chunk.audio;
-    session.document.setExternalAudioShape(chunk.format, chunk.sampleRate,
-                                          int(chunk.channels.size()), chunk.frameCount);
+    session.document.setExternalAudioShape(chunk.shape.format, chunk.shape.sampleRate,
+                                          chunk.shape.channels, chunk.shape.frames);
     auto playable = session.getAudioReader();
     REQUIRE(playable->shape().frames == storage::AudioBlockFrames);
     CHECK(playback::computeRangeForPlay(session, false).end == playable->shape().frames);

@@ -423,8 +423,7 @@ namespace
         for (int attempt = 0; attempt < 5000; ++attempt)
         {
             cupuacu::actions::io::processPendingOpenWork(state);
-            if (!state->backgroundOpenJob && state->pendingOpenFiles.empty() &&
-                !state->pendingOpenWaveformBuild.active)
+            if (!state->backgroundOpenJob && state->pendingOpenFiles.empty())
             {
                 cupuacu::actions::io::processPendingOpenWork(state);
                 return;
@@ -966,7 +965,7 @@ TEST_CASE("Async startup restore refreshes main window layout after binding",
     REQUIRE(resizeCount > 0);
 }
 
-TEST_CASE("Canceling a user-open waveform build restores the previous tab state",
+TEST_CASE("Canceling a user import preserves the previous tab state",
           "[integration]")
 {
     ScopedDirCleanup cleanup(
@@ -999,18 +998,19 @@ TEST_CASE("Canceling a user-open waveform build restores the previous tab state"
         &state,
         [&]()
         {
-            return state.pendingOpenWaveformBuild.active &&
+            return state.getActiveTab()->operation.has_value() &&
                    state.getActiveDocumentSession().currentFile == wavPath.string();
         });
 
-    REQUIRE(state.pendingOpenWaveformBuild.revertOnCancel);
-    REQUIRE(state.recentFiles == std::vector<std::string>{wavPath.string(),
-                                                          "before.wav"});
+    REQUIRE(state.getActiveTab()->operation->kind ==
+            cupuacu::DocumentOperation::Kind::Import);
+    REQUIRE(state.recentFiles == std::vector<std::string>{"before.wav"});
 
     cupuacu::requestLongTaskCancel(&state);
     cupuacu::actions::io::processPendingOpenWork(&state);
 
-    REQUIRE_FALSE(state.pendingOpenWaveformBuild.active);
+    drainPendingOpenWork(&state);
+    REQUIRE_FALSE(state.backgroundOpenJob);
     REQUIRE_FALSE(state.longTask.active);
     REQUIRE(state.getActiveDocumentSession().currentFile == "before.wav");
     REQUIRE(state.getActiveDocumentSession().document.getSampleRate() == 22050);

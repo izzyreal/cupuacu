@@ -161,18 +161,6 @@ namespace cupuacu
             bool cancelRequested = false;
         };
 
-        struct PendingOpenWaveformBuildStatus
-        {
-            bool active = false;
-            PendingOpenRequest request;
-            std::string path;
-            int tabIndex = -1;
-            bool revertOnCancel = false;
-            std::vector<DocumentTab> previousTabs;
-            std::vector<std::string> previousRecentFiles;
-            int previousActiveTabIndex = 0;
-        };
-
         std::vector<std::shared_ptr<concurrency::RevisionCommandJob>>
             revisionCommands;
         std::shared_ptr<concurrency::TaskScheduler> taskScheduler =
@@ -255,7 +243,6 @@ namespace cupuacu
                                               std::shared_ptr<ClipboardAudio>>;
         std::shared_ptr<ClipboardRestoreWorker> startupClipboardRestore;
         uint64_t startupClipboardVersion = 0;
-        PendingOpenWaveformBuildStatus pendingOpenWaveformBuild;
         std::unique_ptr<actions::io::BackgroundOpenJob,
                         void (*)(actions::io::BackgroundOpenJob *)>
             backgroundOpenJob{nullptr, destroyBackgroundOpenJob};

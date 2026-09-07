@@ -1,6 +1,5 @@
 #include "BackgroundSave.hpp"
 #include "../DocumentOperationAccess.hpp"
-#include "../../file/OwnedSourceFile.hpp"
 #include "../../persistence/RevisionPersistence.hpp"
 #include "../../concurrency/DeferredRelease.hpp"
 
@@ -326,7 +325,8 @@ namespace cupuacu::actions::io
         std::filesystem::path waveformCacheRootToUse,
         std::shared_ptr<const storage::AudioEditRevision> revision)
         : id(idToUse), request(std::move(requestToSave)),
-          document(documentToWrite),
+          audio{documentToWrite, std::move(revision),
+                stateToUse ? stateToUse->getActiveDocumentSession().preservationSource : nullptr},
           waveformCacheRoot(std::move(waveformCacheRootToUse)),
           workingRoot(stateToUse && stateToUse->paths
                           ? stateToUse->paths->statePath()
@@ -337,10 +337,9 @@ namespace cupuacu::actions::io
             stateToUse && stateToUse->getActiveTab()
                 ? stateToUse->getActiveTab()->id
                 : 0,
-            document.getWaveformDataVersion(), document.getMarkerDataVersion(),
-            document.getPreservationSourceId(), std::move(revision),
-            document.getMarkers(),
-            stateToUse ? stateToUse->getActiveDocumentSession().preservationSource : nullptr});
+            audio.document.getWaveformDataVersion(), audio.document.getMarkerDataVersion(),
+            audio.document.getPreservationSourceId(), audio.revision,
+            audio.document.getMarkers(), audio.preservationSource});
     }
 
     BackgroundSaveJob::~BackgroundSaveJob()
@@ -549,75 +548,15 @@ namespace cupuacu::actions::io
                 publishProgress(detailToUse, progressToUse);
             };
 
-            auto write = [&](const std::filesystem::path &output)
+            auto container = file::writeAudioSave(
+                audio,
+                {request.path, request.referencePath, workingRoot, request.settings,
+                 request.kind == BackgroundSaveKind::OverwritePreserving ||
+                     request.kind == BackgroundSaveKind::SaveAsPreserving},
+                progressCallback);
             {
-                switch (request.kind)
-                {
-                    case BackgroundSaveKind::Overwrite:
-                    case BackgroundSaveKind::SaveAs:
-                    {
-                        if (identity->revision)
-                        {
-                            file::AudioFileWriter::writeFile(
-                                *identity->revision, identity->markers, output,
-                                request.settings, progressCallback);
-                        }
-                        else
-                        {
-                            const auto lease = document.acquireReadLease();
-                            file::AudioFileWriter::writeFile(lease, output,
-                                                             request.settings,
-                                                             progressCallback);
-                        }
-                        break;
-                    }
-                    case BackgroundSaveKind::OverwritePreserving:
-                    case BackgroundSaveKind::SaveAsPreserving:
-                    {
-                        if (request.referencePath.empty())
-                        {
-                            throw std::runtime_error(
-                                "Background preserving save job has no "
-                                "reference file");
-                        }
-                        if (identity->revision)
-                        {
-                            file::writePreservingRevision(
-                                *identity->revision, identity->markers,
-                                request.referencePath, output, request.settings,
-                                progressCallback);
-                        }
-                        else
-                        {
-                            const auto lease = document.acquireReadLease();
-                            file::writePreservingFile(
-                                file::PreservationWriteInput{
-                                    .document = lease,
-                                    .referencePath = request.referencePath,
-                                    .outputPath = output,
-                                    .settings = request.settings,
-                                    .progress = progressCallback,
-                                });
-                        }
-                        break;
-                    }
-                }
-            };
-            if (identity->revision)
-            {
-                auto container = file::writeOwnedRevisionContainer(
-                    request.path, workingRoot, identity->revision->shape(),
-                    write,
-                    [&](double progress)
-                    {
-                        progressCallback("Retaining saved source", progress);
-                    });
                 std::lock_guard lock(mutex);
                 savedContainer = std::move(container);
-            }
-            else
-            {
-                write(request.path);
             }
 
             if (!identity->revision && !waveformCacheRoot.empty() &&
@@ -626,7 +565,7 @@ namespace cupuacu::actions::io
                 publishProgress("Caching waveform", std::nullopt);
                 cupuacu::DocumentSession cacheSession;
                 cacheSession.currentFile = request.path.string();
-                cacheSession.document = document;
+                cacheSession.document = audio.document;
                 cacheSession.waveformCaches.resetToChannelCount(
                     cacheSession.document.getChannelCount());
                 cacheSession.rebuildWaveformCacheSynchronously();

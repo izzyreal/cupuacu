@@ -1,3 +1,4 @@
+#include "../LongTask.hpp"
 #include "DecodedImportCache.hpp"
 #include "../persistence/RevisionPersistence.hpp"
 #include "../storage/AudioEditRevision.hpp"

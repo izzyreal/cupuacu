@@ -35,6 +35,9 @@ namespace cupuacu::concurrency
             bool mutation = false;
             std::chrono::steady_clock::time_point deadline{};
             std::function<void(std::exception_ptr)> admissionFailed;
+            // Optional resource lane, independent of document mutations.
+            // The submitted work must retain the identity until completion.
+            const void *serialGroup = nullptr;
         };
         struct Stats
         {
@@ -84,6 +87,7 @@ namespace cupuacu::concurrency
         std::shared_ptr<storage::DecodedBlockCache> memory;
         Stats counters;
         std::unordered_set<uint64_t> mutatingDocuments;
+        std::unordered_set<const void *> activeSerialGroups;
         bool stopping = false;
         void run();
     };

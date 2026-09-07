@@ -21,4 +21,12 @@ namespace cupuacu::test
             }
         }
     }
+    inline void setRevisionSample(State *state, uint32_t channel, int64_t frame,
+                                  float value)
+    {
+        actions::audio::prepareRevisionSampleEdit(
+            state, state->getActiveDocumentSession().getEditRevision(),
+            channel, frame, value);
+        finishRevisionCommands(state);
+    }
 } // namespace cupuacu::test

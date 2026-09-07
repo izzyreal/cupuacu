@@ -1,4 +1,5 @@
-#pragma once
+#include "AudioFileLoading.hpp"
+#include "LegacyAudioLoading.hpp"
 #include "../storage/WorkingMemory.hpp"
 
 #include "../State.hpp"
@@ -30,33 +31,7 @@
 
 namespace cupuacu::file
 {
-    struct LoadedAudioFile
-    {
-        Document document;
-        std::optional<AudioExportSettings> exportSettings;
-        waveform::DocumentWaveformCaches waveformCaches;
-        bool persistentWaveformCacheChecked = false;
-        bool persistentWaveformCacheLoaded = false;
-        bool waveformCachesReady = false;
-        bool requiresSaveAs = false;
-        bool externalSamples = false;
-        bool decodedAudioCacheLoaded = false;
-        std::shared_ptr<const waveform::PersistentCacheSnapshot>
-            pendingImportedPeaks;
-        std::shared_ptr<const storage::AudioEditRevision> audioRevision;
-        std::shared_ptr<const storage::AudioRevision> ownedSource;
-    };
-
-    using LoadProgressCallback =
-        std::function<void(const std::string &, std::optional<double>)>;
-    using LoadCancelCheck = std::function<bool()>;
-    // Called on the decoder thread after a contiguous prefix has been written.
-    using LoadChunkCallback = std::function<void(const Document &, int64_t)>;
-    // A sink first receives metadata with nullptr/zero samples, then consumes
-    // decoded chunks synchronously. Commit requires an attached audio revision.
-    using LoadSampleSink =
-        std::function<void(const Document &, int64_t, const float *, int64_t)>;
-
+    using legacy::LoadChunkCallback;
     namespace detail
     {
         static bool hasM4aExtension(const std::filesystem::path &path)
@@ -74,59 +49,6 @@ namespace cupuacu::file
         {
             const std::uint16_t value = 1;
             return *reinterpret_cast<const std::uint8_t *>(&value) == 1;
-        }
-
-        static std::int32_t readNativePcmSample(
-            const std::vector<std::uint8_t> &bytes,
-            const std::size_t sampleIndex,
-            const std::uint16_t bitDepth)
-        {
-            const auto bytesPerSample = static_cast<std::size_t>(
-                (bitDepth + 7u) / 8u);
-            const auto offset = sampleIndex * bytesPerSample;
-            switch (bitDepth)
-            {
-                case 16:
-                {
-                    std::int16_t value = 0;
-                    std::memcpy(&value, bytes.data() + offset, sizeof(value));
-                    return value;
-                }
-                case 24:
-                {
-                    std::uint32_t value = 0;
-                    if (nativeLittleEndian())
-                    {
-                        value = static_cast<std::uint32_t>(bytes[offset]) |
-                                (static_cast<std::uint32_t>(bytes[offset + 1])
-                                 << 8u) |
-                                (static_cast<std::uint32_t>(bytes[offset + 2])
-                                 << 16u);
-                    }
-                    else
-                    {
-                        value = static_cast<std::uint32_t>(bytes[offset + 2]) |
-                                (static_cast<std::uint32_t>(bytes[offset + 1])
-                                 << 8u) |
-                                (static_cast<std::uint32_t>(bytes[offset])
-                                 << 16u);
-                    }
-                    if ((value & 0x00800000u) != 0u)
-                    {
-                        value |= 0xff000000u;
-                    }
-                    return static_cast<std::int32_t>(value);
-                }
-                case 32:
-                {
-                    std::int32_t value = 0;
-                    std::memcpy(&value, bytes.data() + offset, sizeof(value));
-                    return value;
-                }
-                default:
-                    throw std::runtime_error(
-                        "Unsupported ALAC M4A bit depth");
-            }
         }
 
         static void convertNativePcm16BlockToFloat(
@@ -193,25 +115,6 @@ namespace cupuacu::file
             }
         }
 
-        static float normalizedPcmToFloat(const std::int32_t value,
-                                          const std::uint16_t bitDepth)
-        {
-            switch (bitDepth)
-            {
-                case 16:
-                    return static_cast<float>(value) / 32768.0f;
-                case 24:
-                    return static_cast<float>(
-                               static_cast<double>(value) / 8388608.0);
-                case 32:
-                    return static_cast<float>(
-                               static_cast<double>(value) / 2147483648.0);
-                default:
-                    throw std::runtime_error(
-                        "Unsupported ALAC M4A bit depth");
-            }
-        }
-
         static std::string formatLoadProgressDetail(
             const std::string &path, const sf_count_t framesRead,
             const sf_count_t totalFrames)
@@ -251,7 +154,7 @@ namespace cupuacu::file
                      progressValue);
         }
 
-        static void throwIfLoadCanceled(const LoadCancelCheck &isCanceled)
+        void throwIfLoadCanceled(const LoadCancelCheck &isCanceled)
         {
             if (isCanceled && isCanceled())
             {
@@ -598,7 +501,7 @@ namespace cupuacu::file
         }
     } // namespace detail
 
-    static LoadedAudioFile loadAudioFile(
+    static LoadedAudioFile loadAudioFileImpl(
         const std::string &path, const LoadProgressCallback &progress = {},
         const LoadCancelCheck &isCanceled = {},
         const LoadChunkCallback &chunk = {}, const LoadSampleSink &sink = {})
@@ -742,10 +645,10 @@ namespace cupuacu::file
         return result;
     }
 
-    static void commitLoadedAudioFile(cupuacu::DocumentSession &session,
+    static void commitLoadedAudioFileImpl(cupuacu::DocumentSession &session,
                                       const std::string &path,
                                       LoadedAudioFile loaded,
-                                      const cupuacu::Paths *paths = nullptr)
+                                      const cupuacu::Paths *paths)
     {
         if (loaded.externalSamples && !loaded.audioRevision)
         {
@@ -811,7 +714,36 @@ namespace cupuacu::file
         }
     }
 
-    static void loadSampleData(cupuacu::State *state)
+
+    LoadedAudioFile decodeAudioFile(
+        const std::string &path, const LoadSampleSink &sink,
+        const LoadProgressCallback &progress, const LoadCancelCheck &cancel)
+    {
+        if (!sink)
+        {
+            throw std::invalid_argument("Audio decoding requires a sample sink");
+        }
+        return loadAudioFileImpl(path, progress, cancel, {}, sink);
+    }
+
+    LoadedAudioFile legacy::loadAudioFile(
+        const std::string &path, const LoadProgressCallback &progress,
+        const LoadCancelCheck &cancel, const LoadChunkCallback &chunk)
+    {
+        return loadAudioFileImpl(path, progress, cancel, chunk, {});
+    }
+
+    void commitLoadedAudioFile(DocumentSession &session, const std::string &path,
+                               LoadedAudioFile loaded, const Paths *paths)
+    {
+        if (!loaded.audioRevision)
+        {
+            throw std::logic_error("Application audio requires an owned revision");
+        }
+        commitLoadedAudioFileImpl(session, path, std::move(loaded), paths);
+    }
+
+    void legacy::loadSampleData(cupuacu::State *state)
     {
         auto &session = state->getActiveDocumentSession();
         const auto path = session.currentFile;
@@ -826,7 +758,7 @@ namespace cupuacu::file
             {
                 return cupuacu::isLongTaskCancelRequested(state);
             });
-        commitLoadedAudioFile(session, path, std::move(loaded), state->paths.get());
+        commitLoadedAudioFileImpl(session, path, std::move(loaded), state->paths.get());
         cupuacu::file::OverwritePreservation::refreshActiveSession(state);
     }
-} // namespace cupuacu::file
+}

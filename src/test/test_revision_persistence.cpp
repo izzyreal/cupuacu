@@ -1,9 +1,10 @@
 #include "TestRevisionCommands.hpp"
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
+#include <bit>
 #include "TestPaths.hpp"
 #include "persistence/RevisionPersistence.hpp"
 #include "persistence/DocumentAutosave.hpp"
-#include "actions/audio/SetSampleValue.hpp"
 #include "actions/DocumentSessionPersistence.hpp"
 #include "actions/Save.hpp"
 #include "file/OwnedAudioImport.hpp"
@@ -101,8 +102,7 @@ TEST_CASE(
         state.paths.reset();
         auto source = import(state, files.root);
         auto &s = state.getActiveDocumentSession();
-        state.addAndDoUndoable(std::make_shared<actions::audio::SetSampleValue>(
-            &state, 0, 17, read(*source, 0, 17), -.25f));
+        test::setRevisionSample(&state, 0, 17, -.25f);
         actions::audio::performRevisionCommand(
             &state, actions::audio::RevisionCommand::InsertSilence, 29, 0, 7);
         cupuacu::test::finishRevisionCommands(&state);
@@ -330,11 +330,9 @@ TEST_CASE(
     test::installTestPaths(state, files.root / "state");
     import(state, files.root);
     auto &s = state.getActiveDocumentSession();
-    state.addAndDoUndoable(std::make_shared<actions::audio::SetSampleValue>(
-        &state, 0, 7, .5f, -.5f));
+    test::setRevisionSample(&state, 0, 7, -.5f);
     REQUIRE(state.backgroundAutosaveJob);
-    state.addAndDoUndoable(std::make_shared<actions::audio::SetSampleValue>(
-        &state, 0, 8, .5f, -.25f));
+    test::setRevisionSample(&state, 0, 8, -.25f);
     until(
         [&]
         {
@@ -418,8 +416,7 @@ TEST_CASE("A saved revision remains clean while retaining restart history",
     test::installTestPaths(state, files.root / "state");
     import(state, files.root);
     auto &s = state.getActiveDocumentSession();
-    state.addAndDoUndoable(std::make_shared<actions::audio::SetSampleValue>(
-        &state, 0, 17, .5f, -.25f));
+    test::setRevisionSample(&state, 0, 17, -.25f);
     until(
         [&]
         {
@@ -467,8 +464,7 @@ TEST_CASE("Autosave failures are reported and retries are throttled",
     std::ofstream(files.root / "blocked").put('x');
     auto &s = state.getActiveDocumentSession();
     s.autosaveSnapshotPath = files.root / "blocked" / "checkpoint";
-    state.addAndDoUndoable(std::make_shared<actions::audio::SetSampleValue>(
-        &state, 0, 1, .5f, -.5f));
+    test::setRevisionSample(&state, 0, 1, -.5f);
     until(
         [&]
         {
@@ -607,4 +603,61 @@ TEST_CASE("Paged peak summaries survive archive round trips", "[paged-peaks]")
     CHECK(p.min == .375f);
     CHECK(p.max == .375f);
     CHECK(read(*loaded, 0, frames - 1) == .375f);
+}
+
+TEST_CASE("Legacy point checkpoints restore as ordinary revision history",
+          "[revision-persistence]")
+{
+    Files files;
+    const auto path = files.root / "legacy-point";
+    State source;
+    source.paths.reset();
+    import(source, files.root);
+    const float oldValue =
+        read(*source.getActiveDocumentSession().getEditRevision(), 0, 17);
+    test::setRevisionSample(&source, 0, 17, -.25f);
+    const bool undone = GENERATE(false, true);
+    if (undone)
+    {
+        source.undo();
+    }
+    auto checkpoint = persistence::RevisionPersistence::capture(
+        source.getActiveDocumentSession(), source.getActiveTab());
+    auto &entry = (undone ? checkpoint->redo : checkpoint->undo).front();
+    entry.details = {{"kind", "point"}, {"channel", 0}, {"sample", 17},
+                     {"old", std::bit_cast<uint32_t>(oldValue)},
+                     {"new", std::bit_cast<uint32_t>(-.25f)},
+                     {"appliedAfter", !undone}};
+    persistence::RevisionPersistence::save(path, *checkpoint);
+
+    State restored;
+    restored.paths.reset();
+    restored.tabs.emplace_back();
+    auto &session = restored.tabs[1].session;
+    persistence::RevisionPersistence::load(path, session);
+    REQUIRE(persistence::RevisionPersistence::installHistory(&restored, 1));
+    restored.activeTabIndex = 1;
+    REQUIRE(read(*session.getEditRevision(), 0, 17) == (undone ? oldValue : -.25f));
+    if (undone)
+    {
+        restored.redo();
+        REQUIRE(read(*session.getEditRevision(), 0, 17) == -.25f);
+        restored.undo();
+    }
+    else
+    {
+        restored.undo();
+        REQUIRE(read(*session.getEditRevision(), 0, 17) == oldValue);
+        restored.redo();
+    }
+    auto migrated = persistence::RevisionPersistence::capture(
+        session, restored.getActiveTab());
+    REQUIRE(migrated->historyWarning.empty());
+    const auto &history = undone ? migrated->redo : migrated->undo;
+    REQUIRE(history.size() == 1);
+    REQUIRE(history.front().details.at("kind") == "revision");
+    persistence::RevisionPersistence::save(path, *migrated);
+    DocumentSession reopened;
+    persistence::RevisionPersistence::load(path, reopened);
+    REQUIRE(read(*reopened.getEditRevision(), 0, 17) == (undone ? oldValue : -.25f));
 }

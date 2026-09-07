@@ -2,11 +2,16 @@
 
 #include "../LongTask.hpp"
 #include "../State.hpp"
-#include "../file/file_loading.hpp"
+#include "../file/AudioFileLoading.hpp"
+#include "../file/OwnedAudioImport.hpp"
+#include "../file/OverwritePreservation.hpp"
 #include "DocumentUi.hpp"
 
 #include <SDL3/SDL.h>
 
+#include <atomic>
+#include <chrono>
+#include <filesystem>
 #include <exception>
 #include <string>
 
@@ -152,7 +157,33 @@ namespace cupuacu::actions
                     true, true);
                 prepareForDocumentTransition(state);
                 state->getActiveDocumentSession().setCurrentFile(absoluteFilePath);
-                cupuacu::file::loadSampleData(state);
+                const auto root = state->paths
+                                      ? state->paths->statePath()
+                                      : std::filesystem::temp_directory_path();
+                static std::atomic<uint64_t> importSequence{0};
+                const auto directory = root /
+                    ("import-sync-" + std::to_string(
+                        std::chrono::steady_clock::now().time_since_epoch().count()) +
+                     "-" + std::to_string(importSequence.fetch_add(1)));
+                auto imported = file::importOwnedAudio(
+                    absoluteFilePath, directory,
+                    storage::defaultDecodedBlockCache(),
+                    [state](const auto &detail, auto progress)
+                    {
+                        updateLongTask(state, detail, progress, true);
+                    },
+                    [state] { return isLongTaskCancelRequested(state); }, {},
+                    {.preferFilesystemClone = true,
+                     .waveformCacheRoot = state->paths
+                         ? state->paths->waveformCachePath()
+                         : std::filesystem::path{}});
+                imported.metadata.audioRevision =
+                    storage::AudioEditRevision::from(imported.audio);
+                imported.metadata.ownedSource = std::move(imported.audio);
+                file::commitLoadedAudioFile(
+                    state->getActiveDocumentSession(), absoluteFilePath,
+                    std::move(imported.metadata), state->paths.get());
+                file::OverwritePreservation::refreshActiveSession(state);
                 refreshDocumentUi(state);
                 setMainWindowTitleToActiveDocument(state);
             });

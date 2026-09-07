@@ -1,8 +1,7 @@
-#include "waveform/StreamingPeakBuilder.hpp"
+#include "storage/AudioSourceBuilder.hpp"
 #include "persistence/DocumentAutosave.hpp"
 #include "RevisionPersistence.hpp"
 #include "LegacyRecovery.hpp"
-#include "../waveform/DecodedWaveformBuilder.hpp"
 #include "../concurrency/DeferredRelease.hpp"
 #include "../concurrency/TaskScheduler.hpp"
 
@@ -610,19 +609,8 @@ namespace cupuacu::persistence
             auto store = legacyRecoveryStore(path.parent_path());
             auto cache =
                 storage::defaultDecodedBlockCache();
-            waveform::StreamingPeakBuilder peaks(shape, cache, isCanceled);
-            storage::AudioRevisionBuilder builder(
-                shape, store, cache,
-                [&](int64_t first, auto blocks, uint32_t count)
-                {
-                    peaks.appendFrom(
-                        shape, first + count,
-                        [&](int c, int64_t at, std::span<float> out)
-                        {
-                            std::copy_n(blocks[c].data() + at - first,
-                                        out.size(), out.data());
-                        });
-                });
+            storage::AudioSourceBuilder builder(
+                shape, store, cache, {.cancel = isCanceled});
             if (progress)
             {
                 progress(frames ? 0.0 : 1.0);
@@ -647,7 +635,7 @@ namespace cupuacu::persistence
                 }
             }
             auto audio = storage::AudioEditRevision::from(
-                builder.finish({}, peaks.finish()));
+                builder.finish());
             cupuacu::DocumentSession restored;
             restored.document.setExternalAudioShape(format, sampleRate,
                                                     channels, frames);

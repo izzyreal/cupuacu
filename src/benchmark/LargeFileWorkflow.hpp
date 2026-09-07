@@ -124,9 +124,7 @@ void largeFileWorkflow(benchmark::State &measurement)
         };
         auto pointEdit = [&]
         {
-            state.addAndDoUndoable(
-                std::make_shared<actions::audio::SetSampleValue>(
-                    &state, 0, 9001, sampleAt(9001, 0), .25f));
+            editSample(&state, 0, 9001, sampleAt(9001, 0), .25f);
         };
         timed("point_edit_ms", pointEdit);
         timed("undo_ms",

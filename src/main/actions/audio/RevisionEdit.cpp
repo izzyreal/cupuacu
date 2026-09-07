@@ -328,6 +328,25 @@ namespace cupuacu::actions::audio
                     std::move(before), std::move(after), {}, name, false};
             });
     }
+    void prepareRevisionSampleEdit(
+        State *state, std::shared_ptr<const storage::AudioEditRevision> expected,
+        uint32_t channel, int64_t frame, float value)
+    {
+        prepareRevisionEdit(
+            state, "Change sample value",
+            [expected = std::move(expected), channel, frame, value](const auto &before)
+            {
+                if (!expected || before.audio != expected)
+                {
+                    throw std::runtime_error("Sample edit target changed");
+                }
+                auto after = before;
+                storage::AudioEditTransaction edit(*before.audio);
+                edit.replaceChannel(channel, frame, 1, nullptr, 0, 0, value);
+                after.audio = edit.finish();
+                return after;
+            });
+    }
     void prepareRevisionAction(State *state,
                                std::function<std::function<void(State *, int)>(
                                    const RevisionEditState &)>
