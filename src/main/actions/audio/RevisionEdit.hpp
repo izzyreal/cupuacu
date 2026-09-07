@@ -88,6 +88,9 @@ namespace cupuacu::actions::audio
     void prepareRevisionEdit(
         State *, std::string,
         std::function<RevisionEditState(const RevisionEditState &)>);
+    void prepareRevisionSampleEdit(
+        State *, std::shared_ptr<const storage::AudioEditRevision> expected,
+        uint32_t channel, int64_t frame, float value);
     void prepareRevisionAction(State *,
                                std::function<std::function<void(State *, int)>(
                                    const RevisionEditState &)>);

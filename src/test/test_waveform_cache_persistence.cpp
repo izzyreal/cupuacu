@@ -1,14 +1,18 @@
+#include <sndfile.h>
+#include "LongTask.hpp"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include "TestPaths.hpp"
 #include "TestResourceUtil.hpp"
-#include "concurrency/BoundedBackgroundWorker.hpp"
-#include "file/file_loading.hpp"
+#include "concurrency/TaskScheduler.hpp"
+#include "file/LegacyAudioLoading.hpp"
 #include "file/OwnedAudioImport.hpp"
 #include "actions/io/BackgroundOpen.hpp"
 #include "gui/WaveformOverviewPlanning.hpp"
 #include "waveform/WaveformCachePersistence.hpp"
+#include "waveform/StreamingPeakBuilder.hpp"
+#include "waveform/ProgressivePeaks.hpp"
 
 #include <chrono>
 #include <filesystem>
@@ -58,51 +62,57 @@ namespace
 } // namespace
 
 TEST_CASE(
-    "Decoded waveform chunks match a complete build across partial blocks",
-    "[waveform][progressive-open]")
+    "Streaming waveform previews match complete peaks across partial blocks",
+    "[waveform][progressive-open][streaming-peaks]")
 {
+    using namespace cupuacu;
     constexpr int64_t frames = 196625;
+    const storage::AudioShape shape{frames, 1, 44100, SampleFormat::FLOAT32};
     std::vector<float> samples(frames);
     for (int64_t i = 0; i < frames; ++i)
     {
         samples[i] = 0.1f + float(i % 317) / 1000.0f;
     }
-    cupuacu::Document document;
-    document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1, frames);
-    cupuacu::waveform::DecodedWaveformBuilder builder;
-    cupuacu::DocumentSession preview;
-    preview.document.initialize(cupuacu::SampleFormat::FLOAT32, 44100, 1,
-                                frames);
-    preview.openingPreview = true;
-    int chunks = 0;
+    auto cache = std::make_shared<storage::DecodedBlockCache>(
+        storage::AudioBlockBytes);
+    auto live = std::make_shared<waveform::ProgressivePeaks>(shape, cache);
+    waveform::StreamingPeakBuilder builder(shape, cache, {}, live);
     for (int64_t start = 0; start < frames; start += 1023)
     {
-        const auto count = std::min<int64_t>(1023, frames - start);
-        document.writeChannelFloatBlock(0, start, samples.data() + start, count,
-                                        false);
-        if (auto chunk = builder.append(document, start + count))
+        const auto end = std::min<int64_t>(start + 1023, frames);
+        builder.appendFrom(shape, end,
+            [&](int channel, int64_t first, std::span<float> output)
+            {
+                REQUIRE(channel == 0);
+                REQUIRE(first >= start);
+                REQUIRE(first + int64_t(output.size()) <= end);
+                std::copy_n(samples.data() + first, output.size(), output.data());
+            });
+        const auto available = live->availableFrames();
+        REQUIRE(available == (end == frames ? frames : end / 128 * 128));
+        const auto blocks = (available + 127) / 128;
+        const auto peak = live->queryBlocks(0, blocks - 1, blocks);
+        const auto first = (blocks - 1) * 128;
+        const auto range = std::minmax_element(samples.begin() + first,
+                                               samples.begin() + available);
+        REQUIRE(peak.min == *range.first);
+        REQUIRE(peak.max == *range.second);
+    }
+    gui::WaveformCache expected;
+    expected.rebuildAll(samples.data(), frames);
+    const auto result = builder.finish();
+    const auto levels = expected.snapshotBuildState().levels;
+    for (std::size_t level = 0; level < levels.size(); ++level)
+    {
+        std::vector<waveform::Peak> actual(levels[level].size());
+        REQUIRE(result->levelSize(0, level) == actual.size());
+        result->readPeaks(0, level, 0, actual);
+        for (std::size_t i = 0; i < actual.size(); ++i)
         {
-            ++chunks;
-            preview.getWaveformCache(0).applyLevelSpanUpdates(
-                frames, chunk->fromBlock, chunk->toBlock, chunk->channels[0]);
-            REQUIRE(preview.getWaveformCache(0).builtSamplePrefixEnd() <=
-                    start + count);
-            cupuacu::gui::Peak peak{};
-            cupuacu::gui::WaveformOverviewDebugStats stats;
-            REQUIRE(cupuacu::gui::computeWaveformPeakForSampleWindow(
-                preview, 0, 0, 1024, 1, 1, 1025, peak, &stats));
-            REQUIRE(peak.min > 0); // Preview has no raw samples to read.
-            REQUIRE(stats.rawSamplesScanned == 0);
+            REQUIRE(actual[i].min == levels[level][i].min);
+            REQUIRE(actual[i].max == levels[level][i].max);
         }
     }
-    REQUIRE(chunks >= 3);
-    cupuacu::gui::WaveformCache expected;
-    expected.rebuildAll(samples.data(), frames);
-    auto result = builder.takeCaches();
-    requireBuildStatesEqual(result.getCache(0).snapshotBuildState(),
-                            expected.snapshotBuildState());
-    requireBuildStatesEqual(preview.getWaveformCache(0).snapshotBuildState(),
-                            expected.snapshotBuildState());
 }
 
 TEST_CASE("Imported peak pages persist and reopen without full peak snapshots",
@@ -146,14 +156,13 @@ TEST_CASE("Imported peak pages persist and reopen without full peak snapshots",
     bool cachedPreview = false;
     auto reopened = file::importOwnedAudio(
         path, root / "second", cache, {}, {},
-        [&](waveform::DecodedWaveformChunk chunk)
+        [&](waveform::ImportPreview chunk)
         {
             if (!chunk.sourcePeaks)
             {
                 return;
             }
             cachedPreview = true;
-            REQUIRE_FALSE(chunk.cached);
             uint64_t visited = 0;
             CHECK(chunk.sourcePeaks->queryBlocks(1, 0, 513, visited).max > 0);
         },
@@ -261,59 +270,86 @@ TEST_CASE(
         std::this_thread::yield();
     }
     REQUIRE_FALSE(state.backgroundOpenJob);
-    REQUIRE_FALSE(state.pendingOpenWaveformBuild.active);
     REQUIRE_FALSE(state.longTask.active);
     REQUIRE(state.tabs.size() == 1);
     REQUIRE(state.getActiveDocumentSession().document.getFrameCount() == 23);
     REQUIRE(state.getActiveDocumentSession().document.getSample(0, 0) == 0.75f);
 }
 
-TEST_CASE(
-    "Bounded background work rejects overflow and drains retained requests",
-    "[waveform][persistence][concurrency]")
+TEST_CASE("Waveform writes use bounded maintenance admission and drain on shutdown",
+          "[waveform][persistence][concurrency]")
 {
-    std::promise<void> started;
-    std::promise<void> release;
-    auto released = release.get_future().share();
+    using namespace cupuacu;
+    waveform::flushScheduledPersistentWaveformCaches();
+    auto scheduler = std::make_shared<concurrency::TaskScheduler>(1, 8);
+    std::promise<void> started, release;
+    auto gate = release.get_future().share();
     auto active = started.get_future();
-    std::vector<int> processed;
-    bool first = false, second = false, overflow = true, hadWork = false;
-    bool didStart = false;
+    auto blocker = scheduler->submit([&] { started.set_value(); gate.wait(); }, {});
+    active.wait();
+    std::vector<int> order;
+    std::vector<waveform::CacheSaveScheduleResult> accepted;
+    for (int i = 0; i < 5; ++i)
     {
-        cupuacu::concurrency::BoundedBackgroundWorker<int, 1> worker(
-            [&](const int &request)
-            {
-                if (request == 0)
-                {
-                    started.set_value();
-                    released.wait();
-                }
-                processed.push_back(request);
-            });
-        first = worker.schedule(0);
-        didStart = active.wait_for(std::chrono::seconds(5)) ==
-                   std::future_status::ready;
-        if (didStart)
+        auto snapshot = std::make_shared<waveform::PersistentCacheSnapshot>();
+        snapshot->beforeWrite = [&, i]
         {
-            second = worker.schedule(1);
-            overflow = worker.schedule(2);
-            hadWork = worker.hasWork();
-        }
-        // Release before assertions, so a test failure cannot strand a worker.
-        release.set_value();
-        SECTION("Flush waits for accepted requests")
-        {
-            worker.flush();
-            REQUIRE_FALSE(worker.hasWork());
-        }
-        SECTION("Destruction waits for accepted requests") {}
+            order.push_back(i);
+            throw std::runtime_error("Injected disposable cache failure");
+        };
+        accepted.push_back(waveform::schedulePersistentWaveformCache(snapshot, scheduler));
     }
-    REQUIRE(didStart);
-    REQUIRE(first);
-    REQUIRE(second);
-    REQUIRE_FALSE(overflow);
-    REQUIRE(hadWork);
-    REQUIRE(processed == std::vector<int>{0, 1});
+    const auto overflow = waveform::schedulePersistentWaveformCache(
+        std::make_shared<waveform::PersistentCacheSnapshot>(), scheduler);
+    auto user = scheduler->submit([&] { order.push_back(-1); }, {});
+    const bool busy = waveform::hasScheduledPersistentWaveformCacheWork();
+    release.set_value();
+    SECTION("Explicit flush drains accepted writes")
+    {
+        waveform::flushScheduledPersistentWaveformCaches();
+    }
+    SECTION("Scheduler shutdown drains accepted writes")
+    {
+        scheduler.reset();
+    }
+    user.get();
+    REQUIRE(busy);
+    REQUIRE_FALSE(waveform::hasScheduledPersistentWaveformCacheWork());
+    for (auto result : accepted)
+    {
+        REQUIRE(result == waveform::CacheSaveScheduleResult::Scheduled);
+    }
+    REQUIRE(overflow == waveform::CacheSaveScheduleResult::Busy);
+    REQUIRE(order == std::vector<int>{-1, 0, 1, 2, 3, 4});
+}
+
+TEST_CASE("Scheduler rejection releases waveform admission for retry",
+          "[waveform][persistence][concurrency]")
+{
+    using namespace cupuacu;
+    waveform::flushScheduledPersistentWaveformCaches();
+    auto scheduler = std::make_shared<concurrency::TaskScheduler>(1, 1);
+    std::promise<void> started, release;
+    auto gate = release.get_future().share();
+    auto active = started.get_future();
+    auto blocker = scheduler->submit([&] { started.set_value(); gate.wait(); }, {});
+    active.wait();
+    auto snapshot = std::make_shared<waveform::PersistentCacheSnapshot>();
+    snapshot->beforeWrite = [] { throw std::runtime_error("Injected failure"); };
+    const auto first = waveform::schedulePersistentWaveformCache(snapshot, scheduler);
+    const auto rejected = waveform::schedulePersistentWaveformCache(snapshot, scheduler);
+    release.set_value();
+    waveform::flushScheduledPersistentWaveformCaches();
+    blocker = {};
+    // Shutdown proves rejected work retained neither scheduler nor admission.
+    scheduler.reset();
+    scheduler = std::make_shared<concurrency::TaskScheduler>(1, 1);
+    REQUIRE(first == waveform::CacheSaveScheduleResult::Scheduled);
+    REQUIRE(rejected == waveform::CacheSaveScheduleResult::Busy);
+    REQUIRE(waveform::schedulePersistentWaveformCache(snapshot, scheduler) ==
+            waveform::CacheSaveScheduleResult::Scheduled);
+    waveform::flushScheduledPersistentWaveformCaches();
+    REQUIRE_FALSE(waveform::hasScheduledPersistentWaveformCacheWork());
 }
 
 TEST_CASE(
@@ -553,7 +589,7 @@ TEST_CASE("Synchronous file open persists and reuses the initial waveform cache"
         cupuacu::test::StateWithTestPaths state{root};
         auto &session = state.getActiveDocumentSession();
         session.setCurrentFile(sourcePath.string());
-        cupuacu::file::loadSampleData(&state);
+        cupuacu::file::legacy::loadSampleData(&state);
 
         const auto deadline =
             std::chrono::steady_clock::now() + std::chrono::seconds(5);
@@ -579,7 +615,7 @@ TEST_CASE("Synchronous file open persists and reuses the initial waveform cache"
         cupuacu::test::StateWithTestPaths state{root};
         auto &session = state.getActiveDocumentSession();
         session.setCurrentFile(sourcePath.string());
-        cupuacu::file::loadSampleData(&state);
+        cupuacu::file::legacy::loadSampleData(&state);
 
         REQUIRE_FALSE(session.getWaveformCacheBuildProgress().has_value());
         const auto cacheState = session.getWaveformCache(0).snapshotBuildState();

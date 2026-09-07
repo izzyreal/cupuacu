@@ -1,5 +1,4 @@
 #include "RevisionPersistence.hpp"
-#include "../actions/audio/SetSampleValue.hpp"
 #include "../undo/UndoManifestPersistence.hpp"
 #include "../concurrency/DeferredRelease.hpp"
 #include "../Logger.hpp"
@@ -179,24 +178,6 @@ namespace cupuacu::persistence
                                  {"beforeView", view(edit->beforeView)},
                                  {"afterView", view(edit->afterView)},
                                  {"haveAfterView", edit->haveAfterView}};
-                }
-                else if (auto *point =
-                             dynamic_cast<actions::audio::SetSampleValue *>(
-                                 entry.get());
-                         point && point->revisionBefore)
-                {
-                    h.before = *point->revisionBefore;
-                    h.after = h.before;
-                    h.after.audio = point->revisionAfter ? point->revisionAfter
-                                                         : h.before.audio;
-                    h.details = {
-                        {"kind", "point"},
-                        {"channel", point->channel},
-                        {"sample", point->sampleIndex},
-                        {"old", std::bit_cast<uint32_t>(point->oldValue)},
-                        {"new", std::bit_cast<uint32_t>(point->newValue)},
-                        {"appliedAfter",
-                         point->appliedRevision == h.after.audio}};
                 }
                 else if (entry && entry->canPersistForRestart())
                 {
@@ -413,19 +394,10 @@ namespace cupuacu::persistence
                 }
                 else if (d.at("kind") == "point")
                 {
-                    auto point =
-                        std::make_shared<actions::audio::SetSampleValue>(
-                            state, d.at("channel"), d.at("sample"),
-                            std::bit_cast<float>(d.at("old").get<uint32_t>()),
-                            std::bit_cast<float>(d.at("new").get<uint32_t>()));
-                    point->revisionBefore = h.before;
-                    point->revisionAfter = h.after.audio;
-                    point->appliedRevision = d.at("appliedAfter").get<bool>()
-                                                 ? h.after.audio
-                                                 : h.before.audio;
-                    point->changedValue = false;
-                    point->tabId = tab.id;
-                    out.push_back(std::move(point));
+                    // Older checkpoints used a separate point undoable. Its
+                    // stored roots already describe the edit; replay no samples.
+                    out.push_back(std::make_shared<actions::audio::RevisionEdit>(
+                        state, index, "Change sample value", h.before, h.after));
                 }
                 else
                 {

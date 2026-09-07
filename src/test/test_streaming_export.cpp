@@ -1,9 +1,10 @@
+#include "file/m4a/M4aAlacReader.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include "TestPaths.hpp"
 #include "file/AudioFileWriter.hpp"
 #include "file/FileIo.hpp"
 #include "file/PcmPreservationIO.hpp"
-#include "file/file_loading.hpp"
+#include "file/LegacyAudioLoading.hpp"
 #include "file/m4a/M4aAtoms.hpp"
 #include "file/m4a/M4aParser.hpp"
 #include "LongTask.hpp"
@@ -109,8 +110,8 @@ TEST_CASE("Export streams disk edits with bounded reads and preserves markers",
             });
         REQUIRE(lastProgress == 1);
         int64_t checked = 0;
-        const auto loaded = file::loadAudioFile(
-            output.string(), {}, {}, {},
+        const auto loaded = file::decodeAudioFile(
+            output.string(),
             [&](const Document &, int64_t start, const float *samples,
                 int64_t count)
             {

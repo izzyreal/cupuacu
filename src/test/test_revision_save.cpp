@@ -2,6 +2,8 @@
 #include <catch2/generators/catch_generators.hpp>
 #include "TestPaths.hpp"
 #include "file/OwnedAudioImport.hpp"
+#include "file/AudioSaveOperation.hpp"
+#include "file/LegacyAudioLoading.hpp"
 #include "file/RevisionPreservationWriter.hpp"
 #include "file/wav/WavParser.hpp"
 #include "file/aiff/AiffParser.hpp"
@@ -37,12 +39,12 @@ namespace
                0x20000001;
     }
     void fixture(const std::filesystem::path &path, bool wav, int frames,
-                 int seed = 0)
+                 int seed = 0, int subtype = SF_FORMAT_PCM_32)
     {
         SF_INFO info{};
         info.channels = 2;
         info.samplerate = 48000;
-        info.format = (wav ? SF_FORMAT_WAV : SF_FORMAT_AIFF) | SF_FORMAT_PCM_32;
+        info.format = (wav ? SF_FORMAT_WAV : SF_FORMAT_AIFF) | subtype;
         auto snd = sf_open(path.string().c_str(), SFM_WRITE, &info);
         REQUIRE(snd);
         std::vector<int> samples(frames * 2);
@@ -92,6 +94,50 @@ namespace
         REQUIRE_FALSE(state.backgroundSaveJob);
     }
 } // namespace
+TEST_CASE("Save snapshots retain samples and markers after source mutation",
+          "[revision-save]")
+{
+    const bool revision = GENERATE(false, true);
+    const bool preserving = GENERATE(false, true);
+    Files files;
+    const auto source = files.root / "source.wav";
+    const auto output = files.root / "output.wav";
+    fixture(source, true, 100, 0, SF_FORMAT_PCM_16);
+    file::AudioSaveSnapshot input;
+    Document document;
+    if (revision)
+    {
+        auto imported = import(source, files.root / "import");
+        document = std::move(imported.metadata.document);
+        input.revision = storage::AudioEditRevision::from(imported.audio);
+        input.preservationSource = imported.audio;
+    }
+    else
+    {
+        document = file::legacy::loadAudioFile(source.string()).document;
+    }
+    document.addMarker(10, "captured");
+    input.document = document;
+    document.clearMarkers();
+    if (!revision)
+    {
+        document.setSample(0, 0, -1.f);
+    }
+    const auto settings =
+        *file::defaultExportSettingsForPath(output, SampleFormat::PCM_S16);
+    const auto container = file::writeAudioSave(
+        input, {output, revision ? input.preservationSource->sourcePath() : source,
+                files.root / "saved", settings, preserving});
+    REQUIRE(bool(container) == revision);
+    const auto samples = read(output);
+    REQUIRE(samples.size() == 200);
+    REQUIRE(samples[0] == 536870912);
+    const auto markers = file::wav::markers::readMarkers(output);
+    REQUIRE(markers.size() == 1);
+    REQUIRE(markers[0].frame == 10);
+    REQUIRE(markers[0].label == "captured");
+}
+
 TEST_CASE(
     "Revision preservation copies exact PCM32 across edits and owned sources",
     "[revision-save]")

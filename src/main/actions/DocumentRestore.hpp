@@ -3,6 +3,7 @@
 #include "../Logger.hpp"
 #include "../State.hpp"
 #include "../persistence/DocumentAutosave.hpp"
+#include "../persistence/LegacyRecovery.hpp"
 #include "../gui/MainViewAccess.hpp"
 #include "../gui/Waveform.hpp"
 #include "../undo/UndoManifestPersistence.hpp"
@@ -520,7 +521,6 @@ namespace cupuacu::actions
                             }
                             state->startupRestore = {};
                             state->pendingOpenFiles.clear();
-                            state->pendingOpenWaveformBuild = {};
                             return;
                         }
                         const auto snapshotLoadedAt =
@@ -570,6 +570,25 @@ namespace cupuacu::actions
                             : loadFileIntoNewTab(
                                   state, documentState.filePath, false,
                                   false, false, false, &failureReason);
+                    if (loaded && !documentState.undoStorePath.empty())
+                    {
+                        loaded = detail::runDocumentIoOperation(
+                            state, "Restore history", documentState.filePath,
+                            false, false, &failureReason,
+                            [&]
+                            {
+                                auto &session = state->getActiveDocumentSession();
+                                if (!persistence::migrateLegacyHistory(
+                                        session, &documentState,
+                                        state->paths ? state->paths->statePath()
+                                            : std::filesystem::temp_directory_path(),
+                                        [state] { return isLongTaskCancelRequested(state); }))
+                                {
+                                    throw std::runtime_error("Legacy history migration failed");
+                                }
+                                session.undoStore.attach(documentState.undoStorePath);
+                            });
+                    }
                 }
                 if (!loaded)
                 {
@@ -589,7 +608,7 @@ namespace cupuacu::actions
                 }
 
                 restoredAnyDocument = true;
-                if (state->getActiveDocumentSession().hasReadRevision())
+                if (state->getActiveDocumentSession().recoveredRevisionCheckpoint)
                 {
                     // Audio, markers and history come from one atomic
                     // checkpoint. The session list may have been saved at a

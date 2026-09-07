@@ -6,7 +6,7 @@
 #include "TestPaths.hpp"
 #include "TestResourceUtil.hpp"
 #include "actions/audio/EditCommands.hpp"
-#include "file/file_loading.hpp"
+#include "file/LegacyAudioLoading.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/LabeledField.hpp"
 #include "gui/Waveform.hpp"
@@ -600,13 +600,13 @@ TEST_CASE("Block waveform overview preserves pasted-copy peaks in the former com
     cupuacu::test::StateWithTestPaths originalState(cleanup.path() / "original");
     auto &originalSession = originalState.getActiveDocumentSession();
     originalSession.currentFile = wavPath.string();
-    cupuacu::file::loadSampleData(&originalState);
+    cupuacu::file::legacy::loadSampleData(&originalState);
     originalSession.rebuildWaveformCacheSynchronously();
 
     cupuacu::test::StateWithTestPaths pastedState(cleanup.path() / "pasted");
     auto &pastedSession = pastedState.getActiveDocumentSession();
     pastedSession.currentFile = wavPath.string();
-    cupuacu::file::loadSampleData(&pastedState);
+    cupuacu::file::legacy::loadSampleData(&pastedState);
     pastedSession.rebuildWaveformCacheSynchronously();
 
     const int64_t pasteOffset = 42197;

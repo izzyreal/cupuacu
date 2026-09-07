@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "file/SndfilePath.hpp"
-#include "file/file_loading.hpp"
+#include "file/LegacyAudioLoading.hpp"
 
 #include <sndfile.h>
 
@@ -175,7 +175,7 @@ TEST_CASE("Cupuacu opens an ID3v2-prefixed FLAC file", "[codec]")
     writeAudioFile(plainPath, SF_FORMAT_FLAC | SF_FORMAT_PCM_16, 1024);
     addId3v23Prefix(plainPath, taggedPath);
 
-    const auto loaded = cupuacu::file::loadAudioFile(taggedPath.string());
+    const auto loaded = cupuacu::file::legacy::loadAudioFile(taggedPath.string());
     REQUIRE(loaded.document.getSampleRate() == 44100);
     REQUIRE(loaded.document.getChannelCount() == 2);
     REQUIRE(loaded.document.getFrameCount() == 1024);

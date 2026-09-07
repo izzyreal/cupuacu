@@ -318,6 +318,8 @@ set(CUPUACU_SHARED_SOURCES
     src/main/file/DecodedImportCache.cpp
     src/main/file/AudioExport.cpp
     src/main/file/FileIo.cpp
+    src/main/file/AudioSaveOperation.cpp
+    src/main/file/AudioFileLoading.cpp
     src/main/file/AudioFileWriter.cpp
     src/main/file/alac/AlacCodec.cpp
     src/main/file/aac/AacCodec.cpp

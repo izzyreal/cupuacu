@@ -1,7 +1,6 @@
-#include "waveform/StreamingPeakBuilder.hpp"
+#include "storage/AudioSourceBuilder.hpp"
 #include "ClipboardConversion.hpp"
 #include "AudioEditRevision.hpp"
-#include "../waveform/DecodedWaveformBuilder.hpp"
 #include "../LongTask.hpp"
 
 namespace cupuacu::storage
@@ -35,23 +34,7 @@ namespace cupuacu::storage
             auto store = std::make_shared<AudioBlockStore>(path);
             static const auto cache =
                 defaultDecodedBlockCache();
-            waveform::StreamingPeakBuilder peaks(shape, cache, cancel);
-            AudioRevisionBuilder builder(
-                shape, store, cache,
-                [&](int64_t first,
-                    std::span<const AudioRevisionBuilder::PendingChannel>
-                        channels,
-                    uint32_t count)
-                {
-                    check();
-                    peaks.appendFrom(
-                        shape, first + count,
-                        [&](int c, int64_t start, std::span<float> out)
-                        {
-                            std::copy_n(channels[c].data() + start - first,
-                                        out.size(), out.data());
-                        });
-                });
+            AudioSourceBuilder builder(shape, store, cache, {.cancel = cancel});
             auto lease = clip.acquireReadLease();
             auto memory = reserveWorking(
                 chunk * (uint64_t(shape.channels) * sizeof(float) +
@@ -84,7 +67,7 @@ namespace cupuacu::storage
             }
             check();
             result.assignRevision(
-                AudioEditRevision::from(builder.finish({}, peaks.finish())));
+                AudioEditRevision::from(builder.finish()));
         }
         else
         {

@@ -3,7 +3,6 @@
 #include "../file/FileIo.hpp"
 #include "../LongTask.hpp"
 #include "../concurrency/DeferredRelease.hpp"
-#include "../waveform/DecodedWaveformBuilder.hpp"
 #include <bit>
 #include <set>
 #include <unordered_set>

@@ -33,7 +33,7 @@ namespace cupuacu
             !state->backgroundClipboardConversion &&
             !state->backgroundOpenJob && !state->backgroundSaveJob &&
             !state->backgroundEffectJob && !state->backgroundAutosaveJob &&
-            !state->pendingOpenWaveformBuild.active && !state->longTask.active)
+            !state->longTask.active)
         {
             cupuacu::gui::cleanupCursors();
             return SDL_APP_SUCCESS;

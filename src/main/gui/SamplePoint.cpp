@@ -1,6 +1,7 @@
 #include "SamplePoint.hpp"
 
 #include "../actions/audio/SetSampleValue.hpp"
+#include "../actions/audio/RevisionEdit.hpp"
 #include "../actions/MutationAvailability.hpp"
 #include "MainViewAccess.hpp"
 #include "SamplePointInteractionPlanning.hpp"
@@ -51,8 +52,11 @@ bool SamplePoint::mouseDown(const MouseEvent &e)
     dragYPos = getYPos();
     state->getActiveDocumentSession().stopWaveformCacheBuild();
 
-    undoable = std::make_shared<SetSampleValue>(state, channelIndex,
-                                                sampleIndex, getSampleValue());
+    if (!displayedRevision)
+    {
+        undoable = std::make_shared<SetSampleValue>(
+            state, channelIndex, sampleIndex, getSampleValue());
+    }
 
     return true;
 }
@@ -66,23 +70,8 @@ bool SamplePoint::mouseUp(const MouseEvent &e)
 
     if (displayedRevision)
     {
-        const auto revision = displayedRevision;
-        const auto value = getSampleValue();
-        actions::audio::prepareRevisionEdit(
-            state, "Change sample value",
-            [revision, value, channel = channelIndex,
-             frame = sampleIndex](const auto &before)
-            {
-                if (before.audio != revision)
-                {
-                    throw std::runtime_error("Sample edit target changed");
-                }
-                auto after = before;
-                storage::AudioEditTransaction edit(*before.audio);
-                edit.replaceChannel(channel, frame, 1, nullptr, 0, 0, value);
-                after.audio = edit.finish();
-                return after;
-            });
+        actions::audio::prepareRevisionSampleEdit(
+            state, displayedRevision, channelIndex, sampleIndex, getSampleValue());
         undoable.reset();
         isDragging = false;
         setActive(false);

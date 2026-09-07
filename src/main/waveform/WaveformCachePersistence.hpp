@@ -12,6 +12,8 @@
 #include <functional>
 #include <string>
 
+namespace cupuacu::concurrency { class TaskScheduler; }
+
 namespace cupuacu
 {
     struct DocumentSession;
@@ -78,13 +80,15 @@ namespace cupuacu::waveform
                               std::shared_ptr<storage::DecodedBlockCache>,
                               const std::function<bool()> &cancel = {});
     CacheSaveScheduleResult schedulePersistentWaveformCache(
-        const std::shared_ptr<const PersistentCacheSnapshot> &);
+        const std::shared_ptr<const PersistentCacheSnapshot> &,
+        std::shared_ptr<concurrency::TaskScheduler> scheduler = {});
 
     // Retains shared peak pages only, never the document's audio. A full queue
     // returns Busy so the caller can retry without blocking the event loop.
     [[nodiscard]] CacheSaveScheduleResult
     schedulePersistentWaveformCache(const cupuacu::DocumentSession &session,
-                                    const Paths &paths);
+                                    const Paths &paths,
+                                    std::shared_ptr<concurrency::TaskScheduler> scheduler = {});
     [[nodiscard]] bool hasScheduledPersistentWaveformCacheWork();
     void flushScheduledPersistentWaveformCaches();
 

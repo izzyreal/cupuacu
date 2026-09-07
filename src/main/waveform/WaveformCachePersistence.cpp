@@ -1,7 +1,7 @@
 #include "WaveformCachePersistence.hpp"
 
 #include "../DocumentSession.hpp"
-#include "../concurrency/BoundedBackgroundWorker.hpp"
+#include "../concurrency/TaskScheduler.hpp"
 #include "../file/FileIo.hpp"
 
 #include <array>
@@ -377,18 +377,33 @@ namespace cupuacu::waveform
             }
         }
 
-        using CacheSaveWorker =
-            concurrency::BoundedBackgroundWorker<CacheSaveRequest, 4>;
-
-        CacheSaveWorker &cacheSaveWorker()
+        struct CacheSaveState
         {
-            static CacheSaveWorker worker(
-                [](const CacheSaveRequest &request)
-                {
-                    (void)writeCacheRequest(request);
-                });
-            return worker;
+            std::mutex mutex;
+            std::condition_variable idle;
+            std::size_t outstanding = 0;
+        };
+
+        std::shared_ptr<CacheSaveState> cacheSaveState()
+        {
+            static auto state = std::make_shared<CacheSaveState>();
+            return state;
         }
+
+        struct AcceptedCacheWrite
+        {
+            std::shared_ptr<CacheSaveState> state;
+            std::shared_ptr<const PersistentCacheSnapshot> snapshot;
+            ~AcceptedCacheWrite()
+            {
+                // Release retained peaks before flush can report completion.
+                snapshot.reset();
+                if (!state) return;
+                std::lock_guard lock(state->mutex);
+                --state->outstanding;
+                state->idle.notify_all();
+            }
+        };
 
         std::vector<gui::WaveformCache::BuildResult>
         readCacheResults(std::istream &input, const int64_t channelCount)
@@ -526,17 +541,17 @@ namespace cupuacu::waveform
 
     CacheSaveScheduleResult
     schedulePersistentWaveformCache(const DocumentSession &session,
-                                    const Paths &paths)
+                                    const Paths &paths,
+                                    std::shared_ptr<concurrency::TaskScheduler> scheduler)
     {
         const auto key = session.getPersistentWaveformCacheKey();
         if (!key || !sessionHasCompletePersistentCache(session))
         {
             return CacheSaveScheduleResult::Unavailable;
         }
-        return cacheSaveWorker().schedule(captureCacheSaveRequest(
-                   session, paths.waveformCachePath(), *key))
-                   ? CacheSaveScheduleResult::Scheduled
-                   : CacheSaveScheduleResult::Busy;
+        return schedulePersistentWaveformCache(
+            std::make_shared<PersistentCacheSnapshot>(captureCacheSaveRequest(
+                session, paths.waveformCachePath(), *key)), std::move(scheduler));
     }
 
     std::shared_ptr<const PersistentCacheSnapshot>
@@ -553,25 +568,58 @@ namespace cupuacu::waveform
     }
 
     CacheSaveScheduleResult schedulePersistentWaveformCache(
-        const std::shared_ptr<const PersistentCacheSnapshot> &snapshot)
+        const std::shared_ptr<const PersistentCacheSnapshot> &snapshot,
+        std::shared_ptr<concurrency::TaskScheduler> scheduler)
     {
         if (!snapshot)
         {
             return CacheSaveScheduleResult::Unavailable;
         }
-        return cacheSaveWorker().schedule(*snapshot)
-                   ? CacheSaveScheduleResult::Scheduled
-                   : CacheSaveScheduleResult::Busy;
+        auto state = cacheSaveState();
+        // Allocate before taking admission so allocation failure cannot leak it.
+        auto request = std::make_shared<AcceptedCacheWrite>();
+        {
+            std::lock_guard lock(state->mutex);
+            if (state->outstanding >= 5)
+            {
+                return CacheSaveScheduleResult::Busy;
+            }
+            ++state->outstanding;
+            request->state = state;
+            request->snapshot = snapshot;
+        }
+        try
+        {
+            if (!scheduler)
+            {
+                scheduler = concurrency::defaultTaskScheduler();
+            }
+            (void)scheduler->submit(
+                [request = std::move(request)]
+                { (void)writeCacheRequest(*request->snapshot); },
+                {.priority = concurrency::TaskScheduler::Priority::Maintenance,
+                 .scratchBytes = 4096 * sizeof(Peak),
+                 .serialGroup = state.get()});
+            return CacheSaveScheduleResult::Scheduled;
+        }
+        catch (...)
+        {
+            return CacheSaveScheduleResult::Busy;
+        }
     }
 
     bool hasScheduledPersistentWaveformCacheWork()
     {
-        return cacheSaveWorker().hasWork();
+        auto state = cacheSaveState();
+        std::lock_guard lock(state->mutex);
+        return state->outstanding != 0;
     }
 
     void flushScheduledPersistentWaveformCaches()
     {
-        cacheSaveWorker().flush();
+        auto state = cacheSaveState();
+        std::unique_lock lock(state->mutex);
+        state->idle.wait(lock, [&] { return state->outstanding == 0; });
     }
 
     std::shared_ptr<const PersistentCacheSnapshot>

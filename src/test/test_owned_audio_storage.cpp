@@ -1,12 +1,46 @@
+#include <sndfile.h>
+#include "LongTask.hpp"
+#include "file/LegacyAudioLoading.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 #include "TestPaths.hpp"
 #include "file/OwnedAudioImport.hpp"
 #include "storage/DocumentAudioReader.hpp"
 #include "storage/AsyncAudioReader.hpp"
+#include "storage/AudioSourceBuilder.hpp"
 #include <chrono>
 
 using namespace cupuacu;
+
+TEST_CASE("Source builder cannot commit after publication failure",
+          "[owned-audio][source-builder]")
+{
+    const bool cached = GENERATE(false, true);
+    const auto root = test::makeUniqueTestRoot("source-builder-failure");
+    auto store = std::make_shared<storage::AudioBlockStore>(root);
+    auto cache = storage::defaultDecodedBlockCache();
+    const storage::AudioShape shape{17, 1, 48000, SampleFormat::FLOAT32};
+    std::array<float, 17> samples{};
+    storage::AudioSourceBuilder reference(shape, store, cache);
+    reference.appendInterleaved(samples);
+    const auto original = reference.finish();
+    int publications = 0;
+    storage::AudioSourceBuilder failing(
+        shape, store, cache,
+        {.cachedPeaks = cached ? original->sourcePeaks() : nullptr,
+         .onBlockPublished = [&]
+         {
+             ++publications;
+             throw std::runtime_error("Publication failed");
+         }});
+    REQUIRE_THROWS_AS(failing.appendInterleaved(samples), std::runtime_error);
+    REQUIRE(publications == 1);
+    REQUIRE_THROWS(failing.finish());
+    REQUIRE_THROWS(failing.appendInterleaved(samples));
+    std::array<float, 17> restored{};
+    original->readChannel(0, 0, restored);
+    REQUIRE(restored == samples);
+}
 
 TEST_CASE(
     "Disk revisions and slices read unaligned ranges within a shared cache "
@@ -148,7 +182,7 @@ TEST_CASE(
     int previews = 0;
     auto imported = file::importOwnedAudio(
         source, root / "working", cache, {}, {},
-        [&](waveform::DecodedWaveformChunk chunk)
+        [&](waveform::ImportPreview chunk)
         {
             ++previews;
             REQUIRE(chunk.progressivePeaks);
@@ -169,7 +203,7 @@ TEST_CASE(
             std::vector<char>(std::istreambuf_iterator<char>(owned), {}));
     original.close();
     owned.close();
-    auto reference = file::loadAudioFile(source.string());
+    auto reference = file::legacy::loadAudioFile(source.string());
     storage::DocumentAudioReader reader(reference.document);
     std::vector<float> expected(samples.size()), actual(samples.size());
     reader.readChannel(0, 0, expected);
@@ -199,7 +233,7 @@ TEST_CASE(
                           {
                               return cancel;
                           },
-                          [&](waveform::DecodedWaveformChunk)
+                          [&](waveform::ImportPreview)
                           {
                               cancel = true;
                           },

@@ -5,7 +5,7 @@
 #include "State.hpp"
 #include "file/AudioExport.hpp"
 #include "file/AudioFileWriter.hpp"
-#include "file/file_loading.hpp"
+#include "file/LegacyAudioLoading.hpp"
 #include "file/m4a/M4aAlacWriter.hpp"
 #include "file/m4a/M4aAlacReader.hpp"
 #include "file/m4a/M4aParser.hpp"
@@ -266,7 +266,7 @@ TEST_CASE("M4A ALAC files are readable by the native loader", "[m4a]")
 
     cupuacu::State state;
     state.getActiveDocumentSession().currentFile = outputPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
 
     const auto &session = state.getActiveDocumentSession();
     REQUIRE(session.document.getSampleFormat() == cupuacu::SampleFormat::PCM_S24);
@@ -312,7 +312,7 @@ TEST_CASE("M4A ALAC writer preserves selected integer bit depths", "[m4a]")
 
         cupuacu::State state;
         state.getActiveDocumentSession().currentFile = outputPath.string();
-        cupuacu::file::loadSampleData(&state);
+        cupuacu::file::legacy::loadSampleData(&state);
         const auto &loaded = state.getActiveDocumentSession().document;
         REQUIRE(loaded.getSampleFormat() == format);
         REQUIRE(std::fabs(loaded.getSample(0, 3) - 0.75f) < 0.001f);
@@ -357,7 +357,7 @@ TEST_CASE("M4A ALAC writer round-trips markers as chapter track", "[m4a]")
 
     cupuacu::State state;
     state.getActiveDocumentSession().currentFile = outputPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
     const auto &markers =
         state.getActiveDocumentSession().document.getMarkers();
     REQUIRE(markers.size() == 2);

@@ -1,9 +1,8 @@
-#include "waveform/StreamingPeakBuilder.hpp"
+#include "storage/AudioSourceBuilder.hpp"
 #include "RevisionEffect.hpp"
 #include "../../effects/AmplifyFadeEffect.hpp"
 #include "../../effects/AmplifyEnvelopeEffect.hpp"
 #include "../../effects/DynamicsEffect.hpp"
-#include "../../waveform/DecodedWaveformBuilder.hpp"
 #include "../../concurrency/DeferredRelease.hpp"
 #include <array>
 #include <set>
@@ -182,31 +181,13 @@ namespace cupuacu::actions::effects
                                                 shape.sampleRate, shape.format};
                 double channelProgress =
                     double(index) / request.targetChannels.size();
-                waveform::StreamingPeakBuilder peaks(outputShape, cache,
-                                                     [&]
-                                                     {
-                                                         publish(
-                                                             channelProgress);
-                                                         return false;
-                                                     });
-                storage::AudioRevisionBuilder builder(
+                storage::AudioSourceBuilder builder(
                     outputShape, store, cache,
-                    [&](int64_t first,
-                        std::span<
-                            const storage::AudioRevisionBuilder::PendingChannel>
-                            channels,
-                        uint32_t count)
-                    {
-                        peaks.appendFrom(outputShape, first + count,
-                                         [&](int channel, int64_t start,
-                                             std::span<float> output)
-                                         {
-                                             std::copy_n(
-                                                 channels[channel].data() +
-                                                     start - first,
-                                                 output.size(), output.data());
-                                         });
-                    });
+                    {.cancel = [&]
+                     {
+                         publish(channelProgress);
+                         return false;
+                     }});
                 for (int64_t first = 0; first < request.frameCount;)
                 {
                     const auto count =
@@ -289,7 +270,7 @@ namespace cupuacu::actions::effects
                 channelProgress =
                     double(index + 1) / request.targetChannels.size();
                 auto generated = storage::AudioEditRevision::from(
-                    builder.finish({}, peaks.finish()));
+                    builder.finish());
                 edit.replaceChannel(int(request.targetChannels[index]),
                                     request.startFrame, request.frameCount,
                                     generated.get());

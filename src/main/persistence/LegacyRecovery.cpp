@@ -1,9 +1,8 @@
-#include "waveform/StreamingPeakBuilder.hpp"
+#include "storage/AudioSourceBuilder.hpp"
 #include "LegacyRecovery.hpp"
 #include "RevisionPersistence.hpp"
 #include "../LongTask.hpp"
 #include "../file/OwnedSourceFile.hpp"
-#include "../waveform/DecodedWaveformBuilder.hpp"
 #include "../actions/markers/EditCommands.hpp"
 #include <bit>
 #include <fstream>
@@ -166,19 +165,8 @@ namespace cupuacu::persistence
                 {
                     store = legacyRecoveryStore(root);
                 }
-                waveform::StreamingPeakBuilder peaks(shape, cache, cancel);
-                storage::AudioRevisionBuilder builder(
-                    shape, store, cache,
-                    [&](int64_t first, auto blocks, uint32_t count)
-                    {
-                        peaks.appendFrom(
-                            shape, first + count,
-                            [&](int c, int64_t at, std::span<float> out)
-                            {
-                                std::copy_n(blocks[c].data() + at - first,
-                                            out.size(), out.data());
-                            });
-                    });
+                storage::AudioSourceBuilder builder(
+                    shape, store, cache, {.cancel = cancel});
                 constexpr int64_t batch = 16384;
                 auto byteMemory = storage::reserveWorking(
                     batch * 20, storage::MemoryUse::Conversion);
@@ -208,7 +196,7 @@ namespace cupuacu::persistence
                         std::span(samples).first(count * channels.size()));
                     first += count;
                 }
-                return Revision::from(builder.finish({}, peaks.finish()));
+                return Revision::from(builder.finish());
             }
             std::vector<Channel> matrix(Input &in)
             {

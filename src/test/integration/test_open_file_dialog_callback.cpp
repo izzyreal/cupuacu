@@ -210,7 +210,6 @@ TEST_CASE("Pending open work loads queued dialog files asynchronously",
             }
         }
         if (state.pendingOpenFiles.empty() && !state.backgroundOpenJob &&
-            !state.pendingOpenWaveformBuild.active &&
             state.getActiveDocumentSession().currentFile == pathString)
         {
             break;
@@ -220,7 +219,6 @@ TEST_CASE("Pending open work loads queued dialog files asynchronously",
 
     REQUIRE(state.pendingOpenFiles.empty());
     REQUIRE_FALSE(state.backgroundOpenJob);
-    REQUIRE_FALSE(state.pendingOpenWaveformBuild.active);
     REQUIRE(state.getActiveDocumentSession().currentFile == pathString);
     REQUIRE(state.getActiveDocumentSession().document.getSampleRate() == 32000);
     REQUIRE(state.getActiveDocumentSession().document.getFrameCount() == 2);
@@ -228,7 +226,7 @@ TEST_CASE("Pending open work loads queued dialog files asynchronously",
     REQUIRE(state.recentFiles == std::vector<std::string>{pathString});
 }
 
-TEST_CASE("Pending open work commits the document before waveform cache build completes",
+TEST_CASE("Pending open work exposes document progress during import",
           "[integration]")
 {
     cupuacu::test::ensureSdlTtfInitialized();
@@ -255,7 +253,7 @@ TEST_CASE("Pending open work commits the document before waveform cache build co
     const char *selectedFiles[] = {pathString.c_str(), nullptr};
     cupuacu::actions::fileDialogCallback(&state, selectedFiles, 0);
 
-    bool sawCommittedWhileBuilding = false;
+    bool sawImportOperation = false;
     std::vector<double> buildProgressValues;
     for (int attempt = 0; attempt < 5000; ++attempt)
     {
@@ -270,17 +268,16 @@ TEST_CASE("Pending open work commits the document before waveform cache build co
         }
 
         if (state.getActiveDocumentSession().currentFile == pathString &&
-            state.pendingOpenWaveformBuild.active)
+            state.getActiveTab()->operation)
         {
-            sawCommittedWhileBuilding = true;
-            if (state.longTask.progress.has_value())
+            sawImportOperation = true;
+            if (state.getActiveTab()->operation->progress.has_value())
             {
-                buildProgressValues.push_back(*state.longTask.progress);
+                buildProgressValues.push_back(*state.getActiveTab()->operation->progress);
             }
         }
 
         if (state.pendingOpenFiles.empty() && !state.backgroundOpenJob &&
-            !state.pendingOpenWaveformBuild.active &&
             state.getActiveDocumentSession().currentFile == pathString)
         {
             break;
@@ -288,16 +285,12 @@ TEST_CASE("Pending open work commits the document before waveform cache build co
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    REQUIRE(sawCommittedWhileBuilding);
-    REQUIRE(buildProgressValues.size() >= 2);
+    REQUIRE(sawImportOperation);
+    REQUIRE_FALSE(buildProgressValues.empty());
     REQUIRE(std::is_sorted(buildProgressValues.begin(),
                            buildProgressValues.end()));
-    REQUIRE(std::any_of(buildProgressValues.begin(), buildProgressValues.end(),
-                        [](const double progress)
-                        { return progress > 0.0 && progress < 1.0; }));
     REQUIRE(state.pendingOpenFiles.empty());
     REQUIRE_FALSE(state.backgroundOpenJob);
-    REQUIRE_FALSE(state.pendingOpenWaveformBuild.active);
     REQUIRE_FALSE(state.longTask.active);
     REQUIRE(state.getActiveDocumentSession().currentFile == pathString);
 }

@@ -3,6 +3,7 @@
 #include "../../State.hpp"
 #include "../../Document.hpp"
 #include "../../file/AudioExport.hpp"
+#include "../../file/AudioSaveOperation.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -77,7 +78,7 @@ namespace cupuacu::actions::io
         std::uint64_t id = 0;
         BackgroundSaveRequest request;
         std::shared_ptr<const Identity> identity;
-        cupuacu::Document document;
+        file::AudioSaveSnapshot audio;
         std::filesystem::path waveformCacheRoot;
         std::filesystem::path workingRoot;
         std::shared_ptr<const storage::AudioRevision> savedContainer;

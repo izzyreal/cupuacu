@@ -2518,7 +2518,7 @@ void Waveform::timerCallback()
         }
     }
     if (state && state->getActiveDocumentSession().pumpWaveformCacheWork(
-                     state->paths.get()))
+                     state->paths.get(), state->taskScheduler))
     {
         applyAllPendingCacheUpdates(state);
     }

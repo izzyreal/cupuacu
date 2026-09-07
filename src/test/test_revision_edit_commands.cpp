@@ -6,7 +6,7 @@
 #include "actions/audio/EditCommands.hpp"
 #include "actions/effects/RevisionEffect.hpp"
 #include "effects/MakeSilentEffect.hpp"
-#include "waveform/DecodedWaveformBuilder.hpp"
+#include "waveform/StreamingPeakBuilder.hpp"
 #include "persistence/DocumentAutosave.hpp"
 #include "persistence/RevisionPersistence.hpp"
 #include <random>
@@ -39,7 +39,7 @@ namespace
                 }
             }
             builder.appendInterleaved(samples);
-            waveform::DecodedWaveformBuilder peaks;
+            waveform::StreamingPeakBuilder peaks(shape);
             peaks.appendFrom(shape, frames,
                              [&](int c, int64_t first, std::span<float> out)
                              {
@@ -48,16 +48,8 @@ namespace
                                      out[i] = samples[(first + i) * 2 + c];
                                  }
                              });
-            auto caches = peaks.takeCaches();
-            std::vector<std::vector<gui::PeakLevel>> levels;
-            for (int c = 0; c < 2; ++c)
-            {
-                levels.push_back(
-                    caches.getCache(c).snapshotBuildState().levels);
-            }
             original = storage::AudioEditRevision::from(
-                builder.finish({}, std::make_shared<waveform::SourcePeaks>(
-                                       shape, std::move(levels))));
+                builder.finish({}, peaks.finish()));
             auto &session = state.getActiveDocumentSession();
             session.document.setExternalAudioShape(
                 shape.format, shape.sampleRate, shape.channels, shape.frames);
@@ -481,7 +473,6 @@ TEST_CASE("Production effect publication commits roots and rejects stale work",
     }
 }
 
-#include "actions/audio/SetSampleValue.hpp"
 #include "actions/audio/ClipboardPaste.hpp"
 #include "storage/ClipboardConversion.hpp"
 #include "effects/PeakAnalysis.hpp"
@@ -491,22 +482,18 @@ TEST_CASE(
     "[revision-ui]")
 {
     Fixture f;
+    f.state.paths.reset();
     auto &session = f.state.getActiveDocumentSession();
     const auto before = session.getEditRevision();
     const auto io = f.store->ioBytes();
-    auto edit = std::make_shared<actions::audio::SetSampleValue>(
-        &f.state, 1, 65535, f.samples[65535 * 2 + 1]);
-    for (int i = 0; i < 100; ++i)
-    {
-        edit->setNewValue(float(i) / 64);
-        edit->redo();
-        REQUIRE(edit->lastOperationCommitted());
-    }
-    f.state.addUndoable(edit);
+    actions::audio::prepareRevisionSampleEdit(&f.state, before, 1, 65535, 99.f / 64);
+    REQUIRE(session.getEditRevision() == before);
+    REQUIRE(f.state.getActiveUndoables().empty());
+    test::finishRevisionCommands(&f.state);
+    REQUIRE(f.state.getActiveUndoables().size() == 1);
     auto after = session.getEditRevision();
     REQUIRE(after->indexHeight() <= 3);
     REQUIRE(f.store->ioBytes() == io);
-    REQUIRE_FALSE(edit->canPersistForRestart());
     f.state.undo();
     REQUIRE(session.getEditRevision() == before);
     f.state.redo();
@@ -860,4 +847,22 @@ TEST_CASE("Clipboard preparation remains attached to its tab across navigation",
     REQUIRE(state.tabs[0].undoables.size() == 1);
     REQUIRE(state.tabs[1].session.document.getFrameCount() == 0);
     REQUIRE(state.activeTabIndex == 1);
+}
+
+TEST_CASE("A stale sample gesture cannot overwrite a newer revision",
+          "[revision-ui]")
+{
+    Fixture f;
+    f.state.paths.reset();
+    auto old = f.state.getActiveDocumentSession().getEditRevision();
+    test::setRevisionSample(&f.state, 0, 17, .25f);
+    auto current = f.state.getActiveDocumentSession().getEditRevision();
+    const auto count = f.state.getActiveUndoables().size();
+    int errors = 0;
+    f.state.errorReporter = [&](const auto &, const auto &) { ++errors; };
+    actions::audio::prepareRevisionSampleEdit(&f.state, old, 0, 17, -.25f);
+    test::finishRevisionCommands(&f.state);
+    REQUIRE(errors == 1);
+    REQUIRE(f.state.getActiveDocumentSession().getEditRevision() == current);
+    REQUIRE(f.state.getActiveUndoables().size() == count);
 }

@@ -1,10 +1,10 @@
 #pragma once
 
-#include "file_loading.hpp"
+#include "AudioFileLoading.hpp"
 #include "OwnedSourceFile.hpp"
 #include "../storage/AudioRevision.hpp"
-#include "../waveform/DecodedWaveformBuilder.hpp"
-#include "../waveform/StreamingPeakBuilder.hpp"
+#include "../waveform/ImportPreview.hpp"
+#include "../storage/AudioSourceBuilder.hpp"
 #include "../waveform/ProgressivePeaks.hpp"
 #include <fstream>
 #ifdef __APPLE__
@@ -36,7 +36,7 @@ namespace cupuacu::file
         std::shared_ptr<storage::DecodedBlockCache> cache,
         const LoadProgressCallback &progress = {},
         const LoadCancelCheck &cancel = {},
-        const std::function<void(waveform::DecodedWaveformChunk)> &preview = {},
+        const std::function<void(waveform::ImportPreview)> &preview = {},
         OwnedImportOptions options = {})
     {
         detail::throwIfLoadCanceled(cancel);
@@ -69,20 +69,14 @@ namespace cupuacu::file
             throw std::runtime_error("Source changed during import");
         }
 
-        std::unique_ptr<waveform::StreamingPeakBuilder> peaks;
         std::shared_ptr<waveform::ProgressivePeaks> progressivePeaks;
         std::shared_ptr<const waveform::SourcePeaks> sourcePeaks;
         bool cacheLoaded = false;
-        std::unique_ptr<storage::AudioRevisionBuilder> builder;
+        std::unique_ptr<storage::AudioSourceBuilder> builder;
         storage::AudioShape shape;
         std::shared_ptr<storage::ImportAudioReader> progressive;
-        auto metadata = loadAudioFile(
+        auto metadata = decodeAudioFile(
             owned.string(),
-            [&](const auto &, std::optional<double> value)
-            {
-                if (progress)
-                    progress("Preparing audio: " + source.filename().string(), value);
-            }, cancel, {},
             [&](const Document &document, int64_t start, const float *samples,
                 int64_t count)
             {
@@ -108,11 +102,8 @@ namespace cupuacu::file
                         {
                             return;
                         }
-                        waveform::DecodedWaveformChunk chunk;
-                        chunk.format = shape.format;
-                        chunk.sampleRate = shape.sampleRate;
-                        chunk.frameCount = shape.frames;
-                        chunk.channels.resize(shape.channels);
+                        waveform::ImportPreview chunk;
+                        chunk.shape = shape;
                         chunk.audio = progressive;
                         chunk.progressivePeaks = progressivePeaks;
                         chunk.sourcePeaks = sourcePeaks;
@@ -127,78 +118,48 @@ namespace cupuacu::file
                     {
                         publish();
                     }
-                    else
-                    {
-                        peaks =
-                            std::make_unique<waveform::StreamingPeakBuilder>(
-                                shape, cache, cancel, progressivePeaks);
-                    }
-                    builder = std::make_unique<storage::AudioRevisionBuilder>(
+                    builder = std::make_unique<storage::AudioSourceBuilder>(
                         shape, store, cache,
-                        [&](int64_t blockStart,
-                            std::span<const storage::AudioRevisionBuilder::
-                                          PendingChannel>
-                                channels,
-                            uint32_t frames)
-                        {
-                            detail::throwIfLoadCanceled(cancel);
-                            if (!cacheLoaded)
+                        storage::AudioSourceBuilder::Options{
+                            .cancel = cancel,
+                            .cachedPeaks = sourcePeaks,
+                            .progressivePeaks = progressivePeaks,
+                            .progressiveAudio = progressive,
+                            .onBlockPublished = [&]
                             {
-                                peaks->appendFrom(
-                                    shape, blockStart + frames,
-                                    [&](int channel, int64_t first,
-                                        std::span<float> output)
-                                    {
-                                        if (first < blockStart ||
-                                            first - blockStart + output.size() >
-                                                frames)
-                                        {
-                                            throw std::logic_error(
-                                                "Waveform requested samples "
-                                                "outside decoded block");
-                                        }
-                                        std::copy_n(channels[channel].data() +
-                                                        first - blockStart,
-                                                    output.size(),
-                                                    output.data());
-                                    });
-                            }
-                            if (preview)
-                            {
-                                waveform::DecodedWaveformChunk chunk;
-                                chunk.format = shape.format;
-                                chunk.sampleRate = shape.sampleRate;
-                                chunk.frameCount = shape.frames;
-                                chunk.channels.resize(shape.channels);
-                                chunk.audio = progressive;
-                                chunk.progressivePeaks = progressivePeaks;
-                                chunk.sourcePeaks = sourcePeaks;
-                                preview(std::move(chunk));
-                            }
-                        },
-                        progressive);
+                                if (preview)
+                                {
+                                    preview({shape, progressive, progressivePeaks,
+                                             sourcePeaks});
+                                }
+                            }});
                 }
                 (void)start;
                 builder->appendInterleaved(std::span<const float>(
                     samples, std::size_t(count) * shape.channels));
-            });
+            },
+            [&](const auto &, std::optional<double> value)
+            {
+                if (progress)
+                    progress("Preparing audio: " + source.filename().string(), value);
+            }, cancel);
         if (!builder)
         {
             shape = {metadata.document.getFrameCount(),
                      int(metadata.document.getChannelCount()),
                      metadata.document.getSampleRate(),
                      metadata.document.getSampleFormat()};
-            builder = std::make_unique<storage::AudioRevisionBuilder>(
-                shape, store, cache);
+            builder = std::make_unique<storage::AudioSourceBuilder>(
+                shape, store, cache,
+                storage::AudioSourceBuilder::Options{.cancel = cancel});
         }
         detail::throwIfLoadCanceled(cancel);
         metadata.persistentWaveformCacheChecked =
             !options.waveformCacheRoot.empty();
         metadata.persistentWaveformCacheLoaded = cacheLoaded;
-        if (peaks)
-        {
-            sourcePeaks = peaks->finish();
-        }
+        auto audio = builder->finish(
+            owned, metadata.document.getPreservationSourceId());
+        sourcePeaks = audio->sourcePeaks();
         if (!cacheLoaded)
         {
             metadata.pendingImportedPeaks =
@@ -206,9 +167,6 @@ namespace cupuacu::file
                     source.string(), metadata.document,
                     options.waveformCacheRoot, sourcePeaks);
         }
-        auto audio =
-            builder->finish(owned, std::move(sourcePeaks),
-                            metadata.document.getPreservationSourceId());
         metadata.waveformCachesReady = true;
         return {std::move(audio), std::move(metadata), cloned};
     }
