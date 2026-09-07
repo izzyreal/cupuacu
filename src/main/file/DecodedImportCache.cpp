@@ -186,7 +186,9 @@ namespace cupuacu::file
         {
             return false;
         }
-        storage::RevisionArchive::remove(manifest);
+        // Do not race the archive reclaimer's recursive deletion with ours.
+        // There are no live readers, and cache maintenance runs on a worker.
+        storage::RevisionArchive::remove(manifest, false);
         std::filesystem::remove_all(path);
         return true;
     }

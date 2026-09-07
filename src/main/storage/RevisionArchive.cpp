@@ -176,7 +176,8 @@ namespace cupuacu::storage
             if (!store.expired()) return true;
         return false;
     }
-    void RevisionArchive::remove(const std::filesystem::path &path)
+    void RevisionArchive::remove(const std::filesystem::path &path,
+                                 bool deferRelease)
     {
         const auto key = std::filesystem::absolute(path).lexically_normal();
         std::shared_ptr<RevisionArchive> retired;
@@ -208,7 +209,9 @@ namespace cupuacu::storage
             {
                 registry.erase(found);
             }
-            retired = concurrency::releaseOnWorker(std::move(archive));
+            retired = deferRelease
+                          ? concurrency::releaseOnWorker(std::move(archive))
+                          : std::move(archive);
         }
         // No operation lock or join: long copies notice cancellation; live
         // loaded stores keep their generation until their last reader exits.

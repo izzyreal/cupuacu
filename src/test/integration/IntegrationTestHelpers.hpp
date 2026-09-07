@@ -20,6 +20,32 @@
 
 namespace cupuacu::test::integration
 {
+    // Hold the only bulk worker until a test observes and cancels queued work.
+    // Release on assertion failure too, before State waits for its jobs.
+    class HeldTaskScheduler
+    {
+        std::promise<void> release;
+        bool released = false;
+
+    public:
+        explicit HeldTaskScheduler(State &state)
+        {
+            state.taskScheduler =
+                std::make_shared<concurrency::TaskScheduler>(1);
+            state.taskScheduler->submit(
+                [ready = release.get_future().share()] { ready.wait(); }, {});
+        }
+        void resume()
+        {
+            if (!released)
+            {
+                released = true;
+                release.set_value();
+            }
+        }
+        ~HeldTaskScheduler() { resume(); }
+    };
+
     class RootComponent : public cupuacu::gui::Component
     {
     public:
