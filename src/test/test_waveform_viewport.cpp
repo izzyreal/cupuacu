@@ -512,7 +512,7 @@ TEST_CASE("Session ownership releases unviewed revisions on the reclaimer",
     std::promise<std::thread::id> done;
     auto finished = done.get_future();
     auto value = std::shared_ptr<Probe>(new Probe{done});
-    auto retained = concurrency::releaseOnWorker(std::move(value));
+    auto retained = cupuacu::concurrency::releaseOnWorker(std::move(value));
     retained.reset();
     REQUIRE(finished.wait_for(2s) == std::future_status::ready);
     REQUIRE(finished.get() != std::this_thread::get_id());

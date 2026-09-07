@@ -92,7 +92,9 @@ function(fetchcontent_try_prepare_git_source dep_name source_dir repository git_
     if(NOT _source_matches_exact_hash)
       fetchcontent_run_git(_fetch_result _fetch_output _fetch_error -C "${source_dir}" fetch --depth 1 origin "${git_tag}")
       if(NOT _fetch_result EQUAL 0)
-        set(_needs_init ON)
+        # A failed fetch can mean permissions, ownership or network trouble.
+        # Do not delete an existing checkout and hide that error behind init.
+        message(FATAL_ERROR "FetchContent ${dep_name}: git fetch failed in existing cache ${source_dir}: ${_fetch_error}\nExisting cache retained. Check its ownership and permissions if it was populated by a container running as another user. HEAD check: ${_head_error}")
       endif()
     endif()
   else()

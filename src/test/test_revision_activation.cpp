@@ -599,7 +599,7 @@ namespace
 {
     void seedDecodedCache(const std::shared_ptr<file::DecodedImportCache> &cache,
                           const std::filesystem::path &path,
-                          const std::shared_ptr<concurrency::TaskScheduler> &scheduler)
+                          const std::shared_ptr<cupuacu::concurrency::TaskScheduler> &scheduler)
     {
         static unsigned sequence = 0;
         auto imported = file::importOwnedAudio(path, path.parent_path() /
@@ -619,7 +619,7 @@ TEST_CASE("Decoded cache persists audio, precision and shared cache admission",
     Files files;
     auto source = files.root / "source.wav";
     fixture(source);
-    auto scheduler = std::make_shared<concurrency::TaskScheduler>();
+    auto scheduler = std::make_shared<cupuacu::concurrency::TaskScheduler>();
     auto cache = std::make_shared<file::DecodedImportCache>(files.root / "cache");
     seedDecodedCache(cache, source, scheduler);
     auto weak = std::weak_ptr(cache);
@@ -674,7 +674,7 @@ TEST_CASE("Decoded cache evicts unused entries and retains live archive readers"
     Files files;
     auto first = files.root / "one.wav", second = files.root / "two.wav";
     fixture(first); fixture(second);
-    auto scheduler = std::make_shared<concurrency::TaskScheduler>();
+    auto scheduler = std::make_shared<cupuacu::concurrency::TaskScheduler>();
     constexpr uint64_t budget = 6 * 1024 * 1024;
     auto cache = std::make_shared<file::DecodedImportCache>(files.root / "cache", budget);
     seedDecodedCache(cache, first, scheduler);
@@ -715,7 +715,7 @@ TEST_CASE("Stale, damaged and unavailable decoded caches fall back cleanly",
     Files files;
     auto path = files.root / "source.wav";
     fixture(path);
-    auto scheduler = std::make_shared<concurrency::TaskScheduler>();
+    auto scheduler = std::make_shared<cupuacu::concurrency::TaskScheduler>();
     auto cache = std::make_shared<file::DecodedImportCache>(files.root / "cache");
     auto original = file::DecodedImportCache::sourceIdentity(path);
     seedDecodedCache(cache, path, scheduler);
@@ -773,7 +773,7 @@ TEST_CASE("Pending decoded cache fills are bounded and allow live reuse",
         std::make_shared<storage::DecodedBlockCache>(0));
     imported.metadata.ownedSource = imported.audio;
     imported.metadata.audioRevision = storage::AudioEditRevision::from(imported.audio);
-    auto scheduler = std::make_shared<concurrency::TaskScheduler>();
+    auto scheduler = std::make_shared<cupuacu::concurrency::TaskScheduler>();
     auto entered = std::make_shared<std::latch>(2);
     std::promise<void> release;
     auto gate = release.get_future().share();
