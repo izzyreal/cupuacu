@@ -712,7 +712,7 @@ TEST_CASE("Effect admission failure completes without changing its revision",
     auto retained =
         memory->tryReserveWorking(800 * 1024, storage::MemoryUse::Peaks);
     auto scheduler =
-        std::make_shared<concurrency::TaskScheduler>(1, 8, 1024 * 1024, memory);
+        std::make_shared<cupuacu::concurrency::TaskScheduler>(1, 8, 1024 * 1024, memory);
     actions::effects::BackgroundEffectRequest request;
     request.kind = actions::effects::BackgroundEffectKind::Reverse;
     request.frameCount = 1000;
@@ -819,7 +819,7 @@ TEST_CASE("Clipboard preparation remains attached to its tab across navigation",
 {
     Fixture f(1000);
     auto &state = f.state;
-    state.taskScheduler = std::make_shared<concurrency::TaskScheduler>(1, 8);
+    state.taskScheduler = std::make_shared<cupuacu::concurrency::TaskScheduler>(1, 8);
     ClipboardAudio clip;
     clip.initialize(SampleFormat::FLOAT32, 48000, 2, 5);
     for (int c = 0; c < 2; ++c)

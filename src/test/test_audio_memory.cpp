@@ -108,7 +108,7 @@ TEST_CASE("Admission failure completes queued jobs and reports the cause",
 {
     auto memory = std::make_shared<DecodedBlockCache>(1024);
     auto retained = reserveWorking(900, MemoryUse::Peaks, memory);
-    concurrency::TaskScheduler scheduler(1, 8, 1024, memory);
+    cupuacu::concurrency::TaskScheduler scheduler(1, 8, 1024, memory);
     std::atomic<bool> ran = false, reported = false;
     auto ticket = scheduler.submit(
         [&]
@@ -387,7 +387,7 @@ TEST_CASE(
     "[audio-memory]")
 {
     auto cache = std::make_shared<DecodedBlockCache>(100);
-    concurrency::TaskScheduler first(1, 8, 100, cache),
+    cupuacu::concurrency::TaskScheduler first(1, 8, 100, cache),
         second(1, 8, 100, cache);
     std::promise<void> release, began;
     const auto ready = release.get_future().share();
