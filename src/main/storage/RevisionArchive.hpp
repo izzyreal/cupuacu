@@ -23,7 +23,10 @@ namespace cupuacu::storage
         static std::shared_ptr<RevisionArchive>
         open(const std::filesystem::path &manifest);
         static bool hasLiveReaders(const std::filesystem::path &manifest);
-        static void remove(const std::filesystem::path &manifest);
+        // Cache eviction already runs on a worker and must finish reclamation
+        // before removing the containing directory.
+        static void remove(const std::filesystem::path &manifest,
+                           bool deferRelease = true);
         static bool recognizes(const std::filesystem::path &manifest);
         ~RevisionArchive();
         std::mutex operationMutex;

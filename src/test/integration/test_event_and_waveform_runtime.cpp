@@ -973,7 +973,7 @@ TEST_CASE("Canceling a user import preserves the previous tab state",
     const auto wavPath = cleanup.path() / "cancel-waveform-build.wav";
     constexpr int sampleRate = 44100;
     constexpr int channels = 1;
-    constexpr int64_t frameCount = 1 << 22;
+    constexpr int64_t frameCount = 256;
     std::vector<float> frames(static_cast<std::size_t>(frameCount));
     for (int64_t frame = 0; frame < frameCount; ++frame)
     {
@@ -984,6 +984,7 @@ TEST_CASE("Canceling a user import preserves the previous tab state",
 
     cupuacu::test::StateWithTestPaths state{};
     createBuiltSessionUi(&state, 16, 22050, 1);
+    cupuacu::test::integration::HeldTaskScheduler heldScheduler(state);
 
     auto &originalSession = state.getActiveDocumentSession();
     originalSession.currentFile = "before.wav";
@@ -1008,7 +1009,7 @@ TEST_CASE("Canceling a user import preserves the previous tab state",
 
     cupuacu::requestLongTaskCancel(&state);
     cupuacu::actions::io::processPendingOpenWork(&state);
-
+    heldScheduler.resume();
     drainPendingOpenWork(&state);
     REQUIRE_FALSE(state.backgroundOpenJob);
     REQUIRE_FALSE(state.longTask.active);
@@ -1031,7 +1032,7 @@ TEST_CASE("Canceling async startup restore during background open preserves prio
         makeUniqueTempDir("cupuacu-test-startup-restore-cancel"));
     const auto firstPath = cleanup.path() / "first.wav";
     const auto secondPath = cleanup.path() / "second.wav";
-    constexpr int64_t frameCount = 1 << 22;
+    constexpr int64_t frameCount = 256;
     std::vector<float> frames(static_cast<std::size_t>(frameCount));
     for (int64_t frame = 0; frame < frameCount; ++frame)
     {
@@ -1043,6 +1044,7 @@ TEST_CASE("Canceling async startup restore during background open preserves prio
 
     cupuacu::test::StateWithTestPaths state{};
     createBuiltEmptySessionUi(&state, 800, 400);
+    cupuacu::test::integration::HeldTaskScheduler heldScheduler(state);
 
     cupuacu::persistence::PersistedSessionState persistedState{};
     persistedState.openDocuments = {
@@ -1061,6 +1063,8 @@ TEST_CASE("Canceling async startup restore during background open preserves prio
 
     cupuacu::requestLongTaskCancel(&state);
     state.quitRequestedAfterLongTaskCancel = true;
+    cupuacu::actions::io::processPendingOpenWork(&state);
+    heldScheduler.resume();
 
     pumpOpenWorkUntil(
         &state,

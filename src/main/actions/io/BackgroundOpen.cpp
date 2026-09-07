@@ -694,6 +694,19 @@ namespace cupuacu::actions::io
 
         if (state->quitRequestedAfterLongTaskCancel)
         {
+            if (state->startupRestore.active)
+            {
+                state->preserveStartupSessionStateOnShutdown = true;
+                state->startupRestore.shouldPersistState = false;
+                state->startupRestore.remaining -= static_cast<int>(
+                    std::count_if(state->pendingOpenFiles.begin(),
+                                  state->pendingOpenFiles.end(),
+                                  [](const auto &request)
+                                  {
+                                      return request.kind ==
+                                             PendingOpenKind::StartupRestore;
+                                  }));
+            }
             state->pendingOpenFiles.clear();
         }
 
