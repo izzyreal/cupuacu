@@ -1,4 +1,5 @@
 #pragma once
+#include "../utils/BitCast.hpp"
 
 #include "EditTree.hpp"
 #include <utility>
@@ -149,8 +150,8 @@ namespace cupuacu::storage
                 a.source == b.source &&
                 (a.source
                      ? a.channel == b.channel && a.start + a.frames == b.start
-                     : std::bit_cast<uint32_t>(a.constantValue) ==
-                           std::bit_cast<uint32_t>(b.constantValue));
+                     : cupuacu::utils::bitCast<uint32_t>(a.constantValue) ==
+                           cupuacu::utils::bitCast<uint32_t>(b.constantValue));
             if (!contiguous)
             {
                 return join(std::move(left), std::move(right), allocated);

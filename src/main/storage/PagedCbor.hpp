@@ -1,9 +1,9 @@
 #pragma once
+#include "../utils/BitCast.hpp"
 #include "WorkingMemory.hpp"
 #include <filesystem>
 #include <nlohmann/json.hpp>
 #include <array>
-#include <bit>
 #include <cmath>
 #include <fstream>
 
@@ -241,8 +241,8 @@ namespace cupuacu::storage
                     {
                         const double number =
                             info == 26
-                                ? double(std::bit_cast<float>(uint32_t(count)))
-                                : std::bit_cast<double>(count);
+                                ? double(cupuacu::utils::bitCast<float>(uint32_t(count)))
+                                : cupuacu::utils::bitCast<double>(count);
                         if (!std::isfinite(number))
                         {
                             throw std::runtime_error(

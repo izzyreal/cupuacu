@@ -1,9 +1,9 @@
+#include "../utils/BitCast.hpp"
 #include "waveform/StreamingPeakBuilder.hpp"
 #include "RevisionArchive.hpp"
 #include "../file/FileIo.hpp"
 #include "../LongTask.hpp"
 #include "../concurrency/DeferredRelease.hpp"
-#include <bit>
 #include <set>
 #include <unordered_set>
 #ifdef __APPLE__
@@ -549,9 +549,9 @@ namespace cupuacu::storage
                         bytes.reserve((end - first) * 8);
                         for (auto i = first; i < end; ++i)
                         {
-                            for (auto bits : {std::bit_cast<uint32_t>(
+                            for (auto bits : {cupuacu::utils::bitCast<uint32_t>(
                                                   values[i - first].min),
-                                              std::bit_cast<uint32_t>(
+                                              cupuacu::utils::bitCast<uint32_t>(
                                                   values[i - first].max)})
                             {
                                 for (int shift = 0; shift < 32; shift += 8)
@@ -613,7 +613,7 @@ namespace cupuacu::storage
                  {"channel", r.channel},
                  {"start", r.start},
                  {"frames", r.frames},
-                 {"value", std::bit_cast<uint32_t>(r.constantValue)}};
+                 {"value", cupuacu::utils::bitCast<uint32_t>(r.constantValue)}};
         }
         else
         {
@@ -922,7 +922,7 @@ namespace cupuacu::storage
                                 {
                                     v |= uint32_t(bytes[at + n]) << (n * 8);
                                 }
-                                return std::bit_cast<float>(v);
+                                return cupuacu::utils::bitCast<float>(v);
                             };
                             for (std::size_t i = 0; i < take; ++i)
                             {
@@ -1003,7 +1003,7 @@ namespace cupuacu::storage
             AudioEditRevision::SourceRange r{
                 loadSource(earlier(j.at("source"))), j.at("channel"),
                 j.at("start"), j.at("frames"),
-                std::bit_cast<float>(j.at("value").get<uint32_t>())};
+                cupuacu::utils::bitCast<float>(j.at("value").get<uint32_t>())};
             if (r.frames <= 0)
             {
                 throw std::runtime_error("Invalid leaf duration");

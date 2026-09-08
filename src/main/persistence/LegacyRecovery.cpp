@@ -1,10 +1,10 @@
+#include "../utils/BitCast.hpp"
 #include "storage/AudioSourceBuilder.hpp"
 #include "LegacyRecovery.hpp"
 #include "RevisionPersistence.hpp"
 #include "../LongTask.hpp"
 #include "../file/OwnedSourceFile.hpp"
 #include "../actions/markers/EditCommands.hpp"
-#include <bit>
 #include <fstream>
 #include <map>
 
@@ -189,7 +189,7 @@ namespace cupuacu::persistence
                                 uint32_t(p[0]) | uint32_t(p[1]) << 8 |
                                 uint32_t(p[2]) << 16 | uint32_t(p[3]) << 24;
                             samples[i * channels.size() + c] =
-                                std::bit_cast<float>(bits);
+                                cupuacu::utils::bitCast<float>(bits);
                         }
                     }
                     builder.appendInterleaved(

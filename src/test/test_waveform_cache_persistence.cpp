@@ -281,7 +281,7 @@ TEST_CASE("Waveform writes use bounded maintenance admission and drain on shutdo
 {
     using namespace cupuacu;
     waveform::flushScheduledPersistentWaveformCaches();
-    auto scheduler = std::make_shared<concurrency::TaskScheduler>(1, 8);
+    auto scheduler = std::make_shared<cupuacu::concurrency::TaskScheduler>(1, 8);
     std::promise<void> started, release;
     auto gate = release.get_future().share();
     auto active = started.get_future();
@@ -328,7 +328,7 @@ TEST_CASE("Scheduler rejection releases waveform admission for retry",
 {
     using namespace cupuacu;
     waveform::flushScheduledPersistentWaveformCaches();
-    auto scheduler = std::make_shared<concurrency::TaskScheduler>(1, 1);
+    auto scheduler = std::make_shared<cupuacu::concurrency::TaskScheduler>(1, 1);
     std::promise<void> started, release;
     auto gate = release.get_future().share();
     auto active = started.get_future();
@@ -343,7 +343,7 @@ TEST_CASE("Scheduler rejection releases waveform admission for retry",
     blocker = {};
     // Shutdown proves rejected work retained neither scheduler nor admission.
     scheduler.reset();
-    scheduler = std::make_shared<concurrency::TaskScheduler>(1, 1);
+    scheduler = std::make_shared<cupuacu::concurrency::TaskScheduler>(1, 1);
     REQUIRE(first == waveform::CacheSaveScheduleResult::Scheduled);
     REQUIRE(rejected == waveform::CacheSaveScheduleResult::Busy);
     REQUIRE(waveform::schedulePersistentWaveformCache(snapshot, scheduler) ==
