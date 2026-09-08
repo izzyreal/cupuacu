@@ -662,6 +662,8 @@ TEST_CASE("Decoded cache persists audio, precision and shared cache admission",
     CHECK(restored->exportSettings);
     CHECK(restored->document.getSampleFormat() == SampleFormat::PCM_S32);
     CHECK(std::filesystem::file_size(restored->ownedSource->sourcePath()) == std::filesystem::file_size(source));
+    // Windows cannot remove the source while this comparison stream is open.
+    originalBytes.close();
     std::filesystem::remove(source);
     restored->audioRevision->readChannel(1, 0, std::span(block).first(1));
     CHECK(block[0] == .5f);

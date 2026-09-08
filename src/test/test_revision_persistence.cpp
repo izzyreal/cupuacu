@@ -96,7 +96,6 @@ TEST_CASE(
 {
     Files files;
     auto path = files.root / "document";
-    std::shared_ptr<const storage::AudioEditRevision> expected;
     {
         State state;
         state.paths.reset();
@@ -107,7 +106,6 @@ TEST_CASE(
             &state, actions::audio::RevisionCommand::InsertSilence, 29, 0, 7);
         cupuacu::test::finishRevisionCommands(&state);
         state.undo(); // Restart must retain a redo stack too.
-        expected = s.getEditRevision();
         persistence::RevisionPersistence::save(
             path, *persistence::RevisionPersistence::capture(
                       s, state.getActiveTab()));
