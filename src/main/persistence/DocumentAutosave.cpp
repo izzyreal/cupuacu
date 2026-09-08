@@ -10,6 +10,7 @@
 #include "file/FileIo.hpp"
 
 #include <chrono>
+#include <climits>
 #include <condition_variable>
 #include <cstdint>
 #include <cstring>
