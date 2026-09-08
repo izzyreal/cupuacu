@@ -27,6 +27,10 @@ WaveformsUnderlay::WaveformsUnderlay(State *stateToUse)
 
 void WaveformsUnderlay::mouseLeave()
 {
+    for (auto *waveform : state->waveforms)
+    {
+        waveform->clearHighlight();
+    }
     resetSampleValueUnderMouseCursor(state);
 }
 
@@ -159,11 +163,21 @@ bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
         doc.getFrameCount());
 
     const uint8_t channel = channelAt(e.mouseYi);
-    const float sampleValueUnderMouseCursor =
-        doc.getSample(channel, sampleIndex);
-
-    updateSampleValueUnderMouseCursor(state, sampleValueUnderMouseCursor,
-                                      channel, sampleIndex);
+    Waveform::clearHighlightIfNotChannel(state, channel);
+    const auto value =
+        channel < state->waveforms.size()
+            ? state->waveforms[channel]->requestSampleValue(sampleIndex)
+            : std::nullopt;
+    if (value)
+    {
+        updateSampleValueUnderMouseCursor(
+            state, *value, channel, sampleIndex,
+            state->waveforms[channel]->requestedSampleDirty);
+    }
+    else
+    {
+        resetSampleValueUnderMouseCursor(state);
+    }
 
     handleChannelSelection(e.mouseYi, false);
 
@@ -177,9 +191,8 @@ bool WaveformsUnderlay::mouseMove(const MouseEvent &e)
 
     if (lastNumClicks == 1)
     {
-        const int64_t snappedSamplePos =
-            planSnappedMouseSamplePosition(state, e.mouseXf, true,
-                                          draggedSelectionEdge);
+        const int64_t snappedSamplePos = planSnappedMouseSamplePosition(
+            state, e.mouseXf, true, draggedSelectionEdge);
         const bool selectionWasActive = session.selection.isActive();
         session.selection.setValue2(snappedSamplePos);
         if (selectionWasActive && !session.selection.isActive())
@@ -243,8 +256,8 @@ void WaveformsUnderlay::timerCallback()
             ? std::min(-1.0, viewState.samplesToScroll)
             : std::max(1.0, viewState.samplesToScroll);
     const int64_t oldOffset = viewState.sampleOffset;
-    const int64_t requestedOffset = static_cast<int64_t>(
-        std::llround(static_cast<double>(viewState.sampleOffset) + samplesToScroll));
+    const int64_t requestedOffset = static_cast<int64_t>(std::llround(
+        static_cast<double>(viewState.sampleOffset) + samplesToScroll));
     const int64_t snappedOffset = Waveform::quantizeBlockScrollOffset(
         requestedOffset, getMaxSampleOffset(state), viewState.samplesPerPixel,
         state->pixelScale);
@@ -266,8 +279,7 @@ void WaveformsUnderlay::timerCallback()
 bool WaveformsUnderlay::applyPendingHorizontalWheelScroll()
 {
     auto &viewState = state->getActiveViewState();
-    if (viewState.samplesPerPixel <= 0.0 ||
-        horizontalWheelPendingPixels == 0.0)
+    if (viewState.samplesPerPixel <= 0.0 || horizontalWheelPendingPixels == 0.0)
     {
         return false;
     }

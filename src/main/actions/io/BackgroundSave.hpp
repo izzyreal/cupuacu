@@ -3,6 +3,7 @@
 #include "../../State.hpp"
 #include "../../Document.hpp"
 #include "../../file/AudioExport.hpp"
+#include "../../file/AudioSaveOperation.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -35,8 +36,18 @@ namespace cupuacu::actions::io
     class BackgroundSaveJob
     {
     public:
+        struct Identity
+        {
+            uint64_t tabId = 0, audioVersion = 0, markerVersion = 0,
+                     sourceId = 0;
+            std::shared_ptr<const storage::AudioEditRevision> revision;
+            std::vector<DocumentMarker> markers;
+            std::shared_ptr<const storage::AudioRevision> preservationSource;
+        };
         struct Snapshot
         {
+            std::shared_ptr<const Identity> identity;
+            std::shared_ptr<const storage::AudioRevision> savedContainer;
             bool completed = false;
             bool success = false;
             bool canceled = false;
@@ -47,17 +58,18 @@ namespace cupuacu::actions::io
             std::string error;
         };
 
-        BackgroundSaveJob(std::uint64_t idToUse,
-                          BackgroundSaveRequest requestToSave,
-                          cupuacu::State *stateToUse,
-                          const cupuacu::Document &documentToWrite,
-                          std::filesystem::path waveformCacheRootToUse = {});
+        BackgroundSaveJob(
+            std::uint64_t idToUse, BackgroundSaveRequest requestToSave,
+            cupuacu::State *stateToUse,
+            const cupuacu::Document &documentToWrite,
+            std::filesystem::path waveformCacheRootToUse = {},
+            std::shared_ptr<const storage::AudioEditRevision> revision = {});
         ~BackgroundSaveJob();
 
         BackgroundSaveJob(const BackgroundSaveJob &) = delete;
         BackgroundSaveJob &operator=(const BackgroundSaveJob &) = delete;
 
-        void start();
+        void start(std::shared_ptr<concurrency::TaskScheduler> scheduler = {});
         [[nodiscard]] Snapshot snapshot() const;
         [[nodiscard]] std::uint64_t getId() const;
         void cancel();
@@ -65,9 +77,11 @@ namespace cupuacu::actions::io
     private:
         std::uint64_t id = 0;
         BackgroundSaveRequest request;
-        cupuacu::State *state = nullptr;
-        cupuacu::Document document;
+        std::shared_ptr<const Identity> identity;
+        file::AudioSaveSnapshot audio;
         std::filesystem::path waveformCacheRoot;
+        std::filesystem::path workingRoot;
+        std::shared_ptr<const storage::AudioRevision> savedContainer;
         mutable std::mutex mutex;
         bool completed = false;
         bool success = false;
@@ -75,7 +89,8 @@ namespace cupuacu::actions::io
         std::string detail;
         std::optional<double> progress;
         std::string error;
-        std::thread worker;
+        std::shared_ptr<concurrency::TaskScheduler> scheduler;
+        concurrency::TaskScheduler::Ticket completion;
         std::atomic<bool> cancelRequested{false};
 
         void run();
@@ -94,24 +109,31 @@ namespace cupuacu::actions::io
             std::filesystem::path path;
             uint64_t waveformDataVersion = 0;
             uint64_t markerDataVersion = 0;
+            uint64_t historyVersion = 0;
             std::string currentFile;
             std::optional<double> progress;
             std::string error;
         };
 
-        BackgroundAutosaveJob(uint64_t tabIdToUse,
-                              std::filesystem::path pathToUse,
-                              uint64_t waveformDataVersionToUse,
-                              uint64_t markerDataVersionToUse,
-                              std::string currentFileToUse,
-                              const cupuacu::Document &documentToSave);
+        BackgroundAutosaveJob(
+            uint64_t tabIdToUse, std::filesystem::path pathToUse,
+            uint64_t waveformDataVersionToUse, uint64_t markerDataVersionToUse,
+            std::string currentFileToUse,
+            const cupuacu::Document &documentToSave,
+            const waveform::DocumentWaveformCaches &cachesToSave,
+            std::shared_ptr<const persistence::RevisionCheckpoint>
+                revisionToSave = {});
         ~BackgroundAutosaveJob();
 
         BackgroundAutosaveJob(const BackgroundAutosaveJob &) = delete;
         BackgroundAutosaveJob &
         operator=(const BackgroundAutosaveJob &) = delete;
 
-        void start();
+        void start(std::shared_ptr<concurrency::TaskScheduler> scheduler = {});
+        void cancel()
+        {
+            cancelRequested.store(true);
+        }
         [[nodiscard]] Snapshot snapshot() const;
 
     private:
@@ -121,12 +143,16 @@ namespace cupuacu::actions::io
         uint64_t markerDataVersion = 0;
         std::string currentFile;
         cupuacu::Document document;
+        waveform::DocumentWaveformCaches waveformCaches;
+        std::shared_ptr<const persistence::RevisionCheckpoint> revision;
         mutable std::mutex mutex;
         bool completed = false;
         bool success = false;
         std::string error;
-        std::thread worker;
+        std::shared_ptr<concurrency::TaskScheduler> scheduler;
+        concurrency::TaskScheduler::Ticket completion;
 
+        std::atomic<bool> cancelRequested{false};
         void run();
     };
 

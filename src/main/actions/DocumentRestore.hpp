@@ -3,6 +3,7 @@
 #include "../Logger.hpp"
 #include "../State.hpp"
 #include "../persistence/DocumentAutosave.hpp"
+#include "../persistence/LegacyRecovery.hpp"
 #include "../gui/MainViewAccess.hpp"
 #include "../gui/Waveform.hpp"
 #include "../undo/UndoManifestPersistence.hpp"
@@ -185,122 +186,22 @@ namespace cupuacu::actions
 
         inline bool loadAutosaveSnapshotOnWorker(
             cupuacu::State *state, const std::filesystem::path &path,
-            cupuacu::DocumentSession &targetSession)
+            cupuacu::DocumentSession &targetSession,
+            const persistence::PersistedOpenDocumentState *legacyState =
+                nullptr)
         {
-            std::atomic_bool completed{false};
-            std::atomic_bool cancelRequested{false};
-            std::atomic<double> progress{
-                std::numeric_limits<double>::quiet_NaN()};
-            bool loaded = false;
-            std::exception_ptr workerError;
-            cupuacu::DocumentSession restoredSession;
-            std::thread worker(
-                [&]
-                {
-                    try
-                    {
-                        loaded =
-                            cupuacu::persistence::loadDocumentAutosaveSnapshot(
-                                path, restoredSession,
-                                [&](const std::optional<double> value)
-                                {
-                                    progress.store(
-                                        value.value_or(
-                                            std::numeric_limits<double>::quiet_NaN()),
-                                        std::memory_order_release);
-                                },
-                                [&]
-                                {
-                                    return cancelRequested.load(
-                                        std::memory_order_acquire);
-                                });
-                    }
-                    catch (...)
-                    {
-                        workerError = std::current_exception();
-                    }
-                    completed.store(true, std::memory_order_release);
-                });
-
-            auto lastRender = std::chrono::steady_clock::now();
-            while (!completed.load(std::memory_order_acquire))
-            {
-                if (cupuacu::isLongTaskCancelRequested(state))
-                {
-                    cancelRequested.store(true, std::memory_order_release);
-                }
-                const auto now = std::chrono::steady_clock::now();
-                if (now - lastRender >= std::chrono::milliseconds(50))
-                {
-                    const double currentProgress =
-                        progress.load(std::memory_order_acquire);
-                    cupuacu::updateLongTaskOverlayOnly(
-                        state, {},
-                        std::isfinite(currentProgress)
-                            ? std::optional<double>(currentProgress)
-                            : std::nullopt,
-                        false);
-                    cupuacu::renderLongTaskOverlayNow(state);
-                    lastRender = now;
-                }
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            }
-            worker.join();
-            if (workerError)
-            {
-                std::rethrow_exception(workerError);
-            }
-            if (loaded)
-            {
-                targetSession = std::move(restoredSession);
-            }
-            return loaded;
+            // Explicit synchronous compatibility entry for headless callers.
+            // The application always queues startup restoration below.
+            return persistence::loadDocumentAutosaveSnapshot(
+                path, targetSession, {}, {}, legacyState);
         }
 
-        inline bool loadClipboardSnapshotOnWorker(
-            cupuacu::State *state, const std::filesystem::path &path,
-            cupuacu::ClipboardAudio &targetClipboard)
+        inline bool
+        loadClipboardSnapshotOnWorker(cupuacu::State *,
+                                      const std::filesystem::path &path,
+                                      cupuacu::ClipboardAudio &targetClipboard)
         {
-            std::atomic_bool completed{false};
-            bool loaded = false;
-            std::exception_ptr workerError;
-            cupuacu::ClipboardAudio restoredClipboard;
-            std::thread worker(
-                [&]
-                {
-                    try
-                    {
-                        loaded = cupuacu::persistence::loadClipboardSnapshot(
-                            path, restoredClipboard);
-                    }
-                    catch (...)
-                    {
-                        workerError = std::current_exception();
-                    }
-                    completed.store(true, std::memory_order_release);
-                });
-
-            auto lastRender = std::chrono::steady_clock::now();
-            while (!completed.load(std::memory_order_acquire))
-            {
-                const auto now = std::chrono::steady_clock::now();
-                if (now - lastRender >= std::chrono::milliseconds(50))
-                {
-                    cupuacu::renderLongTaskOverlayNow(state);
-                    lastRender = now;
-                }
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            }
-            worker.join();
-            if (workerError)
-            {
-                std::rethrow_exception(workerError);
-            }
-            if (loaded)
-            {
-                targetClipboard = std::move(restoredClipboard);
-            }
-            return loaded;
+            return persistence::loadClipboardSnapshot(path, targetClipboard);
         }
     } // namespace detail
 
@@ -388,15 +289,21 @@ namespace cupuacu::actions
 
     inline void applyPersistedOpenDocumentState(
         cupuacu::State *state,
-        const cupuacu::persistence::PersistedOpenDocumentState &documentState)
+        const cupuacu::persistence::PersistedOpenDocumentState &documentState,
+        int tabIndex = -1)
     {
         if (!state)
         {
             return;
         }
 
-        auto &session = state->getActiveDocumentSession();
-        auto &viewState = state->getActiveViewState();
+        if (tabIndex < 0)
+        {
+            tabIndex = state->activeTabIndex;
+        }
+        auto &session = state->tabs.at(tabIndex).session;
+        auto &viewState = state->tabs.at(tabIndex).viewState;
+        const bool active = tabIndex == state->activeTabIndex;
         const int64_t frameCount = session.document.getFrameCount();
 
         session.selection.reset();
@@ -437,7 +344,7 @@ namespace cupuacu::actions
             viewState.samplesPerPixel = *documentState.samplesPerPixel;
             const int64_t sampleOffset =
                 std::max<int64_t>(0, documentState.sampleOffset.value_or(0));
-            if (state->mainDocumentSessionWindow)
+            if (active && state->mainDocumentSessionWindow)
             {
                 updateSampleOffset(state, sampleOffset);
                 applyDurationChangeViewPolicy(state);
@@ -447,14 +354,48 @@ namespace cupuacu::actions
                 viewState.sampleOffset = sampleOffset;
             }
         }
-        else if (state->mainDocumentSessionWindow)
+        else if (active && state->mainDocumentSessionWindow)
         {
             resetZoom(state);
         }
 
+        if (!active)
+        {
+            return;
+        }
         gui::Waveform::updateAllSamplePoints(state);
         gui::Waveform::setAllWaveformsDirty(state);
         gui::requestMainViewRefresh(state);
+    }
+
+    inline void processStartupClipboardRestore(State *state)
+    {
+        auto job = state->startupClipboardRestore;
+        if (!job)
+        {
+            return;
+        }
+        if (state->quitRequestedAfterLongTaskCancel)
+        {
+            job->close();
+            state->startupClipboardRestore.reset();
+            state->preserveStartupSessionStateOnShutdown = true;
+            return;
+        }
+        auto result = job->takePublished();
+        if (!result)
+        {
+            return;
+        }
+        job->close();
+        state->startupClipboardRestore.reset();
+        state->startupRestore.clipboardRestoreFailed =
+            bool(result->error) || !result->value;
+        if (result->value &&
+            state->clipboard.getRevision() == state->startupClipboardVersion)
+        {
+            state->clipboard = std::move(**result->value);
+        }
     }
 
     inline void restoreStartupDocument(
@@ -479,6 +420,55 @@ namespace cupuacu::actions
             state->recentFiles = plan.recentFiles;
         state->snapEnabled = persistedSessionState.snapEnabled;
         state->clipboard.clear();
+        if (useAsyncFileRestore)
+        {
+            state->startupRestore = StartupRestoreStatus{
+                .active = true,
+                .remaining = static_cast<int>(plan.openFiles.size()),
+                .activeOpenFileIndex = plan.activeOpenFileIndex,
+                .shouldPersistState = plan.shouldPersistState};
+            if (!persistedSessionState.clipboardSnapshotPath.empty())
+            {
+                state->startupClipboardVersion = state->clipboard.getRevision();
+                state->startupClipboardRestore =
+                    std::make_shared<State::ClipboardRestoreWorker>(
+                        [](const std::filesystem::path &path,
+                           const auto &cancel)
+                            -> std::optional<std::shared_ptr<ClipboardAudio>>
+                        {
+                            if (cancel())
+                            {
+                                return {};
+                            }
+                            auto clip = concurrency::releaseOnWorker(
+                                std::make_shared<ClipboardAudio>());
+                            if (!persistence::loadClipboardSnapshot(path,
+                                                                    *clip))
+                            {
+                                throw std::runtime_error(
+                                    "Clipboard snapshot could not be read");
+                            }
+                            if (cancel())
+                            {
+                                return {};
+                            }
+                            return clip;
+                        },
+                        state->taskScheduler);
+                state->startupClipboardRestore->submit(
+                    persistedSessionState.clipboardSnapshotPath);
+            }
+            for (std::size_t index = 0; index < plan.openFiles.size(); ++index)
+            {
+                state->pendingOpenFiles.push_back(PendingOpenRequest{
+                    .kind = PendingOpenKind::StartupRestore,
+                    .path = plan.openFiles[index],
+                    .targetTabIndex = static_cast<int>(index),
+                    .updateRecentFiles = false,
+                    .persistedDocumentState = plan.openDocuments[index]});
+            }
+            return;
+        }
         if (!persistedSessionState.clipboardSnapshotPath.empty())
         {
             cupuacu::LongTaskScope clipboardRestore(
@@ -489,41 +479,6 @@ namespace cupuacu::actions
             {
                 state->startupRestore.clipboardRestoreFailed = true;
             }
-        }
-
-        const bool hasAutosaveSnapshotRestore = std::any_of(
-            plan.openDocuments.begin(), plan.openDocuments.end(),
-            [](const auto &documentState)
-            {
-                return !documentState.autosaveSnapshotPath.empty() &&
-                       std::filesystem::exists(
-                           documentState.autosaveSnapshotPath);
-            });
-        if (useAsyncFileRestore && !plan.openFiles.empty() &&
-            !hasAutosaveSnapshotRestore)
-        {
-            state->startupRestore = cupuacu::StartupRestoreStatus{
-                .active = true,
-                .remaining = static_cast<int>(plan.openFiles.size()),
-                .activeOpenFileIndex = plan.activeOpenFileIndex,
-                .restoredActiveTabIndex = -1,
-                .shouldPersistState = plan.shouldPersistState,
-                .clipboardRestoreFailed =
-                    state->startupRestore.clipboardRestoreFailed,
-                .historyRestoreFailed = false,
-                .failures = {},
-            };
-            for (size_t index = 0; index < plan.openFiles.size(); ++index)
-            {
-                state->pendingOpenFiles.push_back(cupuacu::PendingOpenRequest{
-                    .kind = cupuacu::PendingOpenKind::StartupRestore,
-                    .path = plan.openFiles[index],
-                    .targetTabIndex = static_cast<int>(index),
-                    .updateRecentFiles = false,
-                    .persistedDocumentState = plan.openDocuments[index],
-                });
-            }
-            return;
         }
 
         if (!plan.openFiles.empty())
@@ -554,7 +509,8 @@ namespace cupuacu::actions
                         {
                             loaded = detail::loadAutosaveSnapshotOnWorker(
                                 state, documentState.autosaveSnapshotPath,
-                                state->getActiveDocumentSession());
+                                state->getActiveDocumentSession(),
+                                &documentState);
                         }
                         catch (const cupuacu::LongTaskCanceledError &)
                         {
@@ -565,7 +521,6 @@ namespace cupuacu::actions
                             }
                             state->startupRestore = {};
                             state->pendingOpenFiles.clear();
-                            state->pendingOpenWaveformBuild = {};
                             return;
                         }
                         const auto snapshotLoadedAt =
@@ -615,6 +570,25 @@ namespace cupuacu::actions
                             : loadFileIntoNewTab(
                                   state, documentState.filePath, false,
                                   false, false, false, &failureReason);
+                    if (loaded && !documentState.undoStorePath.empty())
+                    {
+                        loaded = detail::runDocumentIoOperation(
+                            state, "Restore history", documentState.filePath,
+                            false, false, &failureReason,
+                            [&]
+                            {
+                                auto &session = state->getActiveDocumentSession();
+                                if (!persistence::migrateLegacyHistory(
+                                        session, &documentState,
+                                        state->paths ? state->paths->statePath()
+                                            : std::filesystem::temp_directory_path(),
+                                        [state] { return isLongTaskCancelRequested(state); }))
+                                {
+                                    throw std::runtime_error("Legacy history migration failed");
+                                }
+                                session.undoStore.attach(documentState.undoStorePath);
+                            });
+                    }
                 }
                 if (!loaded)
                 {
@@ -634,8 +608,23 @@ namespace cupuacu::actions
                 }
 
                 restoredAnyDocument = true;
-                applyPersistedOpenDocumentState(state, documentState);
-                if (!documentState.undoStorePath.empty())
+                if (state->getActiveDocumentSession().recoveredRevisionCheckpoint)
+                {
+                    // Audio, markers and history come from one atomic
+                    // checkpoint. The session list may have been saved at a
+                    // different time.
+                    if (!persistence::RevisionPersistence::installHistory(
+                            state, state->activeTabIndex))
+                    {
+                        state->startupRestore.historyRestoreFailed = true;
+                    }
+                }
+                else
+                {
+                    applyPersistedOpenDocumentState(state, documentState);
+                }
+                if (!state->getActiveDocumentSession().hasReadRevision() &&
+                    !documentState.undoStorePath.empty())
                 {
                     if (!cupuacu::undo::restoreUndoManifest(
                             state, static_cast<int>(state->tabs.size()) - 1,

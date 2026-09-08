@@ -4,6 +4,7 @@
 #include "../SampleFormat.hpp"
 #include "../State.hpp"
 #include "../persistence/DocumentAutosave.hpp"
+#include "../persistence/RevisionPersistence.hpp"
 #include "../persistence/RecentFilesPersistence.hpp"
 #include "../persistence/SessionStatePersistence.hpp"
 #include "../undo/UndoManifestPersistence.hpp"
@@ -159,7 +160,8 @@ namespace cupuacu::actions
 
         int openFileIndex = 0;
         const auto clipboardSnapshotPath = detail::makeClipboardSnapshotPath(state);
-        if (state->clipboard.getChannelCount() > 0 && !clipboardSnapshotPath.empty())
+        if (state->clipboard.getChannelCount() > 0 &&
+            !clipboardSnapshotPath.empty())
         {
             cupuacu::persistence::scheduleClipboardSnapshot(
                 clipboardSnapshotPath, state->clipboard);
@@ -208,10 +210,15 @@ namespace cupuacu::actions
             }
 
             cupuacu::persistence::PersistedOpenDocumentState documentState{};
+            if (tab.session.openingPreview)
+            {
+                continue;
+            }
             documentState.filePath = tab.session.currentFile;
             documentState.autosaveSnapshotPath =
                 tab.session.autosaveSnapshotPath.string();
-            if (!tab.session.undoStore.root().empty())
+            if (!tab.session.hasReadRevision() &&
+                !tab.session.undoStore.root().empty())
             {
                 const auto stats = tab.session.undoStore.stats();
                 const auto manifestPath =
@@ -283,7 +290,7 @@ namespace cupuacu::actions
 
     inline void persistSessionState(cupuacu::State *state)
     {
-        if (!state || !state->paths)
+        if (!state || !state->paths || state->startupRestore.active)
         {
             return;
         }
@@ -299,7 +306,7 @@ namespace cupuacu::actions
         cupuacu::State *state,
         const cupuacu::persistence::PersistedSessionState &persisted)
     {
-        if (!state || !state->paths)
+        if (!state || !state->paths || state->startupRestore.active)
         {
             return;
         }
@@ -318,7 +325,8 @@ namespace cupuacu::actions
             return {};
         }
 
-        if (state->preserveStartupSessionStateOnShutdown)
+        if (state->preserveStartupSessionStateOnShutdown ||
+            state->startupRestore.active)
         {
             return state->startupPersistedSessionState;
         }
@@ -353,7 +361,9 @@ namespace cupuacu::actions
         }
 
         const auto startedAt = std::chrono::steady_clock::now();
-        state->backgroundAutosaveJob.reset();
+        // Shutdown is the explicit draining boundary: do not race the final
+        // snapshot against an already running write to the same archive.
+        delete state->backgroundAutosaveJob.release();
         int scannedTabs = 0;
         int skippedEmptyTabs = 0;
         int skippedCleanFileTabs = 0;
@@ -366,14 +376,15 @@ namespace cupuacu::actions
             ++scannedTabs;
             auto &session = tab.session;
             const auto &document = session.document;
-            if (document.getChannelCount() <= 0)
+            if (session.openingPreview || document.getChannelCount() <= 0)
             {
                 ++skippedEmptyTabs;
                 continue;
             }
 
-            const bool cleanFileBackedDocument =
-                !session.currentFile.empty() && tab.undoables.empty();
+            const bool cleanFileBackedDocument = !session.hasReadRevision() &&
+                                                 !session.currentFile.empty() &&
+                                                 tab.undoables.empty();
             if (cleanFileBackedDocument)
             {
                 ++skippedCleanFileTabs;
@@ -396,6 +407,8 @@ namespace cupuacu::actions
                     document.getWaveformDataVersion() &&
                 session.autosavedMarkerDataVersion ==
                     document.getMarkerDataVersion() &&
+                (!session.hasReadRevision() ||
+                 session.autosavedHistoryVersion == tab.historyVersion) &&
                 std::filesystem::exists(session.autosaveSnapshotPath);
             if (autosaveAlreadyCurrent)
             {
@@ -403,14 +416,35 @@ namespace cupuacu::actions
                 continue;
             }
 
-            if (cupuacu::persistence::saveDocumentAutosaveSnapshot(
-                    session.autosaveSnapshotPath, session))
+            bool saved = false;
+            if (session.hasReadRevision())
+            {
+                try
+                {
+                    persistence::RevisionPersistence::save(
+                        session.autosaveSnapshotPath,
+                        *persistence::RevisionPersistence::capture(session,
+                                                                   &tab));
+                    saved = true;
+                }
+                catch (const std::exception &e)
+                {
+                    logging::warn(e.what());
+                }
+            }
+            else
+            {
+                saved = persistence::saveDocumentAutosaveSnapshot(
+                    session.autosaveSnapshotPath, session);
+            }
+            if (saved)
             {
                 ++savedAutosaves;
                 session.autosavedWaveformDataVersion =
                     document.getWaveformDataVersion();
                 session.autosavedMarkerDataVersion =
                     document.getMarkerDataVersion();
+                session.autosavedHistoryVersion = tab.historyVersion;
             }
             else
             {
@@ -451,7 +485,8 @@ namespace cupuacu::actions
         {
             return;
         }
-        if (!session.currentFile.empty() && tab.undoables.empty())
+        if (!session.hasReadRevision() && !session.currentFile.empty() &&
+            tab.undoables.empty())
         {
             if (!session.autosaveSnapshotPath.empty())
             {
@@ -462,7 +497,10 @@ namespace cupuacu::actions
         }
         if (session.autosavedWaveformDataVersion ==
                 document.getWaveformDataVersion() &&
-            session.autosavedMarkerDataVersion == document.getMarkerDataVersion() &&
+            session.autosavedMarkerDataVersion ==
+                document.getMarkerDataVersion() &&
+            (!session.hasReadRevision() ||
+             session.autosavedHistoryVersion == tab.historyVersion) &&
             !session.autosaveSnapshotPath.empty())
         {
             return;

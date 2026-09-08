@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <array>
 
 #include "IntegrationTestHelpers.hpp"
 #include "../TestSdlLogSilencer.hpp"
@@ -210,7 +211,6 @@ TEST_CASE("Pending open work loads queued dialog files asynchronously",
             }
         }
         if (state.pendingOpenFiles.empty() && !state.backgroundOpenJob &&
-            !state.pendingOpenWaveformBuild.active &&
             state.getActiveDocumentSession().currentFile == pathString)
         {
             break;
@@ -220,15 +220,16 @@ TEST_CASE("Pending open work loads queued dialog files asynchronously",
 
     REQUIRE(state.pendingOpenFiles.empty());
     REQUIRE_FALSE(state.backgroundOpenJob);
-    REQUIRE_FALSE(state.pendingOpenWaveformBuild.active);
     REQUIRE(state.getActiveDocumentSession().currentFile == pathString);
     REQUIRE(state.getActiveDocumentSession().document.getSampleRate() == 32000);
     REQUIRE(state.getActiveDocumentSession().document.getFrameCount() == 2);
-    REQUIRE(state.getActiveDocumentSession().document.getSample(0, 1) == 0.25f);
+    std::array<float, 1> sample;
+    state.getActiveDocumentSession().getAudioReader()->readChannel(0, 1, sample);
+    REQUIRE(sample[0] == 0.25f);
     REQUIRE(state.recentFiles == std::vector<std::string>{pathString});
 }
 
-TEST_CASE("Pending open work commits the document before waveform cache build completes",
+TEST_CASE("Pending open work exposes document progress during import",
           "[integration]")
 {
     cupuacu::test::ensureSdlTtfInitialized();
@@ -255,8 +256,8 @@ TEST_CASE("Pending open work commits the document before waveform cache build co
     const char *selectedFiles[] = {pathString.c_str(), nullptr};
     cupuacu::actions::fileDialogCallback(&state, selectedFiles, 0);
 
-    bool sawCommittedWhileBuilding = false;
-    std::vector<double> buildProgressValues;
+    bool sawImportOperation = false;
+    std::vector<std::pair<std::string, double>> importProgress;
     for (int attempt = 0; attempt < 5000; ++attempt)
     {
         cupuacu::actions::io::processPendingOpenWork(&state);
@@ -270,17 +271,17 @@ TEST_CASE("Pending open work commits the document before waveform cache build co
         }
 
         if (state.getActiveDocumentSession().currentFile == pathString &&
-            state.pendingOpenWaveformBuild.active)
+            state.getActiveTab()->operation)
         {
-            sawCommittedWhileBuilding = true;
-            if (state.longTask.progress.has_value())
+            sawImportOperation = true;
+            if (state.getActiveTab()->operation->progress.has_value())
             {
-                buildProgressValues.push_back(*state.longTask.progress);
+                const auto &operation = *state.getActiveTab()->operation;
+                importProgress.emplace_back(operation.detail, *operation.progress);
             }
         }
 
         if (state.pendingOpenFiles.empty() && !state.backgroundOpenJob &&
-            !state.pendingOpenWaveformBuild.active &&
             state.getActiveDocumentSession().currentFile == pathString)
         {
             break;
@@ -288,16 +289,22 @@ TEST_CASE("Pending open work commits the document before waveform cache build co
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    REQUIRE(sawCommittedWhileBuilding);
-    REQUIRE(buildProgressValues.size() >= 2);
-    REQUIRE(std::is_sorted(buildProgressValues.begin(),
-                           buildProgressValues.end()));
-    REQUIRE(std::any_of(buildProgressValues.begin(), buildProgressValues.end(),
-                        [](const double progress)
-                        { return progress > 0.0 && progress < 1.0; }));
+    REQUIRE(sawImportOperation);
+    REQUIRE_FALSE(importProgress.empty());
+    for (std::size_t i = 0; i < importProgress.size(); ++i)
+    {
+        const auto &[phase, progress] = importProgress[i];
+        CAPTURE(phase, progress);
+        REQUIRE(progress >= 0.0);
+        REQUIRE(progress <= 1.0);
+        // Copying and decoding each report their own 0..1 progress.
+        if (i && importProgress[i - 1].first == phase)
+        {
+            REQUIRE(progress >= importProgress[i - 1].second);
+        }
+    }
     REQUIRE(state.pendingOpenFiles.empty());
     REQUIRE_FALSE(state.backgroundOpenJob);
-    REQUIRE_FALSE(state.pendingOpenWaveformBuild.active);
     REQUIRE_FALSE(state.longTask.active);
     REQUIRE(state.getActiveDocumentSession().currentFile == pathString);
 }

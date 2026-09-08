@@ -15,8 +15,7 @@ namespace cupuacu::actions::audio
         const int64_t sampleIndex;
         const float oldValue;
 
-        float newValue;
-
+        float newValue = oldValue;
     public:
         explicit SetSampleValue(cupuacu::State *state,
                                 const uint32_t channelToUse,
@@ -78,10 +77,8 @@ namespace cupuacu::actions::audio
         serializeForRestart() const override
         {
             return nlohmann::json{
-                {"kind", "set-sample-value"},
-                {"channel", channel},
-                {"sampleIndex", sampleIndex},
-                {"oldValue", oldValue},
+                {"kind", "set-sample-value"}, {"channel", channel},
+                {"sampleIndex", sampleIndex}, {"oldValue", oldValue},
                 {"newValue", newValue},
             };
         }
@@ -89,7 +86,8 @@ namespace cupuacu::actions::audio
         [[nodiscard]] cupuacu::file::OverwritePreservationMutation
         overwritePreservationMutation() const override
         {
-            return cupuacu::file::OverwritePreservationMutationHelper::compatible();
+            return cupuacu::file::OverwritePreservationMutationHelper::
+                compatible();
         }
     };
 } // namespace cupuacu::actions::audio

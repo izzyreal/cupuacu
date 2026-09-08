@@ -1,10 +1,12 @@
 #pragma once
 
 #include "../LongTask.hpp"
+#include "../concurrency/DeferredRelease.hpp"
 #include "../State.hpp"
 #include "../file/AudioExport.hpp"
 #include "../file/MarkerPersistence.hpp"
 #include "../file/AudioFileWriter.hpp"
+#include "../file/AudioSaveOperation.hpp"
 #include "../file/OverwritePreservation.hpp"
 #include "../file/PreservationBackend.hpp"
 #include "../file/SaveWritePlan.hpp"
@@ -21,6 +23,35 @@ namespace cupuacu::actions
 {
     namespace detail
     {
+        static void writeSessionSave(State *state,
+                                     const std::filesystem::path &path,
+                                     const file::AudioExportSettings &settings,
+                                     bool preserving)
+        {
+            auto &session = state->getActiveDocumentSession();
+            const file::AudioSaveSnapshot input{
+                session.document, session.getEditRevision(), session.preservationSource};
+            const auto reference = input.revision
+                ? file::revisionPreservationReference(session)
+                : std::filesystem::path(session.preservationReferenceFile.empty()
+                      ? session.currentFile : session.preservationReferenceFile);
+            auto container = file::writeAudioSave(
+                input,
+                {path, reference,
+                 state->paths ? state->paths->statePath()
+                              : std::filesystem::temp_directory_path(),
+                 settings, preserving},
+                [&](const std::string &detail, std::optional<double> value)
+                {
+                    throwIfLongTaskCanceled(state);
+                    updateLongTask(state, detail, value);
+                });
+            if (container)
+            {
+                session.preservationSource =
+                    concurrency::releaseOnWorker(std::move(container));
+            }
+        }
         static SDL_Window *getSaveErrorParentWindow(cupuacu::State *state)
         {
             if (!state)
@@ -180,21 +211,50 @@ namespace cupuacu::actions
             }
         }
 
-        static void finalizeSavedDocument(cupuacu::State *state,
-                                          const std::filesystem::path &path,
-                                          const file::AudioExportSettings &settings,
-                                          const bool updateCurrentFile,
-                                          const bool
-                                              persistentWaveformCacheAlreadySaved =
-                                                  false)
+        static void finalizeSavedDocument(
+            cupuacu::State *state, const std::filesystem::path &path,
+            const file::AudioExportSettings &settings,
+            const bool updateCurrentFile,
+            const bool persistentWaveformCacheAlreadySaved = false,
+            const int targetTabIndex = -1, const bool markSaved = true)
         {
             if (!state)
             {
                 return;
             }
 
-            auto &session = state->getActiveDocumentSession();
-            clearActiveDocumentAutosave(state);
+            const auto tabIndex =
+                targetTabIndex < 0 ? state->activeTabIndex : targetTabIndex;
+            auto &session = state->tabs.at(tabIndex).session;
+            if (markSaved && !session.hasReadRevision())
+            {
+                detail::discardAutosaveSnapshot(session);
+            }
+            if (session.hasReadRevision())
+            {
+                if (updateCurrentFile)
+                {
+                    session.currentFile = path.string();
+                }
+                session.currentFileExportSettings = settings;
+                session.currentFileRequiresSaveAs = false;
+                session.setPreservationReference(path.string(), settings);
+                if (markSaved)
+                {
+                    session.markRevisionSaved(session.getEditRevision(),
+                                              session.document.getMarkers());
+                }
+                session.clearPendingPersistentWaveformCacheSave();
+                file::OverwritePreservation::refreshSession(state, tabIndex);
+                // Keep the durable history; checkpoint the new saved root and
+                // filename even when audio/marker versions did not change.
+                session.autosavedHistoryVersion = UINT64_MAX;
+                if (state->paths)
+                {
+                    io::queueAutosaveForTab(state, tabIndex);
+                }
+                return;
+            }
             if (updateCurrentFile)
             {
                 session.setCurrentFile(path.string(), settings);
@@ -205,13 +265,13 @@ namespace cupuacu::actions
                 session.setPreservationReference(path.string(), settings);
             }
 
-            file::OverwritePreservation::refreshActiveSession(state);
-            if (session.document.getSampleFormat() ==
-                    cupuacu::SampleFormat::PCM_S8 ||
-                session.document.getSampleFormat() ==
-                    cupuacu::SampleFormat::PCM_S16 ||
-                session.document.getSampleFormat() ==
-                    cupuacu::SampleFormat::FLOAT32)
+            file::OverwritePreservation::refreshSession(state, tabIndex);
+            if (markSaved && (session.document.getSampleFormat() ==
+                                  cupuacu::SampleFormat::PCM_S8 ||
+                              session.document.getSampleFormat() ==
+                                  cupuacu::SampleFormat::PCM_S16 ||
+                              session.document.getSampleFormat() ==
+                                  cupuacu::SampleFormat::FLOAT32))
             {
                 session.document.markCurrentStateAsSavedSource();
             }
@@ -270,8 +330,7 @@ namespace cupuacu::actions
             {
                 cupuacu::LongTaskScope longTask(
                     state, "Saving file", session.currentFile);
-                file::AudioFileWriter::writeFile(state, session.currentFile,
-                                                 *settings);
+                detail::writeSessionSave(state, session.currentFile, *settings, false);
             });
         if (!ok)
         {
@@ -334,7 +393,7 @@ namespace cupuacu::actions
             {
                 cupuacu::LongTaskScope longTask(
                     state, "Saving file", session.currentFile);
-                file::overwritePreservingCurrentFile(state, *settings);
+                detail::writeSessionSave(state, session.currentFile, *settings, true);
             });
         if (!ok)
         {
@@ -385,7 +444,7 @@ namespace cupuacu::actions
             {
                 cupuacu::LongTaskScope longTask(
                     state, "Saving file", normalizedPath.string());
-                file::AudioFileWriter::writeFile(state, normalizedPath, settings);
+                detail::writeSessionSave(state, normalizedPath, settings, false);
             });
         if (!ok)
         {
@@ -431,13 +490,7 @@ namespace cupuacu::actions
             {
                 cupuacu::LongTaskScope longTask(
                     state, "Saving file", normalizedPath.string());
-                const auto &session = state->getActiveDocumentSession();
-                const auto referencePath =
-                    !session.preservationReferenceFile.empty()
-                        ? std::filesystem::path(session.preservationReferenceFile)
-                        : std::filesystem::path(session.currentFile);
-                file::writePreservingFile(state, referencePath, normalizedPath,
-                                          settings);
+                detail::writeSessionSave(state, normalizedPath, settings, true);
             });
         if (!ok)
         {

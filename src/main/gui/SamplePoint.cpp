@@ -1,6 +1,8 @@
 #include "SamplePoint.hpp"
 
 #include "../actions/audio/SetSampleValue.hpp"
+#include "../actions/audio/RevisionEdit.hpp"
+#include "../actions/MutationAvailability.hpp"
 #include "MainViewAccess.hpp"
 #include "SamplePointInteractionPlanning.hpp"
 #include "Waveform.hpp"
@@ -9,10 +11,13 @@ using namespace cupuacu::gui;
 using namespace cupuacu::actions::audio;
 
 SamplePoint::SamplePoint(State *state, const uint8_t channelIndexToUse,
-                         const int64_t sampleIndexToUse)
+                         const int64_t sampleIndexToUse,
+                         std::optional<float> value)
     : ControlPointHandle(state, "Sample point idx " +
                                     std::to_string(sampleIndexToUse)),
-      sampleIndex(sampleIndexToUse), channelIndex(channelIndexToUse)
+      sampleIndex(sampleIndexToUse), channelIndex(channelIndexToUse),
+      displayedValue(value),
+      displayedRevision(state->getActiveDocumentSession().getEditRevision())
 {
 }
 
@@ -23,13 +28,21 @@ uint64_t SamplePoint::getSampleIndex() const
 
 float SamplePoint::getSampleValue() const
 {
+    if (displayedRevision)
+    {
+        return displayedValue.value();
+    }
     return state->getActiveDocumentSession().document.getSample(channelIndex,
                                                                 sampleIndex);
 }
 
 bool SamplePoint::mouseDown(const MouseEvent &e)
 {
-    if (!e.buttonState.left)
+    if (!e.buttonState.left ||
+        !cupuacu::actions::isDocumentMutationAvailable(state) ||
+        (displayedRevision &&
+         displayedRevision !=
+             state->getActiveDocumentSession().getEditRevision()))
     {
         return false;
     }
@@ -39,8 +52,11 @@ bool SamplePoint::mouseDown(const MouseEvent &e)
     dragYPos = getYPos();
     state->getActiveDocumentSession().stopWaveformCacheBuild();
 
-    undoable = std::make_shared<SetSampleValue>(state, channelIndex,
-                                                sampleIndex, getSampleValue());
+    if (!displayedRevision)
+    {
+        undoable = std::make_shared<SetSampleValue>(
+            state, channelIndex, sampleIndex, getSampleValue());
+    }
 
     return true;
 }
@@ -52,6 +68,16 @@ bool SamplePoint::mouseUp(const MouseEvent &e)
         return false;
     }
 
+    if (displayedRevision)
+    {
+        actions::audio::prepareRevisionSampleEdit(
+            state, displayedRevision, channelIndex, sampleIndex, getSampleValue());
+        undoable.reset();
+        isDragging = false;
+        setActive(false);
+        return true;
+    }
+
     undoable->setNewValue(getSampleValue());
     undoable->updateGui = [state = state, channelIndex = channelIndex]
     {
@@ -61,11 +87,14 @@ bool SamplePoint::mouseUp(const MouseEvent &e)
 
     state->addUndoable(undoable);
     auto &session = state->getActiveDocumentSession();
-    auto &waveformCache = session.getWaveformCache(channelIndex);
-    waveformCache.invalidateSample(sampleIndex);
-    waveformCache.rebuildDirty(session.document.getAudioBuffer()
-                                   ->getImmutableChannelData(channelIndex)
-                                   .data());
+    if (!displayedRevision)
+    {
+        auto &waveformCache = session.getWaveformCache(channelIndex);
+        waveformCache.invalidateSample(sampleIndex);
+        waveformCache.rebuildDirtyFrom(
+            session.document.getAudioBuffer()->getImmutableChannelData(
+                channelIndex));
+    }
     state->lastRealtimeDocumentMutationAt = std::chrono::steady_clock::now();
 
     undoable.reset();
@@ -94,8 +123,17 @@ bool SamplePoint::mouseMove(const MouseEvent &e)
     dragYPos = dragPlan.clampedY;
 
     setYPos(dragYPos);
-    state->getActiveDocumentSession().document.setSample(
-        channelIndex, sampleIndex, dragPlan.sampleValue);
+    if (displayedRevision)
+    {
+        // Drag previews stay local; the accepted gesture is prepared on a
+        // worker at release and enters history as one command.
+        displayedValue = dragPlan.sampleValue;
+    }
+    else
+    {
+        state->getActiveDocumentSession().document.setSample(
+            channelIndex, sampleIndex, dragPlan.sampleValue);
+    }
     state->lastRealtimeDocumentMutationAt = std::chrono::steady_clock::now();
     updateSampleValueUnderMouseCursor(state, dragPlan.sampleValue, channelIndex,
                                       sampleIndex);

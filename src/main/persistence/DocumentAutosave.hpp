@@ -8,6 +8,7 @@
 
 namespace cupuacu::persistence
 {
+    struct PersistedOpenDocumentState;
     using DocumentAutosaveLoadProgress =
         std::function<void(std::optional<double>)>;
     using DocumentAutosaveLoadCancelCheck = std::function<bool()>;
@@ -25,7 +26,8 @@ namespace cupuacu::persistence
     bool loadDocumentAutosaveSnapshot(
         const std::filesystem::path &path, cupuacu::DocumentSession &session,
         const DocumentAutosaveLoadProgress &progress,
-        const DocumentAutosaveLoadCancelCheck &isCanceled);
+        const DocumentAutosaveLoadCancelCheck &isCanceled,
+        const PersistedOpenDocumentState *legacyState = nullptr);
 
     bool saveClipboardSnapshot(const std::filesystem::path &path,
                                const cupuacu::ClipboardAudio &clipboard);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../Document.hpp"
+#include "../../storage/WorkingAllocator.hpp"
 #include "../../State.hpp"
 #include "../../effects/EffectSettings.hpp"
 #include "../../effects/RemoveSilenceEffect.hpp"
@@ -58,13 +59,19 @@ namespace cupuacu::actions::effects
         std::vector<int64_t> targetChannels;
         std::vector<std::vector<float>> oldSamples;
         std::vector<std::vector<float>> newSamples;
-        std::vector<::cupuacu::effects::SilenceRange> silenceRuns;
+        [[no_unique_address]] performance::Capacity observedCapacity;
+        storage::WorkingVector<::cupuacu::effects::SilenceRange,
+                               storage::MemoryUse::Effect>
+            silenceRuns;
         std::vector<std::vector<std::vector<float>>> removedSamples;
         int64_t originalRelevantLength = 0;
         int64_t originalCursor = 0;
         bool hadSelection = false;
         bool removeSilenceRemovesDuration = false;
+        std::shared_ptr<const storage::AudioEditRevision> beforeRevision,
+            afterRevision;
         std::optional<cupuacu::Document> preparedDocument;
+        waveform::DocumentWaveformCaches preparedWaveformCaches;
         undo::UndoStore::SampleMatrixHandle oldSamplesHandle;
         undo::UndoStore::SampleMatrixHandle newSamplesHandle;
         undo::UndoStore::SampleCubeHandle removedSamplesHandle;
@@ -84,27 +91,37 @@ namespace cupuacu::actions::effects
             std::string error;
         };
 
-        BackgroundEffectJob(std::uint64_t idToUse,
-                            BackgroundEffectRequest requestToRun,
-                            const cupuacu::Document &documentToRead,
-                            undo::UndoStore undoStoreToUse = {});
+        BackgroundEffectJob(
+            std::uint64_t idToUse, BackgroundEffectRequest requestToRun,
+            const cupuacu::Document &documentToRead,
+            undo::UndoStore undoStoreToUse = {},
+            const waveform::DocumentWaveformCaches *sourceCaches = nullptr,
+            std::shared_ptr<const storage::AudioEditRevision> revision = {},
+            std::filesystem::path workingDirectory = {});
         ~BackgroundEffectJob();
 
         BackgroundEffectJob(const BackgroundEffectJob &) = delete;
         BackgroundEffectJob &operator=(const BackgroundEffectJob &) = delete;
 
-        void start();
+        void start(std::shared_ptr<concurrency::TaskScheduler> scheduler = {});
         [[nodiscard]] Snapshot snapshot() const;
         [[nodiscard]] bool waitForCompletion(
             std::chrono::milliseconds timeout) const;
         [[nodiscard]] std::unique_ptr<BackgroundEffectResult> takeResult();
         [[nodiscard]] std::uint64_t getId() const;
         void cancel();
+        bool isRevisionJob() const
+        {
+            return bool(readRevision);
+        }
 
     private:
         std::uint64_t id = 0;
         BackgroundEffectRequest request;
         cupuacu::Document document;
+        std::shared_ptr<const storage::AudioEditRevision> readRevision;
+        std::filesystem::path workingDirectory;
+        waveform::DocumentWaveformCaches waveformCaches;
         undo::UndoStore undoStore;
         mutable std::mutex mutex;
         mutable std::condition_variable completionCv;
@@ -114,7 +131,8 @@ namespace cupuacu::actions::effects
         std::optional<double> progress;
         std::string error;
         std::unique_ptr<BackgroundEffectResult> result;
-        std::thread worker;
+        std::shared_ptr<concurrency::TaskScheduler> scheduler;
+        concurrency::TaskScheduler::Ticket completion;
         std::atomic<bool> cancelRequested{false};
 
         void run();

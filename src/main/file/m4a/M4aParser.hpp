@@ -22,13 +22,16 @@ namespace cupuacu::file::m4a
         std::uint32_t sampleRate = 0;
         std::uint16_t channels = 0;
         std::uint16_t bitDepth = 0;
-        std::uint32_t frameCount = 0;
+        std::uint64_t frameCount = 0;
         std::uint32_t framesPerPacket = 0;
         std::uint64_t mdatPayloadOffset = 0;
         std::uint64_t mdatPayloadSize = 0;
-        std::vector<std::uint32_t> packetSizes;
-        std::vector<std::uint32_t> packetFrameCounts;
-        std::vector<std::uint64_t> packetOffsets;
+        storage::WorkingVector<std::uint32_t, storage::MemoryUse::Container>
+            packetSizes;
+        storage::WorkingVector<std::uint32_t, storage::MemoryUse::Container>
+            packetFrameCounts;
+        storage::WorkingVector<std::uint64_t, storage::MemoryUse::Container>
+            packetOffsets;
         Bytes magicCookie;
         std::vector<cupuacu::DocumentMarker> markers;
     };
@@ -37,15 +40,18 @@ namespace cupuacu::file::m4a
     {
         std::uint32_t sampleRate = 0;
         std::uint16_t channels = 0;
-        std::uint32_t frameCount = 0;
+        std::uint64_t frameCount = 0;
         std::uint32_t framesPerPacket = 0;
         std::uint32_t primingFrames = 0;
         std::uint32_t paddingFrames = 0;
         std::uint64_t mdatPayloadOffset = 0;
         std::uint64_t mdatPayloadSize = 0;
-        std::vector<std::uint32_t> packetSizes;
-        std::vector<std::uint32_t> packetFrameCounts;
-        std::vector<std::uint64_t> packetOffsets;
+        storage::WorkingVector<std::uint32_t, storage::MemoryUse::Container>
+            packetSizes;
+        storage::WorkingVector<std::uint32_t, storage::MemoryUse::Container>
+            packetFrameCounts;
+        storage::WorkingVector<std::uint64_t, storage::MemoryUse::Container>
+            packetOffsets;
         Bytes audioSpecificConfig;
         std::vector<cupuacu::DocumentMarker> markers;
     };

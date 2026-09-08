@@ -73,7 +73,11 @@ namespace cupuacu::audio
         ~AudioDevices();
 
         using Base::enqueue;
-        void enqueue(Play msg) noexcept;
+        bool enqueue(Play msg) noexcept;
+        void
+        servicePlayback(); // Control thread: retire ownership, never join I/O.
+        bool takePlaybackFailure() noexcept;
+        uint64_t getPlaybackUnderrunFrames() const;
         void enqueue(Record msg) noexcept;
 
         AudioStreamSetupResult openStream(const AudioStreamRequest &request);
@@ -106,6 +110,9 @@ namespace cupuacu::audio
         [[nodiscard]] bool hasPendingRecordedAudio() const noexcept;
         [[nodiscard]] bool takeRecordingOverflow() noexcept;
         void clearRecordedChunks();
+        // Main-thread query; acknowledges even a start followed immediately by stop.
+        bool hasPendingRecordStart() const noexcept
+        { return requestedRecordGeneration != completedRecordGeneration.load(std::memory_order_acquire); }
         bool prepareInputMonitorForTesting(
             uint8_t inputChannels,
             std::unique_ptr<MonitorCancellationBackend> backend = nullptr);
@@ -130,6 +137,8 @@ namespace cupuacu::audio
     private:
         struct PaData
         {
+            uint64_t recordGeneration = 0;
+            PreparedPlayback *preparedPlayback = nullptr;
             std::shared_ptr<cupuacu::audio::AudioBuffer> playbackBuffer;
             bool selectionIsActive = false;
             cupuacu::SelectedChannels selectedChannels =
@@ -172,7 +181,10 @@ namespace cupuacu::audio
         pushPeaksToVuMeter(PaData &data,
                            const callback_core::StereoMeterLevels &meterLevels,
                            bool isPlaying, bool isRecording, bool isMonitoring);
-        static void snapshotQueuedPlayMessage(Play &msg);
+        static void retirePlayback(PaData &data) noexcept;
+        std::vector<std::shared_ptr<PreparedPlayback>> preparedPlaybacks;
+        std::atomic<bool> playbackFailure{false};
+        bool reportedPlaybackUnderrun = false;
         static void snapshotQueuedRecordMessage(Record &msg);
 
         AudioStreamSetupResult
@@ -201,6 +213,8 @@ namespace cupuacu::audio
         DeviceSelection deviceSelection;
         moodycamel::ReaderWriterQueue<RecordedChunk> recordedChunkQueue{512};
         std::atomic_bool recordingOverflowed{false};
+        uint64_t requestedRecordGeneration = 0;
+        std::atomic<uint64_t> completedRecordGeneration{0};
         std::unique_ptr<InputMonitorPipeline> monitorPipeline;
         PaData paData;
         uint64_t monitorTripGeneration = 0;

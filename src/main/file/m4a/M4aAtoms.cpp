@@ -23,14 +23,14 @@ namespace cupuacu::file::m4a
 
         struct ChapterSample
         {
-            std::uint32_t frame = 0;
+            std::uint64_t frame = 0;
             std::uint32_t duration = 0;
             Bytes bytes;
         };
 
         std::vector<ChapterSample> buildChapterSamples(
             const std::vector<cupuacu::DocumentMarker> &markers,
-            const std::uint32_t frameCount)
+            const std::uint64_t frameCount)
         {
             std::vector<cupuacu::DocumentMarker> sortedMarkers = markers;
             std::sort(sortedMarkers.begin(), sortedMarkers.end(),
@@ -66,16 +66,20 @@ namespace cupuacu::file::m4a
             for (std::size_t i = 0; i < usableMarkers.size(); ++i)
             {
                 const auto startFrame =
-                    static_cast<std::uint32_t>(usableMarkers[i].frame);
+                    static_cast<std::uint64_t>(usableMarkers[i].frame);
                 const auto endFrame =
                     i + 1 < usableMarkers.size()
-                        ? static_cast<std::uint32_t>(usableMarkers[i + 1].frame)
+                        ? static_cast<std::uint64_t>(usableMarkers[i + 1].frame)
                         : frameCount;
                 if (endFrame <= startFrame)
                 {
                     continue;
                 }
 
+                if (endFrame - startFrame > UINT32_MAX)
+                {
+                    throw std::out_of_range("M4A chapter duration exceeds 32-bit sample delta");
+                }
                 const auto labelSize = std::min<std::size_t>(
                     usableMarkers[i].label.size(),
                     std::numeric_limits<std::uint16_t>::max());
@@ -86,7 +90,7 @@ namespace cupuacu::file::m4a
                                   static_cast<std::ptrdiff_t>(labelSize));
                 samples.push_back(ChapterSample{
                     .frame = startFrame,
-                    .duration = endFrame - startFrame,
+                    .duration = static_cast<std::uint32_t>(endFrame - startFrame),
                     .bytes = std::move(sample),
                 });
             }
@@ -226,7 +230,7 @@ namespace cupuacu::file::m4a
         return fullAtom("stco", 0, 0, payload);
     }
 
-    Bytes timeToSampleAtom(const std::uint32_t frameCount,
+    Bytes timeToSampleAtom(const std::uint64_t frameCount,
                            const std::uint32_t framesPerPacket)
     {
         if (framesPerPacket == 0)
@@ -238,7 +242,9 @@ namespace cupuacu::file::m4a
             return emptyTimeToSampleAtom();
         }
 
-        const std::uint32_t fullPacketCount = frameCount / framesPerPacket;
+        const auto fullPacketCount = frameCount / framesPerPacket;
+        if (fullPacketCount + (frameCount % framesPerPacket != 0) > UINT32_MAX)
+            throw std::out_of_range("M4A packet count exceeds 32-bit sample table");
         const std::uint32_t finalPacketFrames = frameCount % framesPerPacket;
         const std::uint32_t entryCount =
             (fullPacketCount > 0 ? 1u : 0u) +
@@ -248,7 +254,7 @@ namespace cupuacu::file::m4a
         appendBe32(payload, entryCount);
         if (fullPacketCount > 0)
         {
-            appendBe32(payload, fullPacketCount);
+            appendBe32(payload, static_cast<std::uint32_t>(fullPacketCount));
             appendBe32(payload, framesPerPacket);
         }
         if (finalPacketFrames > 0)
@@ -274,7 +280,9 @@ namespace cupuacu::file::m4a
         return fullAtom("stsc", 0, 0, payload);
     }
 
-    Bytes sampleSizeAtom(const std::vector<std::uint32_t> &packetSizes)
+    Bytes
+    sampleSizeAtom(const storage::WorkingVector<
+                   std::uint32_t, storage::MemoryUse::Container> &packetSizes)
     {
         if (packetSizes.empty())
         {
@@ -291,7 +299,9 @@ namespace cupuacu::file::m4a
         return fullAtom("stsz", 0, 0, payload);
     }
 
-    Bytes chunkOffsetAtom(const std::vector<std::uint32_t> &chunkOffsets)
+    Bytes
+    chunkOffsetAtom(const storage::WorkingVector<
+                    std::uint32_t, storage::MemoryUse::Container> &chunkOffsets)
     {
         if (chunkOffsets.empty())
         {
@@ -305,6 +315,31 @@ namespace cupuacu::file::m4a
             appendBe32(payload, chunkOffset);
         }
         return fullAtom("stco", 0, 0, payload);
+    }
+
+    Bytes wideChunkOffsetAtom(
+        const storage::WorkingVector<std::uint64_t,
+                                     storage::MemoryUse::Container> &offsets)
+    {
+        if (std::all_of(offsets.begin(), offsets.end(),
+                        [](auto value)
+                        {
+                            return value <=
+                                   std::numeric_limits<std::uint32_t>::max();
+                        }))
+        {
+            return chunkOffsetAtom(
+                storage::WorkingVector<std::uint32_t,
+                                       storage::MemoryUse::Container>(
+                    offsets.begin(), offsets.end()));
+        }
+        Bytes payload;
+        appendBe32(payload, static_cast<std::uint32_t>(offsets.size()));
+        for (const auto offset : offsets)
+        {
+            appendBe64(payload, offset);
+        }
+        return fullAtom("co64", 0, 0, payload);
     }
 
     Bytes alacSampleEntry(const AlacSampleEntryDescription &description)
@@ -347,7 +382,7 @@ namespace cupuacu::file::m4a
     }
 
     Bytes movieHeaderAtom(const std::uint32_t timescale,
-                          const std::uint32_t duration,
+                          const std::uint64_t duration,
                           const std::uint32_t nextTrackId)
     {
         if (timescale == 0)
@@ -355,11 +390,24 @@ namespace cupuacu::file::m4a
             throw std::invalid_argument("M4A movie timescale must be nonzero");
         }
 
+        // Use wide durations before legacy readers can interpret the sign bit.
+        const bool wide = duration >= INT32_MAX;
         Bytes payload;
-        appendBe32(payload, 0);
-        appendBe32(payload, 0);
+        if (wide)
+        {
+            appendBe64(payload, 0);
+            appendBe64(payload, 0);
+        }
+        else
+        {
+            appendBe32(payload, 0);
+            appendBe32(payload, 0);
+        }
         appendBe32(payload, timescale);
-        appendBe32(payload, duration);
+        if (wide)
+            appendBe64(payload, duration);
+        else
+            appendBe32(payload, static_cast<std::uint32_t>(duration));
         appendBe32(payload, 0x00010000u);
         appendBe16(payload, 0x0100u);
         appendBe16(payload, 0);
@@ -379,11 +427,11 @@ namespace cupuacu::file::m4a
             appendBe32(payload, 0);
         }
         appendBe32(payload, nextTrackId);
-        return fullAtom("mvhd", 0, 0, payload);
+        return fullAtom("mvhd", wide ? 1 : 0, 0, payload);
     }
 
     Bytes trackHeaderAtom(const std::uint32_t trackId,
-                          const std::uint32_t duration,
+                          const std::uint64_t duration,
                           const bool enabled)
     {
         if (trackId == 0)
@@ -391,12 +439,25 @@ namespace cupuacu::file::m4a
             throw std::invalid_argument("M4A track id must be nonzero");
         }
 
+        // Use wide durations before legacy readers can interpret the sign bit.
+        const bool wide = duration >= INT32_MAX;
         Bytes payload;
-        appendBe32(payload, 0);
-        appendBe32(payload, 0);
+        if (wide)
+        {
+            appendBe64(payload, 0);
+            appendBe64(payload, 0);
+        }
+        else
+        {
+            appendBe32(payload, 0);
+            appendBe32(payload, 0);
+        }
         appendBe32(payload, trackId);
         appendBe32(payload, 0);
-        appendBe32(payload, duration);
+        if (wide)
+            appendBe64(payload, duration);
+        else
+            appendBe32(payload, static_cast<std::uint32_t>(duration));
         appendBe32(payload, 0);
         appendBe32(payload, 0);
         appendBe16(payload, 0);
@@ -414,25 +475,38 @@ namespace cupuacu::file::m4a
         appendBe32(payload, 0x40000000u);
         appendBe32(payload, 0);
         appendBe32(payload, 0);
-        return fullAtom("tkhd", 0, enabled ? 0x000007u : 0x000000u, payload);
+        return fullAtom("tkhd", wide ? 1 : 0, enabled ? 0x000007u : 0x000000u, payload);
     }
 
     Bytes mediaHeaderAtom(const std::uint32_t timescale,
-                          const std::uint32_t duration)
+                          const std::uint64_t duration)
     {
         if (timescale == 0)
         {
             throw std::invalid_argument("M4A media timescale must be nonzero");
         }
 
+        // Use wide durations before legacy readers can interpret the sign bit.
+        const bool wide = duration >= INT32_MAX;
         Bytes payload;
-        appendBe32(payload, 0);
-        appendBe32(payload, 0);
+        if (wide)
+        {
+            appendBe64(payload, 0);
+            appendBe64(payload, 0);
+        }
+        else
+        {
+            appendBe32(payload, 0);
+            appendBe32(payload, 0);
+        }
         appendBe32(payload, timescale);
-        appendBe32(payload, duration);
+        if (wide)
+            appendBe64(payload, duration);
+        else
+            appendBe32(payload, static_cast<std::uint32_t>(duration));
         appendBe16(payload, 0);
         appendBe16(payload, 0);
-        return fullAtom("mdhd", 0, 0, payload);
+        return fullAtom("mdhd", wide ? 1 : 0, 0, payload);
     }
 
     Bytes soundMediaHeaderAtom()
@@ -471,22 +545,29 @@ namespace cupuacu::file::m4a
         return containerAtom("tref", {atom("chap", chapterReference)});
     }
 
-    Bytes editListAtom(const std::uint32_t emptyDuration,
-                       const std::uint32_t mediaDuration)
+    Bytes editListAtom(const std::uint64_t emptyDuration,
+                       const std::uint64_t mediaDuration)
     {
+        const bool wide = emptyDuration >= INT32_MAX || mediaDuration >= INT32_MAX;
         Bytes payload;
-        const bool hasEmptyEdit = emptyDuration != 0;
-        appendBe32(payload, hasEmptyEdit ? 2u : 1u);
-        if (hasEmptyEdit)
+        appendBe32(payload, emptyDuration ? 2u : 1u);
+        const auto entry = [&](std::uint64_t duration, bool empty)
         {
-            appendBe32(payload, emptyDuration);
-            appendBe32(payload, 0xffffffffu);
+            if (wide)
+            {
+                appendBe64(payload, duration);
+                appendBe64(payload, empty ? UINT64_MAX : 0);
+            }
+            else
+            {
+                appendBe32(payload, static_cast<std::uint32_t>(duration));
+                appendBe32(payload, empty ? UINT32_MAX : 0);
+            }
             appendBe32(payload, 0x00010000u);
-        }
-        appendBe32(payload, mediaDuration);
-        appendBe32(payload, 0);
-        appendBe32(payload, 0x00010000u);
-        return containerAtom("edts", {fullAtom("elst", 0, 0, payload)});
+        };
+        if (emptyDuration) entry(emptyDuration, true);
+        entry(mediaDuration, false);
+        return containerAtom("edts", {fullAtom("elst", wide ? 1 : 0, 0, payload)});
     }
 
     Bytes textMediaHeaderAtom()
@@ -503,7 +584,8 @@ namespace cupuacu::file::m4a
     }
 
     Bytes explicitTimeToSampleAtom(
-        const std::vector<std::uint32_t> &sampleDurations)
+        const storage::WorkingVector<
+            std::uint32_t, storage::MemoryUse::Container> &sampleDurations)
     {
         if (sampleDurations.empty())
         {
@@ -536,10 +618,13 @@ namespace cupuacu::file::m4a
              sampleToChunkAtom(
                  static_cast<std::uint32_t>(description.packetSizes.size())),
              sampleSizeAtom(description.packetSizes),
-             chunkOffsetAtom(description.packetSizes.empty()
-                                 ? std::vector<std::uint32_t>{}
-                                 : std::vector<std::uint32_t>{
-                                       description.mdatPayloadOffset})});
+             wideChunkOffsetAtom(
+                 description.packetSizes.empty()
+                     ? storage::WorkingVector<std::uint64_t,
+                                              storage::MemoryUse::Container>{}
+                     : storage::WorkingVector<std::uint64_t,
+                                              storage::MemoryUse::Container>{
+                           description.mdatPayloadOffset})});
     }
 
     Bytes mediaInformationAtom(const AlacMovieDescription &description)
@@ -578,10 +663,13 @@ namespace cupuacu::file::m4a
              sampleToChunkAtom(static_cast<std::uint32_t>(
                  description.chapterSampleSizes.size())),
              sampleSizeAtom(description.chapterSampleSizes),
-             chunkOffsetAtom(description.chapterSampleSizes.empty()
-                                 ? std::vector<std::uint32_t>{}
-                                 : std::vector<std::uint32_t>{
-                                       description.chapterMdatPayloadOffset})});
+             wideChunkOffsetAtom(
+                 description.chapterSampleSizes.empty()
+                     ? storage::WorkingVector<std::uint64_t,
+                                              storage::MemoryUse::Container>{}
+                     : storage::WorkingVector<std::uint64_t,
+                                              storage::MemoryUse::Container>{
+                           description.chapterMdatPayloadOffset})});
     }
 
     Bytes chapterMediaInformationAtom(const AlacMovieDescription &description)
@@ -632,6 +720,87 @@ namespace cupuacu::file::m4a
         return containerAtom("moov", children);
     }
 
+    namespace
+    {
+        void writeBytes(std::ostream &output, const Bytes &bytes)
+        {
+            output.write(reinterpret_cast<const char *>(bytes.data()),
+                         static_cast<std::streamsize>(bytes.size()));
+            if (!output)
+            {
+                throw std::runtime_error("Failed to write M4A output");
+            }
+        }
+    } // namespace
+
+    void validateAlacM4aDuration(std::uint64_t frames, std::uint32_t packetFrames,
+                                const std::vector<DocumentMarker> &markers)
+    {
+        if (frames > std::uint64_t(INT64_MAX))
+            throw std::out_of_range("M4A duration exceeds editor frame limit");
+        (void)timeToSampleAtom(frames, packetFrames);
+        (void)buildChapterSamples(markers, frames);
+    }
+
+    void beginAlacM4a(std::ostream &output)
+    {
+        writeBytes(output, ftypAtom());
+        Bytes header;
+        appendBe32(header, 1);
+        appendFourCc(header, "mdat");
+        appendBe64(header, 0);
+        writeBytes(output, header);
+    }
+
+    void finishAlacM4a(std::ostream &output, AlacMovieDescription description,
+                       const std::uint64_t audioBytes,
+                       const std::vector<DocumentMarker> &markers)
+    {
+        const auto headerSize = ftypAtom().size();
+        description.mdatPayloadOffset = headerSize + 16;
+        if (audioBytes >
+            std::uint64_t(std::numeric_limits<std::streamoff>::max()) -
+                description.mdatPayloadOffset)
+        {
+            throw std::overflow_error(
+                "M4A payload exceeds stream offset limit");
+        }
+        description.chapterMdatPayloadOffset =
+            description.mdatPayloadOffset + audioBytes;
+        if (output.tellp() !=
+            std::streampos(description.chapterMdatPayloadOffset))
+        {
+            throw std::runtime_error("M4A packet payload size mismatch");
+        }
+        const auto chapters =
+            buildChapterSamples(markers, description.frameCount);
+        std::uint64_t payloadBytes = audioBytes;
+        for (const auto &chapter : chapters)
+        {
+            if (description.chapterSampleSizes.empty())
+            {
+                description.chapterStartOffset = chapter.frame;
+            }
+            description.chapterSampleSizes.push_back(
+                static_cast<std::uint32_t>(chapter.bytes.size()));
+            description.chapterSampleDurations.push_back(chapter.duration);
+            description.chapterMediaDuration += chapter.duration;
+            writeBytes(output, chapter.bytes);
+            payloadBytes += chapter.bytes.size();
+        }
+        writeBytes(output, movieAtom(description));
+        const auto end = output.tellp();
+        output.seekp(static_cast<std::streamoff>(headerSize + 8));
+        Bytes size;
+        appendBe64(size, payloadBytes + 16);
+        writeBytes(output, size);
+        output.seekp(end);
+        if (!output)
+        {
+            throw std::runtime_error("Failed to finalize M4A output");
+        }
+    }
+
     Bytes assembleAlacM4a(
         const cupuacu::file::alac::AlacEncodedPackets &packets,
         const std::vector<cupuacu::DocumentMarker> &markers)
@@ -647,10 +816,12 @@ namespace cupuacu::file::m4a
         const auto chapterSamples =
             buildChapterSamples(markers, packets.frameCount);
         Bytes mdatPayload = packets.bytes;
-        std::vector<std::uint32_t> chapterSampleSizes;
-        std::vector<std::uint32_t> chapterSampleDurations;
-        std::uint32_t chapterStartOffset = 0;
-        std::uint32_t chapterMediaDuration = 0;
+        storage::WorkingVector<std::uint32_t, storage::MemoryUse::Container>
+            chapterSampleSizes;
+        storage::WorkingVector<std::uint32_t, storage::MemoryUse::Container>
+            chapterSampleDurations;
+        std::uint64_t chapterStartOffset = 0;
+        std::uint64_t chapterMediaDuration = 0;
         chapterSampleSizes.reserve(chapterSamples.size());
         chapterSampleDurations.reserve(chapterSamples.size());
         if (!chapterSamples.empty())
@@ -667,8 +838,8 @@ namespace cupuacu::file::m4a
         }
         const auto mdat = mdatAtom(mdatPayload);
         const auto mdatPayloadOffset = static_cast<std::uint32_t>(ftyp.size() + 8);
-        const auto chapterMdatPayloadOffset = static_cast<std::uint32_t>(
-            mdatPayloadOffset + packets.bytes.size());
+        const auto chapterMdatPayloadOffset =
+            std::uint64_t(mdatPayloadOffset) + packets.bytes.size();
         const AlacMovieDescription description{
             .sampleRate = packets.cookie.sampleRate,
             .frameCount = packets.frameCount,

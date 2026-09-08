@@ -174,7 +174,7 @@ TEST_CASE(
     std::vector<float> out(4, 0.0f);
 
     const bool playedAnyFrame = cupuacu::audio::callback_core::fillOutputBuffer(
-        doc.getAudioBuffer(),
+        doc.getAudioBuffer().get(),
         static_cast<uint8_t>(std::clamp<int64_t>(doc.getChannelCount(), 0, 2)),
         false, cupuacu::SelectedChannels::BOTH, playbackPosition,
         playbackStartPos, playbackEndPos, false, playbackHasPendingSwitch,
@@ -198,8 +198,9 @@ TEST_CASE(
 
     const bool playedUpdatedFrame =
         cupuacu::audio::callback_core::fillOutputBuffer(
-            doc.getAudioBuffer(),
-            static_cast<uint8_t>(std::clamp<int64_t>(doc.getChannelCount(), 0, 2)),
+            doc.getAudioBuffer().get(),
+            static_cast<uint8_t>(
+                std::clamp<int64_t>(doc.getChannelCount(), 0, 2)),
             false, cupuacu::SelectedChannels::BOTH, playbackPosition,
             playbackStartPos, playbackEndPos, false, playbackHasPendingSwitch,
             playbackPendingStartPos, playbackPendingEndPos, isPlaying,

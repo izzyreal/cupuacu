@@ -1,4 +1,5 @@
 #pragma once
+#include "storage/ImportAudioReader.hpp"
 
 #include "Document.hpp"
 #include "Paths.hpp"
@@ -8,6 +9,7 @@
 #include "undo/UndoStore.hpp"
 #include "waveform/WaveformCachePersistence.hpp"
 #include "waveform/DocumentWaveformCaches.hpp"
+#include "waveform/ProgressivePeaks.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -15,10 +17,30 @@
 #include <optional>
 #include <string>
 
+namespace cupuacu::persistence
+{
+    struct RevisionCheckpoint;
+    class RevisionPersistence;
+} // namespace cupuacu::persistence
+
+namespace cupuacu::storage
+{
+    class AudioEditRevision;
+    class AudioReader;
+    class AudioRevision;
+}
+namespace cupuacu::waveform
+{
+    struct ViewportSource;
+}
+
 namespace cupuacu
 {
     struct DocumentSession
     {
+        friend class persistence::RevisionPersistence;
+        std::shared_ptr<const persistence::RevisionCheckpoint>
+            recoveredRevisionCheckpoint;
         std::string currentFile;
         std::optional<file::AudioExportSettings> currentFileExportSettings;
         bool currentFileRequiresSaveAs = false;
@@ -30,6 +52,27 @@ namespace cupuacu
         std::string overwritePreservationBrokenReason;
         Document document;
         waveform::DocumentWaveformCaches waveformCaches;
+        bool openingPreview = false;
+        std::shared_ptr<const waveform::PersistentCacheSnapshot>
+            pendingImportedPeaks;
+        void retryImportedPeakPersistence(
+            std::shared_ptr<concurrency::TaskScheduler> scheduler = {})
+        {
+            if (pendingImportedPeaks &&
+                waveform::schedulePersistentWaveformCache(
+                    pendingImportedPeaks, std::move(scheduler)) !=
+                    waveform::CacheSaveScheduleResult::Busy)
+            {
+                pendingImportedPeaks.reset();
+            }
+        }
+        std::shared_ptr<const storage::ImportAudioReader> openingAudio;
+        std::shared_ptr<const waveform::ProgressivePeaks> openingPeaks;
+        std::shared_ptr<const waveform::SourcePeaks> openingCachedPeaks;
+        void invalidateViewportSource() const
+        {
+            viewportSource.reset();
+        }
         gui::Selection<double> selection = gui::Selection<double>(0.0);
         int64_t cursor = 0;
         undo::UndoStore undoStore;
@@ -37,8 +80,48 @@ namespace cupuacu
         std::filesystem::path autosaveSnapshotPath;
         uint64_t autosavedWaveformDataVersion = 0;
         uint64_t autosavedMarkerDataVersion = 0;
-        bool pendingPersistentWaveformCacheSave = false;
+        uint64_t autosavedHistoryVersion = 0;
+        std::chrono::steady_clock::time_point autosaveRetryAfter{};
+        std::string lastAutosaveError;
+        std::optional<uint64_t> pendingPersistentWaveformCacheVersion;
 
+        // Shared reader/summary snapshots for the viewport. Legacy consumers
+        // remain on Document until the remaining editor paths are migrated.
+        std::shared_ptr<const waveform::ViewportSource>
+        getViewportSource() const;
+        std::shared_ptr<const storage::AudioReader> getAudioReader() const;
+        void bindReadRevision(
+            std::shared_ptr<const storage::AudioEditRevision> revision);
+        bool hasReadRevision() const
+        {
+            return bool(readRevision);
+        }
+        // Retains the imported container even if edits remove every source
+        // leaf.
+        std::shared_ptr<const storage::AudioRevision> preservationSource;
+        bool revisionHasUnsavedChanges() const;
+        void
+            markRevisionSaved(std::shared_ptr<const storage::AudioEditRevision>,
+                              std::vector<DocumentMarker>);
+        void clearReadRevision();
+        std::shared_ptr<const storage::AudioEditRevision>
+        getEditRevision() const;
+        // Returns false when a prepared edit targets a superseded revision.
+        bool commitEditRevision(
+            const std::shared_ptr<const storage::AudioEditRevision> &expected,
+            std::shared_ptr<const storage::AudioEditRevision> replacement,
+            std::vector<DocumentMarker> markers);
+
+    private:
+        std::shared_ptr<const storage::AudioEditRevision> readRevision;
+        uint64_t readRevisionVersion = 0;
+        std::shared_ptr<const storage::AudioEditRevision> savedReadRevision;
+        std::vector<DocumentMarker> savedRevisionMarkers;
+        mutable std::shared_ptr<const waveform::ViewportSource> viewportSource;
+        mutable uint64_t viewportSourceVersion = UINT64_MAX;
+        mutable const void *viewportBufferIdentity = nullptr;
+
+    public:
         using WaveformCacheBuildProgress =
             waveform::DocumentWaveformCaches::BuildProgress;
 
@@ -60,28 +143,52 @@ namespace cupuacu
 
         void updateWaveformCache()
         {
+            if (openingPreview || readRevision)
+            {
+                return;
+            }
             waveformCaches.update(document, document.getWaveformDataVersion());
         }
 
         void markPendingPersistentWaveformCacheSave()
         {
-            pendingPersistentWaveformCacheSave = true;
+            pendingPersistentWaveformCacheVersion =
+                document.getWaveformDataVersion();
         }
 
         void clearPendingPersistentWaveformCacheSave()
         {
-            pendingPersistentWaveformCacheSave = false;
+            pendingPersistentWaveformCacheVersion.reset();
         }
 
-        [[nodiscard]] bool pumpWaveformCacheWork(const Paths *paths = nullptr)
+        [[nodiscard]] bool pumpWaveformCacheWork(
+            const Paths *paths = nullptr,
+            std::shared_ptr<concurrency::TaskScheduler> scheduler = {})
         {
+            if (openingPreview || readRevision)
+            {
+                return false;
+            }
             const bool stateChanged = waveformCaches.pumpWork(
                 document, document.getWaveformDataVersion());
-            if (pendingPersistentWaveformCacheSave && paths &&
+            // A deferred retry must never publish edited peaks under the
+            // original source file's cache key.
+            if (pendingPersistentWaveformCacheVersion &&
+                *pendingPersistentWaveformCacheVersion !=
+                    document.getWaveformDataVersion())
+            {
+                clearPendingPersistentWaveformCacheSave();
+            }
+            if (pendingPersistentWaveformCacheVersion && paths &&
                 !getWaveformCacheBuildProgress().has_value())
             {
-                (void)waveform::savePersistentWaveformCache(*this, *paths);
-                pendingPersistentWaveformCacheSave = false;
+                const auto result =
+                    waveform::schedulePersistentWaveformCache(
+                        *this, *paths, std::move(scheduler));
+                if (result != waveform::CacheSaveScheduleResult::Busy)
+                {
+                    clearPendingPersistentWaveformCacheSave();
+                }
             }
             return stateChanged;
         }
@@ -89,6 +196,23 @@ namespace cupuacu
         [[nodiscard]] std::optional<WaveformCacheBuildProgress>
         getWaveformCacheBuildProgress() const
         {
+            if (readRevision)
+            {
+                return std::nullopt;
+            }
+            if (openingPreview)
+            {
+                if (document.getChannelCount() <= 0)
+                {
+                    return std::nullopt;
+                }
+                return WaveformCacheBuildProgress{
+                    getWaveformCache(0).builtSamplePrefixEnd() /
+                        gui::WaveformCache::BASE_BLOCK_SIZE,
+                    (document.getFrameCount() +
+                     gui::WaveformCache::BASE_BLOCK_SIZE - 1) /
+                        gui::WaveformCache::BASE_BLOCK_SIZE};
+            }
             return waveformCaches.getBuildProgress(
                 document, document.getWaveformDataVersion());
         }
@@ -96,6 +220,10 @@ namespace cupuacu
         [[nodiscard]] std::optional<waveform::PersistentCacheKey>
         getPersistentWaveformCacheKey() const
         {
+            if (readRevision)
+            {
+                return std::nullopt;
+            }
             return waveform::makePersistentCacheKey(currentFile, document);
         }
 
@@ -122,6 +250,7 @@ namespace cupuacu
 
         void clearCurrentFile()
         {
+            clearReadRevision();
             currentFile.clear();
             currentFileExportSettings.reset();
             currentFileRequiresSaveAs = false;
@@ -139,6 +268,7 @@ namespace cupuacu
             std::string pathToUse,
             std::optional<file::AudioExportSettings> settings = std::nullopt)
         {
+            clearReadRevision();
             currentFile = std::move(pathToUse);
             currentFileExportSettings = std::move(settings);
             currentFileRequiresSaveAs = false;
@@ -184,6 +314,7 @@ namespace cupuacu
             autosaveSnapshotPath.clear();
             autosavedWaveformDataVersion = 0;
             autosavedMarkerDataVersion = 0;
+            autosavedHistoryVersion = 0;
         }
     };
 } // namespace cupuacu

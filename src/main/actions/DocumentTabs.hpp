@@ -20,7 +20,7 @@ namespace cupuacu::actions
 
     inline bool canSwitchTabs(const cupuacu::State *state)
     {
-        return state && !state->longTask.active &&
+        return state && !state->revisionRecording && !state->longTask.active &&
                (!state->audioDevices ||
                 (!state->audioDevices->isPlaying() &&
                  !state->audioDevices->isRecording()));
@@ -86,6 +86,11 @@ namespace cupuacu::actions
                 ? std::filesystem::path(tab.session.currentFile).filename().string()
                 : kUntitledDocumentTitle;
 
+        if (tab.operation)
+        {
+            return baseTitle + (documentTabHasUnsavedChanges(tab) ? "*" : "") +
+                   " (" + tab.operation->title + ")";
+        }
         if (documentTabHasUnsavedChanges(tab))
         {
             return baseTitle + "*";
@@ -251,6 +256,8 @@ namespace cupuacu::actions
         }
 
         const bool removingActiveTab = index == state->activeTabIndex;
+        detail::discardAutosaveSnapshot(
+            state->tabs[static_cast<std::size_t>(index)].session);
         detail::discardUndoStore(
             state->tabs[static_cast<std::size_t>(index)].session);
         state->tabs.erase(state->tabs.begin() + index);

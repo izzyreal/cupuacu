@@ -1,17 +1,13 @@
 #pragma once
+#include "PeakLevel.hpp"
 #include <vector>
 #include <cstdint>
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace cupuacu::gui
 {
-
-    struct Peak
-    {
-        float min;
-        float max;
-    };
 
     class WaveformCache
     {
@@ -31,7 +27,7 @@ namespace cupuacu::gui
             int64_t numSamples = 0;
             int64_t dirtyFromBlock = INT64_MAX;
             int64_t dirtyToBlock = -1;
-            std::vector<std::vector<Peak>> levels;
+            std::vector<PeakLevel> levels;
         };
 
         struct BuildResult
@@ -39,13 +35,18 @@ namespace cupuacu::gui
             int64_t numSamples = 0;
             int64_t dirtyFromBlock = INT64_MAX;
             int64_t dirtyToBlock = -1;
-            std::vector<std::vector<Peak>> levels;
+            std::vector<PeakLevel> levels;
         };
 
         WaveformCache()
             : numSamples(0), dirtyFromBlock(INT64_MAX), dirtyToBlock(-1)
         {
         }
+
+        WaveformCache(const WaveformCache &) = default;
+        WaveformCache &operator=(const WaveformCache &) = default;
+        WaveformCache(WaveformCache &&) noexcept = default;
+        WaveformCache &operator=(WaveformCache &&) noexcept = default;
 
         void clear()
         {
@@ -113,7 +114,7 @@ namespace cupuacu::gui
             return (int64_t)BASE_BLOCK_SIZE << level;
         }
 
-        const std::vector<Peak> &getLevelByIndex(int level) const
+        const PeakLevel &getLevelByIndex(int level) const
         {
             if (levels.empty())
             {
@@ -139,19 +140,7 @@ namespace cupuacu::gui
             }
             else
             {
-                const int64_t oldL0 = (int64_t)levels[0].size();
-                const int64_t newL0 = level0Size();
-
-                levels[0].resize(newL0);
-
-                const int64_t insertBlock = posSample / BASE_BLOCK_SIZE;
-                const int64_t shift = newL0 - oldL0;
-                if (shift > 0 && insertBlock < oldL0)
-                {
-                    std::move_backward(levels[0].begin() + insertBlock,
-                                       levels[0].begin() + oldL0,
-                                       levels[0].begin() + oldL0 + shift);
-                }
+                levels[0].resize(level0Size());
 
                 for (int l = 1; l < (int)levels.size(); ++l)
                 {
@@ -193,31 +182,9 @@ namespace cupuacu::gui
 
             const int64_t eraseCount = endSample - startSample;
 
-            const int64_t oldL0 = (int64_t)levels[0].size();
-
             const int64_t b0 = startSample / BASE_BLOCK_SIZE;
-            const int64_t b1 = (endSample - 1) / BASE_BLOCK_SIZE;
-            const int64_t tailStart = b1 + 1;
-
             numSamples = std::max<int64_t>(0, numSamples - eraseCount);
-            const int64_t newL0 = level0Size();
-
-            if (oldL0 > 0)
-            {
-                const int64_t dst = std::min<int64_t>(b0, oldL0);
-                const int64_t src = std::min<int64_t>(tailStart, oldL0);
-                if (src < oldL0 && dst < oldL0)
-                {
-                    std::move(levels[0].begin() + src,
-                              levels[0].begin() + oldL0,
-                              levels[0].begin() + dst);
-                }
-                levels[0].resize(newL0);
-            }
-            else
-            {
-                levels[0].resize(newL0);
-            }
+            levels[0].resize(level0Size());
 
             for (int l = 1; l < (int)levels.size(); ++l)
             {
@@ -228,7 +195,7 @@ namespace cupuacu::gui
             dirtyToBlock = level0Size() - 1;
         }
 
-        const std::vector<Peak> &getLevel(const double samplesPerPixel) const
+        const PeakLevel &getLevel(const double samplesPerPixel) const
         {
             return getLevelByIndex(getLevelIndex(samplesPerPixel));
         }
@@ -326,7 +293,7 @@ namespace cupuacu::gui
             levels = std::move(result.levels);
         }
 
-        static void rebuildDirtyBlockRange(std::vector<std::vector<Peak>> &levelsToUse,
+        static void rebuildDirtyBlockRange(std::vector<PeakLevel> &levelsToUse,
                                            const int64_t numSamplesToUse,
                                            const int64_t fromBlock,
                                            const int64_t toBlock,
@@ -339,10 +306,10 @@ namespace cupuacu::gui
         }
 
         static void rebuildDirtyBlockRangeFromSlice(
-            std::vector<std::vector<Peak>> &levelsToUse,
-            const int64_t numSamplesToUse, const int64_t fromBlock,
-            const int64_t toBlock, const int64_t sampleBaseIndex,
-            const float *samples, const int64_t samplesCount)
+            std::vector<PeakLevel> &levelsToUse, const int64_t numSamplesToUse,
+            const int64_t fromBlock, const int64_t toBlock,
+            const int64_t sampleBaseIndex, const float *samples,
+            const int64_t samplesCount)
         {
             if (levelsToUse.empty() || numSamplesToUse <= 0 ||
                 fromBlock > toBlock)
@@ -359,6 +326,13 @@ namespace cupuacu::gui
             const int64_t from0 = std::clamp<int64_t>(fromBlock, 0, max0);
             const int64_t to0 = std::clamp<int64_t>(toBlock, 0, max0);
 
+            CUPUACU_METRIC(performance::add(performance::Work::BasePeaksRebuilt,
+                                            to0 - from0 + 1));
+            CUPUACU_METRIC(performance::add(
+                performance::Work::SamplesScanned,
+                std::min<int64_t>(numSamplesToUse,
+                                  (to0 + 1) * BASE_BLOCK_SIZE) -
+                    from0 * BASE_BLOCK_SIZE));
             for (int64_t blk = from0; blk <= to0; ++blk)
             {
                 const int64_t s0 = blk * static_cast<int64_t>(BASE_BLOCK_SIZE);
@@ -366,7 +340,7 @@ namespace cupuacu::gui
                     std::min<int64_t>(s0 + BASE_BLOCK_SIZE, numSamplesToUse);
                 if (s0 >= s1)
                 {
-                    levelsToUse[0][blk] = {0.0f, 0.0f};
+                    levelsToUse[0].set(blk, {0.0f, 0.0f});
                     continue;
                 }
 
@@ -385,7 +359,7 @@ namespace cupuacu::gui
                     minv = std::min(minv, v);
                     maxv = std::max(maxv, v);
                 }
-                levelsToUse[0][blk] = {minv, maxv};
+                levelsToUse[0].set(blk, {minv, maxv});
             }
 
             int64_t pFrom = from0;
@@ -416,7 +390,7 @@ namespace cupuacu::gui
                         minv = std::min(minv, prev[b].min);
                         maxv = std::max(maxv, prev[b].max);
                     }
-                    cur[i] = {minv, maxv};
+                    cur.set(i, {minv, maxv});
                 }
 
                 pFrom = cFrom;
@@ -459,10 +433,12 @@ namespace cupuacu::gui
                     static_cast<int64_t>(level.size()) - fromIndex;
                 const int64_t count = std::clamp<int64_t>(
                     static_cast<int64_t>(update.peaks.size()), 0, maxWritable);
+                CUPUACU_METRIC(performance::add(
+                    performance::Work::PeakBytesCopied, count * sizeof(Peak)));
                 for (int64_t i = 0; i < count; ++i)
                 {
-                    level[static_cast<std::size_t>(fromIndex + i)] =
-                        update.peaks[static_cast<std::size_t>(i)];
+                    level.set(static_cast<std::size_t>(fromIndex + i),
+                              update.peaks[static_cast<std::size_t>(i)]);
                 }
             }
 
@@ -489,12 +465,23 @@ namespace cupuacu::gui
             applyBuildResult(std::move(result));
         }
 
+        // Read only dirty sample ranges and detach only the modified peak
+        // pages. Sources may provide read(start, destination, count) for bulk
+        // access; otherwise operator[](sampleIndex) is used.
+        template <typename SampleSource>
+        void rebuildDirtyFrom(const SampleSource &samples)
+        {
+            rebuildDirtyLevels(levels, numSamples, dirtyFromBlock, dirtyToBlock,
+                               samples);
+        }
+
     private:
-        static void rebuildDirtyLevels(std::vector<std::vector<Peak>> &levelsToUse,
+        template <typename SampleSource>
+        static void rebuildDirtyLevels(std::vector<PeakLevel> &levelsToUse,
                                        const int64_t numSamplesToUse,
                                        int64_t &dirtyFromBlockToUse,
                                        int64_t &dirtyToBlockToUse,
-                                       const float *samples)
+                                       const SampleSource &samples)
         {
             if (levelsToUse.empty() || numSamplesToUse <= 0)
             {
@@ -519,6 +506,13 @@ namespace cupuacu::gui
                 std::clamp<int64_t>(dirtyFromBlockToUse, 0, max0);
             const int64_t to0 = std::clamp<int64_t>(dirtyToBlockToUse, 0, max0);
 
+            CUPUACU_METRIC(performance::add(performance::Work::BasePeaksRebuilt,
+                                            to0 - from0 + 1));
+            CUPUACU_METRIC(performance::add(
+                performance::Work::SamplesScanned,
+                std::min<int64_t>(numSamplesToUse,
+                                  (to0 + 1) * BASE_BLOCK_SIZE) -
+                    from0 * BASE_BLOCK_SIZE));
             for (int64_t blk = from0; blk <= to0; ++blk)
             {
                 const int64_t s0 = blk * (int64_t)BASE_BLOCK_SIZE;
@@ -526,19 +520,38 @@ namespace cupuacu::gui
                     std::min<int64_t>(s0 + BASE_BLOCK_SIZE, numSamplesToUse);
                 if (s0 >= s1)
                 {
-                    levelsToUse[0][blk] = {0.0f, 0.0f};
+                    levelsToUse[0].set(blk, {0.0f, 0.0f});
                     continue;
                 }
 
-                float minv = samples[s0];
-                float maxv = samples[s0];
-                for (int64_t i = s0 + 1; i < s1; ++i)
+                const auto scan =
+                    [](const auto &source, int64_t first, int64_t end)
                 {
-                    const float v = samples[i];
-                    minv = std::min(minv, v);
-                    maxv = std::max(maxv, v);
+                    float minv = source[first];
+                    float maxv = minv;
+                    for (int64_t i = first + 1; i < end; ++i)
+                    {
+                        const float v = source[i];
+                        minv = std::min(minv, v);
+                        maxv = std::max(maxv, v);
+                    }
+                    return Peak{minv, maxv};
+                };
+                if constexpr (requires(float *destination) {
+                                  samples.read(s0, destination, s1 - s0);
+                              })
+                {
+                    std::array<float, BASE_BLOCK_SIZE> block;
+                    samples.read(s0, block.data(), s1 - s0);
+                    CUPUACU_METRIC(
+                        performance::add(performance::Work::SampleBytesCopied,
+                                         (s1 - s0) * sizeof(float)));
+                    levelsToUse[0].set(blk, scan(block, 0, s1 - s0));
                 }
-                levelsToUse[0][blk] = {minv, maxv};
+                else
+                {
+                    levelsToUse[0].set(blk, scan(samples, s0, s1));
+                }
             }
 
             int64_t pFrom = from0;
@@ -572,7 +585,7 @@ namespace cupuacu::gui
                         minv = std::min(minv, prev[b].min);
                         maxv = std::max(maxv, prev[b].max);
                     }
-                    cur[i] = {minv, maxv};
+                    cur.set(i, {minv, maxv});
                 }
 
                 pFrom = cFrom;
@@ -659,10 +672,10 @@ namespace cupuacu::gui
 
     private:
         int64_t numSamples;
-        std::vector<std::vector<Peak>> levels;
+        std::vector<PeakLevel> levels;
         int64_t dirtyFromBlock;
         int64_t dirtyToBlock;
-        inline static const std::vector<Peak> empty;
+        inline static const PeakLevel empty;
     };
 
 } // namespace cupuacu::gui

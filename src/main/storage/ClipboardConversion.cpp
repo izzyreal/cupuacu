@@ -1,0 +1,127 @@
+#include "storage/AudioSourceBuilder.hpp"
+#include "ClipboardConversion.hpp"
+#include "AudioEditRevision.hpp"
+#include "../LongTask.hpp"
+
+namespace cupuacu::storage
+{
+    ClipboardAudio convertClipboard(const ClipboardAudio &clip, bool toRevision,
+                                    const std::filesystem::path &path,
+                                    const std::function<bool()> &cancel)
+    {
+        auto check = [&]
+        {
+            if (cancel && cancel())
+            {
+                throw LongTaskCanceledError{};
+            }
+        };
+        check();
+        if (bool(clip.getAudioRevision()) == toRevision)
+        {
+            return clip;
+        }
+        AudioShape shape{clip.getFrameCount(), int(clip.getChannelCount()),
+                         clip.getSampleRate(), clip.getSampleFormat()};
+        if (shape.frames <= 0 || shape.channels <= 0)
+        {
+            throw std::invalid_argument("Clipboard is empty");
+        }
+        ClipboardAudio result;
+        constexpr int64_t chunk = 16384;
+        if (toRevision)
+        {
+            auto store = std::make_shared<AudioBlockStore>(path);
+            static const auto cache =
+                defaultDecodedBlockCache();
+            AudioSourceBuilder builder(shape, store, cache, {.cancel = cancel});
+            auto lease = clip.acquireReadLease();
+            auto memory = reserveWorking(
+                chunk * (uint64_t(shape.channels) * sizeof(float) +
+                         sizeof(audio::SampleProvenance) + sizeof(uint8_t)),
+                MemoryUse::Conversion);
+            std::vector<float> interleaved(chunk * shape.channels);
+            // Peak generation has its own bounded scratch on this call stack.
+            // Keep conversion metadata off the smaller macOS worker stack.
+            std::vector<audio::SampleProvenance> provenance(chunk);
+            std::vector<uint8_t> dirty(chunk);
+            for (int64_t first = 0; first < shape.frames; first += chunk)
+            {
+                check();
+                const auto count = std::min(chunk, shape.frames - first);
+                for (int c = 0; c < shape.channels; ++c)
+                {
+                    for (int64_t i = 0; i < count; ++i)
+                    {
+                        interleaved[i * shape.channels + c] =
+                            lease.getSample(c, first + i);
+                        provenance[i] = lease.getSampleProvenance(c, first + i);
+                        dirty[i] = lease.isDirty(c, first + i);
+                    }
+                    builder.appendChannelMetadata(
+                        c, first, std::span(provenance).first(count),
+                        std::span(dirty).first(count));
+                }
+                builder.appendInterleaved(
+                    std::span(interleaved).first(count * shape.channels));
+            }
+            check();
+            result.assignRevision(
+                AudioEditRevision::from(builder.finish()));
+        }
+        else
+        {
+            Document::AudioSegment segment;
+            segment.format = shape.format;
+            segment.sampleRate = shape.sampleRate;
+            segment.channelCount = shape.channels;
+            segment.frameCount = shape.frames;
+            segment.samples.resize(shape.channels);
+            segment.dirty.resize(shape.channels);
+            segment.provenance.resize(shape.channels);
+            const auto &revision = clip.getAudioRevision();
+            for (int c = 0; c < shape.channels; ++c)
+            {
+                check();
+                segment.samples[c].resize(shape.frames);
+                segment.dirty[c].resize(shape.frames);
+                segment.provenance[c].resize(shape.frames);
+                for (int64_t first = 0; first < shape.frames; first += chunk)
+                {
+                    check();
+                    const auto count = std::min(chunk, shape.frames - first);
+                    revision->readChannel(
+                        c, first,
+                        std::span(segment.samples[c]).subspan(first, count));
+                    auto offset = first;
+                    revision->visitSourceRanges(
+                        c, first, count,
+                        [&](const auto &range)
+                        {
+                            auto provenance =
+                                std::span(segment.provenance[c])
+                                    .subspan(offset, range.frames);
+                            auto dirty = std::span(segment.dirty[c])
+                                             .subspan(offset, range.frames);
+                            if (range.source)
+                            {
+                                range.source->readLegacyMetadata(
+                                    range.channel, range.start, provenance,
+                                    dirty);
+                            }
+                            else
+                            {
+                                std::fill(dirty.begin(), dirty.end(), 1);
+                                std::fill(provenance.begin(), provenance.end(),
+                                          audio::SampleProvenance{});
+                            }
+                            offset += range.frames;
+                        });
+                }
+            }
+            check();
+            result.assignSegment(std::move(segment));
+        }
+        return result;
+    }
+} // namespace cupuacu::storage

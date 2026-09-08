@@ -347,6 +347,15 @@ namespace cupuacu::gui
 
     inline SDL_AppResult handleAppEvent(State *state, SDL_Event *event)
     {
+        if (event->type == SDL_EVENT_LOW_MEMORY && state->memoryPressureMonitor)
+        {
+            state->memoryPressureMonitor->notify(2);
+            return SDL_APP_CONTINUE;
+        }
+        if (state->eventObserver)
+        {
+            state->eventObserver(*event);
+        }
         if (cupuacu::actions::queueExternalFileEvent(state, event))
         {
             return SDL_APP_CONTINUE;
@@ -354,6 +363,13 @@ namespace cupuacu::gui
 
         auto *mainWindow = state->mainDocumentSessionWindow->getWindow();
         Window *eventWindow = findWindowForEvent(state, event);
+        if (!state->longTask.active && event->type == SDL_EVENT_KEY_DOWN &&
+            event->key.scancode == SDL_SCANCODE_ESCAPE &&
+            state->getActiveTab()->operation)
+        {
+            requestLongTaskCancel(state);
+            return SDL_APP_CONTINUE;
+        }
         if (state->longTask.active &&
             (event->type == SDL_EVENT_KEY_DOWN ||
              event->type == SDL_EVENT_KEY_UP ||
@@ -375,7 +391,9 @@ namespace cupuacu::gui
         switch (event->type)
         {
             case SDL_EVENT_QUIT:
-                if (cupuacu::isLongTaskCancellable(state))
+                if (cupuacu::isLongTaskCancellable(state) ||
+                    state->backgroundOpenJob || state->backgroundSaveJob ||
+                    state->backgroundEffectJob || state->backgroundAutosaveJob)
                 {
                     cupuacu::requestLongTaskCancel(state);
                     state->quitRequestedAfterLongTaskCancel = true;
@@ -451,7 +469,11 @@ namespace cupuacu::gui
                 {
                     if (mainWindow && eventWindow == mainWindow)
                     {
-                        if (cupuacu::isLongTaskCancellable(state))
+                        if (cupuacu::isLongTaskCancellable(state) ||
+                            state->backgroundOpenJob ||
+                            state->backgroundSaveJob ||
+                            state->backgroundEffectJob ||
+                            state->backgroundAutosaveJob)
                         {
                             cupuacu::requestLongTaskCancel(state);
                             state->quitRequestedAfterLongTaskCancel = true;

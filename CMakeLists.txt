@@ -44,6 +44,8 @@ option(CUPUACU_ENABLE_COVERAGE
     "Enable compiler and linker coverage instrumentation for supported targets" OFF)
 option(CUPUACU_BUILD_INTEGRATION_TESTS
     "Build SDL/Xvfb-backed integration tests in a dedicated target" OFF)
+option(CUPUACU_BUILD_BENCHMARKS "Build performance benchmark executables" OFF)
+option(CUPUACU_BUILD_SDL_BENCHMARKS "Build Linux/Xvfb waveform benchmarks" OFF)
 option(CUPUACU_RELEASE_SIZE_OPTIMIZATIONS
     "Enable low-risk release dead-code elimination and symbol stripping" ON)
 
@@ -297,17 +299,27 @@ FetchContent_MakeAvailable(json)
 include(cmake/ThirdPartyResources.cmake)
 
 set(CUPUACU_SHARED_SOURCES
+    src/main/storage/ClipboardConversion.cpp
+    src/main/actions/audio/ClipboardPaste.cpp
+    src/main/effects/PeakAnalysis.cpp
+    src/main/ClipboardAudio.cpp
     src/main/Document.cpp
     src/main/undo/UndoManifestPersistence.cpp
     src/main/undo/UndoStore.cpp
     src/main/waveform/DocumentWaveformCaches.cpp
     src/main/waveform/WaveformCachePersistence.cpp
     src/main/State.cpp
+    src/main/DocumentSession.cpp
+    src/main/concurrency/DeferredRelease.cpp
     src/main/Paths.cpp
     src/main/LongTask.cpp
     src/main/BuildInfo.cpp
     src/main/Logger.cpp
+    src/main/file/DecodedImportCache.cpp
     src/main/file/AudioExport.cpp
+    src/main/file/FileIo.cpp
+    src/main/file/AudioSaveOperation.cpp
+    src/main/file/AudioFileLoading.cpp
     src/main/file/AudioFileWriter.cpp
     src/main/file/alac/AlacCodec.cpp
     src/main/file/aac/AacCodec.cpp
@@ -318,10 +330,12 @@ set(CUPUACU_SHARED_SOURCES
     src/main/file/m4a/M4aParser.cpp
     src/main/persistence/AudioDevicePropertiesPersistence.cpp
     src/main/persistence/DisplayPropertiesPersistence.cpp
+    src/main/persistence/LegacyRecovery.cpp
     src/main/persistence/DocumentAutosave.cpp
     src/main/persistence/RecentFilesPersistence.cpp
     src/main/persistence/SessionStatePersistence.cpp
     src/main/audio/AudioDevices.cpp
+    src/main/playback/ReadAhead.cpp
     src/main/audio/AudioCallbackCore.cpp
     src/main/audio/AudioDeviceView.cpp
     src/main/audio/InputMonitorPipeline.cpp
@@ -361,6 +375,19 @@ set(CUPUACU_SHARED_SOURCES
     src/main/gui/MenuBar.cpp
     src/main/gui/TooltipController.cpp
     src/main/gui/Window.cpp
+    src/main/concurrency/TaskScheduler.cpp
+    src/main/storage/EditTree.cpp
+    src/main/storage/MemoryResources.cpp
+    src/main/waveform/SourcePeaks.cpp
+    src/main/waveform/StreamingPeakBuilder.cpp
+    src/main/waveform/ProgressivePeaks.cpp
+    src/main/storage/RevisionArchive.cpp
+    src/main/persistence/RevisionPersistence.cpp
+    src/main/storage/RecordingWriter.cpp
+    src/main/actions/audio/RevisionRecording.cpp
+    src/main/actions/audio/RevisionEdit.cpp
+    src/main/file/RevisionPreservationWriter.cpp
+    src/main/actions/effects/RevisionEffect.cpp
     src/main/actions/effects/BackgroundEffect.cpp
     src/main/actions/io/BackgroundOpen.cpp
     src/main/actions/io/BackgroundSave.cpp
@@ -384,6 +411,20 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_edit_commands.cpp
     src/test/test_waveform_selection.cpp
     src/test/test_session_loading.cpp
+    src/test/test_task_scheduler.cpp
+    src/test/test_audio_memory.cpp
+    src/test/test_revision_activation.cpp
+    src/test/test_revision_persistence.cpp
+    src/test/test_revision_recording.cpp
+    src/test/test_revision_save.cpp
+    src/test/test_revision_edit_commands.cpp
+    src/test/test_owned_audio_storage.cpp
+    src/test/test_async_audio_reader.cpp
+    src/test/test_audio_edit_revision.cpp
+    src/test/test_record_index.cpp
+    src/test/test_playback_read_ahead.cpp
+    src/test/test_streaming_export.cpp
+    src/test/test_waveform_viewport.cpp
     src/test/test_aiff_writer.cpp
     src/test/test_wav_writer.cpp
     src/test/test_codec_support.cpp
@@ -394,6 +435,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_overwrite_preservation_mutation.cpp
     src/test/test_audio_device_properties_persistence.cpp
     src/test/test_display_properties_persistence.cpp
+    src/test/test_legacy_recovery.cpp
     src/test/test_document_autosave.cpp
     src/test/test_export_audio_dialog_settings.cpp
     src/test/test_external_file_open.cpp
@@ -403,6 +445,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_marker_persistence.cpp
     src/test/test_sample_quantization.cpp
     src/test/test_audio_callback_core.cpp
+    src/test/test_audio_storage.cpp
     src/test/test_input_monitor_pipeline.cpp
     src/test/test_long_task.cpp
     src/test/test_background_effects.cpp
@@ -666,6 +709,8 @@ cupuacu_enable_coverage_for_target(cupuacu-tests)
 _bundle_resources(Cupuacu)
 _bundle_resources(cupuacu-tests)
 _bundle_test_resources(cupuacu-tests)
+
+include(cmake/Benchmarks.cmake)
 
 if(CUPUACU_BUILD_INTEGRATION_TESTS)
     add_executable(cupuacu-tests-integration

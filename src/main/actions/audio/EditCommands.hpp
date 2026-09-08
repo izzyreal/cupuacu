@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Copy.hpp"
+#include "ClipboardPaste.hpp"
+#include "RevisionEdit.hpp"
 #include "Cut.hpp"
 #include "Delete.hpp"
 #include "Paste.hpp"
@@ -36,7 +38,8 @@ namespace cupuacu::actions::audio
     {
         if (!hasActiveSelection(state))
         {
-            return cupuacu::actions::unavailableAction("No selection is active");
+            return cupuacu::actions::unavailableAction(
+                "No selection is active");
         }
 
         return cupuacu::actions::combineAvailability(
@@ -66,8 +69,10 @@ namespace cupuacu::actions::audio
             return target;
         }
 
-        target.start = state->getActiveDocumentSession().selection.getStartInt();
-        target.length = state->getActiveDocumentSession().selection.getLengthInt();
+        target.start =
+            state->getActiveDocumentSession().selection.getStartInt();
+        target.length =
+            state->getActiveDocumentSession().selection.getLengthInt();
         return target;
     }
 
@@ -81,9 +86,10 @@ namespace cupuacu::actions::audio
 
         if (state->getActiveDocumentSession().selection.isActive())
         {
-            target.start = state->getActiveDocumentSession().selection.getStartInt();
-            target.end =
-                state->getActiveDocumentSession().selection.getEndExclusiveInt();
+            target.start =
+                state->getActiveDocumentSession().selection.getStartInt();
+            target.end = state->getActiveDocumentSession()
+                             .selection.getEndExclusiveInt();
             return target;
         }
 
@@ -99,9 +105,14 @@ namespace cupuacu::actions::audio
             return;
         }
         const auto target = selectionTarget(state);
-        const auto undoable =
-            std::make_shared<cupuacu::actions::audio::Cut>(
-                state, target.start, target.length);
+        if (state->getActiveDocumentSession().hasReadRevision())
+        {
+            performRevisionCommand(state, RevisionCommand::Cut, target.start,
+                                   target.length);
+            return;
+        }
+        const auto undoable = std::make_shared<cupuacu::actions::audio::Cut>(
+            state, target.start, target.length);
         state->addAndDoUndoable(undoable);
     }
 
@@ -112,9 +123,14 @@ namespace cupuacu::actions::audio
             return;
         }
         const auto target = selectionTarget(state);
-        const auto undoable =
-            std::make_shared<cupuacu::actions::audio::Copy>(
-                state, target.start, target.length);
+        if (state->getActiveDocumentSession().hasReadRevision())
+        {
+            performRevisionCommand(state, RevisionCommand::Copy, target.start,
+                                   target.length);
+            return;
+        }
+        const auto undoable = std::make_shared<cupuacu::actions::audio::Copy>(
+            state, target.start, target.length);
         state->addAndDoUndoable(undoable);
     }
 
@@ -125,9 +141,14 @@ namespace cupuacu::actions::audio
             return;
         }
         const auto target = selectionTarget(state);
-        const auto undoable =
-            std::make_shared<cupuacu::actions::audio::Delete>(
-                state, target.start, target.length);
+        if (state->getActiveDocumentSession().hasReadRevision())
+        {
+            performRevisionCommand(state, RevisionCommand::Delete, target.start,
+                                   target.length);
+            return;
+        }
+        const auto undoable = std::make_shared<cupuacu::actions::audio::Delete>(
+            state, target.start, target.length);
         state->addAndDoUndoable(undoable);
     }
 
@@ -138,9 +159,14 @@ namespace cupuacu::actions::audio
             return;
         }
         const auto target = selectionTarget(state);
-        const auto undoable =
-            std::make_shared<cupuacu::actions::audio::Trim>(
-                state, target.start, target.length);
+        if (state->getActiveDocumentSession().hasReadRevision())
+        {
+            performRevisionCommand(state, RevisionCommand::Trim, target.start,
+                                   target.length);
+            return;
+        }
+        const auto undoable = std::make_shared<cupuacu::actions::audio::Trim>(
+            state, target.start, target.length);
         state->addAndDoUndoable(undoable);
     }
 
@@ -150,10 +176,23 @@ namespace cupuacu::actions::audio
         {
             return;
         }
+        prepareEmptyRevisionPaste(state);
         const auto target = pasteTarget(state);
-        const auto undoable =
-            std::make_shared<cupuacu::actions::audio::Paste>(
-                state, target.start, target.end);
+        if (state->getActiveDocumentSession().hasReadRevision() !=
+            bool(state->clipboard.getAudioRevision()))
+        {
+            beginClipboardPaste(state, target.start, target.end);
+            return;
+        }
+        if (state->getActiveDocumentSession().hasReadRevision())
+        {
+            performRevisionCommand(state, RevisionCommand::Paste, target.start,
+                                   target.end < 0 ? 0
+                                                  : target.end - target.start);
+            return;
+        }
+        const auto undoable = std::make_shared<cupuacu::actions::audio::Paste>(
+            state, target.start, target.end);
         state->addAndDoUndoable(undoable);
     }
 
@@ -175,6 +214,14 @@ namespace cupuacu::actions::audio
             return;
         }
 
+        if (state->getActiveDocumentSession().hasReadRevision())
+        {
+            const auto target = pasteTarget(state);
+            performRevisionCommand(
+                state, RevisionCommand::InsertSilence, target.start,
+                target.end < 0 ? 0 : target.end - target.start, frameCount);
+            return;
+        }
         const auto previousClipboard = state->clipboard;
         state->clipboard.initialize(doc.getSampleFormat(), doc.getSampleRate(),
                                     doc.getChannelCount(), frameCount);

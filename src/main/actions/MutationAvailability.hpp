@@ -45,7 +45,8 @@ namespace cupuacu::actions
 
     inline bool isRecordingActive(const cupuacu::State *state)
     {
-        return state && state->audioDevices && state->audioDevices->isRecording();
+        return state && (state->revisionRecording ||
+            (state->audioDevices && state->audioDevices->isRecording()));
     }
 
     inline ActionAvailability describeDocumentMutationAvailability(
@@ -54,6 +55,14 @@ namespace cupuacu::actions
         if (state && state->longTask.active)
         {
             return unavailableAction("Wait for the current operation to finish");
+        }
+
+        if (state && state->getActiveTab() &&
+            state->getActiveTab()->operation &&
+            state->getActiveTab()->operation->blocksMutation())
+        {
+            return unavailableAction(
+                "Wait for this document's operation to finish");
         }
 
         if (isRecordingActive(state))

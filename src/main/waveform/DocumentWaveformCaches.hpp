@@ -1,4 +1,6 @@
 #pragma once
+#include "../concurrency/TaskScheduler.hpp"
+#include "../concurrency/DeferredRelease.hpp"
 
 #include "../Document.hpp"
 #include "../gui/WaveformCache.hpp"
@@ -38,6 +40,10 @@ namespace cupuacu::waveform
         void syncToChannelCount(int64_t channelCount);
         void resetToChannelCount(int64_t channelCount);
 
+        int64_t getChannelCount() const
+        {
+            return static_cast<int64_t>(caches.size());
+        }
         gui::WaveformCache &getCache(int channel);
         const gui::WaveformCache &getCache(int channel) const;
 
@@ -51,6 +57,10 @@ namespace cupuacu::waveform
         getBuildProgress(const Document &document,
                          uint64_t waveformDataVersion) const;
         void rebuildSynchronously(const Document &document);
+        // Copies applied peaks and dirty ranges, never the running worker.
+        // Unknown/stale caches become an empty cache for a safe full rebuild.
+        [[nodiscard]] DocumentWaveformCaches
+        snapshotForDocument(const Document &document) const;
 
     private:
         struct BuildRequestChannel
@@ -109,15 +119,16 @@ namespace cupuacu::waveform
             bool completed = false;
             BuildProgress progress;
             std::deque<BuildOutput> outputs;
-            std::thread worker;
+            concurrency::TaskScheduler::Ticket completion;
             std::atomic_bool cancelRequested{false};
 
             void run();
         };
 
         std::vector<gui::WaveformCache> caches = std::vector<gui::WaveformCache>(2);
-        std::unique_ptr<BuildJob> buildJob;
+        std::shared_ptr<BuildJob> buildJob;
         std::optional<BuildProgress> appliedProgress;
+        std::optional<uint64_t> documentVersion;
 
         [[nodiscard]] bool level0SizeMatches(int64_t channel,
                                              int64_t frameCount) const;

@@ -1,6 +1,7 @@
 #include "MainView.hpp"
 #include "../State.hpp"
 #include "../actions/audio/RecordEdit.hpp"
+#include "../actions/audio/RevisionRecording.hpp"
 #include "../actions/audio/RecordedChunkApplier.hpp"
 #include "audio/AudioDevices.hpp"
 #include "Waveforms.hpp"
@@ -334,9 +335,12 @@ void MainView::refreshWaveformsAfterRecordedAudio(
 
 bool MainView::updateZoomForRecordingIntoStartedEmptyDocument()
 {
-    if (!recordingUndoCapture.active ||
-        recordingUndoCapture.oldFrameCount != 0 ||
-        recordingUndoCapture.startFrame != 0 || !waveforms)
+    const bool startedEmpty = state->revisionRecording
+        ? state->revisionRecording->before.audio->shape().frames == 0 &&
+              state->revisionRecording->startFrame == 0
+        : recordingUndoCapture.active && recordingUndoCapture.oldFrameCount == 0 &&
+              recordingUndoCapture.startFrame == 0;
+    if (!startedEmpty || !waveforms)
     {
         return false;
     }
@@ -363,6 +367,8 @@ bool MainView::updateZoomForRecordingIntoStartedEmptyDocument()
 
 bool MainView::consumePendingRecordedAudio()
 {
+    if (state->revisionRecording)
+        return cupuacu::actions::consumeRevisionRecordedAudio(state);
     if (!state->audioDevices)
     {
         return false;
@@ -519,7 +525,8 @@ void MainView::syncLivePlaybackRange(const bool selectionActive,
     {
         const auto range = cupuacu::playback::computeRangeForLiveUpdate(
             state->getActiveDocumentSession(), state->loopPlaybackEnabled,
-            state->playbackRangeStart, state->playbackRangeEnd);
+            state->playbackRangeStart, state->playbackRangeEnd,
+            state->playbackSourceFrames);
         const uint64_t start = range.start;
         const uint64_t end = range.end;
 
@@ -955,6 +962,24 @@ void MainView::timerCallback()
     else if (isPlayingNow)
     {
         wasPlayingLastTick = true;
+    }
+
+    if (state->audioDevices && state->audioDevices->takePlaybackFailure())
+    {
+        constexpr const char *title = "Playback unavailable";
+        constexpr const char *message =
+            "Audio could not be prepared or read for playback.";
+        if (state->errorReporter)
+        {
+            state->errorReporter(title, message);
+        }
+        else if (state->mainDocumentSessionWindow &&
+                 state->mainDocumentSessionWindow->getWindow())
+        {
+            SDL_ShowSimpleMessageBox(
+                SDL_MESSAGEBOX_ERROR, title, message,
+                state->mainDocumentSessionWindow->getWindow()->getSdlWindow());
+        }
     }
 
     if (state->audioDevices && state->audioDevices->takeRecordingOverflow())

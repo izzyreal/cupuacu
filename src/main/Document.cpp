@@ -1,4 +1,5 @@
 #include "Document.hpp"
+#include "concurrency/DeferredRelease.hpp"
 
 #include "audio/PreservationTrackingAudioBuffer.hpp"
 
@@ -14,7 +15,7 @@ namespace cupuacu
     {
         uint64_t nextPreservationSourceId()
         {
-            static uint64_t nextId = 1;
+            static std::atomic<uint64_t> nextId{1};
             return nextId++;
         }
     } // namespace
@@ -25,6 +26,8 @@ namespace cupuacu
     {
         std::shared_lock lock(other.dataMutex);
         buffer = other.buffer;
+        externalFrames = other.externalFrames;
+        externalChannels = other.externalChannels;
         sampleRate = other.sampleRate;
         format = other.format;
         preservationSourceId = other.preservationSourceId;
@@ -45,6 +48,8 @@ namespace cupuacu
         std::shared_lock otherLock(other.dataMutex, std::defer_lock);
         std::lock(thisLock, otherLock);
         buffer = other.buffer;
+        externalFrames = other.externalFrames;
+        externalChannels = other.externalChannels;
         sampleRate = other.sampleRate;
         format = other.format;
         preservationSourceId = other.preservationSourceId;
@@ -59,6 +64,8 @@ namespace cupuacu
     {
         std::unique_lock lock(other.dataMutex);
         buffer = std::move(other.buffer);
+        externalFrames = other.externalFrames;
+        externalChannels = other.externalChannels;
         sampleRate = other.sampleRate;
         format = other.format;
         preservationSourceId = other.preservationSourceId;
@@ -79,6 +86,8 @@ namespace cupuacu
         std::unique_lock otherLock(other.dataMutex, std::defer_lock);
         std::lock(thisLock, otherLock);
         buffer = std::move(other.buffer);
+        externalFrames = other.externalFrames;
+        externalChannels = other.externalChannels;
         sampleRate = other.sampleRate;
         format = other.format;
         preservationSourceId = other.preservationSourceId;
@@ -97,25 +106,28 @@ namespace cupuacu
 
     int64_t Document::getFrameCountUnlocked() const
     {
-        return buffer->getFrameCount();
+        return externalFrames >= 0 ? externalFrames : buffer->getFrameCount();
     }
 
     int64_t Document::getChannelCountUnlocked() const
     {
-        return buffer->getChannelCount();
+        return externalFrames >= 0 ? externalChannels
+                                   : buffer->getChannelCount();
     }
 
     float Document::getSampleUnlocked(const int64_t channel,
                                       const int64_t frame) const
     {
+        requireResidentUnlocked();
         return buffer->getSample(channel, frame);
     }
 
     void Document::ensureUniqueBufferUnlocked()
     {
+        requireResidentUnlocked();
         if (buffer.use_count() != 1)
         {
-            buffer = buffer->clone();
+            buffer = buffer->snapshot();
         }
     }
 
@@ -152,6 +164,8 @@ namespace cupuacu
                               const int64_t frameCount)
     {
         std::unique_lock lock(dataMutex);
+        externalFrames = -1;
+        externalChannels = 0;
         format = sampleFormatToUse;
         sampleRate = sampleRateToUse;
         preservationSourceId = 0;
@@ -169,6 +183,34 @@ namespace cupuacu
         ++markerDataVersion;
         markers.clear();
         nextMarkerId = 1;
+    }
+
+    void Document::requireResidentUnlocked() const
+    {
+        if (externalFrames >= 0)
+        {
+            throw std::logic_error("External audio requires a revision reader");
+        }
+    }
+
+    void Document::setExternalAudioShape(SampleFormat formatToUse, int rate,
+                                         int channels, int64_t frames)
+    {
+        if (!(frames == 0 && channels == 0 && rate >= 0) &&
+            (rate <= 0 || channels <= 0 || frames < 0))
+        {
+            throw std::invalid_argument("Invalid external audio shape");
+        }
+        std::unique_lock lock(dataMutex);
+        // Only the first binding retires resident storage. Subsequent commits
+        // change scalar metadata without allocating a placeholder buffer.
+        auto retired = buffer ? concurrency::releaseOnWorker(buffer) : nullptr;
+        buffer.reset();
+        externalFrames = frames;
+        externalChannels = channels;
+        format = formatToUse;
+        sampleRate = rate;
+        ++waveformDataVersion;
     }
 
     Document::ReadLease::ReadLease(const Document &documentToRead)
@@ -203,9 +245,27 @@ namespace cupuacu
         return document->getSampleUnlocked(channel, frame);
     }
 
+    int64_t Document::ReadLease::readChannelFloatBlock(
+        const int64_t channel, const int64_t startFrame, float *destination,
+        const int64_t frames, const int64_t destinationStride) const
+    {
+        if (!destination || channel < 0 || channel >= getChannelCount() ||
+            startFrame < 0 || startFrame >= getFrameCount() || frames <= 0 ||
+            destinationStride <= 0)
+        {
+            return 0;
+        }
+        const auto readable = std::min(frames, getFrameCount() - startFrame);
+        document->requireResidentUnlocked();
+        document->buffer->readChannelSamples(channel, startFrame, destination,
+                                             readable, destinationStride);
+        return readable;
+    }
+
     bool Document::ReadLease::isDirty(const int64_t channel,
                                       const int64_t frame) const
     {
+        document->requireResidentUnlocked();
         return document->buffer->isDirty(channel, frame);
     }
 
@@ -213,6 +273,7 @@ namespace cupuacu
     Document::ReadLease::getSampleProvenance(const int64_t channel,
                                              const int64_t frame) const
     {
+        document->requireResidentUnlocked();
         return document->buffer->getProvenance(channel, frame);
     }
 
@@ -306,39 +367,11 @@ namespace cupuacu
             return;
         }
 
-        if (shouldMarkDirty)
-        {
-            for (int64_t frame = 0; frame < writableFrames; ++frame)
-            {
-                for (int64_t channel = 0; channel < writableChannels; ++channel)
-                {
-                    buffer->setSample(
-                        channel, startFrame + frame,
-                        interleaved[static_cast<std::size_t>(frame) *
-                                        static_cast<std::size_t>(
-                                            channelCount) +
-                                    static_cast<std::size_t>(channel)],
-                        true);
-                }
-            }
-            ++waveformDataVersion;
-            return;
-        }
-
         for (int64_t channel = 0; channel < writableChannels; ++channel)
         {
-            auto channelData = buffer->getMutableChannelData(channel);
-            if (channelData.empty())
-            {
-                continue;
-            }
-            for (int64_t frame = 0; frame < writableFrames; ++frame)
-            {
-                channelData[static_cast<std::size_t>(startFrame + frame)] =
-                    interleaved[static_cast<std::size_t>(frame) *
-                                    static_cast<std::size_t>(channelCount) +
-                                static_cast<std::size_t>(channel)];
-            }
+            buffer->writeChannelSamples(channel, startFrame,
+                                        interleaved + channel, writableFrames,
+                                        shouldMarkDirty, channelCount);
         }
         ++waveformDataVersion;
     }
@@ -365,20 +398,8 @@ namespace cupuacu
         }
 
         ensureUniqueBufferUnlocked();
-        if (shouldMarkDirty)
-        {
-            for (int64_t frame = 0; frame < writableFrames; ++frame)
-            {
-                buffer->setSample(channel, startFrame + frame,
-                                  samples[static_cast<std::size_t>(frame)], true);
-            }
-        }
-        else
-        {
-            auto channelData = buffer->getMutableChannelData(channel);
-            std::copy_n(samples, static_cast<std::size_t>(writableFrames),
-                        channelData.data() + startFrame);
-        }
+        buffer->writeChannelSamples(channel, startFrame, samples,
+                                    writableFrames, shouldMarkDirty);
         ++waveformDataVersion;
     }
 
@@ -451,6 +472,7 @@ namespace cupuacu
     std::shared_ptr<cupuacu::audio::AudioBuffer> Document::getAudioBuffer() const
     {
         std::shared_lock lock(dataMutex);
+        requireResidentUnlocked();
         return buffer;
     }
 
@@ -464,6 +486,7 @@ namespace cupuacu
     Document::getSampleProvenance(const int64_t channel, const int64_t frame) const
     {
         std::shared_lock lock(dataMutex);
+        requireResidentUnlocked();
         return buffer->getProvenance(channel, frame);
     }
 
@@ -508,6 +531,16 @@ namespace cupuacu
             channelSamples.resize(static_cast<std::size_t>(boundedCount));
             channelDirty.resize(static_cast<std::size_t>(boundedCount));
             channelProvenance.resize(static_cast<std::size_t>(boundedCount));
+            CUPUACU_METRIC(result.observedCapacity.set(
+                performance::matrixCapacity(result.samples) +
+                performance::matrixCapacity(result.dirty) +
+                performance::matrixCapacity(result.provenance)));
+            CUPUACU_METRIC(
+                performance::add(performance::Work::SampleBytesCopied,
+                                 boundedCount * sizeof(float)));
+            CUPUACU_METRIC(performance::add(
+                performance::Work::MetadataBytesCopied,
+                boundedCount * (1 + sizeof(audio::SampleProvenance))));
             for (int64_t frame = 0; frame < boundedCount; ++frame)
             {
                 channelSamples[static_cast<std::size_t>(frame)] =
@@ -550,6 +583,13 @@ namespace cupuacu
             std::max<int64_t>(0, getFrameCountUnlocked() - startFrame));
         const auto writableChannels =
             std::min<int64_t>(segment.channelCount, getChannelCountUnlocked());
+        CUPUACU_METRIC(performance::add(performance::Work::SampleBytesCopied,
+                                        writableFrames * writableChannels *
+                                            sizeof(float)));
+        CUPUACU_METRIC(
+            performance::add(performance::Work::MetadataBytesCopied,
+                             writableFrames * writableChannels *
+                                 (1 + sizeof(audio::SampleProvenance))));
         constexpr int64_t kProgressStrideFrames = 16384;
         const int64_t totalProgressUnits =
             writableFrames * std::max<int64_t>(1, writableChannels);
@@ -679,9 +719,15 @@ namespace cupuacu
     void Document::markCurrentStateAsSavedSource()
     {
         std::unique_lock lock(dataMutex);
-        ensureUniqueBufferUnlocked();
+        if (buffer)
+        {
+            ensureUniqueBufferUnlocked();
+        }
         preservationSourceId = nextPreservationSourceId();
-        buffer->establishSequentialProvenance(preservationSourceId);
+        if (buffer)
+        {
+            buffer->establishSequentialProvenance(preservationSourceId);
+        }
     }
 
     void Document::adoptPreservationSourceId(const uint64_t sourceId)

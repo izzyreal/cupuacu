@@ -1,6 +1,7 @@
 #pragma once
 
 #include "EffectTargeting.hpp"
+#include "PeakAnalysis.hpp"
 
 #include "audio/AudioDevices.hpp"
 #include "gui/Colors.hpp"
@@ -154,6 +155,7 @@ namespace cupuacu::effects
     {
         std::string label;
         std::function<void(Settings &, cupuacu::State *)> apply;
+        std::function<void(Settings &, float)> applyPeak;
     };
 
     template <typename Settings> class EffectPreviewSession
@@ -219,8 +221,12 @@ namespace cupuacu::effects
 
             cupuacu::gui::attachSecondaryWindow(state, window.get(), true);
 
-            auto rootComponent = std::make_unique<cupuacu::gui::Component>(
-                state, definition.title + "Root");
+            auto rootComponent =
+                std::make_unique<DialogRoot>(state, definition.title + "Root",
+                                             [this]
+                                             {
+                                                 pollPeakAnalysis();
+                                             });
             rootComponent->setVisible(true);
             background =
                 rootComponent->template emplaceChild<cupuacu::gui::OpaqueRect>(
@@ -299,6 +305,7 @@ namespace cupuacu::effects
             window->setOnClose(
                 [this]
                 {
+                    cancelPeakAnalysis();
                     cupuacu::gui::detachSecondaryWindow(state, window.get());
                 });
 
@@ -335,6 +342,125 @@ namespace cupuacu::effects
         }
 
     private:
+        struct DialogRoot : cupuacu::gui::Component
+        {
+            std::function<void()> poll;
+            DialogRoot(State *state, std::string name,
+                       std::function<void()> callback)
+                : Component(state, name), poll(std::move(callback))
+            {
+            }
+            void timerCallback() override
+            {
+                poll();
+            }
+        };
+        std::unique_ptr<PeakAnalysis> peakAnalysis;
+        std::function<void(Settings &, float)> applyAnalyzedPeak;
+        cupuacu::gui::TextButton *analyzingButton = nullptr;
+        std::string analyzingLabel;
+        uint64_t analyzedTab = 0, analyzedVersion = 0;
+        PeakAnalysisRequest analyzedRange;
+
+        void cancelPeakAnalysis()
+        {
+            peakAnalysis
+                .reset(); // Cancels without joining or retaining this dialog.
+            applyAnalyzedPeak = {};
+            if (analyzingButton)
+            {
+                analyzingButton->setText(analyzingLabel);
+            }
+            analyzingButton = nullptr;
+            if (applyButton)
+            {
+                applyButton->setEnabled(true);
+            }
+        }
+        void
+        beginPeakAnalysis(const std::function<void(Settings &, float)> &apply,
+                          cupuacu::gui::TextButton *button,
+                          const std::string &label)
+        {
+            cancelPeakAnalysis();
+            auto &session = state->getActiveDocumentSession();
+            if (!getTargetRange(state, analyzedRange.start,
+                                analyzedRange.count))
+            {
+                return;
+            }
+            analyzedRange.channels.clear();
+            for (auto c : getTargetChannels(state))
+            {
+                analyzedRange.channels.push_back(int(c));
+            }
+            analyzedTab = state->getActiveTab()->id;
+            analyzedVersion = session.document.getWaveformDataVersion();
+            peakAnalysis = std::make_unique<PeakAnalysis>(
+                session.getAudioReader(), session.getEditRevision(),
+                session.getViewportSource(), state->taskScheduler);
+            applyAnalyzedPeak = apply;
+            analyzingButton = button;
+            analyzingLabel = label;
+            button->setText("Analyzing…");
+            applyButton->setEnabled(false);
+            peakAnalysis->submit(analyzedRange);
+        }
+        void pollPeakAnalysis()
+        {
+            if (!peakAnalysis)
+            {
+                return;
+            }
+            if (!isOpen() || !state->getActiveTab())
+            {
+                cancelPeakAnalysis();
+                return;
+            }
+            int64_t start = 0, count = 0;
+            std::vector<int> channels;
+            for (auto c : getTargetChannels(state))
+            {
+                channels.push_back(int(c));
+            }
+            if (!state->getActiveTab() ||
+                state->getActiveTab()->id != analyzedTab ||
+                state->getActiveDocumentSession()
+                        .document.getWaveformDataVersion() != analyzedVersion ||
+                !getTargetRange(state, start, count) ||
+                start != analyzedRange.start || count != analyzedRange.count ||
+                channels != analyzedRange.channels)
+            {
+                cancelPeakAnalysis();
+                return;
+            }
+            auto result = peakAnalysis->takePublished();
+            if (!result)
+            {
+                return;
+            }
+            auto apply = applyAnalyzedPeak;
+            cancelPeakAnalysis();
+            if (result->error)
+            {
+                if (state->errorReporter)
+                {
+                    state->errorReporter("Normalize",
+                                         "Unable to analyze selected audio");
+                }
+                return;
+            }
+            if (result->value)
+            {
+                updateSettings(
+                    [&]
+                    {
+                        apply(settings, *result->value);
+                    },
+                    true);
+            }
+        }
+
         struct ParameterControl
         {
             std::size_t specIndex = 0;
@@ -653,8 +779,15 @@ namespace cupuacu::effects
                     root->template emplaceChild<cupuacu::gui::TextButton>(
                         state, action.label);
                 button->setOnPress(
-                    [this, callback = action.apply]()
+                    [this, callback = action.apply,
+                     peakAction = action.applyPeak, button,
+                     label = action.label]()
                     {
+                        if (peakAction)
+                        {
+                            beginPeakAnalysis(peakAction, button, label);
+                            return;
+                        }
                         updateSettings(
                             [&, callback]
                             {
@@ -733,6 +866,7 @@ namespace cupuacu::effects
         void updateSettings(const std::function<void()> &mutation,
                             const bool shouldRender)
         {
+            cancelPeakAnalysis();
             mutation();
             persistSettings();
             if (previewSession)
@@ -756,6 +890,10 @@ namespace cupuacu::effects
 
         void applyAndClose()
         {
+            if (peakAnalysis)
+            {
+                return;
+            }
             stopPreview();
             if (definition.applySettings)
             {
@@ -766,6 +904,7 @@ namespace cupuacu::effects
 
         void closeNow()
         {
+            cancelPeakAnalysis();
             stopPreview();
             if (window)
             {
@@ -830,6 +969,11 @@ namespace cupuacu::effects
 
             cupuacu::audio::Play playMsg{};
             playMsg.document = &document;
+            if (state->getActiveDocumentSession().hasReadRevision())
+            {
+                playMsg.readerSnapshot =
+                    state->getActiveDocumentSession().getAudioReader();
+            }
             playMsg.startPos = start;
             playMsg.endPos = end;
             playMsg.loopEnabled = false;
@@ -838,7 +982,10 @@ namespace cupuacu::effects
             playMsg.selectedChannels = getPreviewSelectedChannels(state);
             playMsg.vuMeter = cupuacu::gui::getVuMeterIfPresent(state);
             playMsg.previewProcessor = std::move(processor);
-            state->audioDevices->enqueue(std::move(playMsg));
+            if (!state->audioDevices->enqueue(std::move(playMsg)))
+            {
+                return;
+            }
             state->playbackRangeStart = start;
             state->playbackRangeEnd = end;
             previewStartedByDialog = true;

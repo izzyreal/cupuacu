@@ -15,7 +15,7 @@ namespace cupuacu::file::m4a
     {
         std::uint32_t sampleRate = 0;
         std::uint16_t channels = 0;
-        std::uint32_t frameCount = 0;
+        std::uint64_t frameCount = 0;
         cupuacu::SampleFormat sampleFormat = cupuacu::SampleFormat::FLOAT32;
         std::vector<cupuacu::DocumentMarker> markers;
     };
@@ -25,7 +25,7 @@ namespace cupuacu::file::m4a
                            std::uint32_t frameCount, std::uint16_t channels)>;
     using M4aAacFileInfoCallback = std::function<void(const M4aAacFileInfo &)>;
     using M4aAacDecodeProgressCallback = std::function<void(
-        std::uint32_t decodedFrames, std::uint32_t totalFrames)>;
+        std::uint64_t decodedFrames, std::uint64_t totalFrames)>;
 
     [[nodiscard]] M4aAacFileInfo
     streamAacM4aFile(const std::filesystem::path &path,

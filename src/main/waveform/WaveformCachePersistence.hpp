@@ -3,11 +3,16 @@
 #include "../Document.hpp"
 #include "../Paths.hpp"
 #include "../gui/WaveformCache.hpp"
+#include "SourcePeaks.hpp"
 
 #include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <memory>
+#include <functional>
 #include <string>
+
+namespace cupuacu::concurrency { class TaskScheduler; }
 
 namespace cupuacu
 {
@@ -44,6 +49,48 @@ namespace cupuacu::waveform
     [[nodiscard]] bool savePersistentWaveformCache(
         const cupuacu::DocumentSession &session,
         const std::filesystem::path &cacheRoot);
+
+    enum class CacheSaveScheduleResult
+    {
+        Scheduled,
+        Unavailable,
+        Busy,
+    };
+
+    struct PersistentCacheSnapshot
+    {
+        std::filesystem::path root;
+        PersistentCacheKey key;
+        std::vector<gui::WaveformCache::BuildState> channels;
+        // Optional worker-side preparation, also used for deterministic I/O
+        // delay/failure tests. Never called by capture or admission.
+        std::function<void()> beforeWrite;
+        std::shared_ptr<const SourcePeaks> sourcePeaks;
+    };
+    std::shared_ptr<const PersistentCacheSnapshot>
+    capturePersistentWaveformCache(const cupuacu::DocumentSession &,
+                                   const std::filesystem::path &root);
+    std::shared_ptr<const PersistentCacheSnapshot>
+    capturePersistentSourcePeaks(const std::string &source, const Document &,
+                                 const std::filesystem::path &root,
+                                 std::shared_ptr<const SourcePeaks>);
+    std::shared_ptr<const SourcePeaks>
+    loadPersistentSourcePeaks(const std::string &source, const Document &,
+                              const std::filesystem::path &root,
+                              std::shared_ptr<storage::DecodedBlockCache>,
+                              const std::function<bool()> &cancel = {});
+    CacheSaveScheduleResult schedulePersistentWaveformCache(
+        const std::shared_ptr<const PersistentCacheSnapshot> &,
+        std::shared_ptr<concurrency::TaskScheduler> scheduler = {});
+
+    // Retains shared peak pages only, never the document's audio. A full queue
+    // returns Busy so the caller can retry without blocking the event loop.
+    [[nodiscard]] CacheSaveScheduleResult
+    schedulePersistentWaveformCache(const cupuacu::DocumentSession &session,
+                                    const Paths &paths,
+                                    std::shared_ptr<concurrency::TaskScheduler> scheduler = {});
+    [[nodiscard]] bool hasScheduledPersistentWaveformCacheWork();
+    void flushScheduledPersistentWaveformCaches();
 
     [[nodiscard]] bool loadPersistentWaveformCache(
         cupuacu::DocumentSession &session, const Paths &paths);

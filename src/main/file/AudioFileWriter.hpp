@@ -2,6 +2,7 @@
 
 #include "../State.hpp"
 #include "AudioExport.hpp"
+#include "../storage/AudioReader.hpp"
 
 #include <filesystem>
 #include <functional>
@@ -16,6 +17,13 @@ namespace cupuacu::file
     class AudioFileWriter
     {
     public:
+        // Worker-only export from a pinned revision. Preservation saves keep
+        // their separate provenance-aware writer; float export is unchanged.
+        static void writeFile(const storage::AudioReader &audio,
+                              const std::vector<DocumentMarker> &markers,
+                              const std::filesystem::path &outputPath,
+                              const AudioExportSettings &settings,
+                              WriteProgressCallback progress = {});
         static void writeFile(cupuacu::State *state,
                               const std::filesystem::path &outputPath,
                               const AudioExportSettings &settings,

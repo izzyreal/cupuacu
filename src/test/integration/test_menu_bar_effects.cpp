@@ -31,6 +31,8 @@
 
 #include <algorithm>
 #include <memory>
+#include <chrono>
+#include <thread>
 
 using Catch::Approx;
 
@@ -596,8 +598,19 @@ TEST_CASE("AmplifyFade dialog integration exposes shared controls and presets",
     state.getActiveDocumentSession().document.setSample(0, 0, 0.25f, false);
     state.getActiveDocumentSession().document.setSample(0, 1, -0.5f, false);
     state.getActiveDocumentSession().document.setSample(0, 2, 0.1f, false);
+    auto *applyButton = cupuacu::test::integration::findByNameRecursive<
+        cupuacu::gui::TextButton>(root, "TextButton:Apply");
+    REQUIRE(applyButton != nullptr);
     REQUIRE(normalizeButton->mouseDown(
         cupuacu::test::integration::leftMouseDown()));
+    REQUIRE_FALSE(applyButton->getEnabled());
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (!applyButton->getEnabled() && std::chrono::steady_clock::now() < deadline)
+    {
+        root->timerCallbackRecursive();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    REQUIRE(applyButton->getEnabled());
     REQUIRE(state.amplifyFadeDialog->getStartPercent() == Approx(200.0));
     REQUIRE(state.amplifyFadeDialog->getEndPercent() == Approx(200.0));
 

@@ -18,13 +18,19 @@ namespace cupuacu
     class Document;
 }
 
+namespace cupuacu::storage
+{
+    class AudioReader;
+}
+
 namespace cupuacu::audio
 {
     class AudioProcessor;
+    struct PreparedPlayback;
 
     struct Play
     {
-        cupuacu::Document *document;
+        cupuacu::Document *document = nullptr;
         std::shared_ptr<cupuacu::audio::AudioBuffer> bufferSnapshot;
         uint8_t channelCountSnapshot = 0;
         uint64_t startPos;
@@ -34,6 +40,9 @@ namespace cupuacu::audio
         SelectedChannels selectedChannels;
         gui::VuMeter *vuMeter;
         std::shared_ptr<const AudioProcessor> previewProcessor;
+        std::shared_ptr<const storage::AudioReader> readerSnapshot;
+        PreparedPlayback *prepared =
+            nullptr; // Internal borrowed callback handle.
     };
 
     struct UpdatePlayback
@@ -63,6 +72,7 @@ namespace cupuacu::audio
 
     struct Record
     {
+        uint64_t generation = 0;
         cupuacu::Document *document;
         uint8_t channelCountSnapshot = 0;
         uint64_t startPos;

@@ -1,4 +1,8 @@
 #include "BackgroundEffect.hpp"
+#include "../DocumentOperationAccess.hpp"
+#include "../../concurrency/DeferredRelease.hpp"
+#include "RevisionEffect.hpp"
+#include "../audio/RevisionEdit.hpp"
 
 #include "../MutationAvailability.hpp"
 #include "../DocumentSessionPersistence.hpp"
@@ -58,8 +62,8 @@ namespace cupuacu::actions::effects
 
         bool canStartEffect(cupuacu::State *state)
         {
-            return state != nullptr && !state->backgroundOpenJob &&
-                   !state->backgroundSaveJob && !state->backgroundEffectJob &&
+            return state && state->getActiveTab() &&
+                   !state->getActiveTab()->operation &&
                    !state->longTask.active &&
                    cupuacu::actions::isDocumentMutationAvailable(state);
         }
@@ -89,15 +93,14 @@ namespace cupuacu::actions::effects
                 cupuacu::State *stateToUse, const int tabIndexToUse,
                 std::shared_ptr<cupuacu::actions::Undoable> persistenceDelegate,
                 cupuacu::Document preparedDocument,
+                waveform::DocumentWaveformCaches preparedWaveformCaches,
                 std::function<void(bool)> afterSwapToUse = {})
                 : Undoable(stateToUse), tabIndex(tabIndexToUse),
                   delegate(std::move(persistenceDelegate)),
                   redoRevision(std::move(preparedDocument)),
+                  redoWaveformCaches(std::move(preparedWaveformCaches)),
                   afterSwap(std::move(afterSwapToUse))
             {
-                redoWaveformCaches.emplace();
-                redoWaveformCaches->resetToChannelCount(
-                    redoRevision->getChannelCount());
                 updateGui = [this]
                 {
                     if (delegate)
@@ -204,23 +207,51 @@ namespace cupuacu::actions::effects
                                    const cupuacu::Document *document)
         {
             if (!state || !document || request.frameCount <= 0 ||
-                request.targetChannels.empty() || state->backgroundEffectJob)
+                request.targetChannels.empty())
             {
                 return;
             }
 
             cupuacu::actions::detail::ensureUndoStoreForTab(
                 state, request.targetTabIndex);
-            const auto undoStore =
+            const auto &session =
                 state->tabs[static_cast<std::size_t>(request.targetTabIndex)]
-                    .session.undoStore;
-            state->backgroundEffectJob.reset(new BackgroundEffectJob(
-                nextBackgroundEffectJobId(), std::move(request), *document,
-                undoStore));
-            cupuacu::setLongTask(state, "Applying effect",
-                                 state->backgroundEffectJob->snapshot().detail,
-                                 0.0, false, true);
-            state->backgroundEffectJob->start();
+                    .session;
+            decltype(state->backgroundEffectJob) job{
+                new BackgroundEffectJob(
+                    nextBackgroundEffectJobId(), std::move(request), *document,
+                    session.undoStore, &session.waveformCaches,
+                    session.getEditRevision(),
+                    (state->paths ? state->paths->statePath()
+                                  : std::filesystem::temp_directory_path()) /
+                        ("effect-" +
+                         std::to_string(std::chrono::steady_clock::now()
+                                            .time_since_epoch()
+                                            .count()))),
+                destroyBackgroundEffectJob};
+            if (session.hasReadRevision())
+            {
+                state->getActiveTab()->operation =
+                    DocumentOperation{.kind = DocumentOperation::Kind::Effect,
+                                      .id = job->getId(),
+                                      .title = "Applying effect",
+                                      .detail = job->snapshot().detail,
+                                      .progress = 0.0};
+            }
+            else
+            {
+                setLongTask(state, "Applying effect", job->snapshot().detail,
+                            0.0, false, true);
+            }
+            job->start(state->taskScheduler);
+            if (state->backgroundEffectJob)
+            {
+                state->additionalEffectJobs.push_back(std::move(job));
+            }
+            else
+            {
+                state->backgroundEffectJob = std::move(job);
+            }
         }
 
         std::unique_ptr<BackgroundEffectResult>
@@ -255,12 +286,18 @@ namespace cupuacu::actions::effects
                 auto &newChannel = result->newSamples[channelIndex];
                 oldChannel.resize(static_cast<std::size_t>(request.frameCount));
                 newChannel.resize(static_cast<std::size_t>(request.frameCount));
+                CUPUACU_METRIC(result->observedCapacity.set(
+                    performance::matrixCapacity(result->oldSamples) +
+                    performance::matrixCapacity(result->newSamples)));
+                CUPUACU_METRIC(
+                    performance::add(performance::Work::SampleBytesCopied,
+                                     request.frameCount * sizeof(float)));
+                CUPUACU_METRIC(performance::add(
+                    performance::Work::SamplesScanned, request.frameCount));
 
-                for (int64_t frame = 0; frame < request.frameCount; ++frame)
-                {
-                    oldChannel[static_cast<std::size_t>(frame)] =
-                        document.getSample(channel, request.startFrame + frame);
-                }
+                document.readChannelFloatBlock(channel, request.startFrame,
+                                               oldChannel.data(),
+                                               request.frameCount);
 
                 for (int64_t frame = 0; frame < request.frameCount; ++frame)
                 {
@@ -323,12 +360,27 @@ namespace cupuacu::actions::effects
                 auto &newChannel = result->newSamples[channelIndex];
                 oldChannel.resize(static_cast<std::size_t>(request.frameCount));
                 newChannel.resize(static_cast<std::size_t>(request.frameCount));
+                CUPUACU_METRIC(result->observedCapacity.set(
+                    performance::matrixCapacity(result->oldSamples) +
+                    performance::matrixCapacity(result->newSamples)));
+                CUPUACU_METRIC(
+                    performance::add(performance::Work::SampleBytesCopied,
+                                     request.frameCount * sizeof(float)));
+                CUPUACU_METRIC(performance::add(
+                    performance::Work::SamplesScanned, request.frameCount));
 
                 for (int64_t frame = 0; frame < request.frameCount; ++frame)
                 {
+                    if (frame % progressStrideFrames == 0)
+                    {
+                        document.readChannelFloatBlock(
+                            channel, request.startFrame + frame,
+                            oldChannel.data() + frame,
+                            std::min(progressStrideFrames,
+                                     request.frameCount - frame));
+                    }
                     const float oldValue =
-                        document.getSample(channel, request.startFrame + frame);
-                    oldChannel[static_cast<std::size_t>(frame)] = oldValue;
+                        oldChannel[static_cast<std::size_t>(frame)];
                     newChannel[static_cast<std::size_t>(frame)] =
                         static_cast<float>(
                             oldValue *
@@ -389,12 +441,27 @@ namespace cupuacu::actions::effects
                 auto &newChannel = result->newSamples[channelIndex];
                 oldChannel.resize(static_cast<std::size_t>(request.frameCount));
                 newChannel.resize(static_cast<std::size_t>(request.frameCount));
+                CUPUACU_METRIC(result->observedCapacity.set(
+                    performance::matrixCapacity(result->oldSamples) +
+                    performance::matrixCapacity(result->newSamples)));
+                CUPUACU_METRIC(
+                    performance::add(performance::Work::SampleBytesCopied,
+                                     request.frameCount * sizeof(float)));
+                CUPUACU_METRIC(performance::add(
+                    performance::Work::SamplesScanned, request.frameCount));
 
                 for (int64_t frame = 0; frame < request.frameCount; ++frame)
                 {
+                    if (frame % progressStrideFrames == 0)
+                    {
+                        document.readChannelFloatBlock(
+                            channel, request.startFrame + frame,
+                            oldChannel.data() + frame,
+                            std::min(progressStrideFrames,
+                                     request.frameCount - frame));
+                    }
                     const float oldValue =
-                        document.getSample(channel, request.startFrame + frame);
-                    oldChannel[static_cast<std::size_t>(frame)] = oldValue;
+                        oldChannel[static_cast<std::size_t>(frame)];
                     newChannel[static_cast<std::size_t>(frame)] =
                         cupuacu::effects::DynamicsUndoable::processSampleValue(
                             *request.dynamicsSettings, oldValue);
@@ -451,12 +518,27 @@ namespace cupuacu::actions::effects
                 auto &newChannel = result->newSamples[channelIndex];
                 oldChannel.resize(static_cast<std::size_t>(request.frameCount));
                 newChannel.resize(static_cast<std::size_t>(request.frameCount));
+                CUPUACU_METRIC(result->observedCapacity.set(
+                    performance::matrixCapacity(result->oldSamples) +
+                    performance::matrixCapacity(result->newSamples)));
+                CUPUACU_METRIC(
+                    performance::add(performance::Work::SampleBytesCopied,
+                                     request.frameCount * sizeof(float)));
+                CUPUACU_METRIC(performance::add(
+                    performance::Work::SamplesScanned, request.frameCount));
 
                 for (int64_t frame = 0; frame < request.frameCount; ++frame)
                 {
+                    if (frame % progressStrideFrames == 0)
+                    {
+                        document.readChannelFloatBlock(
+                            channel, request.startFrame + frame,
+                            oldChannel.data() + frame,
+                            std::min(progressStrideFrames,
+                                     request.frameCount - frame));
+                    }
                     const float oldValue =
-                        document.getSample(channel, request.startFrame + frame);
-                    oldChannel[static_cast<std::size_t>(frame)] = oldValue;
+                        oldChannel[static_cast<std::size_t>(frame)];
                     newChannel[static_cast<std::size_t>(frame)] =
                         static_cast<float>(
                             oldValue *
@@ -653,11 +735,9 @@ namespace cupuacu::actions::effects
                 oldChannel.resize(static_cast<std::size_t>(request.frameCount));
                 newChannel.assign(static_cast<std::size_t>(request.frameCount), 0.0f);
 
-                for (int64_t frame = 0; frame < request.frameCount; ++frame)
-                {
-                    oldChannel[static_cast<std::size_t>(frame)] =
-                        document.getSample(channel, request.startFrame + frame);
-                }
+                document.readChannelFloatBlock(channel, request.startFrame,
+                                               oldChannel.data(),
+                                               request.frameCount);
 
                 int64_t writeFrame = 0;
                 std::size_t runIndex = 0;
@@ -701,7 +781,10 @@ namespace cupuacu::actions::effects
                                              BackgroundEffectJob &job)
         {
             const auto snapshot = job.snapshot();
-            cupuacu::clearLongTask(state, false);
+            if (!job.isRevisionJob())
+            {
+                cupuacu::clearLongTask(state, false);
+            }
 
             if (snapshot.canceled)
             {
@@ -731,6 +814,51 @@ namespace cupuacu::actions::effects
                 return;
             }
 
+            if (result->afterRevision)
+            {
+                auto &session = state->tabs[targetTabIndex].session;
+                if (session.getEditRevision() != result->beforeRevision)
+                {
+                    reportEffectFailure(state, snapshot.request.description,
+                                        "The target audio changed while the "
+                                        "effect was running.");
+                    return;
+                }
+                if (result->kind == BackgroundEffectKind::RemoveSilence &&
+                    result->silenceRuns.empty())
+                {
+                    return;
+                }
+                auto before = audio::RevisionEditState::capture(session);
+                auto after = before;
+                after.audio = std::move(result->afterRevision);
+                if (result->removeSilenceRemovesDuration)
+                {
+                    for (auto it = result->silenceRuns.rbegin();
+                         it != result->silenceRuns.rend(); ++it)
+                    {
+                        audio::removeMarkerRange(after.markers, it->startFrame,
+                                                 it->frameCount);
+                    }
+                    const auto removed = before.audio->shape().frames -
+                                         after.audio->shape().frames;
+                    after.cursor = result->startFrame;
+                    after.selection = gui::Selection<double>(0);
+                    if (result->hadSelection)
+                    {
+                        after.selection.setValue1(result->startFrame);
+                        after.selection.setValue2(result->startFrame +
+                                                  result->frameCount - removed);
+                    }
+                }
+                state->addAndDoUndoableToTab(
+                    targetTabIndex,
+                    std::make_shared<audio::RevisionEdit>(
+                        state, targetTabIndex, snapshot.request.description,
+                        std::move(before), std::move(after)));
+                return;
+            }
+
             const auto addPrepared =
                 [&](std::shared_ptr<cupuacu::actions::Undoable> delegate,
                     std::function<void(bool)> afterSwap = {})
@@ -747,6 +875,7 @@ namespace cupuacu::actions::effects
                     std::make_shared<PreparedDocumentUndoable>(
                         state, targetTabIndex, std::move(delegate),
                         std::move(*result->preparedDocument),
+                        std::move(result->preparedWaveformCaches),
                         std::move(afterSwap)));
             };
 
@@ -887,28 +1016,92 @@ namespace cupuacu::actions::effects
 
     BackgroundEffectJob::BackgroundEffectJob(
         std::uint64_t idToUse, BackgroundEffectRequest requestToRun,
-        const cupuacu::Document &documentToRead,
-        undo::UndoStore undoStoreToUse)
-        : id(idToUse),
-          request(std::move(requestToRun)),
-          document(documentToRead),
-          undoStore(std::move(undoStoreToUse)),
-          detail(request.description)
+        const cupuacu::Document &documentToRead, undo::UndoStore undoStoreToUse,
+        const waveform::DocumentWaveformCaches *sourceCaches,
+        std::shared_ptr<const storage::AudioEditRevision> revision,
+        std::filesystem::path directory)
+        : id(idToUse), request(std::move(requestToRun)),
+          document(documentToRead), readRevision(std::move(revision)),
+          workingDirectory(std::move(directory)),
+          undoStore(std::move(undoStoreToUse)), detail(request.description)
     {
+        if (readRevision)
+        {
+            return;
+        }
+        // Freeze peaks with the same source revision as the audio. A running
+        // cache worker is not copied; its unapplied ranges remain dirty.
+        // Whole-document effects cannot reuse any peaks.
+        const bool replacesAllSamples =
+            request.startFrame == 0 &&
+            request.frameCount == document.getFrameCount() &&
+            request.targetChannels.size() ==
+                static_cast<std::size_t>(document.getChannelCount());
+        const bool mayRemoveDuration =
+            request.kind == BackgroundEffectKind::RemoveSilence &&
+            request.targetChannels.size() ==
+                static_cast<std::size_t>(document.getChannelCount());
+        if (sourceCaches && !replacesAllSamples && !mayRemoveDuration)
+        {
+            waveformCaches = sourceCaches->snapshotForDocument(document);
+        }
+        else
+        {
+            waveformCaches.resetToChannelCount(document.getChannelCount());
+        }
     }
 
     BackgroundEffectJob::~BackgroundEffectJob()
     {
-        if (worker.joinable())
+        cancel();
+        if (completion.valid())
         {
-            worker.join();
+            completion.wait();
         }
     }
 
-    void BackgroundEffectJob::start()
+    void BackgroundEffectJob::start(
+        std::shared_ptr<concurrency::TaskScheduler> executor)
     {
-        worker = std::thread([this]
-                             { run(); });
+        scheduler = executor ? std::move(executor)
+                             : concurrency::defaultTaskScheduler();
+        try
+        {
+            completion = scheduler->submit(
+                [this]
+                {
+                    run();
+                },
+                concurrency::TaskScheduler::Options{
+                    .scratchBytes = uint64_t(document.getChannelCount()) *
+                                    (65536 + 16384) * sizeof(float),
+                    .documentId = request.targetTabId,
+                    .mutation = true,
+                    .admissionFailed = [this](std::exception_ptr failure)
+                    {
+                        std::string message =
+                            "Insufficient audio working memory";
+                        try
+                        {
+                            std::rethrow_exception(failure);
+                        }
+                        catch (const std::exception &e)
+                        {
+                            message = e.what();
+                        }
+                        std::lock_guard lock(mutex);
+                        error = std::move(message);
+                        completed = true;
+                        completionCv.notify_all();
+                    }});
+        }
+        catch (const std::exception &failure)
+        {
+            std::lock_guard lock(mutex);
+            error = failure.what();
+            completed = true;
+            completionCv.notify_all();
+        }
     }
 
     BackgroundEffectJob::Snapshot BackgroundEffectJob::snapshot() const
@@ -963,6 +1156,10 @@ namespace cupuacu::actions::effects
     {
         try
         {
+            if (cancelRequested.load())
+            {
+                throw LongTaskCanceledError{};
+            }
             const auto progressCallback =
                 [this](const std::string &detailToUse,
                        std::optional<double> progressToUse)
@@ -974,6 +1171,17 @@ namespace cupuacu::actions::effects
                 publishProgress(detailToUse, progressToUse);
             };
 
+            if (readRevision)
+            {
+                auto computed = computeRevisionEffect(
+                    request, readRevision, workingDirectory, progressCallback);
+                std::lock_guard lock(mutex);
+                result = std::move(computed);
+                success = true;
+                completed = true;
+                completionCv.notify_all();
+                return;
+            }
             const auto lease = document.acquireReadLease();
             std::unique_ptr<BackgroundEffectResult> computedResult;
             switch (request.kind)
@@ -1016,6 +1224,8 @@ namespace cupuacu::actions::effects
                     prepared.removeFrames(it->startFrame, it->frameCount);
                 }
                 computedResult->preparedDocument = std::move(prepared);
+                computedResult->preparedWaveformCaches.resetToChannelCount(
+                    document.getChannelCount());
                 if (undoStore.isAttached())
                 {
                     computedResult->removedSamplesHandle =
@@ -1037,8 +1247,20 @@ namespace cupuacu::actions::effects
                         computedResult->targetChannels[index],
                         computedResult->startFrame, samples.data(),
                         static_cast<int64_t>(samples.size()), true);
+                    if (!samples.empty())
+                    {
+                        waveformCaches
+                            .getCache(static_cast<int>(
+                                computedResult->targetChannels[index]))
+                            .invalidateSamples(
+                                computedResult->startFrame,
+                                computedResult->startFrame +
+                                    static_cast<int64_t>(samples.size()) - 1);
+                    }
                 }
                 computedResult->preparedDocument = std::move(prepared);
+                computedResult->preparedWaveformCaches =
+                    std::move(waveformCaches);
                 if (undoStore.isAttached())
                 {
                     computedResult->oldSamplesHandle =
@@ -1322,25 +1544,72 @@ namespace cupuacu::actions::effects
 
     void processPendingEffectWork(cupuacu::State *state)
     {
-        if (!state || !state->backgroundEffectJob)
+        if (!state)
         {
             return;
         }
-
-        if (cupuacu::isLongTaskCancelRequested(state))
+        auto pump = [&](auto &owned)
         {
-            state->backgroundEffectJob->cancel();
-        }
-
-        const auto snapshot = state->backgroundEffectJob->snapshot();
-        if (snapshot.completed)
+            if (!owned)
+            {
+                return;
+            }
+            auto snapshot = owned->snapshot();
+            auto *tab = findOperationTab(state, snapshot.request.targetTabId);
+            const bool targeted =
+                tab &&
+                (!owned->isRevisionJob() ||
+                 (tab->operation &&
+                  tab->operation->kind == DocumentOperation::Kind::Effect &&
+                  tab->operation->id == owned->getId()));
+            if (state->quitRequestedAfterLongTaskCancel ||
+                (owned->isRevisionJob() &&
+                 operationCanceled(state, snapshot.request.targetTabId,
+                                   DocumentOperation::Kind::Effect,
+                                   owned->getId())) ||
+                (!owned->isRevisionJob() && isLongTaskCancelRequested(state)))
+            {
+                owned->cancel();
+            }
+            if (snapshot.completed)
+            {
+                finishOperation(state, snapshot.request.targetTabId,
+                                DocumentOperation::Kind::Effect,
+                                owned->getId());
+                auto job = concurrency::releaseOnWorker(
+                    std::shared_ptr<BackgroundEffectJob>(owned.release()));
+                if (targeted)
+                {
+                    commitCompletedBackgroundEffect(state, *job);
+                }
+            }
+            else if (owned->isRevisionJob())
+            {
+                updateOperation(state, snapshot.request.targetTabId,
+                                DocumentOperation::Kind::Effect, owned->getId(),
+                                snapshot.detail, snapshot.progress);
+            }
+            else
+            {
+                updateLongTask(state, snapshot.detail, snapshot.progress,
+                               false);
+            }
+        };
+        pump(state->backgroundEffectJob);
+        for (auto &job : state->additionalEffectJobs)
         {
-            auto job = std::move(state->backgroundEffectJob);
-            commitCompletedBackgroundEffect(state, *job);
-            return;
+            pump(job);
         }
-
-        cupuacu::updateLongTask(state, snapshot.detail, snapshot.progress,
-                                false);
+        std::erase_if(state->additionalEffectJobs,
+                      [](const auto &job)
+                      {
+                          return !job;
+                      });
+        if (!state->backgroundEffectJob && !state->additionalEffectJobs.empty())
+        {
+            state->backgroundEffectJob =
+                std::move(state->additionalEffectJobs.back());
+            state->additionalEffectJobs.pop_back();
+        }
     }
 } // namespace cupuacu::actions::effects

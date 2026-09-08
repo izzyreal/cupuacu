@@ -3,6 +3,7 @@
 
 #include "State.hpp"
 #include "TestPaths.hpp"
+#include "TestRevisionCommands.hpp"
 #include "TestSdlTtfGuard.hpp"
 #include "actions/io/BackgroundSave.hpp"
 #include "actions/Undoable.hpp"
@@ -10,7 +11,7 @@
 #include "audio/AudioMessage.hpp"
 #include "file/AudioExport.hpp"
 #include "file/SndfilePath.hpp"
-#include "file/file_loading.hpp"
+#include "file/LegacyAudioLoading.hpp"
 #include "gui/Component.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
 #include "gui/Label.hpp"
@@ -359,7 +360,7 @@ TEST_CASE("MenuBar planning builds overwrite labels", "[gui]")
     writePcm16TestWav(wavPath, 44100, 1, {100, 200, 300, 400});
 
     state.getActiveDocumentSession().currentFile = wavPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
 }
 
 TEST_CASE("AAC imports require Save As instead of overwrite", "[gui][aac]")
@@ -528,7 +529,7 @@ TEST_CASE(
     writePcm16TestWav(wavPath, 44100, 1, {100, 200, 300, 400});
 
     state.getActiveDocumentSession().currentFile = wavPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
 
     REQUIRE(saveAsEntry->getTooltipText() ==
             "Write the active document to a new file and make that file the "
@@ -861,6 +862,7 @@ TEST_CASE("MenuBar split by markers creates one new document per marker gap",
 
     auto *splitByMarkersEntry = editEntries[9];
     splitByMarkersEntry->mouseDown(leftMouseDown());
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(state.tabs.size() == 3);
     REQUIRE(state.tabs[1].session.document.getFrameCount() == 3);
@@ -886,7 +888,7 @@ TEST_CASE("MenuBar file overwrite action rewrites the current file",
 
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = wavPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
     state.getActiveDocumentSession().document.setSample(0, 0, 0.25f, false);
     state.getActiveDocumentSession().document.setSample(0, 1, -0.5f, false);
     state.getActiveDocumentSession().document.setSample(0, 2, 0.75f, false);

@@ -4,6 +4,7 @@
 #include "AudioExport.hpp"
 #include "OverwritePreservationState.hpp"
 #include "PreservationWriteInput.hpp"
+#include "RevisionPreservationWriter.hpp"
 #include "aiff/AiffPreservationSupport.hpp"
 #include "aiff/AiffPreservationWriter.hpp"
 #include "wav/WavPreservationSupport.hpp"
@@ -50,6 +51,12 @@ namespace cupuacu::file
             return {.available = false, .reason = "State is null"};
         }
 
+        if (state->getActiveDocumentSession().hasReadRevision())
+        {
+            return assessRevisionPreservation(state->getActiveDocumentSession(),
+                                              settings);
+        }
+
         switch (preservationBackendKindForSettings(settings))
         {
             case PreservationBackendKind::AiffPcm:
@@ -80,6 +87,12 @@ namespace cupuacu::file
         if (state == nullptr)
         {
             return {.available = false, .reason = "State is null"};
+        }
+
+        if (state->getActiveDocumentSession().hasReadRevision())
+        {
+            return assessRevisionPreservation(state->getActiveDocumentSession(),
+                                              settings);
         }
 
         switch (preservationBackendKindForSettings(settings))
@@ -113,6 +126,15 @@ namespace cupuacu::file
         if (state == nullptr)
         {
             throw std::invalid_argument("State is null");
+        }
+
+        const auto &session = state->getActiveDocumentSession();
+        if (session.hasReadRevision())
+        {
+            writePreservingRevision(
+                *session.getEditRevision(), session.document.getMarkers(),
+                revisionPreservationReference(session), outputPath, settings);
+            return;
         }
 
         switch (preservationBackendKindForSettings(settings))
@@ -159,6 +181,16 @@ namespace cupuacu::file
         if (state == nullptr)
         {
             throw std::invalid_argument("State is null");
+        }
+
+        const auto &session = state->getActiveDocumentSession();
+        if (session.hasReadRevision())
+        {
+            writePreservingRevision(*session.getEditRevision(),
+                                    session.document.getMarkers(),
+                                    revisionPreservationReference(session),
+                                    session.currentFile, settings);
+            return;
         }
 
         switch (preservationBackendKindForSettings(settings))

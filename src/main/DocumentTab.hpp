@@ -1,9 +1,11 @@
 #pragma once
 
 #include "DocumentSession.hpp"
+#include "DocumentOperation.hpp"
 #include "gui/EditorViewState.hpp"
 
 #include <deque>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -14,7 +16,7 @@ namespace cupuacu
     {
         inline uint64_t nextDocumentTabId()
         {
-            static uint64_t nextId = 1;
+            static std::atomic<uint64_t> nextId{1};
             return nextId++;
         }
     } // namespace detail
@@ -27,6 +29,8 @@ namespace cupuacu
     struct DocumentTab
     {
         uint64_t id = detail::nextDocumentTabId();
+        uint64_t historyVersion = 0;
+        std::optional<DocumentOperation> operation;
         std::string title;
         DocumentSession session;
         gui::EditorViewState viewState{};

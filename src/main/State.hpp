@@ -1,4 +1,8 @@
 #pragma once
+#include "concurrency/TaskScheduler.hpp"
+#include "concurrency/ScheduledLatestValue.hpp"
+#include "concurrency/DeferredRelease.hpp"
+#include "storage/MemoryResources.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -23,8 +27,18 @@
 #include <deque>
 #include <chrono>
 
+namespace cupuacu::file { class DecodedImportCache; }
+
 namespace cupuacu
 {
+    namespace concurrency
+    {
+        struct RevisionCommandJob;
+    }
+    namespace storage
+    {
+        class ClipboardConversion;
+    }
     namespace audio
     {
         class AudioDevices;
@@ -32,6 +46,7 @@ namespace cupuacu
 
     namespace actions
     {
+        struct RevisionRecording;
         namespace io
         {
             class BackgroundOpenJob;
@@ -105,6 +120,8 @@ namespace cupuacu
         PendingOpenKind kind = PendingOpenKind::UserOpen;
         std::string path;
         int targetTabIndex = -1;
+        uint64_t targetTabId = 0;
+        uint64_t previousActiveTabId = 0;
         bool updateRecentFiles = true;
         std::optional<persistence::PersistedOpenDocumentState>
             persistedDocumentState;
@@ -130,6 +147,10 @@ namespace cupuacu
 
     struct State
     {
+        // Optional observation used by event-loop diagnostics, including nested
+        // pumps.
+        std::function<void(const SDL_Event &)> eventObserver;
+
         struct LongTaskStatus
         {
             bool active = false;
@@ -140,19 +161,12 @@ namespace cupuacu
             bool cancelRequested = false;
         };
 
-        struct PendingOpenWaveformBuildStatus
-        {
-            bool active = false;
-            PendingOpenRequest request;
-            std::string path;
-            int tabIndex = -1;
-            bool revertOnCancel = false;
-            std::vector<DocumentTab> previousTabs;
-            std::vector<std::string> previousRecentFiles;
-            int previousActiveTabIndex = 0;
-        };
-
+        std::vector<std::shared_ptr<concurrency::RevisionCommandJob>>
+            revisionCommands;
+        std::shared_ptr<concurrency::TaskScheduler> taskScheduler =
+            concurrency::defaultTaskScheduler();
         std::shared_ptr<audio::AudioDevices> audioDevices;
+        std::unique_ptr<storage::MemoryPressureMonitor> memoryPressureMonitor;
         std::unique_ptr<Paths> paths = std::make_unique<Paths>();
         uint8_t menuFontSize = 30;
         uint8_t pixelScale = 1;
@@ -162,8 +176,14 @@ namespace cupuacu
             gui::OptionsSection::Audio;
         bool loopPlaybackEnabled = false;
         bool snapEnabled = false;
+        // Shared by normal imports; benchmarks can inject a smaller budget.
+        std::shared_ptr<file::DecodedImportCache> decodedImportCache;
+        uint64_t decodedImportCacheByteBudget = 8ull * 1024 * 1024 * 1024;
+        std::shared_ptr<storage::DecodedBlockCache> importSampleCache =
+            storage::defaultDecodedBlockCache();
         uint64_t playbackRangeStart = 0;
         uint64_t playbackRangeEnd = 0;
+        uint64_t playbackSourceFrames = std::numeric_limits<uint64_t>::max();
         std::vector<DocumentTab> tabs{DocumentTab{}};
         int activeTabIndex = 0;
         ClipboardAudio clipboard;
@@ -218,7 +238,11 @@ namespace cupuacu
         std::optional<std::uint64_t> pendingCloseTabAfterSaveId;
         std::deque<PendingOpenRequest> pendingOpenFiles;
         StartupRestoreStatus startupRestore;
-        PendingOpenWaveformBuildStatus pendingOpenWaveformBuild;
+        using ClipboardRestoreWorker =
+            concurrency::ScheduledLatestValue<std::filesystem::path,
+                                              std::shared_ptr<ClipboardAudio>>;
+        std::shared_ptr<ClipboardRestoreWorker> startupClipboardRestore;
+        uint64_t startupClipboardVersion = 0;
         std::unique_ptr<actions::io::BackgroundOpenJob,
                         void (*)(actions::io::BackgroundOpenJob *)>
             backgroundOpenJob{nullptr, destroyBackgroundOpenJob};
@@ -231,6 +255,9 @@ namespace cupuacu
         std::unique_ptr<actions::effects::BackgroundEffectJob,
                         void (*)(actions::effects::BackgroundEffectJob *)>
             backgroundEffectJob{nullptr, destroyBackgroundEffectJob};
+        std::vector<decltype(backgroundEffectJob)> additionalEffectJobs;
+        std::vector<decltype(backgroundSaveJob)> additionalSaveJobs;
+        std::shared_ptr<actions::RevisionRecording> revisionRecording;
         gui::Window *modalWindow = nullptr;
         LongTaskStatus longTask;
         std::function<void(const LongTaskStatus &)> longTaskObserver;
@@ -243,6 +270,8 @@ namespace cupuacu
         persistence::PersistedSessionState startupPersistedSessionState;
         bool preserveStartupSessionStateOnShutdown = false;
 
+        std::shared_ptr<storage::ClipboardConversion>
+            backgroundClipboardConversion;
         ~State();
 
         DocumentTab *getActiveTab()
@@ -309,8 +338,7 @@ namespace cupuacu
             return getActiveTab()->redoables;
         }
 
-        void addUndoableToTab(int tabIndex,
-                              std::shared_ptr<actions::Undoable>);
+        void addUndoableToTab(int tabIndex, std::shared_ptr<actions::Undoable>);
         void addAndDoUndoableToTab(int tabIndex,
                                    std::shared_ptr<actions::Undoable>);
         void addUndoable(std::shared_ptr<actions::Undoable>);
@@ -341,12 +369,14 @@ static void resetSampleValueUnderMouseCursor(cupuacu::State *state)
 static void updateSampleValueUnderMouseCursor(cupuacu::State *state,
                                               const float sampleValue,
                                               const int64_t channel,
-                                              const int64_t frame)
+                                              const int64_t frame,
+                                              const bool dirty = true)
 {
     if (state->mainDocumentSessionWindow)
     {
         state->getActiveViewState().sampleValueUnderMouseCursor.emplace(
-            cupuacu::gui::HoveredSampleInfo{sampleValue, channel, frame});
+            cupuacu::gui::HoveredSampleInfo{sampleValue, channel, frame,
+                                            dirty});
     }
 }
 

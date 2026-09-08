@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libjson-xs-perl \
     perl \
     python3 \
+    procps \
     xvfb \
     xauth \
     x11-apps \

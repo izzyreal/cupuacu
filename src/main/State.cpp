@@ -96,24 +96,48 @@ void cupuacu::destroyMarkerEditorDialogWindow(
 
 void cupuacu::destroyBackgroundOpenJob(actions::io::BackgroundOpenJob *job)
 {
-    delete job;
+    if (!job)
+    {
+        return;
+    }
+    job->cancel();
+    auto retired = concurrency::releaseOnWorker(
+        std::shared_ptr<actions::io::BackgroundOpenJob>(job));
 }
 
 void cupuacu::destroyBackgroundSaveJob(actions::io::BackgroundSaveJob *job)
 {
-    delete job;
+    if (!job)
+    {
+        return;
+    }
+    job->cancel();
+    auto retired = concurrency::releaseOnWorker(
+        std::shared_ptr<actions::io::BackgroundSaveJob>(job));
 }
 
 void cupuacu::destroyBackgroundAutosaveJob(
     actions::io::BackgroundAutosaveJob *job)
 {
-    delete job;
+    if (!job)
+    {
+        return;
+    }
+    job->cancel();
+    auto retired = concurrency::releaseOnWorker(
+        std::shared_ptr<actions::io::BackgroundAutosaveJob>(job));
 }
 
 void cupuacu::destroyBackgroundEffectJob(
     actions::effects::BackgroundEffectJob *job)
 {
-    delete job;
+    if (!job)
+    {
+        return;
+    }
+    job->cancel();
+    auto retired = concurrency::releaseOnWorker(
+        std::shared_ptr<actions::effects::BackgroundEffectJob>(job));
 }
 
 cupuacu::State::~State() = default;
@@ -129,6 +153,11 @@ void cupuacu::State::addUndoableToTab(
     auto &tab = tabs[static_cast<std::size_t>(tabIndex)];
     tab.undoables.push_back(std::move(undoable));
     tab.redoables.clear();
+    ++tab.historyVersion;
+    if (tab.session.hasReadRevision())
+    {
+        cupuacu::actions::autosaveDocumentAfterMutation(this, tabIndex);
+    }
 }
 
 void cupuacu::State::addAndDoUndoableToTab(
@@ -139,21 +168,31 @@ void cupuacu::State::addAndDoUndoableToTab(
         return;
     }
 
-    addUndoableToTab(tabIndex, undoable);
-    cupuacu::actions::detail::ensureUndoStoreForTab(this, tabIndex);
+    auto &history = tabs[static_cast<std::size_t>(tabIndex)].undoables;
+    history.push_back(undoable);
+    if (!tabs[static_cast<std::size_t>(tabIndex)].session.hasReadRevision())
+    {
+        cupuacu::actions::detail::ensureUndoStoreForTab(this, tabIndex);
+    }
     tabs[static_cast<std::size_t>(tabIndex)].session.stopWaveformCacheBuild();
-    undoable->redo();
+    try
+    {
+        undoable->redo();
+    }
+    catch (...)
+    {
+        history.pop_back();
+        throw;
+    }
 
     if (!undoable->lastOperationCommitted())
     {
-        auto &undoables = tabs[static_cast<std::size_t>(tabIndex)].undoables;
-        if (!undoables.empty() && undoables.back().get() == undoable.get())
-        {
-            undoables.pop_back();
-        }
+        history.pop_back();
         return;
     }
 
+    tabs[static_cast<std::size_t>(tabIndex)].redoables.clear();
+    ++tabs[static_cast<std::size_t>(tabIndex)].historyVersion;
     auto &session = tabs[static_cast<std::size_t>(tabIndex)].session;
     cupuacu::file::OverwritePreservationMutationHelper::applyToSession(
         session, undoable->overwritePreservationMutation());
@@ -208,6 +247,7 @@ void cupuacu::State::undo()
     cupuacu::file::OverwritePreservation::refreshActiveSession(this);
     undoable->updateGui();
     redoables.push_back(undoable);
+    ++getActiveTab()->historyVersion;
     cupuacu::actions::autosaveActiveDocumentAfterMutation(this);
 }
 
@@ -239,6 +279,7 @@ void cupuacu::State::redo()
     cupuacu::file::OverwritePreservation::refreshActiveSession(this);
     redoable->updateGui();
     undoables.push_back(redoable);
+    ++getActiveTab()->historyVersion;
     cupuacu::actions::autosaveActiveDocumentAfterMutation(this);
 }
 

@@ -130,10 +130,11 @@ namespace cupuacu::file::alac
         template <typename ReadPacketFn>
         bool decodePcmPacketsImpl(
             const AlacDecodingParameters &parameters,
-            const std::vector<std::uint64_t> &packetOffsets,
-            const std::vector<std::uint32_t> &packetSizes,
-            DecodeProgressCallback progressCallback,
-            ReadPacketFn readPacket,
+            const storage::WorkingVector<
+                std::uint64_t, storage::MemoryUse::Container> &packetOffsets,
+            const storage::WorkingVector<
+                std::uint32_t, storage::MemoryUse::Container> &packetSizes,
+            DecodeProgressCallback progressCallback, ReadPacketFn readPacket,
             const DecodedPacketCallback &decodedPacketCallback)
         {
             constexpr std::size_t kBitReaderPaddingBytes = 3u;
@@ -149,14 +150,8 @@ namespace cupuacu::file::alac
                 return false;
             }
 
-            const auto totalSampleCount =
-                static_cast<std::size_t>(parameters.frameCount) *
-                static_cast<std::size_t>(parameters.channels);
-            if (parameters.channels != 0 &&
-                totalSampleCount / parameters.channels != parameters.frameCount)
-            {
+            if (parameters.frameCount > std::uint64_t(INT64_MAX))
                 return false;
-            }
 
             ALACDecoder decoder;
             auto cookie = parameters.magicCookie;
@@ -173,11 +168,12 @@ namespace cupuacu::file::alac
             const auto maxPacketSampleCount =
                 static_cast<std::size_t>(decoder.mConfig.frameLength) *
                 static_cast<std::size_t>(parameters.channels);
-            std::vector<std::uint8_t> packetOutput(maxPacketSampleCount *
-                                                   outputBytesPerSample);
-            std::vector<std::uint8_t> packetScratch;
+            storage::WorkingVector<std::uint8_t, storage::MemoryUse::Container>
+                packetOutput(maxPacketSampleCount * outputBytesPerSample);
+            storage::WorkingVector<std::uint8_t, storage::MemoryUse::Container>
+                packetScratch;
 
-            std::uint32_t decodedFrames = 0;
+            std::uint64_t decodedFrames = 0;
             for (std::size_t packetIndex = 0; packetIndex < packetSizes.size();
                  ++packetIndex)
             {
@@ -253,8 +249,7 @@ namespace cupuacu::file::alac
                 }
             }
 
-            if (decodedFrames != parameters.frameCount ||
-                decodedFrames != parameters.frameCount)
+            if (decodedFrames != parameters.frameCount)
             {
                 return false;
             }
@@ -305,9 +300,9 @@ namespace cupuacu::file::alac
         return encoderCookieFrom(encoder, parameters.channels);
     }
 
-    std::optional<AlacEncodedPackets>
-    encodePcmPackets(AlacEncodingParameters parameters,
-                     const std::vector<std::uint8_t> &interleavedPcmBytes)
+    std::optional<AlacEncodingSummary> streamEncodedPcmPackets(
+        AlacEncodingParameters parameters, const std::uint64_t frameCount,
+        PcmReadCallback readPcm, EncodedPacketCallback writePacket)
     {
         if (parameters.framesPerPacket == 0)
         {
@@ -319,14 +314,12 @@ namespace cupuacu::file::alac
         }
 
         const auto inputFormat = makeNativePcmInputFormat(parameters);
-        if (inputFormat.mBytesPerFrame == 0 ||
-            interleavedPcmBytes.size() % inputFormat.mBytesPerFrame != 0)
+        if (!readPcm || !writePacket || inputFormat.mBytesPerFrame == 0 ||
+            frameCount > std::uint64_t(INT64_MAX))
         {
             return std::nullopt;
         }
 
-        const auto frameCount = static_cast<std::uint32_t>(
-            interleavedPcmBytes.size() / inputFormat.mBytesPerFrame);
         const auto maxPacketBytes = maxOutputPacketBytes(parameters);
         if (maxPacketBytes >
             static_cast<std::size_t>(std::numeric_limits<int>::max()))
@@ -342,19 +335,6 @@ namespace cupuacu::file::alac
             return std::nullopt;
         }
 
-        AlacEncodedPackets encoded{};
-        encoded.frameCount = frameCount;
-        encoded.framesPerPacket = parameters.framesPerPacket;
-        const std::uint32_t packetCount =
-            frameCount == 0
-                ? 0
-                : ((frameCount + parameters.framesPerPacket - 1u) /
-                   parameters.framesPerPacket);
-        encoded.packetSizes.reserve(packetCount);
-        encoded.bytes.reserve(interleavedPcmBytes.size() +
-                              static_cast<std::size_t>(packetCount) *
-                                  kALACMaxEscapeHeaderBytes);
-
         const auto fullPacketInputBytes =
             static_cast<std::size_t>(parameters.framesPerPacket) *
             inputFormat.mBytesPerFrame;
@@ -364,13 +344,16 @@ namespace cupuacu::file::alac
             return std::nullopt;
         }
 
-        std::vector<unsigned char> packetInput(fullPacketInputBytes);
-        std::vector<std::uint8_t> packetOutput(maxPacketBytes);
-        for (std::uint32_t frameOffset = 0; frameOffset < frameCount;
+        storage::WorkingVector<unsigned char, storage::MemoryUse::Container>
+            packetInput(fullPacketInputBytes);
+        storage::WorkingVector<std::uint8_t, storage::MemoryUse::Container>
+            packetOutput(maxPacketBytes);
+        for (std::uint64_t frameOffset = 0; frameOffset < frameCount;
              frameOffset += parameters.framesPerPacket)
         {
-            const std::uint32_t packetFrames = std::min(
-                parameters.framesPerPacket, frameCount - frameOffset);
+            const auto packetFrames =
+                static_cast<std::uint32_t>(std::min<std::uint64_t>(
+                    parameters.framesPerPacket, frameCount - frameOffset));
             const auto packetInputBytes =
                 static_cast<std::size_t>(packetFrames) *
                 inputFormat.mBytesPerFrame;
@@ -381,11 +364,11 @@ namespace cupuacu::file::alac
             }
 
             std::fill(packetInput.begin(), packetInput.end(), 0);
-            std::memcpy(packetInput.data(),
-                        interleavedPcmBytes.data() +
-                            static_cast<std::size_t>(frameOffset) *
-                                inputFormat.mBytesPerFrame,
-                        packetInputBytes);
+            if (!readPcm(frameOffset, packetFrames,
+                         {packetInput.data(), packetInputBytes}))
+            {
+                return std::nullopt;
+            }
             auto encodedByteCount = static_cast<std::int32_t>(packetInputBytes);
             auto *writeBuffer =
                 reinterpret_cast<unsigned char *>(packetOutput.data());
@@ -404,12 +387,11 @@ namespace cupuacu::file::alac
                 return std::nullopt;
             }
 
-            encoded.packetSizes.push_back(
-                static_cast<std::uint32_t>(encodedByteCount64));
-            encoded.bytes.insert(
-                encoded.bytes.end(), packetOutput.begin(),
-                packetOutput.begin() +
-                    static_cast<std::ptrdiff_t>(encodedByteCount64));
+            if (!writePacket({packetOutput.data(),
+                              static_cast<std::size_t>(encodedByteCount64)}))
+            {
+                return std::nullopt;
+            }
         }
 
         if (encoder.Finish() != ALAC_noErr)
@@ -421,17 +403,60 @@ namespace cupuacu::file::alac
         {
             return std::nullopt;
         }
-        encoded.cookie = *cookie;
+        return AlacEncodingSummary{std::move(*cookie),
+                                   frameCount,
+                                   parameters.framesPerPacket};
+    }
+
+    std::optional<AlacEncodedPackets> encodePcmPackets(
+        AlacEncodingParameters parameters,
+        const storage::WorkingVector<
+            std::uint8_t, storage::MemoryUse::Container> &interleavedPcmBytes)
+    {
+        const auto bytesPerFrame = std::uint64_t(parameters.channels) *
+                                   ((parameters.bitsPerSample + 7u) / 8u);
+        if (!bytesPerFrame || interleavedPcmBytes.size() % bytesPerFrame)
+        {
+            return std::nullopt;
+        }
+        AlacEncodedPackets encoded;
+        const auto summary = streamEncodedPcmPackets(
+            parameters, interleavedPcmBytes.size() / bytesPerFrame,
+            [&](std::uint64_t start, std::uint32_t, std::span<std::uint8_t> pcm)
+            {
+                std::memcpy(pcm.data(),
+                            interleavedPcmBytes.data() + start * bytesPerFrame,
+                            pcm.size());
+                return true;
+            },
+            [&](std::span<const std::uint8_t> packet)
+            {
+                encoded.packetSizes.push_back(
+                    static_cast<std::uint32_t>(packet.size()));
+                encoded.bytes.insert(encoded.bytes.end(), packet.begin(),
+                                     packet.end());
+                return true;
+            });
+        if (!summary)
+        {
+            return std::nullopt;
+        }
+        encoded.cookie = summary->cookie;
+        encoded.frameCount = summary->frameCount;
+        encoded.framesPerPacket = summary->framesPerPacket;
         return encoded;
     }
 
-    std::optional<AlacDecodedPcm>
-    decodePcmPackets(const AlacDecodingParameters &parameters,
-                     const std::vector<std::uint8_t> &packetBytes,
-                     const std::vector<std::uint32_t> &packetSizes,
-                     DecodeProgressCallback progressCallback)
+    std::optional<AlacDecodedPcm> decodePcmPackets(
+        const AlacDecodingParameters &parameters,
+        const storage::WorkingVector<
+            std::uint8_t, storage::MemoryUse::Container> &packetBytes,
+        const storage::WorkingVector<
+            std::uint32_t, storage::MemoryUse::Container> &packetSizes,
+        DecodeProgressCallback progressCallback)
     {
-        std::vector<std::uint64_t> packetOffsets;
+        storage::WorkingVector<std::uint64_t, storage::MemoryUse::Container>
+            packetOffsets;
         packetOffsets.reserve(packetSizes.size());
         std::uint64_t packetOffset = 0;
         for (const auto packetSize : packetSizes)
@@ -448,12 +473,15 @@ namespace cupuacu::file::alac
                                 packetSizes, std::move(progressCallback));
     }
 
-    std::optional<AlacDecodedPcm>
-    decodePcmPackets(const AlacDecodingParameters &parameters,
-                     const std::vector<std::uint8_t> &sourceBytes,
-                     const std::vector<std::uint64_t> &packetOffsets,
-                     const std::vector<std::uint32_t> &packetSizes,
-                     DecodeProgressCallback progressCallback)
+    std::optional<AlacDecodedPcm> decodePcmPackets(
+        const AlacDecodingParameters &parameters,
+        const storage::WorkingVector<
+            std::uint8_t, storage::MemoryUse::Container> &sourceBytes,
+        const storage::WorkingVector<
+            std::uint64_t, storage::MemoryUse::Container> &packetOffsets,
+        const storage::WorkingVector<
+            std::uint32_t, storage::MemoryUse::Container> &packetSizes,
+        DecodeProgressCallback progressCallback)
     {
         if (sourceBytes.empty())
         {
@@ -466,10 +494,13 @@ namespace cupuacu::file::alac
         decoded.bitsPerSample = parameters.bitsPerSample;
         decoded.frameCount = parameters.frameCount;
         const auto outputBytesPerSample = bytesPerSample(parameters.bitsPerSample);
+        if (!outputBytesPerSample || !parameters.channels ||
+            parameters.frameCount > decoded.interleavedPcmBytes.max_size() /
+                parameters.channels / outputBytesPerSample)
+            return std::nullopt;
         decoded.interleavedPcmBytes.reserve(
             static_cast<std::size_t>(parameters.frameCount) *
-            static_cast<std::size_t>(parameters.channels) *
-            outputBytesPerSample);
+            parameters.channels * outputBytesPerSample);
 
         const auto ok = decodePcmPacketsImpl(
             parameters, packetOffsets, packetSizes,
@@ -508,12 +539,14 @@ namespace cupuacu::file::alac
         return decoded;
     }
 
-    std::optional<AlacDecodedPcm>
-    decodePcmPackets(const AlacDecodingParameters &parameters,
-                     const std::vector<std::uint64_t> &packetOffsets,
-                     const std::vector<std::uint32_t> &packetSizes,
-                     PacketReadCallback packetReadCallback,
-                     DecodeProgressCallback progressCallback)
+    std::optional<AlacDecodedPcm> decodePcmPackets(
+        const AlacDecodingParameters &parameters,
+        const storage::WorkingVector<
+            std::uint64_t, storage::MemoryUse::Container> &packetOffsets,
+        const storage::WorkingVector<
+            std::uint32_t, storage::MemoryUse::Container> &packetSizes,
+        PacketReadCallback packetReadCallback,
+        DecodeProgressCallback progressCallback)
     {
         if (!packetReadCallback)
         {
@@ -526,10 +559,13 @@ namespace cupuacu::file::alac
         decoded.bitsPerSample = parameters.bitsPerSample;
         decoded.frameCount = parameters.frameCount;
         const auto outputBytesPerSample = bytesPerSample(parameters.bitsPerSample);
+        if (!outputBytesPerSample || !parameters.channels ||
+            parameters.frameCount > decoded.interleavedPcmBytes.max_size() /
+                parameters.channels / outputBytesPerSample)
+            return std::nullopt;
         decoded.interleavedPcmBytes.reserve(
             static_cast<std::size_t>(parameters.frameCount) *
-            static_cast<std::size_t>(parameters.channels) *
-            outputBytesPerSample);
+            parameters.channels * outputBytesPerSample);
 
         const auto ok = decodePcmPacketsImpl(
             parameters, packetOffsets, packetSizes,
@@ -558,12 +594,15 @@ namespace cupuacu::file::alac
         return decoded;
     }
 
-    bool streamDecodedPcmPackets(const AlacDecodingParameters &parameters,
-                                 const std::vector<std::uint64_t> &packetOffsets,
-                                 const std::vector<std::uint32_t> &packetSizes,
-                                 PacketReadCallback packetReadCallback,
-                                 DecodedPacketCallback decodedPacketCallback,
-                                 DecodeProgressCallback progressCallback)
+    bool streamDecodedPcmPackets(
+        const AlacDecodingParameters &parameters,
+        const storage::WorkingVector<
+            std::uint64_t, storage::MemoryUse::Container> &packetOffsets,
+        const storage::WorkingVector<
+            std::uint32_t, storage::MemoryUse::Container> &packetSizes,
+        PacketReadCallback packetReadCallback,
+        DecodedPacketCallback decodedPacketCallback,
+        DecodeProgressCallback progressCallback)
     {
         if (!packetReadCallback || !decodedPacketCallback)
         {
@@ -583,13 +622,16 @@ namespace cupuacu::file::alac
             std::move(decodedPacketCallback));
     }
 
-    std::optional<AlacDecodedPcm16>
-    decodePcm16Packets(const AlacDecodingParameters &parameters,
-                       const std::vector<std::uint8_t> &packetBytes,
-                       const std::vector<std::uint32_t> &packetSizes,
-                       DecodeProgressCallback progressCallback)
+    std::optional<AlacDecodedPcm16> decodePcm16Packets(
+        const AlacDecodingParameters &parameters,
+        const storage::WorkingVector<
+            std::uint8_t, storage::MemoryUse::Container> &packetBytes,
+        const storage::WorkingVector<
+            std::uint32_t, storage::MemoryUse::Container> &packetSizes,
+        DecodeProgressCallback progressCallback)
     {
-        std::vector<std::uint64_t> packetOffsets;
+        storage::WorkingVector<std::uint64_t, storage::MemoryUse::Container>
+            packetOffsets;
         packetOffsets.reserve(packetSizes.size());
         std::uint64_t packetOffset = 0;
         for (const auto packetSize : packetSizes)
@@ -606,12 +648,15 @@ namespace cupuacu::file::alac
                                   packetSizes, std::move(progressCallback));
     }
 
-    std::optional<AlacDecodedPcm16>
-    decodePcm16Packets(const AlacDecodingParameters &parameters,
-                       const std::vector<std::uint8_t> &sourceBytes,
-                       const std::vector<std::uint64_t> &packetOffsets,
-                       const std::vector<std::uint32_t> &packetSizes,
-                       DecodeProgressCallback progressCallback)
+    std::optional<AlacDecodedPcm16> decodePcm16Packets(
+        const AlacDecodingParameters &parameters,
+        const storage::WorkingVector<
+            std::uint8_t, storage::MemoryUse::Container> &sourceBytes,
+        const storage::WorkingVector<
+            std::uint64_t, storage::MemoryUse::Container> &packetOffsets,
+        const storage::WorkingVector<
+            std::uint32_t, storage::MemoryUse::Container> &packetSizes,
+        DecodeProgressCallback progressCallback)
     {
         if (parameters.bitsPerSample != 16)
         {

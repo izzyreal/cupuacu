@@ -1,3 +1,4 @@
+#include "TestRevisionCommands.hpp"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
@@ -14,7 +15,7 @@
 #include "file/aiff/AiffMarkerMetadata.hpp"
 #include "file/aiff/AiffPreservationSupport.hpp"
 #include "file/aiff/AiffParser.hpp"
-#include "file/file_loading.hpp"
+#include "file/LegacyAudioLoading.hpp"
 
 #include <sndfile.h>
 
@@ -464,7 +465,7 @@ TEST_CASE("AIFF preservation support reports supported for valid PCM16 overwrite
 
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = aiffPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
 
     const auto support =
         cupuacu::file::aiff::AiffPreservationSupport::assessOverwrite(&state);
@@ -483,7 +484,7 @@ TEST_CASE("AIFF preservation support reports supported for valid PCM8 overwrite"
 
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = aiffPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
 
     const auto support =
         cupuacu::file::aiff::AiffPreservationSupport::assessOverwrite(&state);
@@ -502,7 +503,7 @@ TEST_CASE("AIFF preservation support reports supported for valid float32 overwri
 
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = aiffPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
 
     const auto support =
         cupuacu::file::aiff::AiffPreservationSupport::assessOverwrite(&state);
@@ -521,7 +522,7 @@ TEST_CASE("Overwrite keeps untouched 16-bit PCM AIFF byte-identical", "[file]")
 
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = aiffPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
 
     REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
@@ -542,7 +543,7 @@ TEST_CASE("Overwrite preserves non-audio AIFF chunks around SSND", "[file]")
 
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = aiffPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
     state.getActiveDocumentSession().document.setSample(0, 1, 0.25f);
     state.getActiveDocumentSession().rebuildWaveformCacheSynchronously();
     REQUIRE(cupuacu::actions::overwritePreserving(&state));
@@ -562,7 +563,7 @@ TEST_CASE("Loading AIFF imports native MARK markers into Document", "[file]")
 
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = aiffPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
 
     const auto &markers = state.getActiveDocumentSession().document.getMarkers();
     REQUIRE(markers.size() == 2);
@@ -587,7 +588,7 @@ TEST_CASE("Overwrite after length change keeps AIFF sizes and chunk order consis
 
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = aiffPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
 
     auto &session = state.getActiveDocumentSession();
     auto &doc = state.getActiveDocumentSession().document;
@@ -618,7 +619,7 @@ TEST_CASE("Overwrite patches only one mono PCM16 AIFF sample in place", "[file]"
 
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = aiffPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
     state.getActiveDocumentSession().document.setSample(0, 2, 0.25f);
 
     REQUIRE(cupuacu::actions::overwritePreserving(&state));
@@ -639,7 +640,7 @@ TEST_CASE("Overwrite patches only one mono PCM8 AIFF sample in place", "[file]")
 
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = aiffPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
     state.getActiveDocumentSession().document.setSample(0, 2, 0.25f);
 
     REQUIRE(cupuacu::actions::overwritePreserving(&state));
@@ -662,7 +663,7 @@ TEST_CASE("Overwrite patches only one mono float32 AIFF sample in place",
 
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = aiffPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
     state.getActiveDocumentSession().document.setSample(0, 2, 0.75f);
 
     REQUIRE(cupuacu::actions::overwritePreserving(&state));
@@ -695,7 +696,7 @@ TEST_CASE("Overwrite patches only one stereo channel AIFF sample in place",
 
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = aiffPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
     state.getActiveDocumentSession().document.setSample(1, 1, -0.5f);
 
     REQUIRE(cupuacu::actions::overwritePreserving(&state));
@@ -719,7 +720,7 @@ TEST_CASE("Overwrite after trim preserves surviving PCM16 AIFF sample bytes",
 
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = aiffPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
     state.addAndDoUndoable(
         std::make_shared<cupuacu::actions::audio::Trim>(&state, 1, 3));
 
@@ -749,11 +750,12 @@ TEST_CASE("Overwrite after cut preserves surviving PCM16 AIFF sample bytes",
 
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = aiffPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
     auto &session = state.getActiveDocumentSession();
     session.selection.setValue1(2.0);
     session.selection.setValue2(4.0);
     cupuacu::actions::audio::performCut(&state);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
@@ -782,10 +784,11 @@ TEST_CASE("Overwrite after insert silence preserves surrounding PCM16 AIFF sampl
 
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = aiffPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
     auto &session = state.getActiveDocumentSession();
     session.cursor = 2;
     cupuacu::actions::audio::performInsertSilence(&state, 2);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
@@ -815,7 +818,7 @@ TEST_CASE("Overwrite after trim preserves dirty and clean AIFF survivors distinc
 
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = aiffPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
     auto &document = state.getActiveDocumentSession().document;
     document.setSample(0, 2, 0.25f);
     state.addAndDoUndoable(
@@ -855,11 +858,12 @@ TEST_CASE("Overwrite after stereo cut preserves surviving interleaved AIFF PCM16
 
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = aiffPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
     auto &session = state.getActiveDocumentSession();
     session.selection.setValue1(1.0);
     session.selection.setValue2(3.0);
     cupuacu::actions::audio::performCut(&state);
+    cupuacu::test::finishRevisionCommands(&state);
 
     REQUIRE(cupuacu::actions::overwritePreserving(&state));
 
@@ -885,7 +889,7 @@ TEST_CASE("Second AIFF overwrite after edit is byte-identical", "[file]")
 
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = aiffPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
     state.getActiveDocumentSession().document.setSample(0, 1, -0.25f);
 
     REQUIRE(cupuacu::actions::overwritePreserving(&state));
@@ -906,7 +910,7 @@ TEST_CASE("Save write planner selects preserving AIFF save paths when supported"
 
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().currentFile = aiffPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
 
     const auto settings = cupuacu::file::defaultExportSettingsForPath(
         aiffPath, state.getActiveDocumentSession().document.getSampleFormat());
@@ -941,7 +945,7 @@ TEST_CASE("Preservation backend current-file overwrite uses AIFF writer",
     cupuacu::test::StateWithTestPaths state{};
     auto &session = state.getActiveDocumentSession();
     session.currentFile = aiffPath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
     session.document.setSample(0, 1, 0.25f);
 
     const auto settings = cupuacu::file::defaultExportSettingsForPath(
@@ -980,7 +984,7 @@ TEST_CASE("Preserving AIFF save as writes against the reference and updates it",
     cupuacu::test::StateWithTestPaths state{};
     auto &session = state.getActiveDocumentSession();
     session.currentFile = sourcePath.string();
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
     session.document.setSample(0, 1, 0.25f, false);
 
     const auto settings = cupuacu::file::defaultExportSettingsForPath(
@@ -1039,7 +1043,7 @@ TEST_CASE("Preserving overwrite updates AIFF markers after trim", "[file]")
 
     cupuacu::test::StateWithTestPaths state{};
     state.getActiveDocumentSession().setCurrentFile(aiffPath.string());
-    cupuacu::file::loadSampleData(&state);
+    cupuacu::file::legacy::loadSampleData(&state);
     state.getActiveDocumentSession().selection.setHighest(
         static_cast<double>(state.getActiveDocumentSession().document.getFrameCount()));
     state.getActiveDocumentSession().selection.setValue1(1.0);

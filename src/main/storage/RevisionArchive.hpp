@@ -1,0 +1,114 @@
+#pragma once
+#include "AudioEditRevision.hpp"
+#include "WorkingMap.hpp"
+#include "WeakObjectMap.hpp"
+#include "PagedCbor.hpp"
+#include <nlohmann/json.hpp>
+#include <functional>
+#include <set>
+
+namespace cupuacu::storage
+{
+    // Worker-owned append-only records. A small atomic manifest selects a
+    // committed prefix; unfinished records never replace the previous root.
+    class RevisionArchive : public std::enable_shared_from_this<RevisionArchive>
+    {
+    public:
+        using Json = nlohmann::json;
+        struct Stats
+        {
+            uint64_t sampleBytes = 0, sourceBytes = 0, metadataBytes = 0,
+                     nodes = 0;
+        };
+        static std::shared_ptr<RevisionArchive>
+        open(const std::filesystem::path &manifest);
+        static bool hasLiveReaders(const std::filesystem::path &manifest);
+        // Cache eviction already runs on a worker and must finish reclamation
+        // before removing the containing directory.
+        static void remove(const std::filesystem::path &manifest,
+                           bool deferRelease = true);
+        static bool recognizes(const std::filesystem::path &manifest);
+        ~RevisionArchive();
+        std::mutex operationMutex;
+        Stats stats;
+        uint64_t save(const std::shared_ptr<const AudioEditRevision> &);
+        uint64_t saveSource(const std::shared_ptr<const AudioRevision> &);
+        std::shared_ptr<const AudioEditRevision> load(uint64_t);
+        std::shared_ptr<const AudioRevision> loadSource(uint64_t);
+        uint64_t additionalHistoryBytes(
+            const std::vector<std::shared_ptr<const AudioEditRevision>> &base,
+            const std::shared_ptr<const AudioRevision> &preservation,
+            const std::vector<std::shared_ptr<const AudioEditRevision>>
+                &history);
+        void commit(Json manifest,
+                    const std::function<void()> &beforeReplace = {});
+        Json readManifest();
+        void
+        retainClipboardStores(const std::shared_ptr<const AudioEditRevision> &);
+        void setCancelCheck(std::function<bool()> check)
+        {
+            canceled = std::move(check);
+        }
+
+    private:
+        using Tree = AudioEditRevision::Tree;
+        struct StoreCopy
+        {
+            std::shared_ptr<void> memory =
+                reserveWorking(sizeof(StoreCopy) + 64, MemoryUse::Index);
+            void setNames(std::string nextName, std::string nextSource)
+            {
+                auto next = reserveWorking(sizeof(StoreCopy) + 64 +
+                                               nextName.capacity() +
+                                               nextSource.capacity(),
+                                           MemoryUse::Index);
+                name = std::move(nextName);
+                source = std::move(nextSource);
+                memory = std::move(next);
+            }
+            std::string name;
+            RecordIndex<uint64_t> lengths;
+            std::string source;
+        };
+        std::filesystem::path manifestPath, directory;
+        std::atomic_bool removed{false};
+        std::mutex publicationMutex;
+        uint64_t readLimit = 0;
+        PagedCbor legacyMetadata;
+        bool upgradeMetadata = false;
+        std::function<bool()> canceled;
+        bool pruneClipboardStores = false;
+        std::map<std::string, std::shared_ptr<void>> neededStores;
+        void retainStoreName(const std::string &name)
+        {
+            if (!neededStores.contains(name))
+            {
+                neededStores.emplace(
+                    name, reserveWorking(96 + name.size(), MemoryUse::Index));
+            }
+        }
+        void collectUnusedStores();
+        void collectUnusedStoresLocked();
+        // Stable object identities survive the deferred-release alias wrappers;
+        // weak control-block identity does not, and would split restored roots.
+        WorkingMap<uint64_t> roots, nodes, sources;
+        std::map<uint64_t, StoreCopy> stores;
+        WeakObjectMap<uint64_t, const AudioEditRevision> loadedRoots;
+        WorkingMap<EditTree::Weak> loadedNodes;
+        WeakObjectMap<uint64_t, const AudioRevision> loadedSources;
+        WeakObjectMap<std::string, AudioBlockStore> loadedStores;
+        std::shared_ptr<DecodedBlockCache> cache =
+            defaultDecodedBlockCache();
+        explicit RevisionArchive(std::filesystem::path);
+        void check() const;
+        uint64_t append(const Json &);
+        Json record(uint64_t, uint64_t *next = nullptr);
+        Json saveSequence(uint64_t count,
+                          const std::function<Json(uint64_t)> &);
+        void readSequence(const Json &, uint64_t before,
+                          const std::function<void(const Json &)> &);
+        uint64_t saveNode(const Tree &);
+        Tree loadNode(uint64_t, int depth = 0);
+        StoreCopy &copyStore(const AudioRevision &);
+    };
+} // namespace cupuacu::storage

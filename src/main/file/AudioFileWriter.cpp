@@ -1,8 +1,10 @@
 #include "AudioFileWriter.hpp"
+#include "../storage/WorkingMemory.hpp"
 
 #include "AudioExport.hpp"
 #include "FileIo.hpp"
 #include "SndfilePath.hpp"
+#include "../storage/DocumentAudioReader.hpp"
 #include "aiff/AiffMarkerMetadata.hpp"
 #include "m4a/M4aAlacWriter.hpp"
 #include "wav/WavMarkerMetadata.hpp"
@@ -18,9 +20,9 @@
 
 namespace
 {
-    void applyEncodingSettings(SNDFILE *snd,
-                               const int sampleRate,
-                               const cupuacu::file::AudioExportSettings &settings)
+    void
+    applyEncodingSettings(SNDFILE *snd, const int sampleRate,
+                          const cupuacu::file::AudioExportSettings &settings)
     {
         if (snd == nullptr)
         {
@@ -40,12 +42,13 @@ namespace
                 cupuacu::file::bitrateOptionsForSettings(settings, sampleRate);
             if (!bitrateOptions.empty())
             {
-                const auto derivedLevel =
-                    [sampleRate, &settings]() -> std::optional<double>
+                const auto derivedLevel = [sampleRate,
+                                           &settings]() -> std::optional<double>
                 {
                     cupuacu::file::AudioExportSettings tmp = settings;
                     const auto options =
-                        cupuacu::file::bitrateOptionsForSettings(tmp, sampleRate);
+                        cupuacu::file::bitrateOptionsForSettings(tmp,
+                                                                 sampleRate);
                     for (const auto &option : options)
                     {
                         if (option.value == *settings.bitrateKbps)
@@ -58,7 +61,8 @@ namespace
                             }
                             const double normalized =
                                 1.0 -
-                                (static_cast<double>(option.value - minBitrate) /
+                                (static_cast<double>(option.value -
+                                                     minBitrate) /
                                  static_cast<double>(maxBitrate - minBitrate));
                             return std::clamp(normalized, 0.0, 1.0);
                         }
@@ -68,8 +72,8 @@ namespace
                 if (derivedLevel.has_value())
                 {
                     double compressionLevel = *derivedLevel;
-                    sf_command(snd, SFC_SET_COMPRESSION_LEVEL, &compressionLevel,
-                               sizeof(compressionLevel));
+                    sf_command(snd, SFC_SET_COMPRESSION_LEVEL,
+                               &compressionLevel, sizeof(compressionLevel));
                 }
             }
         }
@@ -84,8 +88,7 @@ namespace
 
 void cupuacu::file::AudioFileWriter::writeFile(
     cupuacu::State *state, const std::filesystem::path &outputPath,
-    const AudioExportSettings &settings,
-    WriteProgressCallback progress)
+    const AudioExportSettings &settings, WriteProgressCallback progress)
 {
     if (!state || outputPath.empty())
     {
@@ -96,16 +99,28 @@ void cupuacu::file::AudioFileWriter::writeFile(
         throw std::invalid_argument("Export settings are invalid");
     }
 
-    const auto lease =
-        state->getActiveDocumentSession().document.acquireReadLease();
-    writeFile(lease, outputPath, settings, std::move(progress));
+    const auto &session = state->getActiveDocumentSession();
+    const auto reader = session.getAudioReader();
+    const auto lease = session.document.acquireReadLease();
+    writeFile(*reader, lease.getMarkers(), outputPath, settings,
+              std::move(progress));
 }
 
 void cupuacu::file::AudioFileWriter::writeFile(
     const cupuacu::Document::ReadLease &document,
     const std::filesystem::path &outputPath,
-    const AudioExportSettings &settings,
-    WriteProgressCallback progress)
+    const AudioExportSettings &settings, WriteProgressCallback progress)
+{
+    storage::DocumentAudioReader reader(document);
+    writeFile(reader, document.getMarkers(), outputPath, settings,
+              std::move(progress));
+}
+
+void cupuacu::file::AudioFileWriter::writeFile(
+    const storage::AudioReader &audio,
+    const std::vector<DocumentMarker> &markers,
+    const std::filesystem::path &outputPath,
+    const AudioExportSettings &settings, WriteProgressCallback progress)
 {
     if (outputPath.empty())
     {
@@ -119,15 +134,15 @@ void cupuacu::file::AudioFileWriter::writeFile(
     if (cupuacu::file::isNativeM4aAlacExportSettings(settings))
     {
         cupuacu::file::m4a::writeAlacM4aFile(
-            document, outputPath,
+            audio, markers, outputPath,
             cupuacu::file::m4aAlacBitDepthForSettings(settings), progress);
         return;
     }
 
-    const int channels = document.getChannelCount();
-    const int sampleRate = document.getSampleRate();
+    const int channels = audio.shape().channels;
+    const int sampleRate = audio.shape().sampleRate;
 
-    if (channels <= 0 || sampleRate <= 0)
+    if (channels <= 0 || sampleRate <= 0 || audio.shape().frames < 0)
     {
         throw std::invalid_argument("Document format cannot be exported");
     }
@@ -138,7 +153,8 @@ void cupuacu::file::AudioFileWriter::writeFile(
     sfinfo.format = settings.sndfileFormat();
     if (sf_format_check(&sfinfo) == 0)
     {
-        throw std::invalid_argument("Export format is not supported by libsndfile");
+        throw std::invalid_argument(
+            "Export format is not supported by libsndfile");
     }
 
     writeFileAtomically(
@@ -157,13 +173,19 @@ void cupuacu::file::AudioFileWriter::writeFile(
                     "Failed to open output audio file", detail);
             }
 
+            std::unique_ptr<SNDFILE, decltype(&sf_close)> fileHandle(snd,
+                                                                     sf_close);
             applyEncodingSettings(snd, sampleRate, settings);
 
-            const sf_count_t frames = document.getFrameCount();
+            const sf_count_t frames = audio.shape().frames;
             constexpr sf_count_t chunkFrames = 65536;
+            auto memory = storage::reserveWorking(
+                uint64_t(chunkFrames) * (channels + 1) * sizeof(float),
+                storage::MemoryUse::Export);
             std::vector<float> interleaved(
                 static_cast<std::size_t>(chunkFrames) *
                 static_cast<std::size_t>(channels));
+            std::vector<float> channelSamples(chunkFrames);
             sf_count_t totalWritten = 0;
             if (progress)
             {
@@ -175,14 +197,16 @@ void cupuacu::file::AudioFileWriter::writeFile(
             {
                 const sf_count_t framesToWrite =
                     std::min(chunkFrames, frames - startFrame);
-                for (sf_count_t frame = 0; frame < framesToWrite; ++frame)
+                for (int channel = 0; channel < channels; ++channel)
                 {
-                    for (int channel = 0; channel < channels; ++channel)
+                    audio.readChannel(
+                        channel, startFrame,
+                        {channelSamples.data(),
+                         static_cast<std::size_t>(framesToWrite)});
+                    for (sf_count_t frame = 0; frame < framesToWrite; ++frame)
                     {
-                        interleaved[static_cast<std::size_t>(frame) *
-                                        static_cast<std::size_t>(channels) +
-                                    static_cast<std::size_t>(channel)] =
-                            document.getSample(channel, startFrame + frame);
+                        interleaved[static_cast<std::size_t>(frame) * channels +
+                                    channel] = channelSamples[frame];
                     }
                 }
 
@@ -205,7 +229,12 @@ void cupuacu::file::AudioFileWriter::writeFile(
             }
             const std::string writeDetail = sf_strerror(snd);
             sf_write_sync(snd);
-            sf_close(snd);
+            const int closeStatus = sf_close(fileHandle.release());
+            if (closeStatus != 0)
+            {
+                throw detail::makeIoFailure("Failed to close output audio file",
+                                            sf_error_number(closeStatus));
+            }
 
             if (totalWritten != frames)
             {
@@ -213,15 +242,15 @@ void cupuacu::file::AudioFileWriter::writeFile(
                     "Failed to write all audio frames", writeDetail);
             }
 
-            if (settings.majorFormat == SF_FORMAT_WAV)
+            if (!markers.empty() && settings.majorFormat == SF_FORMAT_WAV)
             {
                 cupuacu::file::wav::markers::rewriteFileWithMarkers(
-                    temporaryPath, document.getMarkers());
+                    temporaryPath, markers);
             }
-            else if (settings.majorFormat == SF_FORMAT_AIFF)
+            else if (!markers.empty() && settings.majorFormat == SF_FORMAT_AIFF)
             {
                 cupuacu::file::aiff::markers::rewriteFileWithMarkers(
-                    temporaryPath, document.getMarkers());
+                    temporaryPath, markers);
             }
         });
 }
