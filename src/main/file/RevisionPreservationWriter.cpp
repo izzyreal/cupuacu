@@ -1,3 +1,4 @@
+#include "../utils/BitCast.hpp"
 #include "RevisionPreservationWriter.hpp"
 #include "FileIo.hpp"
 #include "SampleQuantization.hpp"
@@ -6,7 +7,6 @@
 #include "aiff/AiffParser.hpp"
 #include "aiff/AiffMarkerMetadata.hpp"
 #include <array>
-#include <bit>
 #include <fstream>
 #include <list>
 #include <sndfile.h>
@@ -226,7 +226,7 @@ namespace cupuacu::file
             void encode(float value, char *out)
             {
                 uint32_t bits = target.format == SampleFormat::FLOAT32
-                                    ? std::bit_cast<uint32_t>(value)
+                                    ? cupuacu::utils::bitCast<uint32_t>(value)
                                     : uint32_t(quantizeIntegerPcmSample(
                                           target.format, value, false));
                 if (target.wav && target.width == 1)

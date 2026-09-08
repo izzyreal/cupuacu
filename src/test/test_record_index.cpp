@@ -5,9 +5,25 @@
 #include "waveform/WaveformViewport.hpp"
 #include "TestPaths.hpp"
 #include <future>
+#include "utils/BitCast.hpp"
 
 using namespace cupuacu;
 using namespace cupuacu::storage;
+
+TEST_CASE("Floating-point bit casts preserve signed zero and NaN payloads",
+          "[record-index]")
+{
+    for (uint32_t bits : {0u, 0x80000000u, 0x3f800000u, 0x7f800000u,
+                          0x7fc12345u, 0xffc54321u})
+    {
+        CHECK(utils::bitCast<uint32_t>(utils::bitCast<float>(bits)) == bits);
+    }
+    for (uint64_t bits : {0ull, 0x8000000000000000ull, 0x3ff0000000000000ull,
+                          0x7ff0000000000000ull, 0x7ff8123456789abcull})
+    {
+        CHECK(utils::bitCast<uint64_t>(utils::bitCast<double>(bits)) == bits);
+    }
+}
 
 namespace
 {

@@ -493,8 +493,8 @@ namespace cupuacu::storage
             }
             if (borrowed && !samples)
             {
-                samples = std::make_unique_for_overwrite<float[]>(
-                    allocation / sizeof(float));
+                // Default initialization deliberately avoids zeroing overwritten samples.
+                samples.reset(new float[allocation / sizeof(float)]);
             }
             // Disk misses never hold the shared cache lock. Warm reads from
             // another tab and memory reclamation can proceed independently.
