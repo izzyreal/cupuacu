@@ -902,6 +902,12 @@ TEST_CASE("Async startup document restore reopens tabs and restores active view"
     persistedState.openFiles = {firstPath.string(), secondPath.string()};
     persistedState.activeOpenFileIndex = 1;
 
+    SECTION("Last restored tab is already active") {}
+    SECTION("Startup must switch back to an earlier tab")
+    {
+        persistedState.activeOpenFileIndex = 0;
+    }
+
     cupuacu::actions::restoreStartupDocument(
         &state, {secondPath.string(), firstPath.string()}, persistedState,
         true);
@@ -914,15 +920,58 @@ TEST_CASE("Async startup document restore reopens tabs and restores active view"
 
     REQUIRE_FALSE(state.startupRestore.active);
     REQUIRE(state.tabs.size() == 2);
-    REQUIRE(state.activeTabIndex == 1);
+    REQUIRE(state.activeTabIndex == persistedState.activeOpenFileIndex);
+    REQUIRE(state.mainDocumentSessionWindow->getDocumentSession() ==
+            &state.getActiveDocumentSession());
+    REQUIRE(state.waveforms.size() ==
+            state.getActiveDocumentSession().document.getChannelCount());
     REQUIRE(state.tabs[0].session.currentFile == firstPath.string());
     REQUIRE(state.tabs[0].session.cursor == 1);
     REQUIRE(state.tabs[1].session.currentFile == secondPath.string());
     REQUIRE(state.tabs[1].session.cursor == 2);
-    REQUIRE(state.getActiveViewState().samplesPerPixel == Catch::Approx(1.5));
-    REQUIRE(state.getActiveViewState().sampleOffset == 1);
+    REQUIRE(state.tabs[1].viewState.samplesPerPixel == Catch::Approx(1.5));
+    REQUIRE(state.tabs[1].viewState.sampleOffset == 1);
     REQUIRE(state.recentFiles ==
             std::vector<std::string>{secondPath.string(), firstPath.string()});
+}
+
+TEST_CASE("Async startup clipboard completion preserves the displayed waveform",
+          "[integration][startup-waveform]")
+{
+    ScopedDirCleanup cleanup(makeUniqueTempDir("cupuacu-startup-waveform"));
+    const auto wavPath = cleanup.path() / "restored.wav";
+    writeTestWav(wavPath, 44100, 1, std::vector<float>(8192, 0.5f));
+
+    cupuacu::test::StateWithTestPaths state{};
+    createBuiltEmptySessionUi(&state, 800, 400);
+    cupuacu::persistence::PersistedSessionState persistedState{};
+    persistedState.openFiles = {wavPath.string()};
+    persistedState.activeOpenFileIndex = 0;
+    cupuacu::actions::restoreStartupDocument(
+        &state, {wavPath.string()}, persistedState, true);
+
+    // Delay clipboard publication until the restored file has been drawn.
+    auto clipboardRestore = std::make_shared<cupuacu::State::ClipboardRestoreWorker>(
+        [](const std::filesystem::path &, const auto &)
+            -> std::optional<std::shared_ptr<cupuacu::ClipboardAudio>>
+        { return std::make_shared<cupuacu::ClipboardAudio>(); });
+    state.startupClipboardRestore = clipboardRestore;
+    drainPendingOpenWork(&state);
+    REQUIRE(state.startupRestore.active);
+    REQUIRE(state.waveforms.size() == 1);
+
+    auto *window = state.mainDocumentSessionWindow->getWindow();
+    pumpOpenWorkUntil(&state, [&]() {
+        window->getRootComponent()->timerCallbackRecursive();
+        window->renderFrame();
+        return state.waveforms.front()->isCurrentViewTextureReady();
+    });
+
+    clipboardRestore->submit({});
+    pumpOpenWorkUntil(&state, [&]() { return !state.startupRestore.active; });
+
+    // Completing startup must not discard a ready texture for the same tab.
+    REQUIRE(state.waveforms.front()->isCurrentViewTextureReady());
 }
 
 TEST_CASE("Async startup restore refreshes main window layout after binding",

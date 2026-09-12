@@ -87,7 +87,76 @@ Waveform::~Waveform()
 {
     viewportWorker.reset();
     backgroundBlockRenderWorker.reset();
+    clearRecordingFallback();
     invalidateBaseTexture();
+}
+
+void Waveform::clearRecordingFallback() const
+{
+    destroyTexture(recordingFallbackTexture);
+}
+
+void Waveform::retainRecordingFallback()
+{
+    if (cachedBaseTextureValid && cachedBaseTexture)
+    {
+        clearRecordingFallback();
+        recordingFallbackTexture = std::exchange(cachedBaseTexture, nullptr);
+        recordingFallbackKey = cachedBaseTextureKey;
+    }
+    recordingFallbackTabId = state->getActiveTab()->id;
+    recordingFallbackVersion =
+        state->getActiveDocumentSession().document.getWaveformDataVersion();
+    invalidateBaseTexture();
+    clearProgressiveBlockBuildGeometry();
+    setDirty();
+}
+
+void Waveform::refreshAllAfterRecording(State *state)
+{
+    if (!state)
+    {
+        return;
+    }
+    for (auto *waveform : state->waveforms)
+    {
+        if (waveform)
+        {
+            waveform->retainRecordingFallback();
+        }
+    }
+}
+
+bool Waveform::drawRecordingFallback(SDL_Renderer *renderer) const
+{
+    if (!recordingFallbackTexture)
+    {
+        return false;
+    }
+    const auto key = computeBaseTextureCacheKey();
+    auto compatibleKey = recordingFallbackKey;
+    // Only an explicitly notified recording update may cross data versions.
+    compatibleKey.waveformDataVersion = recordingFallbackVersion;
+    SDL_FRect source{};
+    if (state->getActiveTab()->id != recordingFallbackTabId ||
+        key.waveformDataVersion != recordingFallbackVersion)
+    {
+        clearRecordingFallback();
+        return false;
+    }
+    if (compatibleKey == key)
+    {
+        source = {0, 0, float(key.width), float(key.height)};
+    }
+    else if (key.samplesPerPixel < 1 ||
+             !canRenderCurrentViewFromCachedBlockTexture(key, compatibleKey,
+                                                         source))
+    {
+        clearRecordingFallback();
+        return false;
+    }
+    SDL_RenderTexture(renderer, recordingFallbackTexture, &source, nullptr);
+    return true;
 }
 
 uint8_t Waveform::getChannelIndex() const
@@ -118,6 +187,8 @@ void Waveform::resized()
 
 void Waveform::invalidateBaseTexture() const
 {
+    // Viewport-source changes and worker results invalidate current caches,
+    // but the recording fallback survives until replacement pixels are ready.
     cachedBaseTextureValid = false;
     cachedBaseTextureBuiltSamplePrefixEnd = -1;
     progressiveBlockTextureRefreshPending = false;
@@ -720,6 +791,7 @@ void Waveform::finalizeBaseTextureForView(
     const BaseTextureCacheKey &newKey, const BaseTextureCacheKey &targetKey,
     const bool allowBlockCoverageReuse) const
 {
+    clearRecordingFallback();
     cachedBaseTextureKey = targetKey;
     cachedBaseTextureValid = true;
     if (allowBlockCoverageReuse && targetKey != newKey)
@@ -2248,6 +2320,10 @@ bool Waveform::drawAsyncViewport(SDL_Renderer *renderer) const
     if (!viewportData || viewportData->request != request ||
         viewportData->pending || viewportFailed)
     {
+        if (drawRecordingFallback(renderer))
+        {
+            return true;
+        }
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderFillRect(renderer, nullptr);
         drawHorizontalLines(renderer);
@@ -2255,6 +2331,7 @@ bool Waveform::drawAsyncViewport(SDL_Renderer *renderer) const
     }
     if (!ensureBaseTextureStorage(renderer, target))
     {
+        drawRecordingFallback(renderer);
         return true;
     }
     auto *previousTarget = SDL_GetRenderTarget(renderer);
@@ -2329,6 +2406,15 @@ bool Waveform::drawAsyncViewport(SDL_Renderer *renderer) const
 void Waveform::onDraw(SDL_Renderer *renderer)
 {
     if (drawAsyncViewport(renderer))
+    {
+        drawSelection(renderer);
+        drawHighlight(renderer);
+        drawMarkers(renderer);
+        drawCursor(renderer);
+        drawPlaybackPosition(renderer);
+        return;
+    }
+    if (isWaveformCacheBuildActive() && drawRecordingFallback(renderer))
     {
         drawSelection(renderer);
         drawHighlight(renderer);

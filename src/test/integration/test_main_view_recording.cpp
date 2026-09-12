@@ -6,17 +6,282 @@
 #include "State.hpp"
 #include "actions/Play.hpp"
 #include "actions/Record.hpp"
+#include "actions/audio/RevisionRecording.hpp"
 #include "audio/RecordedChunk.hpp"
 #include "gui/DevicePropertiesWindow.hpp"
+#include "gui/Waveform.hpp"
+#include <catch2/generators/catch_generators.hpp>
 
 #if defined(__APPLE__)
 #include "platform/macos/MicrophonePermission.hpp"
 #endif
 
+#include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cmath>
+#include <stdexcept>
+#include <thread>
 #include <vector>
 
 using Catch::Approx;
+
+namespace
+{
+    template <class Predicate> void waitForRecordingRender(Predicate predicate)
+    {
+        const auto deadline =
+            std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (!predicate())
+        {
+            REQUIRE(std::chrono::steady_clock::now() < deadline);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
+
+    struct WaveformReadGate
+    {
+        std::atomic<bool> released{false};
+        void wait() const
+        {
+            const auto deadline =
+                std::chrono::steady_clock::now() + std::chrono::seconds(10);
+            while (!released)
+            {
+                if (std::chrono::steady_clock::now() >= deadline)
+                {
+                    throw std::runtime_error("Waveform read gate timed out");
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        }
+    };
+
+    struct HeldWaveformReads
+    {
+        std::vector<std::shared_ptr<WaveformReadGate>> gates;
+        ~HeldWaveformReads()
+        {
+            for (auto &gate : gates)
+            {
+                gate->released = true;
+            }
+        }
+        void hold(cupuacu::DocumentSession &session)
+        {
+            struct Reader : cupuacu::storage::AudioReader
+            {
+                std::shared_ptr<const AudioReader> original;
+                std::shared_ptr<WaveformReadGate> gate;
+                cupuacu::storage::AudioShape shape() const override
+                {
+                    return original->shape();
+                }
+                void readChannel(int channel, int64_t start,
+                                 std::span<float> destination) const override
+                {
+                    gate->wait();
+                    original->readChannel(channel, start, destination);
+                }
+            };
+            auto gate = std::make_shared<WaveformReadGate>();
+            gates.push_back(gate);
+            // The session constructs a mutable source. Install the gate before
+            // any waveform worker captures this newly committed revision.
+            auto source =
+                std::const_pointer_cast<cupuacu::waveform::ViewportSource>(
+                    session.getViewportSource());
+            auto reader = std::make_shared<Reader>();
+            reader->original = source->audio;
+            reader->gate = gate;
+            source->audio = reader;
+            source->prepare =
+                [gate, prepare = source->prepare](const auto &cancel)
+            {
+                gate->wait();
+                return !cancel() && (!prepare || prepare(cancel));
+            };
+        }
+    };
+} // namespace
+
+TEST_CASE(
+    "Recording waveform retains complete pixels while replacement reads are "
+    "pending",
+    "[integration][recording-waveform]")
+{
+    using namespace cupuacu;
+    const int channels = GENERATE(1, 2);
+    const double samplesPerPixel = GENERATE(0.25, 4.0, 128.0);
+    CAPTURE(channels, samplesPerPixel);
+    test::StateWithTestPaths state{};
+    auto ui =
+        test::integration::createSessionUi(&state, 262144, false, channels);
+    auto &session = state.getActiveDocumentSession();
+    session.bindReadRevision(storage::AudioEditRevision::silence(
+        {262144, channels, 44100, SampleFormat::FLOAT32}));
+    state.getActiveViewState().samplesPerPixel = samplesPerPixel;
+    for (auto *waveform : state.waveforms)
+    {
+        waveform->setBounds(0, 0, 128, 80);
+    }
+    auto *renderer =
+        state.mainDocumentSessionWindow->getWindow()->getRenderer();
+    std::unique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)> target(
+        SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
+                          SDL_TEXTUREACCESS_TARGET, 128, 80),
+        SDL_DestroyTexture);
+    REQUIRE(target);
+    auto pixels = [&](gui::Waveform *waveform)
+    {
+        // Keep the moving recording cursor outside the measured waveform.
+        session.cursor = session.document.getFrameCount();
+        SDL_SetRenderTarget(renderer, target.get());
+        SDL_SetRenderViewport(renderer, nullptr);
+        waveform->onDraw(renderer);
+        std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)> surface(
+            SDL_RenderReadPixels(renderer, nullptr), SDL_DestroySurface);
+        REQUIRE(surface);
+        std::vector<bool> green;
+        for (int y = 0; y < surface->h; ++y)
+        {
+            for (int x = 0; x < surface->w; ++x)
+            {
+                Uint8 r, g, b, a;
+                REQUIRE(
+                    SDL_ReadSurfacePixel(surface.get(), x, y, &r, &g, &b, &a));
+                green.push_back(g > 100 && r < 20 && b < 20);
+            }
+        }
+        SDL_SetRenderTarget(renderer, nullptr);
+        return green;
+    };
+    auto waitReady = [&]
+    {
+        waitForRecordingRender(
+            [&]
+            {
+                bool ready = true;
+                for (auto *waveform : state.waveforms)
+                {
+                    pixels(waveform);
+                    ready = ready && waveform->isCurrentViewTextureReady();
+                }
+                return ready;
+            });
+    };
+    waitReady();
+    std::vector<std::vector<bool>> original;
+    for (auto *waveform : state.waveforms)
+    {
+        original.push_back(pixels(waveform));
+        REQUIRE(std::count(original.back().begin(), original.back().end(),
+                           true) > 0);
+    }
+    actions::startRevisionRecording(
+        &state, 0, test::makeUniqueTestRoot("recording-waveform") / "audio");
+    auto recording = state.revisionRecording;
+    HeldWaveformReads held;
+    constexpr auto batchFrames = storage::RecordingWriter::batchFrames;
+    for (int update = 0; update < 3; ++update)
+    {
+        for (int64_t offset = 0; offset < batchFrames; offset += 256)
+        {
+            audio::RecordedChunk chunk{
+                update * batchFrames + offset, 256, uint8_t(channels), {}};
+            std::fill(chunk.interleavedSamples.begin(),
+                      chunk.interleavedSamples.end(), -0.5f);
+            REQUIRE(recording->writer.submit(chunk));
+        }
+        waitForRecordingRender(
+            [&]
+            {
+                return recording->writer.snapshot().endFrame >=
+                       (update + 1) * batchFrames;
+            });
+        REQUIRE(actions::pollRevisionRecording(&state));
+        held.hold(session);
+        for (int channel = 0; channel < channels; ++channel)
+        {
+            REQUIRE((pixels(state.waveforms[channel]) == original[channel]));
+            REQUIRE_FALSE(
+                state.waveforms[channel]->isCurrentViewTextureReady());
+        }
+    }
+    recording->finishing = true;
+    recording->writer.finish();
+    waitForRecordingRender(
+        [&]
+        {
+            actions::pollRevisionRecording(&state);
+            return !state.revisionRecording;
+        });
+    for (int channel = 0; channel < channels; ++channel)
+    {
+        REQUIRE((pixels(state.waveforms[channel]) == original[channel]));
+    }
+
+    SECTION("Completing the latest read replaces the retained pixels")
+    {
+        held.gates.back()->released = true;
+        waitReady();
+        for (int channel = 0; channel < channels; ++channel)
+        {
+            REQUIRE((pixels(state.waveforms[channel]) != original[channel]));
+        }
+    }
+    SECTION("An unrelated invalidation clears the retained pixels")
+    {
+        gui::Waveform::invalidateAllRenderingCaches(&state);
+        for (auto *waveform : state.waveforms)
+        {
+            const auto pending = pixels(waveform);
+            REQUIRE(std::count(pending.begin(), pending.end(), true) == 0);
+        }
+    }
+    SECTION(
+        "Sample inspection reads the current recording while pixels are "
+        "retained")
+    {
+        for (int channel = 0; channel < channels; ++channel)
+        {
+            auto *waveform = state.waveforms[channel];
+            REQUIRE_FALSE(waveform->requestSampleValue(0));
+            waitForRecordingRender(
+                [&]
+                {
+                    waveform->timerCallback();
+                    return waveform->requestSampleValue(0).has_value();
+                });
+            REQUIRE(*waveform->requestSampleValue(0) == Approx(-0.5f));
+            REQUIRE((pixels(waveform) == original[channel]));
+            REQUIRE_FALSE(waveform->isCurrentViewTextureReady());
+        }
+    }
+    SECTION("An incompatible zoom clears the retained pixels")
+    {
+        state.getActiveViewState().verticalZoom *= 2;
+        for (auto *waveform : state.waveforms)
+        {
+            const auto pending = pixels(waveform);
+            REQUIRE(std::count(pending.begin(), pending.end(), true) == 0);
+        }
+    }
+    SECTION("A replacement revision cannot display retained recording pixels")
+    {
+        REQUIRE(session.commitEditRevision(
+            session.getEditRevision(),
+            storage::AudioEditRevision::silence(
+                {262144, channels, 44100, SampleFormat::FLOAT32}),
+            {}));
+        held.hold(session);
+        for (auto *waveform : state.waveforms)
+        {
+            const auto pending = pixels(waveform);
+            REQUIRE(std::count(pending.begin(), pending.end(), true) == 0);
+        }
+    }
+}
 
 TEST_CASE("MainView integration consumes recorded chunks into the document",
           "[integration]")

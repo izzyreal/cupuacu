@@ -313,7 +313,7 @@ void MainView::refreshWaveformsAfterRecordedAudio(
     if (waveformCacheChanged)
     {
         session.updateWaveformCache();
-        Waveform::invalidateAllRenderingCaches(state);
+        Waveform::refreshAllAfterRecording(state);
     }
 
     if (channelLayoutChanged ||

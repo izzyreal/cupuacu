@@ -81,10 +81,14 @@ namespace cupuacu::gui
                 {
                     continue;
                 }
+                waveform->clearRecordingFallback();
                 waveform->invalidateBaseTexture();
                 waveform->clearProgressiveBlockBuildGeometry();
             }
         }
+
+        // Call after publishing recorded audio; retains display pixels only.
+        static void refreshAllAfterRecording(State *state);
 
         static void applyAllPendingCacheUpdates(State *state)
         {
@@ -336,6 +340,13 @@ namespace cupuacu::gui
                 BackgroundBlockRenderRequest, BackgroundBlockRenderChunk>;
 
         mutable BaseTextureCacheKey cachedBaseTextureKey{};
+        mutable SDL_Texture *recordingFallbackTexture = nullptr;
+        mutable BaseTextureCacheKey recordingFallbackKey{};
+        mutable uint64_t recordingFallbackTabId = 0;
+        mutable uint64_t recordingFallbackVersion = 0;
+        void retainRecordingFallback();
+        void clearRecordingFallback() const;
+        bool drawRecordingFallback(SDL_Renderer *) const;
         mutable bool cachedBaseTextureValid = false;
         mutable SDL_FRect cachedBaseTextureSourceRect{0.0f, 0.0f, 0.0f, 0.0f};
         mutable int64_t cachedBaseTextureBuiltSamplePrefixEnd = -1;

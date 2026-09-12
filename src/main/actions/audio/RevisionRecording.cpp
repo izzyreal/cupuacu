@@ -74,7 +74,7 @@ namespace cupuacu::actions
                 session.syncSelectionAndCursorToDocumentLength();
                 if (index == state->activeTabIndex)
                 {
-                    gui::Waveform::invalidateAllRenderingCaches(state);
+                    gui::Waveform::refreshAllAfterRecording(state);
                     gui::requestMainViewRefresh(state);
                 }
             }

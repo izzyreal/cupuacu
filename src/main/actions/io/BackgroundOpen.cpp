@@ -307,9 +307,14 @@ namespace cupuacu::actions::io
             }
 
             state->startupRestore.active = false;
+            // File completion already refreshed the active tab. Clipboard
+            // restoration may finish later, after its waveform is visible.
+            // Rebuild only when startup still needs to select another tab.
             if (state->startupRestore.restoredActiveTabIndex >= 0 &&
                 state->startupRestore.restoredActiveTabIndex <
-                    static_cast<int>(state->tabs.size()))
+                    static_cast<int>(state->tabs.size()) &&
+                state->activeTabIndex !=
+                    state->startupRestore.restoredActiveTabIndex)
             {
                 state->activeTabIndex =
                     state->startupRestore.restoredActiveTabIndex;
