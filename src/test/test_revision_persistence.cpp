@@ -115,7 +115,9 @@ TEST_CASE(
     // Recovery reads archive files, even after both user and working source
     // disappear.
     std::filesystem::remove(files.root / "source.wav");
-    std::filesystem::remove_all(files.root / "working");
+    // State releases disk-backed revisions on a worker. Let the store remove
+    // its directory instead of racing its destructor with another remove_all.
+    until([&] { return !std::filesystem::exists(files.root / "working"); });
     // A new archive path exercises reopening without the writer's registry.
     std::filesystem::rename(path, path.string() + ".moved");
     std::filesystem::rename(path.string() + ".revisions",
