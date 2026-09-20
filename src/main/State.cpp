@@ -18,6 +18,7 @@
 #include "actions/io/BackgroundSave.hpp"
 #include "actions/Undoable.hpp"
 #include "actions/DocumentSessionPersistence.hpp"
+#include "actions/DocumentUi.hpp"
 #include "file/OverwritePreservation.hpp"
 #include "file/OverwritePreservationMutation.hpp"
 
@@ -158,6 +159,10 @@ void cupuacu::State::addUndoableToTab(
     {
         cupuacu::actions::autosaveDocumentAfterMutation(this, tabIndex);
     }
+    if (tabIndex == activeTabIndex)
+    {
+        cupuacu::actions::setMainWindowTitleToActiveDocument(this);
+    }
 }
 
 void cupuacu::State::addAndDoUndoableToTab(
@@ -205,6 +210,10 @@ void cupuacu::State::addAndDoUndoableToTab(
     }
 
     cupuacu::actions::autosaveDocumentAfterMutation(this, tabIndex);
+    if (tabIndex == activeTabIndex)
+    {
+        cupuacu::actions::setMainWindowTitleToActiveDocument(this);
+    }
 }
 
 void cupuacu::State::addUndoable(
@@ -249,6 +258,7 @@ void cupuacu::State::undo()
     redoables.push_back(undoable);
     ++getActiveTab()->historyVersion;
     cupuacu::actions::autosaveActiveDocumentAfterMutation(this);
+    cupuacu::actions::setMainWindowTitleToActiveDocument(this);
 }
 
 void cupuacu::State::redo()
@@ -281,6 +291,7 @@ void cupuacu::State::redo()
     undoables.push_back(redoable);
     ++getActiveTab()->historyVersion;
     cupuacu::actions::autosaveActiveDocumentAfterMutation(this);
+    cupuacu::actions::setMainWindowTitleToActiveDocument(this);
 }
 
 std::string cupuacu::State::getUndoDescription()

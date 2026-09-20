@@ -285,10 +285,6 @@ namespace cupuacu::actions::io
                 rememberRecentFile(state, snapshot.request.path.string());
             else
                 persistSessionState(state);
-            if (state->activeTabIndex == target)
-            {
-                setMainWindowTitle(state, session.currentFile);
-            }
             if (!matches)
             {
                 if (snapshot.identity && state->pendingCloseTabAfterSaveId ==

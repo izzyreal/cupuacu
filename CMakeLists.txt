@@ -484,6 +484,7 @@ set(CUPUACU_INTEGRATION_TEST_SOURCES
     src/test/integration/IntegrationTestHelpers.hpp
     src/test/integration/test_runtime_contract.cpp
     src/test/integration/test_empty_session.cpp
+    src/test/integration/test_document_title.cpp
     src/test/integration/test_main_view_structure.cpp
     src/test/integration/test_event_and_waveform_runtime.cpp
     src/test/integration/test_open_file_dialog_callback.cpp

@@ -253,6 +253,10 @@ namespace cupuacu::actions
                 {
                     io::queueAutosaveForTab(state, tabIndex);
                 }
+                if (tabIndex == state->activeTabIndex)
+                {
+                    setMainWindowTitleToActiveDocument(state);
+                }
                 return;
             }
             if (updateCurrentFile)
@@ -282,6 +286,10 @@ namespace cupuacu::actions
             else
             {
                 session.markPendingPersistentWaveformCacheSave();
+            }
+            if (tabIndex == state->activeTabIndex)
+            {
+                setMainWindowTitleToActiveDocument(state);
             }
         }
     } // namespace detail
@@ -453,7 +461,6 @@ namespace cupuacu::actions
 
         detail::finalizeSavedDocument(state, normalizedPath, settings, true);
         rememberRecentFile(state, normalizedPath.string());
-        setMainWindowTitle(state, normalizedPath.string());
         return true;
     }
 
@@ -499,7 +506,6 @@ namespace cupuacu::actions
 
         detail::finalizeSavedDocument(state, normalizedPath, settings, true);
         rememberRecentFile(state, normalizedPath.string());
-        setMainWindowTitle(state, normalizedPath.string());
         return true;
     }
 } // namespace cupuacu::actions
