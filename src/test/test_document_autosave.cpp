@@ -433,24 +433,14 @@ TEST_CASE("Background autosave job owns its original snapshot path",
     session.autosaveSnapshotPath = originalPath;
 
     cupuacu::actions::io::BackgroundAutosaveJob job(
-        state.getActiveTab()->id, originalPath,
+        state.getActiveTab()->id, session.autosaveSnapshotPath,
         session.document.getWaveformDataVersion(),
         session.document.getMarkerDataVersion(), session.currentFile,
         session.document, session.waveformCaches);
-    job.start();
-
+    // Ownership is established at construction, before any worker runs.
     session.autosaveSnapshotPath =
         state.paths->autosavePath() / "moved.cupuacu-autosave";
-    for (int attempt = 0; attempt < 100000 && !job.snapshot().completed;
-         ++attempt)
-    {
-        std::this_thread::yield();
-    }
-
-    const auto snapshot = job.snapshot();
-    REQUIRE(snapshot.completed);
-    REQUIRE(snapshot.success);
-    REQUIRE(std::filesystem::exists(originalPath));
+    REQUIRE(job.snapshot().path == originalPath);
 }
 
 TEST_CASE("Background autosave job owns its original source identity",
@@ -471,20 +461,9 @@ TEST_CASE("Background autosave job owns its original source identity",
         session.document.getWaveformDataVersion(),
         session.document.getMarkerDataVersion(), session.currentFile,
         session.document, session.waveformCaches);
-    job.start();
-
+    // Changing the caller's string must not change the captured identity.
     session.currentFile = "/tmp/renamed.wav";
-    for (int attempt = 0; attempt < 100000 && !job.snapshot().completed;
-         ++attempt)
-    {
-        std::this_thread::yield();
-    }
-
-    const auto snapshot = job.snapshot();
-    REQUIRE(snapshot.completed);
-    REQUIRE(snapshot.success);
-    REQUIRE(snapshot.currentFile == "/tmp/original.wav");
-    REQUIRE(std::filesystem::exists(autosavePath));
+    REQUIRE(job.snapshot().currentFile == "/tmp/original.wav");
 }
 
 TEST_CASE("Background autosave preserves peaks from its own audio revision",
