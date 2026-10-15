@@ -1001,6 +1001,56 @@ namespace cupuacu::file::m4a
             parsed.paddingFrames = static_cast<std::uint32_t>(padding);
         }
 
+        void normalizeAlacEndPadding(const Bytes &bytes, const AtomView &moov,
+                                     const ByteRangeReader &readByteRange,
+                                     M4aParsedAlacFile &parsed)
+        {
+            const auto value =
+                parseItunesFreeformValue(bytes, moov, "iTunSMPB");
+            if (!value || parsed.packetFrameCounts.empty())
+            {
+                return;
+            }
+
+            std::istringstream stream(*value);
+            std::uint64_t reserved = 0;
+            std::uint64_t priming = 0;
+            std::uint64_t padding = 0;
+            std::uint64_t originalFrames = 0;
+            stream >> std::hex >> reserved >> priming >> padding >>
+                originalFrames;
+            if (!stream || priming != 0 || padding == 0 ||
+                padding >= parsed.packetFrameCounts.back() ||
+                originalFrames != parsed.frameCount - padding)
+            {
+                return;
+            }
+
+            // Some Apple files count absent end padding in stts. Confirm the
+            // shorter packet with the decoder before changing the advertised
+            // audio length; metadata alone must never discard encoded PCM.
+            const auto finalFrames = static_cast<std::uint32_t>(
+                parsed.packetFrameCounts.back() - padding);
+            const auto packet = readByteRange(parsed.packetOffsets.back(),
+                                              parsed.packetSizes.back());
+            const auto decoded = alac::decodePcmPackets(
+                {
+                    .sampleRate = parsed.sampleRate,
+                    .channels = parsed.channels,
+                    .bitsPerSample = parsed.bitDepth,
+                    .framesPerPacket = parsed.framesPerPacket,
+                    .frameCount = finalFrames,
+                    .magicCookie = parsed.magicCookie,
+                    .packetFrameCounts = {finalFrames},
+                },
+                packet, {parsed.packetSizes.back()});
+            if (decoded)
+            {
+                parsed.packetFrameCounts.back() = finalFrames;
+                parsed.frameCount = originalFrames;
+            }
+        }
+
         struct TopLevelFileLayout
         {
             std::uint64_t fileSize = 0;
@@ -1186,6 +1236,7 @@ namespace cupuacu::file::m4a
                 }
             }
 
+            normalizeAlacEndPadding(moovBytes, moov, readByteRange, parsed);
             parsed.markers = parseChapterMarkers(moovBytes, moov, audioTrack,
                                                  readByteRange);
             return parsed;

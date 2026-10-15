@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include "file/aac/AacCodec.hpp"
 #include "file/alac/AlacCodec.hpp"
@@ -6,12 +7,15 @@
 #include "file/m4a/M4aAlacReader.hpp"
 #include "file/m4a/M4aAtoms.hpp"
 #include "file/m4a/M4aParser.hpp"
+#include "TestPaths.hpp"
 
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace
@@ -39,7 +43,8 @@ namespace
     }
 
     cupuacu::file::m4a::Bytes makeMultiChunkAlacM4a(
-        const cupuacu::file::alac::AlacEncodedPackets &encoded)
+        const cupuacu::file::alac::AlacEncodedPackets &encoded,
+        const std::string &smpb = {})
     {
         REQUIRE(encoded.packetSizes.size() == 3);
 
@@ -77,10 +82,26 @@ namespace
                            handlerReferenceAtom("soun"), minf});
         const auto trak = containerAtom(
             "trak", {trackHeaderAtom(1, encoded.frameCount, true), mdia});
-        const auto moov = containerAtom(
-            "moov", {movieHeaderAtom(encoded.cookie.sampleRate,
-                                     encoded.frameCount, 2u),
-                     trak});
+        std::vector<Bytes> movieChildren{
+            movieHeaderAtom(encoded.cookie.sampleRate, encoded.frameCount, 2u),
+            trak};
+        if (!smpb.empty())
+        {
+            const std::string name = "iTunSMPB";
+            const std::string mean = "com.apple.iTunes";
+            Bytes data;
+            appendBe32(data, 1); // UTF-8
+            appendBe32(data, 0); // locale
+            data.insert(data.end(), smpb.begin(), smpb.end());
+            const auto entry = containerAtom(
+                "----", {fullAtom("mean", 0, 0, Bytes(mean.begin(), mean.end())),
+                         fullAtom("name", 0, 0, Bytes(name.begin(), name.end())),
+                         atom("data", data)});
+            movieChildren.push_back(containerAtom(
+                "udta", {fullAtom("meta", 0, 0,
+                                  containerAtom("ilst", {entry}))}));
+        }
+        const auto moov = containerAtom("moov", movieChildren);
 
         Bytes file;
         file.reserve(ftyp.size() + mdat.size() + moov.size());
@@ -88,6 +109,16 @@ namespace
         file.insert(file.end(), mdat.begin(), mdat.end());
         file.insert(file.end(), moov.begin(), moov.end());
         return file;
+    }
+
+    std::string applePaddingMetadata(const std::uint64_t padding,
+                                     const std::uint64_t originalFrames,
+                                     const std::uint64_t priming = 0)
+    {
+        std::ostringstream value;
+        value << " 00000000 " << std::hex << priming << ' ' << padding << ' '
+              << originalFrames;
+        return value.str();
     }
 
     std::vector<std::uint8_t> makeStereoPcm16(const std::uint32_t frames)
@@ -247,6 +278,186 @@ TEST_CASE("M4A parser and reader support ALAC packets split across chunks",
     }
 }
 
+TEST_CASE("ALAC readers reconcile Apple metadata with a short final packet",
+          "[m4a][alac]")
+{
+    using namespace cupuacu::file::m4a;
+    const auto bits = GENERATE(16u, 24u, 32u);
+    CAPTURE(bits);
+    constexpr std::uint32_t frames = 4096 * 2 + 1372;
+    constexpr std::uint32_t paddedFrames = 4096 * 3;
+    std::vector<std::uint8_t> pcm;
+    for (std::uint32_t sample = 0; sample < frames * 2; ++sample)
+    {
+        const auto value = sample * 1234567u;
+        for (unsigned byte = 0; byte < bits / 8; ++byte)
+        {
+            pcm.push_back(static_cast<std::uint8_t>(value >> (byte * 8)));
+        }
+    }
+    auto encoded = cupuacu::file::alac::encodePcmPackets(
+        {.sampleRate = 44100, .channels = 2, .bitsPerSample = bits}, pcm);
+    REQUIRE(encoded.has_value());
+    encoded->frameCount = paddedFrames;
+    const auto bytes = makeMultiChunkAlacM4a(
+        *encoded, applePaddingMetadata(paddedFrames - frames, frames));
+    const auto parsed = parseAlacM4a(bytes);
+    REQUIRE(parsed.frameCount == frames);
+    REQUIRE(parsed.packetFrameCounts ==
+            std::vector<std::uint32_t>{4096, 4096, 1372});
+    const auto decoded = readAlacM4a(bytes);
+    REQUIRE(decoded.frameCount == frames);
+    REQUIRE(decoded.interleavedPcmBytes == pcm);
+
+    const auto root = cupuacu::test::makeUniqueTestRoot("alac-apple-padding");
+    struct Cleanup
+    {
+        std::filesystem::path path;
+        ~Cleanup()
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(path, ec);
+        }
+    } cleanup{root};
+    std::filesystem::create_directories(root);
+    const auto path = root / "audio.m4a";
+    {
+        std::ofstream output(path, std::ios::binary);
+        output.write(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+        REQUIRE(output.good());
+    }
+    REQUIRE(parseAlacM4aFile(path).frameCount == frames);
+    const auto fromFile = readAlacM4aFile(path);
+    REQUIRE(fromFile.frameCount == frames);
+    REQUIRE(fromFile.interleavedPcmBytes == pcm);
+
+    bool publishedInfo = false;
+    std::uint64_t deliveredFrames = 0;
+    std::uint64_t lastProgress = 0;
+    std::vector<std::uint8_t> streamedPcm;
+    const auto info = streamAlacM4aFile(
+        path,
+        [&](const std::uint8_t *data, std::uint32_t byteCount,
+            std::uint32_t blockFrames, std::uint16_t channels,
+            std::uint16_t bitDepth)
+        {
+            REQUIRE(publishedInfo);
+            REQUIRE(channels == 2);
+            REQUIRE(bitDepth == bits);
+            REQUIRE(byteCount == blockFrames * channels * (bits / 8));
+            deliveredFrames += blockFrames;
+            streamedPcm.insert(streamedPcm.end(), data, data + byteCount);
+        },
+        [&](const M4aAlacFileInfo &fileInfo)
+        {
+            REQUIRE(fileInfo.frameCount == frames);
+            publishedInfo = true;
+        },
+        [&](std::uint64_t done, std::uint64_t total)
+        {
+            REQUIRE(total == frames);
+            REQUIRE(done >= lastProgress);
+            REQUIRE(done <= total);
+            lastProgress = done;
+        });
+    REQUIRE(info.frameCount == frames);
+    REQUIRE(deliveredFrames == frames);
+    REQUIRE(lastProgress == frames);
+    REQUIRE(streamedPcm == pcm);
+}
+
+TEST_CASE("ALAC end padding requires matching Apple metadata",
+          "[m4a][alac]")
+{
+    using namespace cupuacu::file::m4a;
+    constexpr std::uint32_t frames = 4096 * 2 + 1372;
+    constexpr std::uint32_t paddedFrames = 4096 * 3;
+    auto encoded = cupuacu::file::alac::encodePcmPackets(
+        {.sampleRate = 44100, .channels = 2, .bitsPerSample = 16},
+        makeStereoPcm16(frames));
+    REQUIRE(encoded.has_value());
+    encoded->frameCount = paddedFrames;
+    const auto metadata = GENERATE(
+        std::string{}, std::string{"not hexadecimal"},
+        std::string{"0 0 aa4"},
+        applePaddingMetadata(2724, 0),
+        applePaddingMetadata(2724, frames + 1),
+        applePaddingMetadata(2723, frames + 1),
+        applePaddingMetadata(2724, frames, 1),
+        applePaddingMetadata(0, paddedFrames),
+        applePaddingMetadata(4096, paddedFrames - 4096),
+        std::string{"0 0 ffffffffffffffff 1"});
+    CAPTURE(metadata);
+    const auto bytes = makeMultiChunkAlacM4a(*encoded, metadata);
+    REQUIRE(parseAlacM4a(bytes).frameCount == paddedFrames);
+    REQUIRE_THROWS_AS(readAlacM4a(bytes), std::runtime_error);
+}
+
+TEST_CASE("ALAC Apple padding cannot discard PCM or conceal invalid packets",
+          "[m4a][alac]")
+{
+    using namespace cupuacu::file::m4a;
+    constexpr std::uint32_t frames = 4096 * 2 + 1372;
+    constexpr std::uint32_t paddedFrames = 4096 * 3;
+    auto pcm = makeStereoPcm16(frames);
+    auto encoded = cupuacu::file::alac::encodePcmPackets(
+        {.sampleRate = 44100, .channels = 2, .bitsPerSample = 16}, pcm);
+    REQUIRE(encoded.has_value());
+    auto metadata = applePaddingMetadata(2724, frames);
+    bool shouldLoad = false;
+    std::uint64_t expectedFrames = paddedFrames;
+
+    SECTION("Already accurate timing is not trimmed twice")
+    {
+        shouldLoad = true;
+        expectedFrames = frames;
+    }
+    SECTION("Even internally consistent metadata cannot trim an accurate packet")
+    {
+        metadata = applePaddingMetadata(1, frames - 1);
+        shouldLoad = true;
+        expectedFrames = frames;
+    }
+    SECTION("A physically full final packet is preserved")
+    {
+        pcm = makeStereoPcm16(paddedFrames);
+        encoded = cupuacu::file::alac::encodePcmPackets(
+            {.sampleRate = 44100, .channels = 2, .bitsPerSample = 16}, pcm);
+        REQUIRE(encoded.has_value());
+        shouldLoad = true;
+    }
+    SECTION("Corrupt final packet is rejected")
+    {
+        encoded->frameCount = paddedFrames;
+        const auto finalOffset = encoded->packetSizes[0] + encoded->packetSizes[1];
+        encoded->bytes[finalOffset + 1] |= 1; // nonzero reserved header bits
+    }
+    SECTION("An earlier short packet is still rejected")
+    {
+        encoded->frameCount = paddedFrames;
+        const Bytes finalPacket(encoded->bytes.end() - encoded->packetSizes.back(),
+                                encoded->bytes.end());
+        encoded->bytes.erase(encoded->bytes.begin(),
+                             encoded->bytes.begin() + encoded->packetSizes[0]);
+        encoded->bytes.insert(encoded->bytes.begin(), finalPacket.begin(),
+                              finalPacket.end());
+        encoded->packetSizes[0] = encoded->packetSizes.back();
+        expectedFrames = frames; // final packet normalizes; earlier one must fail
+    }
+    const auto bytes = makeMultiChunkAlacM4a(*encoded, metadata);
+    REQUIRE(parseAlacM4a(bytes).frameCount == expectedFrames);
+    if (shouldLoad)
+    {
+        const auto decoded = readAlacM4a(bytes);
+        REQUIRE(decoded.frameCount == expectedFrames);
+        REQUIRE(decoded.interleavedPcmBytes == pcm);
+    }
+    else
+    {
+        REQUIRE_THROWS_AS(readAlacM4a(bytes), std::runtime_error);
+    }
+}
+
 TEST_CASE("M4A parser and Miniaac decode AAC-LC packets", "[m4a][aac]")
 {
     const auto bytes = makeAacLcM4a();
@@ -316,7 +527,6 @@ TEST_CASE("M4A AAC reader streams decoded float samples", "[m4a][aac]")
     REQUIRE(streamedFrames == info.frameCount);
 }
 
-#include "TestPaths.hpp"
 #include "LongTask.hpp"
 
 TEST_CASE("AAC metadata and decode progress preserve totals above 32 bits",
