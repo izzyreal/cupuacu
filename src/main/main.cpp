@@ -269,6 +269,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
         {.pixelScale = state->pixelScale, .vuMeterScale = state->vuMeterScale});
     const auto displayPropertiesSavedAt = std::chrono::steady_clock::now();
     state->generateSilenceDialogWindow.reset();
+    state->pitchDialog.reset();
     state->backgroundOpenJob.reset();
     state->backgroundSaveJob.reset();
     state->backgroundAutosaveJob.reset();

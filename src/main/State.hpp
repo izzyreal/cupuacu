@@ -79,12 +79,14 @@ namespace cupuacu
         class AmplifyFadeDialog;
         class DynamicsDialog;
         class RemoveSilenceDialog;
+        class PitchDialog;
     } // namespace effects
 
     void destroyAmplifyEnvelopeDialog(effects::AmplifyEnvelopeDialog *);
     void destroyAmplifyFadeDialog(effects::AmplifyFadeDialog *);
     void destroyDynamicsDialog(effects::DynamicsDialog *);
     void destroyRemoveSilenceDialog(effects::RemoveSilenceDialog *);
+    void destroyPitchDialog(effects::PitchDialog *);
     void destroyAboutWindow(gui::AboutWindow *);
     void destroyOptionsWindow(gui::OptionsWindow *);
     void destroyNewFileDialogWindow(gui::NewFileDialogWindow *);
@@ -182,6 +184,7 @@ namespace cupuacu
         std::shared_ptr<storage::DecodedBlockCache> importSampleCache =
             storage::defaultDecodedBlockCache();
         uint64_t playbackRangeStart = 0;
+        bool renderedEffectPreview = false;
         uint64_t playbackRangeEnd = 0;
         uint64_t playbackSourceFrames = std::numeric_limits<uint64_t>::max();
         std::vector<DocumentTab> tabs{DocumentTab{}};
@@ -222,6 +225,8 @@ namespace cupuacu
         std::unique_ptr<effects::RemoveSilenceDialog,
                         void (*)(effects::RemoveSilenceDialog *)>
             removeSilenceDialog{nullptr, destroyRemoveSilenceDialog};
+        std::unique_ptr<effects::PitchDialog, void (*)(effects::PitchDialog *)>
+            pitchDialog{nullptr, destroyPitchDialog};
         std::optional<file::AudioExportSettings> pendingSaveAsExportSettings;
         PendingSaveAsMode pendingSaveAsMode = PendingSaveAsMode::Generic;
         bool pendingSaveAsMarkerWarningConfirmed = false;

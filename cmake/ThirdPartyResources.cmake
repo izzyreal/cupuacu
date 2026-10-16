@@ -145,6 +145,21 @@ cupuacu_add_third_party(
     "https://github.com/macosforge/alac/blob/master/LICENSE"
     "${alac_SOURCE_DIR}/LICENSE")
 cupuacu_add_third_party(
+    "libsamplerate" "0.2.2" "Pitch resampling"
+    "BSD-2-Clause" "https://libsndfile.github.io/libsamplerate/"
+    "https://github.com/libsndfile/libsamplerate/blob/0.2.2/COPYING"
+    "${libsamplerate_SOURCE_DIR}/COPYING")
+cupuacu_add_third_party(
+    "Signalsmith Stretch" "1.1.0" "Duration-preserving pitch shifting"
+    "MIT" "https://github.com/Signalsmith-Audio/signalsmith-stretch"
+    "https://github.com/Signalsmith-Audio/signalsmith-stretch/blob/1.1.0/LICENSE.txt"
+    "${signalsmith_stretch_SOURCE_DIR}/LICENSE.txt")
+cupuacu_add_third_party(
+    "Signalsmith DSP" "bundled with Signalsmith Stretch 1.1.0" "Pitch processing DSP primitives"
+    "MIT" "https://github.com/Signalsmith-Audio/dsp"
+    "https://github.com/Signalsmith-Audio/signalsmith-stretch/blob/1.1.0/dsp/LICENSE.txt"
+    "${signalsmith_stretch_SOURCE_DIR}/dsp/LICENSE.txt")
+cupuacu_add_third_party(
     "Miniaac" "1.0.0" "AAC-LC decoding"
     "0BSD" "https://buffering.party/software/miniaac/"
     "https://buffering.party/software/miniaac/"

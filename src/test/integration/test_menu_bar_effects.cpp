@@ -11,6 +11,7 @@
 #include "effects/MakeSilentEffect.hpp"
 #include "effects/RemoveSilenceEffect.hpp"
 #include "effects/ReverseEffect.hpp"
+#include "effects/PitchEffect.hpp"
 #include "State.hpp"
 #include "actions/effects/BackgroundEffect.hpp"
 #include "SelectedChannels.hpp"
@@ -54,6 +55,7 @@ namespace
         cupuacu::gui::Menu *amplifyEnvelopeMenu = nullptr;
         cupuacu::gui::Menu *dynamicsMenu = nullptr;
         cupuacu::gui::Menu *removeSilenceMenu = nullptr;
+        cupuacu::gui::Menu *pitchMenu = nullptr;
     };
 
     EffectsMenuHarness createEffectsMenuHarness(cupuacu::State *state)
@@ -88,13 +90,14 @@ namespace
         auto *effectsMenu = topLevelMenus[4];
         auto effectSubMenus =
             cupuacu::test::integration::menuChildren(effectsMenu);
-        REQUIRE(effectSubMenus.size() == 6);
+        REQUIRE(effectSubMenus.size() == 7);
         harness.reverseMenu = effectSubMenus[0];
         harness.makeSilentMenu = effectSubMenus[1];
         harness.amplifyFadeMenu = effectSubMenus[2];
         harness.amplifyEnvelopeMenu = effectSubMenus[3];
         harness.dynamicsMenu = effectSubMenus[4];
         harness.removeSilenceMenu = effectSubMenus[5];
+        harness.pitchMenu = effectSubMenus[6];
         return harness;
     }
 
@@ -825,4 +828,173 @@ TEST_CASE(
     state.audioDevices->drainQueue();
     REQUIRE(state.audioDevices->isPlaying());
     REQUIRE(state.audioDevices->getPlaybackPosition() == 0);
+}
+
+TEST_CASE(
+    "Pitch dialog preserves factor across units and enforces channel rules",
+    "[integration][pitch]")
+{
+    using namespace cupuacu;
+    using namespace cupuacu::test::integration;
+    test::StateWithTestPaths state;
+    auto ui = createSessionUi(&state, 20000, true);
+    auto &session = state.getActiveDocumentSession();
+    session.selection.setValue1(1000);
+    session.selection.setValue2(19000);
+    state.getActiveViewState().selectedChannels = SelectedChannels::LEFT;
+    auto harness = createEffectsMenuHarness(&state);
+    REQUIRE(harness.pitchMenu->mouseDown(leftMouseDown()));
+    REQUIRE(state.pitchDialog->isOpen());
+    auto *window = state.pitchDialog->getWindow();
+    REQUIRE(state.modalWindow == window);
+    auto *root = window->getRootComponent();
+    auto *apply =
+        findByNameRecursive<gui::TextButton>(root, "TextButton:Apply");
+    auto *preview =
+        findByNameRecursive<gui::TextButton>(root, "TextButton:Preview");
+    auto *value = findByNameRecursive<gui::TextInput>(root, "TextInput");
+    REQUIRE_FALSE(apply->getEnabled());
+    REQUIRE_FALSE(preview->getEnabled());
+    std::vector<gui::DropdownMenu *> dropdowns;
+    for (const auto &child : root->getChildren())
+    {
+        if (auto *d = dynamic_cast<gui::DropdownMenu *>(child.get()))
+        {
+            dropdowns.push_back(d);
+        }
+    }
+    REQUIRE(dropdowns.size() == 2);
+    auto chooseSecond = [&](gui::DropdownMenu *dropdown)
+    {
+        dropdown->setExpanded(true);
+        gui::Window *popup = nullptr;
+        for (auto *candidate : state.windows)
+        {
+            if (dynamic_cast<gui::DropdownOwnerComponent *>(
+                    candidate->getRootComponent()))
+            {
+                popup = candidate;
+            }
+        }
+        REQUIRE(popup != nullptr);
+        auto down = makeMouseButtonEvent(
+            SDL_EVENT_MOUSE_BUTTON_DOWN, popup, 20.f,
+            float(dropdown->getPopupRowHeight() + 10), true);
+        auto up = makeMouseButtonEvent(
+            SDL_EVENT_MOUSE_BUTTON_UP, popup, 20.f,
+            float(dropdown->getPopupRowHeight() + 10), true);
+        gui::handleAppEvent(&state, &down);
+        gui::handleAppEvent(&state, &up);
+        REQUIRE(dropdown->getSelectedIndex() == 1);
+    };
+    chooseSecond(dropdowns[1]);
+    REQUIRE(apply->getEnabled());
+    value->setText("200");
+    value->focusLost();
+    REQUIRE(state.effectSettings.pitch.factor == 2);
+    chooseSecond(dropdowns[0]);
+    REQUIRE(value->getText() == "12.00");
+    REQUIRE(state.effectSettings.pitch.factor == 2);
+    clickButton(findByNameRecursive<gui::TextButton>(root, "TextButton:Reset"));
+    REQUIRE(state.effectSettings.pitch.factor == 1);
+    REQUIRE(state.effectSettings.pitch.type == effects::PitchType::Stretch);
+    REQUIRE(state.effectSettings.pitch.unit == effects::PitchUnit::Semitones);
+    REQUIRE(value->getText() == "0.00");
+    clickButton(apply);
+    REQUIRE_FALSE(state.backgroundEffectJob);
+    REQUIRE(state.getActiveTab()->undoables.empty());
+}
+
+TEST_CASE("Pitch preview restarts after edits and Apply reuses its render",
+          "[integration][pitch]")
+{
+    using namespace cupuacu;
+    using namespace cupuacu::test::integration;
+    test::StateWithTestPaths state;
+    auto ui = createSessionUi(&state, 48000, true);
+    auto &session = state.getActiveDocumentSession();
+    session.selection.setValue1(4000);
+    session.selection.setValue2(44000);
+    session.cursor = 123;
+    const auto original = session.document.getAudioBuffer();
+    state.effectSettings.pitch.factor = 2;
+    effects::PitchDialog dialog(&state);
+    auto *root = dialog.getWindow()->getRootComponent();
+    auto *preview =
+        findByNameRecursive<gui::TextButton>(root, "TextButton:Preview");
+    auto *value = findByNameRecursive<gui::TextInput>(root, "TextInput");
+    auto waitForPlayback = [&](int64_t frames)
+    {
+        const auto deadline =
+            std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            root->timerCallback();
+            state.audioDevices->drainQueue();
+            if (state.renderedEffectPreview &&
+                state.audioDevices->isPlaying() &&
+                state.playbackRangeEnd == uint64_t(frames))
+            {
+                return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        FAIL("Pitch preview did not start");
+    };
+    clickButton(preview);
+    waitForPlayback(20000);
+    REQUIRE(state.audioDevices->getPlaybackPosition() == 0);
+    REQUIRE(session.document.getAudioBuffer() == original);
+    REQUIRE(session.cursor == 123);
+    REQUIRE(session.selection.getLengthInt() == 40000);
+    REQUIRE(state.getActiveTab()->undoables.empty());
+    value->setText("50");
+    value->focusLost();
+    state.audioDevices->drainQueue();
+    REQUIRE_FALSE(state.audioDevices->isPlaying());
+    root->timerCallback();
+    REQUIRE_FALSE(state.audioDevices->isPlaying());
+    waitForPlayback(80000);
+    REQUIRE(state.audioDevices->getPlaybackPosition() == 0);
+    clickButton(findByNameRecursive<gui::TextButton>(root, "TextButton:Apply"));
+    REQUIRE_FALSE(state.renderedEffectPreview);
+    state.audioDevices->drainQueue();
+    root->timerCallback();
+    REQUIRE(state.backgroundEffectJob);
+    REQUIRE(state.backgroundEffectJob->snapshot().request.pitchRendered);
+    test::drainPendingEffectWork(&state);
+    REQUIRE(session.document.getFrameCount() == 88000);
+    REQUIRE(state.getActiveTab()->undoables.size() == 1);
+    state.undo();
+    REQUIRE(session.document.getAudioBuffer() == original);
+}
+
+TEST_CASE("Closing Pitch cancels queued preview without changing history",
+          "[integration][pitch]")
+{
+    using namespace cupuacu;
+    using namespace cupuacu::test::integration;
+    test::StateWithTestPaths state;
+    auto ui = createSessionUi(&state, 8000, true);
+    HeldTaskScheduler held(state);
+    const auto original =
+        state.getActiveDocumentSession().document.getAudioBuffer();
+    {
+        effects::PitchDialog dialog(&state);
+        auto *root = dialog.getWindow()->getRootComponent();
+        clickButton(
+            findByNameRecursive<gui::TextButton>(root, "TextButton:Preview"));
+        root->timerCallback();
+        REQUIRE(state.taskScheduler->stats().queued == 1);
+        clickButton(
+            findByNameRecursive<gui::TextButton>(root, "TextButton:Cancel"));
+    }
+    held.resume();
+    state.taskScheduler->submit([] {}, {}).get();
+    state.audioDevices->drainQueue();
+    REQUIRE_FALSE(state.audioDevices->isPlaying());
+    REQUIRE_FALSE(state.renderedEffectPreview);
+    REQUIRE(state.getActiveDocumentSession().document.getAudioBuffer() ==
+            original);
+    REQUIRE(state.getActiveTab()->undoables.empty());
 }

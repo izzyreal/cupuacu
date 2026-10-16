@@ -4,6 +4,7 @@
 #include "effects/AmplifyFadeEffect.hpp"
 #include "effects/DynamicsEffect.hpp"
 #include "effects/RemoveSilenceEffect.hpp"
+#include "effects/PitchEffect.hpp"
 
 #include "gui/Waveform.hpp"
 #include "gui/AboutWindow.hpp"
@@ -21,6 +22,11 @@
 #include "actions/DocumentUi.hpp"
 #include "file/OverwritePreservation.hpp"
 #include "file/OverwritePreservationMutation.hpp"
+
+void cupuacu::destroyPitchDialog(effects::PitchDialog *dialog)
+{
+    delete dialog;
+}
 
 int64_t getMaxSampleOffset(const cupuacu::State *state)
 {

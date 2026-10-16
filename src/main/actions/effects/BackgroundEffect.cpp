@@ -13,6 +13,8 @@
 #include "../../effects/EffectTargeting.hpp"
 #include "../../effects/RemoveSilenceEffect.hpp"
 #include "../../effects/ReverseEffect.hpp"
+#include "../../effects/PitchProcessing.hpp"
+#include "../../storage/DocumentAudioReader.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -84,6 +86,35 @@ namespace cupuacu::actions::effects
             }
             return -1;
         }
+
+        class PitchMetadataUndoable final : public cupuacu::actions::Undoable
+        {
+        public:
+            explicit PitchMetadataUndoable(State *s) : Undoable(s)
+            {
+                updateGui = [s]
+                {
+                    gui::Waveform::updateAllSamplePoints(s);
+                    gui::Waveform::setAllWaveformsDirty(s);
+                    gui::requestMainViewRefresh(s);
+                };
+            }
+            void redo() override {}
+            void undo() override {}
+            std::string getRedoDescription() override
+            {
+                return "Pitch";
+            }
+            std::string getUndoDescription() override
+            {
+                return "Pitch";
+            }
+            file::OverwritePreservationMutation
+            overwritePreservationMutation() const override
+            {
+                return file::OverwritePreservationMutationHelper::compatible();
+            }
+        };
 
         class PreparedDocumentUndoable final
             : public cupuacu::actions::Undoable
@@ -832,6 +863,22 @@ namespace cupuacu::actions::effects
                 auto before = audio::RevisionEditState::capture(session);
                 auto after = before;
                 after.audio = std::move(result->afterRevision);
+                if (result->kind == BackgroundEffectKind::Pitch &&
+                    snapshot.request.pitchSettings->type ==
+                        ::cupuacu::effects::PitchType::Resample)
+                {
+                    ::cupuacu::effects::remapPitchMarkers(
+                        after.markers, result->startFrame, result->frameCount,
+                        result->pitchOutputFrames);
+                    after.cursor = result->startFrame;
+                    after.selection = gui::Selection<double>(0);
+                    if (result->hadSelection)
+                    {
+                        after.selection.setValue1(result->startFrame);
+                        after.selection.setValue2(result->startFrame +
+                                                  result->pitchOutputFrames);
+                    }
+                }
                 if (result->removeSilenceRemovesDuration)
                 {
                     for (auto it = result->silenceRuns.rbegin();
@@ -881,6 +928,46 @@ namespace cupuacu::actions::effects
 
             switch (result->kind)
             {
+                case BackgroundEffectKind::Pitch:
+                {
+                    auto &session = state->tabs[targetTabIndex].session;
+                    if (session.document.getWaveformDataVersion() !=
+                        snapshot.request.sourceVersion)
+                    {
+                        reportEffectFailure(state, "Pitch",
+                                            "The target audio changed while "
+                                            "the effect was running.");
+                        return;
+                    }
+                    const auto selection = session.selection;
+                    const auto cursor = session.cursor;
+                    const auto start = result->startFrame;
+                    const auto length = result->pitchOutputFrames;
+                    const bool resample =
+                        snapshot.request.pitchSettings->type ==
+                        ::cupuacu::effects::PitchType::Resample;
+                    addPrepared(
+                        std::make_shared<PitchMetadataUndoable>(state),
+                        [state, targetTabIndex, selection, cursor, start,
+                         length, resample](bool redo)
+                        {
+                            auto &s = state->tabs[targetTabIndex].session;
+                            s.selection = selection;
+                            s.cursor = cursor;
+                            if (redo && resample)
+                            {
+                                s.cursor = start;
+                                s.selection = gui::Selection<double>(0);
+                                if (selection.isActive())
+                                {
+                                    s.selection.setValue1(start);
+                                    s.selection.setValue2(start + length);
+                                }
+                            }
+                            s.syncSelectionAndCursorToDocumentLength();
+                        });
+                    break;
+                }
                 case BackgroundEffectKind::Reverse:
                     addPrepared(
                         std::make_shared<cupuacu::effects::ReverseUndoable>(
@@ -1073,8 +1160,10 @@ namespace cupuacu::actions::effects
                     run();
                 },
                 concurrency::TaskScheduler::Options{
-                    .scratchBytes = uint64_t(document.getChannelCount()) *
-                                    (65536 + 16384) * sizeof(float),
+                    .scratchBytes = request.kind == BackgroundEffectKind::Pitch
+                                        ? 12 * 1024 * 1024
+                                        : uint64_t(document.getChannelCount()) *
+                                              (65536 + 16384) * sizeof(float),
                     .documentId = request.targetTabId,
                     .mutation = true,
                     .admissionFailed = [this](std::exception_ptr failure)
@@ -1186,6 +1275,80 @@ namespace cupuacu::actions::effects
             std::unique_ptr<BackgroundEffectResult> computedResult;
             switch (request.kind)
             {
+                case BackgroundEffectKind::Pitch:
+                {
+                    if (!request.pitchSettings)
+                    {
+                        throw std::invalid_argument("Missing pitch settings");
+                    }
+                    storage::DocumentAudioReader reader(lease);
+                    auto generated =
+                        request.pitchRendered
+                            ? request.pitchRendered
+                            : ::cupuacu::effects::renderPitch(
+                                  reader, request.startFrame,
+                                  request.frameCount, request.targetChannels,
+                                  *request.pitchSettings, workingDirectory,
+                                  [&](double p)
+                                  {
+                                      progressCallback("Pitch", p);
+                                  });
+                    computedResult = std::make_unique<BackgroundEffectResult>();
+                    auto &r = *computedResult;
+                    r.kind = request.kind;
+                    r.targetTabId = request.targetTabId;
+                    r.targetTabIndex = request.targetTabIndex;
+                    r.startFrame = request.startFrame;
+                    r.frameCount = request.frameCount;
+                    r.pitchOutputFrames = generated->shape().frames;
+                    auto prepared = document;
+                    const auto delta = r.pitchOutputFrames - request.frameCount;
+                    if (delta > 0)
+                    {
+                        prepared.insertFrames(
+                            request.startFrame + request.frameCount, delta,
+                            [&](int64_t, int64_t)
+                            {
+                                progressCallback("Pitch", 1.0);
+                            });
+                    }
+                    if (delta < 0)
+                    {
+                        prepared.removeFrames(
+                            request.startFrame + r.pitchOutputFrames, -delta,
+                            [&](int64_t, int64_t)
+                            {
+                                progressCallback("Pitch", 1.0);
+                            });
+                    }
+                    std::array<float, 4096> samples;
+                    for (std::size_t c = 0; c < request.targetChannels.size();
+                         ++c)
+                    {
+                        for (int64_t pos = 0; pos < r.pitchOutputFrames;)
+                        {
+                            progressCallback("Pitch", 1.0);
+                            const auto n = std::min<int64_t>(
+                                samples.size(), r.pitchOutputFrames - pos);
+                            generated->readChannel(int(c), pos,
+                                                   std::span(samples).first(n));
+                            prepared.writeChannelFloatBlock(
+                                request.targetChannels[c],
+                                request.startFrame + pos, samples.data(), n,
+                                true);
+                            pos += n;
+                        }
+                    }
+                    auto markers = document.getMarkers();
+                    ::cupuacu::effects::remapPitchMarkers(
+                        markers, request.startFrame, request.frameCount,
+                        r.pitchOutputFrames);
+                    prepared.replaceMarkers(std::move(markers));
+                    r.preparedDocument = std::move(prepared);
+                    r.preparedWaveformCaches.resetToChannelCount(
+                        document.getChannelCount());
+                    break;
+                }
                 case BackgroundEffectKind::Reverse:
                     computedResult = computeReverseResult(request, lease,
                                                           progressCallback);
@@ -1272,6 +1435,7 @@ namespace cupuacu::actions::effects
                 }
             }
 
+            progressCallback(request.description, 1.0);
             std::lock_guard lock(mutex);
             result = std::move(computedResult);
             success = true;
@@ -1302,6 +1466,72 @@ namespace cupuacu::actions::effects
             completed = true;
             completionCv.notify_all();
         }
+    }
+
+    bool queuePitch(cupuacu::State *state,
+                    const ::cupuacu::effects::PitchSettings &settings,
+                    std::shared_ptr<const storage::AudioEditRevision> rendered)
+    {
+        if (!canStartEffect(state))
+        {
+            return false;
+        }
+        int64_t start = 0, count = 0;
+        if (!::cupuacu::effects::getTargetRange(state, start, count))
+        {
+            return false;
+        }
+        auto channels = ::cupuacu::effects::getTargetChannels(state);
+        auto &session = state->getActiveDocumentSession();
+        try
+        {
+            const auto output =
+                ::cupuacu::effects::pitchOutputFrames(count, settings);
+            if (output > INT64_MAX - (session.document.getFrameCount() - count))
+            {
+                throw std::overflow_error("Pitch output is too long");
+            }
+            if (settings.type == ::cupuacu::effects::PitchType::Resample &&
+                channels.size() !=
+                    std::size_t(session.document.getChannelCount()))
+            {
+                throw std::invalid_argument("Resample requires both channels");
+            }
+            if (rendered &&
+                (rendered->shape().frames != output ||
+                 rendered->shape().channels != int(channels.size()) ||
+                 rendered->shape().sampleRate !=
+                     session.document.getSampleRate() ||
+                 rendered->shape().format !=
+                     session.document.getSampleFormat()))
+            {
+                throw std::invalid_argument("Invalid rendered pitch audio");
+            }
+        }
+        catch (const std::exception &e)
+        {
+            reportEffectFailure(state, "Pitch", e.what());
+            return false;
+        }
+        if (settings.factor == 1.0)
+        {
+            return true;
+        }
+        BackgroundEffectRequest request;
+        request.kind = BackgroundEffectKind::Pitch;
+        request.targetTabIndex = state->activeTabIndex;
+        request.targetTabId = state->getActiveTab()->id;
+        request.description = "Pitch";
+        request.startFrame = start;
+        request.frameCount = count;
+        request.targetChannels = std::move(channels);
+        request.originalCursor = session.cursor;
+        request.hadSelection = session.selection.isActive();
+        request.pitchSettings = settings;
+        request.pitchRendered = std::move(rendered);
+        request.sourceVersion = session.document.getWaveformDataVersion();
+        startBackgroundEffect(state, std::move(request), &session.document);
+        return true;
     }
 
     bool queueReverse(cupuacu::State *state)

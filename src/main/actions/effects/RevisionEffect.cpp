@@ -3,6 +3,7 @@
 #include "../../effects/AmplifyFadeEffect.hpp"
 #include "../../effects/AmplifyEnvelopeEffect.hpp"
 #include "../../effects/DynamicsEffect.hpp"
+#include "../../effects/PitchProcessing.hpp"
 #include "../../concurrency/DeferredRelease.hpp"
 #include <array>
 #include <set>
@@ -57,7 +58,37 @@ namespace cupuacu::actions::effects
             }
         };
         publish(0);
-        if (request.kind == BackgroundEffectKind::RemoveSilence)
+        if (request.kind == BackgroundEffectKind::Pitch)
+        {
+            if (!request.pitchSettings)
+            {
+                throw std::invalid_argument("Missing pitch settings");
+            }
+            auto generated =
+                request.pitchRendered
+                    ? request.pitchRendered
+                    : ::cupuacu::effects::renderPitch(
+                          *source, request.startFrame, request.frameCount,
+                          request.targetChannels, *request.pitchSettings,
+                          directory, publish);
+            result->pitchOutputFrames = generated->shape().frames;
+            if (request.pitchSettings->type ==
+                ::cupuacu::effects::PitchType::Resample)
+            {
+                edit.replace(request.startFrame, request.frameCount,
+                             *generated);
+            }
+            else
+            {
+                for (std::size_t c = 0; c < request.targetChannels.size(); ++c)
+                {
+                    edit.replaceChannel(int(request.targetChannels[c]),
+                                        request.startFrame, request.frameCount,
+                                        generated.get(), int(c));
+                }
+            }
+        }
+        else if (request.kind == BackgroundEffectKind::RemoveSilence)
         {
             if (!request.removeSilenceSettings)
             {

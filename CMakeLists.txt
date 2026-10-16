@@ -207,6 +207,26 @@ if(NOT CUPUACU_SNDFILE_CONFIG MATCHES
 endif()
 unset(CUPUACU_SNDFILE_CONFIG)
 AddDependency(Catch2 "Catch2" "${CMAKE_SOURCE_DIR}/deps/Catch2" "https://github.com/catchorg/Catch2.git" "v3.8.1")
+set(LIBSAMPLERATE_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(LIBSAMPLERATE_INSTALL OFF CACHE BOOL "" FORCE)
+function(cupuacu_add_pitch_resampler)
+    # libsamplerate 0.2.2 predates CMake 4's policy compatibility floor.
+    set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+    AddDependency(libsamplerate "libsamplerate" "${CMAKE_SOURCE_DIR}/deps/libsamplerate" "https://github.com/libsndfile/libsamplerate.git" "0.2.2")
+    set(libsamplerate_SOURCE_DIR "${libsamplerate_SOURCE_DIR}" PARENT_SCOPE)
+endfunction()
+cupuacu_add_pitch_resampler()
+fetchcontent_declare_cached_git_source_only(
+    signalsmith_stretch "signalsmith-stretch"
+    "${CMAKE_SOURCE_DIR}/deps/signalsmith-stretch"
+    "https://github.com/Signalsmith-Audio/signalsmith-stretch.git" "1.1.0")
+FetchContent_GetProperties(signalsmith_stretch)
+if(NOT signalsmith_stretch_POPULATED)
+    FetchContent_Populate(signalsmith_stretch)
+endif()
+add_library(cupuacu_pitch_dsp INTERFACE)
+target_include_directories(cupuacu_pitch_dsp SYSTEM INTERFACE "${signalsmith_stretch_SOURCE_DIR}")
+target_link_libraries(cupuacu_pitch_dsp INTERFACE samplerate)
 AddDependency(readerwriterqueue "readerwriterqueue" "${CMAKE_SOURCE_DIR}/deps/readerwriterqueue" "https://github.com/cameron314/readerwriterqueue.git" "master")
 AddDependency(portaudio "portaudio" "${CMAKE_SOURCE_DIR}/deps/portaudio" "https://github.com/PortAudio/portaudio.git" "master")
 AddDependency(PlatformFolders "PlatformFolders" "${CMAKE_SOURCE_DIR}/deps/PlatformFolders" "https://github.com/sago007/PlatformFolders.git" "master")
@@ -361,6 +381,8 @@ set(CUPUACU_SHARED_SOURCES
     src/main/effects/AmplifyEnvelopeEffect.cpp
     src/main/effects/AmplifyFadeEffect.cpp
     src/main/effects/DynamicsEffect.cpp
+    src/main/effects/PitchProcessing.cpp
+    src/main/effects/PitchEffect.cpp
     src/main/effects/RemoveSilenceEffect.cpp
     src/main/gui/ScrollBar.cpp
     src/main/gui/Slider.cpp
@@ -449,6 +471,7 @@ set(CUPUACU_TEST_SOURCES
     src/test/test_input_monitor_pipeline.cpp
     src/test/test_long_task.cpp
     src/test/test_background_effects.cpp
+    src/test/test_pitch_effect.cpp
     src/test/test_action_undoables.cpp
     src/test/test_amplify_envelope_effect.cpp
     src/test/test_audio_devices_orchestration.cpp
@@ -527,6 +550,7 @@ target_link_libraries(cupuacu_deps INTERFACE
     SDL3::SDL3
     SDL3_ttf::SDL3_ttf
     SndFile::sndfile
+    cupuacu_pitch_dsp
     portaudio
     alac_codec
     miniaac_codec

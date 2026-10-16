@@ -419,6 +419,10 @@ bool MainView::consumePendingRecordedAudio()
 
 bool MainView::followTransportHead()
 {
+    if (state->renderedEffectPreview)
+    {
+        return false;
+    }
     if (!state->audioDevices || !state->mainDocumentSessionWindow || !waveforms)
     {
         return false;
@@ -484,6 +488,10 @@ bool MainView::followTransportHead()
 
 int64_t MainView::getPlaybackPositionForWaveforms() const
 {
+    if (state->renderedEffectPreview)
+    {
+        return -1;
+    }
     if (!state->audioDevices || !state->audioDevices->isPlaying())
     {
         return -1;
@@ -518,6 +526,10 @@ bool MainView::isSelectionInteractionActive() const
 void MainView::syncLivePlaybackRange(const bool selectionActive,
                                      const SelectedChannels selectedChannels)
 {
+    if (state->renderedEffectPreview)
+    {
+        return;
+    }
     const bool isPlayingNow =
         state->audioDevices && state->audioDevices->isPlaying();
 

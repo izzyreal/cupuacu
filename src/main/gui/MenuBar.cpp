@@ -9,6 +9,7 @@
 #include "effects/DynamicsEffect.hpp"
 #include "effects/MakeSilentEffect.hpp"
 #include "effects/RemoveSilenceEffect.hpp"
+#include "effects/PitchEffect.hpp"
 #include "effects/ReverseEffect.hpp"
 
 #include "gui/OpaqueRect.hpp"
@@ -587,6 +588,19 @@ MenuBar::MenuBar(State *stateToUse) : Component(stateToUse, "MenuBar")
             else
             {
                 state->removeSilenceDialog->raise();
+            }
+        });
+    effectsMenu->addSubMenu(
+        state, "Pitch",
+        [&]
+        {
+            if (!state->pitchDialog || !state->pitchDialog->isOpen())
+            {
+                state->pitchDialog.reset(new effects::PitchDialog(state));
+            }
+            else
+            {
+                state->pitchDialog->raise();
             }
         });
     effectsMenu->setAvailability(

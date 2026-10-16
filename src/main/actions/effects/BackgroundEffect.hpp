@@ -27,6 +27,7 @@ namespace cupuacu::actions::effects
         Dynamics,
         AmplifyEnvelope,
         RemoveSilence,
+        Pitch,
     };
 
     struct BackgroundEffectRequest
@@ -40,6 +41,9 @@ namespace cupuacu::actions::effects
         std::vector<int64_t> targetChannels;
         int64_t originalCursor = 0;
         bool hadSelection = false;
+        std::optional<::cupuacu::effects::PitchSettings> pitchSettings;
+        std::shared_ptr<const storage::AudioEditRevision> pitchRendered;
+        uint64_t sourceVersion = 0;
         std::optional<::cupuacu::effects::AmplifyFadeSettings>
             amplifyFadeSettings;
         std::optional<::cupuacu::effects::DynamicsSettings> dynamicsSettings;
@@ -67,6 +71,7 @@ namespace cupuacu::actions::effects
         int64_t originalRelevantLength = 0;
         int64_t originalCursor = 0;
         bool hadSelection = false;
+        int64_t pitchOutputFrames = 0;
         bool removeSilenceRemovesDuration = false;
         std::shared_ptr<const storage::AudioEditRevision> beforeRevision,
             afterRevision;
@@ -141,6 +146,9 @@ namespace cupuacu::actions::effects
     };
 
     bool queueReverse(cupuacu::State *state);
+    bool
+    queuePitch(cupuacu::State *, const ::cupuacu::effects::PitchSettings &,
+               std::shared_ptr<const storage::AudioEditRevision> rendered = {});
     bool queueAmplifyFade(cupuacu::State *state,
                           const ::cupuacu::effects::AmplifyFadeSettings &settings);
     bool queueDynamics(cupuacu::State *state,

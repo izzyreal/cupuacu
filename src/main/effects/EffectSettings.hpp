@@ -4,6 +4,24 @@
 
 namespace cupuacu::effects
 {
+    enum class PitchUnit
+    {
+        Percent,
+        Semitones
+    };
+    enum class PitchType
+    {
+        Resample,
+        Stretch
+    };
+
+    struct PitchSettings
+    {
+        double factor = 1.0;
+        PitchUnit unit = PitchUnit::Percent;
+        PitchType type = PitchType::Resample;
+    };
+
     struct AmplifyFadeSettings
     {
         double startPercent = 100.0;
@@ -43,6 +61,7 @@ namespace cupuacu::effects
 
     struct EffectSettings
     {
+        PitchSettings pitch{};
         AmplifyFadeSettings amplifyFade{};
         AmplifyEnvelopeSettings amplifyEnvelope{};
         DynamicsSettings dynamics{};
